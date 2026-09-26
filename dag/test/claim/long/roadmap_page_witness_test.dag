@@ -2248,3 +2248,93 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
         && string_contains(s: h, pattern: "issue-comment issue-publication")
   }
 }
+
+// THE CLIPPING FIX, pinned at the layout law (owner defect 2026-09-26: the slug and field labels
+// rendered cut off at the left viewport edge): the detail page's container carries the SAME side
+// padding as every other surface — the defect's cause was .issue-detail being a body-level flex
+// child with no padding at all — and the rail is a narrow 34ch column that cannot starve the
+// panels.
+test fn witness_issue_detail_pads_its_content_and_sized_the_rail() -> Bool {
+  let css = roadmap_css()
+  string_contains(s: css, pattern: ".issue-detail { display: flex; flex-direction: column; gap: var(--space-12); font-family: var(--issue-font); color: var(--issue-text); padding: var(--space-16) var(--space-24) }")
+    && occurrence_count(s: css, pattern: "width: 34ch") == 1
+}
+
+fn issue_detail_fixture_view_with_brief(lifecycle: gunbc.roadmap_presentation.WorkLifecycle) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
+    node_id: "issue-detail-specimen",
+    headline: "Specimen issue",
+    summary: none,
+    lifecycle: lifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: gunbc.roadmap_presentation.NoActiveWork,
+    action: gunbc.roadmap_presentation.action_view(
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+      admission: gunbc.roadmap_launch_admission.LaunchAdmitted { identity: launch_fixture_identity(node_id: "issue-detail-specimen", cause: Operator, mode: ManualReady) }),
+    supporting_facts: [ gunbc.roadmap_presentation.SupportingFact { label: "owner", value: "agent-35", href: "" } ],
+    disclosure: gunbc.roadmap_presentation.TicketDisclosure {
+      brief: "the brief words",
+      fields: [
+        gunbc.roadmap_presentation.DisclosureField { label: "red control", value: "first line\nfn example_signature() :: typed" },
+        gunbc.roadmap_presentation.DisclosureField { label: "hand-back", value: "the hand-back clause" },
+        gunbc.roadmap_presentation.DisclosureField { label: "current state", value: "the current state" },
+        gunbc.roadmap_presentation.DisclosureField { label: "first slice", value: "the first slice" },
+        gunbc.roadmap_presentation.DisclosureField { label: "displaced cost", value: "the displaced cost" },
+        gunbc.roadmap_presentation.DisclosureField { label: "out of scope", value: "the out-of-scope clause" },
+      ],
+      updates: [],
+    },
+    rounds: hero_rounds_fixture(),
+    worker_alive: true,
+    standing: Present { value: NodeClaimed { by: fixture_human_principal(), since: "2026-09-23" } },
+    attempt_stale: false,
+  }
+}
+
+fn brief_fixture_html(lifecycle: gunbc.roadmap_presentation.WorkLifecycle) -> HtmlEmitResult {
+  try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view_with_brief(lifecycle: lifecycle),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: [],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: ""))
+}
+
+// THE AUTHORED FIELDS FOLD (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
+// Description renders the brief; Acceptance criteria carries the red control and hand-back; the
+// code-ish red control (multi-line, fn signature) renders in a MONO block, never a prose
+// paragraph; Current plan rides a details/summary disclosure OPEN while the work is not done;
+// Scope rides a collapsed disclosure; and the verified row NEVER forms when no verification was
+// recorded.
+test fn witness_issue_authored_fields_fold_per_the_mandate() -> Bool {
+  match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.OpenLifecycle) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<h3 class=\"issue-authored-heading\">Description</h3>") == 1
+        && occurrence_count(s: h, pattern: "<h3 class=\"issue-authored-heading\">Acceptance criteria</h3>") == 1
+        && occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\" open=\"\"><summary>Current plan</summary>") == 1
+        && occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>Scope</summary>") == 1
+        && occurrence_count(s: h, pattern: "<pre class=\"ticket-field-code\">first line\nfn example_signature() :: typed</pre>") == 1
+        && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">red control</span>")
+        && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">hand-back</span>")
+        && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">current state</span>")
+        && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">first slice</span>")
+        && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">displaced cost</span>")
+        && string_contains(s: h, pattern: "<summary>Scope</summary><div class=\"ticket-field\"><span class=\"ticket-field-label\">out of scope</span>")
+        && occurrence_count(s: h, pattern: "issue-field-label\">verified</span>") == 0
+  }
+}
+
+// CURRENT PLAN COLLAPSES ONCE THE WORK IS DONE: the same fixture under a done lifecycle renders
+// the plan disclosure with NO open attribute — the summary stays, the body rests.
+test fn witness_issue_current_plan_collapses_once_done() -> Bool {
+  match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.DoneLifecycle) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>Current plan</summary>") == 1
+  }
+}

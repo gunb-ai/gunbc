@@ -1087,7 +1087,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_4)),
-      decl(prop: Width, value: scale_var(t: measure_page)),
+      decl(prop: Width, value: "34ch"),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_3)),
       decl(prop: Padding, value: scale_pair(a: space_8, b: space_12)),
@@ -1122,6 +1122,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_12)),
       decl(prop: FontFamily, value: "var(--issue-font)"),
       decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-detail-head" }, decls: [
       decl(prop: Display, value: "flex"),
@@ -1378,6 +1379,45 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "issue-comment-body" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-authored" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-authored-section" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-authored-heading" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-authored-details" }, decls: [
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--issue-border)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-authored-details" }, decls: [
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored-details > summary" }, decls: [
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-field-code" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: WhiteSpace, value: "pre-wrap"),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Margin, value: scale_var(t: space_0)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-publication" }, decls: [
       decl(prop: Background, value: "var(--issue-bg-subtle)"),

@@ -534,6 +534,18 @@ fn disclosure_field(label: String, value: String) -> List<DisclosureField> {
   if value == "" { [] } else { [ DisclosureField { label: label, value: value } ] }
 }
 
+// THE VERIFIED ROW'S LAW (owner mandate 2026-09-25): an empty `verified · last verified` row
+// NEVER renders — the row forms only when a last-verified date was actually recorded, and the
+// authored date rides with it (an authored-but-never-verified ticket shows no verification row
+// rather than a truncated one).
+fn verified_disclosure_field(t: TicketFields) -> List<DisclosureField> {
+  if t.last_verified_on == "" {
+    []
+  } else {
+    disclosure_field(label: "verified", value: join([t.authored_on, " · last verified ", t.last_verified_on], ""))
+  }
+}
+
 fn ticket_disclosure_fields(t: TicketFields) -> List<DisclosureField> {
   concat(disclosure_field(label: "displaced cost", value: t.displaced_cost),
     concat(disclosure_field(label: "current state", value: t.current_state),
@@ -541,7 +553,7 @@ fn ticket_disclosure_fields(t: TicketFields) -> List<DisclosureField> {
         concat(disclosure_field(label: "red control", value: t.red_control),
           concat(disclosure_field(label: "out of scope", value: t.out_of_scope),
             concat(disclosure_field(label: "hand-back", value: t.handback),
-              disclosure_field(label: "verified", value: join([t.authored_on, " · last verified ", t.last_verified_on], ""))))))))
+              verified_disclosure_field(t: t)))))))
 }
 
 fn row_disclosure(line: RoadmapItem) -> DisclosureView {

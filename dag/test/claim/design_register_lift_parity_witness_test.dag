@@ -410,7 +410,17 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_issue_publication_handoff_renders_the_compact_automated_entry, the event-log handoff
 // witnesses, the register censuses unchanged. Derived by execution (roadmap_css_derived_digest on
 // this tree, 2fa0e1b23a779551); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "2fa0e1b23a779551"
+// Re-pinned 2026-09-26 for the owner-visible defect fixes: the detail page's container gains the
+// surface padding law (.issue-detail padding var(--space-16) var(--space-24) — the left-edge
+// clipping fix) and the rail becomes a 34ch column (the measure_page 960px width had starved the
+// panels); the authored-fields fold lands (.issue-authored* sections, the details/summary pair,
+// .ticket-field-code mono blocks). Behavioral receipts:
+// witness_issue_detail_pads_its_content_and_sized_the_rail,
+// witness_issue_authored_fields_fold_per_the_mandate,
+// witness_issue_current_plan_collapses_once_done, the register censuses unchanged. Derived by
+// execution (roadmap_css_derived_digest on this tree, f90047404631dff2); this digest only pins
+// bytes.
+data roadmap_css_lift_parity_digest: String = "f90047404631dff2"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

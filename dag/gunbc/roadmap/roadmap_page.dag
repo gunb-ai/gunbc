@@ -349,7 +349,7 @@ fn inline_md_nodes(text: String) -> List<Fragment> {
 fn disclosure_field_row(f: DisclosureField) -> Fragment {
   el_class("div", "ticket-field", concat(
     [ el_class("span", "ticket-field-label", [ txt(f.label) ]) ],
-    [ el_class("span", "ticket-field-value", inline_md_nodes(text: f.value)) ]))
+    [ el_class("span", "ticket-field-value", disclosure_field_value_nodes(f: f)) ]))
 }
 
 fn disclosure_update_row(u: DisclosureNote) -> Fragment {
@@ -1774,6 +1774,74 @@ fn issue_event_insert_sorted(sorted: List<RoadmapEventEnvelope>, env: RoadmapEve
 }
 
 
+
+// CODE-ISH CONTENT GETS MONO BLOCKS, never prose paragraphs (owner mandate 2026-09-25): a field
+// value that spans lines or names code (a fn signature, a module path) renders in a pre block on
+// the tokened grain; single-line prose keeps the inline-markdown voice.
+fn field_value_is_codeish(value: String) -> Bool {
+  string_contains(s: value, pattern: "\n") || string_contains(s: value, pattern: "fn ") || string_contains(s: value, pattern: "::")
+}
+
+fn disclosure_field_value_nodes(f: DisclosureField) -> List<Fragment> {
+  if field_value_is_codeish(value: f.value) {
+    [ el_class("pre", "ticket-field-code", [ txt(f.value) ]) ]
+  } else {
+    inline_md_nodes(text: f.value)
+  }
+}
+
+fn issue_authored_details(summary: String, open: Bool, rows: List<Fragment>) -> Fragment {
+  el_attrs("details", concat(
+    [ attr(name: "class", value: "issue-authored-details" ) ],
+    if open { [ attr(name: "open", value: "" ) ] } else { [] }),
+    concat([ el("summary", [ txt(summary) ]) ], rows))
+}
+
+fn issue_authored_section(heading: String, rows: List<Fragment>) -> Fragment {
+  el_class("div", "issue-authored-section", concat(
+    [ el_class("h3", "issue-authored-heading", [ txt(heading) ]) ],
+    rows))
+}
+
+// THE FIELDS OF ONE LABEL, in the label order the caller names — the fold groups by the
+// interface's own field labels, never re-derives their content.
+fn ticket_fields_labeled(fields: List<DisclosureField>, labels: List<String>) -> List<DisclosureField> {
+  fold(labels, init: [], f: (acc, label) => concat(acc, filter(fields, f => f.label == label)))
+}
+
+// THE AUTHORED FIELDS, FOLDED PER THE MANDATE (owner 2026-09-25,
+// docs/plans/issue-page-architecture.md): Description (the brief) always renders; Acceptance
+// criteria carries the red control and the hand-back; Current plan carries current state, first
+// slice and displaced cost inside a details/summary disclosure — OPEN while the work is not done,
+// collapsed once it is; Scope carries out-of-scope inside a collapsed disclosure. Long content is
+// collapsed by default; the verified row never forms when no verification was recorded (fixed at
+// the source, roadmap_presentation.ticket_disclosure_fields). The flat rendering survives for the
+// daily table's row disclosure, where the fold is not the mandate's subject.
+fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
+  match d {
+    NoDisclosure => []
+    LegacyBodyDisclosure { content } =>
+      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
+    TicketDisclosure { brief, fields, updates } =>
+      let description = issue_authored_section(heading: "Description", rows: [ el_class("div", "ticket-brief", inline_md_nodes(text: brief)) ])
+      let acceptance_fields = ticket_fields_labeled(fields: fields, labels: ["red control", "hand-back"])
+      let acceptance = if count(acceptance_fields) == 0 { [] } else {
+        [ issue_authored_section(heading: "Acceptance criteria", rows: map(acceptance_fields, f => disclosure_field_row(f: f))) ]
+      }
+      let plan_fields = ticket_fields_labeled(fields: fields, labels: ["current state", "first slice", "displaced cost"])
+      let plan = if count(plan_fields) == 0 { [] } else {
+        [ issue_authored_details(summary: "Current plan", open: !done, rows: map(plan_fields, f => disclosure_field_row(f: f))) ]
+      }
+      let scope_fields = ticket_fields_labeled(fields: fields, labels: ["out of scope"])
+      let scope = if count(scope_fields) == 0 { [] } else {
+        [ issue_authored_details(summary: "Scope", open: false, rows: map(scope_fields, f => disclosure_field_row(f: f))) ]
+      }
+      [ el_class("div", "issue-authored", concat(
+          [ description ],
+          concat(acceptance, concat(plan, concat(scope, disclosure_updates_block(updates: updates)))))) ]
+  }
+}
+
 // THE DESCRIPTION, pinned above the comment stream (owner mandate 2026-09-25,
 // docs/plans/issue-page-architecture.md): the issue's authored content leads the page's narrative.
 // THE NAMED GAP, not papered over: the roadmap authority rows carry one content string today (the
@@ -2085,7 +2153,7 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
       issue_comments_stream_node(node_id: view.node_id, envs: events),
       issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
     ],
-    disclosure_body_nodes(d: view.disclosure))
+    disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
 }
 
 // THE DEPENDENCIES TAB, dimensional per the owner mandate: parent/children (nesting), blocked
