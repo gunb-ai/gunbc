@@ -406,6 +406,30 @@ test fn nfbcp_repeated_declaration_refuses_at_the_second_declaration_holds() -> 
   }
 }
 
+// A REPEATED SERVICE OPERATION IS REFUSED AT THE SECOND OPERATION. The service lowering reads the
+// repeated name from v2.std.node_query repeated_name_edges, the same authority the declaration
+// graft above reads; only the second operation carries a field, so a locus at the first operation
+// (no b) or at the service (which mentions S) reds this row.
+data nfbcp_repeated_operation_source: String = "module m\nservice S {\n  operation Op {}\n  operation Op { input { b: Int } }\n}\n"
+
+test fn nfbcp_repeated_operation_refuses_at_the_second_operation_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_repeated_operation_source) {
+    Absent => false
+    Present { value: tree } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ne } =>
+          fold(ne.tail, init: nfbcp_is_repeated_operation_at_second(d: ne.head), f: fn(found, d) { found || nfbcp_is_repeated_operation_at_second(d: d) })
+      }
+  }
+}
+
+fn nfbcp_is_repeated_operation_at_second(d: Diagnostic) -> Bool {
+  (d.reason == ^body_lowering_reason_service_operation_repeated)
+    && nfbcp_locus_mentions_atom(d: d, atom: ^b)
+    && !nfbcp_locus_mentions_atom(d: d, atom: ^S)
+}
+
 // AN ANONYMOUS RECORD RETURN TYPE LOWERS; IT IS NOT RETAINED. `-> { s: B }` is a type expression
 // whose captured is a field_decl_block. v2.compiler.body_lowering_fold
 // body_lower_anonymous_record_type_optional reads it through the record declaration's own field-block
