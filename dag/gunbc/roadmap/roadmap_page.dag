@@ -3,7 +3,7 @@ module gunbc.roadmap_page
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
-  IssueComment, roadmap_issue_comments, issue_comment_anchor,
+  IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
@@ -1882,10 +1882,6 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String) -> Fr
 fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
-    if count(events) == 0 { [] } else {
-      [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), issue_event_row_node)) ]
-    },
-    concat(
     if count(attempts) == 0 { [] } else {
       [ el_class("div", "issue-attempt-history", map(attempts, issue_attempt_history_row_node)) ]
     },
@@ -1906,7 +1902,7 @@ fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgres
             located_reason: located_reason)
         CompletedWork { outcome: _, evidence, obligations } =>
           issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
-      })))
+      }))
 }
 
 fn issue_work_ledger_row_node(s: WorkflowSegment, wait_target: String) -> Fragment {
@@ -1937,64 +1933,186 @@ fn issue_work_ledger_nodes(view: WorkRowView, obligations: List<WorkflowSegment>
 
 fn issue_tab_chip(label: String, tab: String) -> Fragment {
   el_attrs("button", [
-    attr(name: "class", value: if tab == "issue" { "chip chip-on" } else { "chip" } ),
+    attr(name: "class", value: if tab == "comments" { "chip chip-on" } else { "chip" } ),
     attr(name: "type", value: "button" ),
     attr(name: "data-tab-chip", value: tab ),
   ], [ txt(label) ])
 }
 
+// THE HEADER CHIPS (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md): planning
+// status + type + priority ONLY — [Done] [Task] [P2] — never competing status strings. The type
+// row is the interface's single issue kind today (every tracked issue is a task until a type
+// vocabulary lands); the priority chip renders only when the authority carries a priority (it
+// does not yet — the chip omits, never fabricates). The standing line, the live bar signal and
+// the assignee control moved to the metadata rail.
+fn issue_head_chip_nodes(view: WorkRowView) -> List<Fragment> {
+  concat(
+    status_chip_nodes(view: view),
+    concat(
+      [ el_class("span", "issue-type-chip", [ txt("Task") ]) ],
+      []))
+}
+
 fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
-  let bar = task_bar_view_of(view: view, observation: observation)
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
-    attr(name: "data-tab", value: "issue" ),
+    attr(name: "data-tab", value: "comments" ),
   ], [
     el_class("div", "issue-detail-head", concat(
       [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
       concat(
         [ el_class("h1", "issue-detail-title", inline_md_nodes(text: view.headline)) ],
-        concat(
-          status_chip_nodes(view: view),
-          concat(
-            standing_chip_nodes(view: view),
-            concat(
-              [ el_attrs("span", [
-                  attr(name: "class", value: join(["issue-status ", activity_line_prefix_class, bar.signal_class], "") ),
-                ], [ txt(bar.signal) ]) ],
-              el_class("div", "issue-action-bar", issue_detail_action_bar_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision))))))))
+        issue_head_chip_nodes(view: view)))),
     el_class("div", "issue-tabs", [
-      issue_tab_chip(label: "issue", tab: "issue"),
+      issue_tab_chip(label: "comments", tab: "comments"),
+      issue_tab_chip(label: "dependencies", tab: "dependencies"),
       issue_tab_chip(label: "work", tab: "work"),
+      issue_tab_chip(label: "history", tab: "history"),
     ]),
-    el_class("div", "issue-panels", [
-      el_class("section", "panel-issue", concat(
-        [ issue_description_node(view: view),
-          issue_comments_stream_node(node_id: view.node_id, comments: roadmap_issue_comments(envs: events)),
-          issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
-          el_class("div", "issue-fields", concat(
-            [ issue_field_text_row(label: "status", value: issue_explanation(view: view)) ],
-            concat(
-              [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view, attempts: attempts)) ],
-              concat(
-                [ issue_field_text_row(label: "component", value: issue_component_value(view: view)) ],
-                concat(
-                  [ issue_field_row(label: "parent", value: issue_parent_value(panel: panel)) ],
-                  concat(
-                  if count(panel.blocking) == 0 { [] } else {
-                    [ issue_field_row(label: "blocking", value: issue_link_value(links: panel.blocking)) ]
-                  },
-                  concat(
-                    if count(panel.blocked_by) == 0 { [] } else {
-                      [ issue_field_row(label: "blocked by", value: issue_link_value(links: panel.blocked_by)) ]
-                    },
-                    [ issue_field_text_row(label: "standing", value: match view.standing {
-                        Present { value: s } => roadmap_node_standing_text(s: s)
-                        Absent => ""
-                      }) ]))))))) ],
-        disclosure_body_nodes(d: view.disclosure))),
-      el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
+    el_class("div", "issue-body", [
+      el_class("div", "issue-panels", [
+        el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision)),
+        el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, panel: panel)),
+        el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
+        el_class("section", "panel-history", issue_history_tab_nodes(events: events)),
+      ]),
+      issue_metadata_rail_node(view: view, panel: panel, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision),
     ]),
   ])
+}
+
+// THE COMMENTS TAB: the description pinned above the stream, the composer below — the page's
+// default panel (the tab law renders it when data-tab is "comments").
+fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String) -> List<Fragment> {
+  concat(
+    [
+      issue_description_node(view: view),
+      issue_comments_stream_node(node_id: view.node_id, comments: roadmap_issue_comments(envs: events)),
+      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
+    ],
+    disclosure_body_nodes(d: view.disclosure))
+}
+
+// THE DEPENDENCIES TAB, dimensional per the owner mandate: parent/children (nesting), blocked
+// by/blocking (must-complete-first), related, and supersedes — separate sections, never one
+// flattened list. THE NAMED GAP, stated not papered over: the roadmap graph carries only
+// dependency edges today, so BOTH nesting sides ride the primary-parent rule over those edges
+// (the capture-verified decomposition approximation from the qualified-identity ruling) — the
+// section labels keep the dimensions distinct for when decomposition edges land, and "related"
+// is declared with no relation kind yet (the section renders its emptiness honestly).
+fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> List<Fragment> {
+  [
+    el_class("div", "issue-deps-section", [
+      el_class("h3", "issue-deps-heading", [ txt("parent") ]),
+      el_class("div", "issue-deps-body", issue_parent_value(panel: panel)),
+    ]),
+    el_class("div", "issue-deps-section", [
+      el_class("h3", "issue-deps-heading", [ txt("children") ]),
+      el_class("div", "issue-deps-body", if count(panel.blocking) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocking) }),
+    ]),
+    el_class("div", "issue-deps-section", [
+      el_class("h3", "issue-deps-heading", [ txt("blocked by") ]),
+      el_class("div", "issue-deps-body", if count(panel.blocked_by) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocked_by) }),
+    ]),
+    el_class("div", "issue-deps-section", [
+      el_class("h3", "issue-deps-heading", [ txt("blocking") ]),
+      el_class("div", "issue-deps-body", [ txt("rides the same primary-parent rule until dependency-reverse edges are declared — named, not fabricated") ]),
+    ]),
+    el_class("div", "issue-deps-section", [
+      el_class("h3", "issue-deps-heading", [ txt("related") ]),
+      el_class("div", "issue-deps-body", [ txt("no related-issue relation is declared yet") ]),
+    ]),
+    el_class("div", "issue-deps-section", [
+      el_class("h3", "issue-deps-heading", [ txt("supersedes") ]),
+      el_class("div", "issue-deps-body", [ txt(if view.superseded_by == "" { "not superseded" } else { join(["superseded by ", view.superseded_by], "") }) ]),
+    ]),
+  ]
+}
+
+// THE HISTORY TAB: the raw event ledger, newest first — every durable event with its author,
+// kind, and payload. Execution evidence (attempts, rounds, the stage ledger) lives on the Work
+// tab exclusively; this tab is the audit trail.
+fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>) -> List<Fragment> {
+  if count(events) == 0 { [] } else {
+    [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), issue_event_row_node)) ]
+  }
+}
+
+// THE RIGHT METADATA RAIL (owner mandate): status, assignee (the editable control), reporter,
+// component, parent, blocked-by/blocking, delivery, return-to, modified, observation — the
+// issue's identity and state at a glance, beside the narrative. Rows with no fact OMIT (the
+// mandate's empty-row law), except status and assignee which always render.
+fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+  let assignment = roadmap_issue_assignment(envs: events)
+  let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
+  el_class("aside", "issue-rail", [
+    issue_field_text_row(label: "status", value: issue_explanation(view: view)),
+    issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision),
+    issue_field_text_row(label: "reporter", value: issue_owner_value(view: view)),
+    issue_field_text_row(label: "component", value: issue_component_value(view: view)),
+    issue_field_row(label: "parent", value: issue_parent_value(panel: panel)),
+    issue_rail_optional_row(label: "blocked by", value: issue_links_text(panel: panel, blocked: true)),
+    issue_rail_optional_row(label: "blocking", value: issue_links_text(panel: panel, blocked: false)),
+    issue_rail_optional_row(label: "delivery", value: issue_delivery_value(attempts: attempts)),
+    issue_rail_return_to_row(assignment: assignment),
+    issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
+    issue_rail_optional_row(label: "observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
+  ])
+}
+
+// THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
+// Assign control — the editable field the mandate puts in the rail.
+fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+  let holder_chip = match issue_assignee_holder(view: view, attempts: attempts) {
+    Absent => [ txt(issue_assignee_unassigned_display as String) ]
+    Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
+  }
+  issue_field_row(label: "assignee", value: concat(
+    holder_chip,
+    issue_detail_action_bar_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision)))
+}
+
+// THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's
+// target) — rendered when any assignment recorded one.
+fn issue_rail_return_to_row(assignment: IssueAssignmentProjection) -> Fragment {
+  match assignment.return_to {
+    Present { value: return_to } =>
+      issue_field_row(label: "return to", value: [ issue_assignee_chip_node(holder: return_to) ])
+    Absent =>
+      el_class("div", "issue-field", [])
+  }
+}
+
+fn issue_rail_optional_row(label: String, value: String) -> Fragment {
+  if value == "" {
+    el_class("div", "issue-field", [])
+  } else {
+    issue_field_text_row(label: label, value: value)
+  }
+}
+
+// THE LINK ROWS' PLAIN-TEXT SPELLING for the rail (a compact comma-join of the link headlines;
+// the dimensional link lists live on the Dependencies tab).
+fn issue_links_text(panel: IssueLinkPanel, blocked: Bool) -> String {
+  let links = if blocked { panel.blocked_by } else { panel.blocking }
+  join(map(links, l => l.headline), ", ")
+}
+
+// DELIVERY: the latest attempt's short key names the delivery vehicle until issue→PR links land
+// (the Implements relation is the named follow-up); no attempt, no row.
+fn issue_delivery_value(attempts: List<WorkflowAttemptProgress>) -> String {
+  match attempts.first() {
+    Present { value: p } => join(["attempt ", attempt_key_short_form(key: p.attempt_key)], "")
+    Absent => ""
+  }
+}
+
+// MODIFIED: the newest event's recorded_at — the ledger's own freshness fact; no events, no row.
+fn issue_modified_value(events: List<RoadmapEventEnvelope>) -> String {
+  match issue_events_newest_first(envs: events).first() {
+    Present { value: newest } => newest.event.recorded_at
+    Absent => ""
+  }
 }
 
 fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {

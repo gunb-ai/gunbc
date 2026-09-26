@@ -389,7 +389,24 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // not dependencies; we track no views and blockers live on the detail page): the roster drops the
 // column, the template loses its 8ch track. Derived by execution (roadmap_css_derived_digest on
 // this tree, dc62c7862ac2125d); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "dc62c7862ac2125d"
+// Re-pinned 2026-09-26 for the A5 comment surface: the description/comment-stream/composer family
+// lands (.issue-description*, .issue-comments/-comment* rows with the deleted tombstone, reply
+// marker, and :empty-hidden reply, .issue-comment-form/-input) — all tokened and role-routed.
+// Behavioral receipts: witness_issue_comment_stream_renders_description_avatars_numbers_times_and_
+// deep_links, witness_issue_comment_composer_posts_text_plain_with_key_csrf_and_body_last, the
+// register censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// 76969b74002ce2aa); this digest only pins bytes.
+// Re-pinned 2026-09-26 for the page-architecture slice: the header loses its standing/bar-signal
+// chrome (chips only), the tab law becomes Comments-default x Dependencies/Work/History (four
+// display:none rules replace the issue/work pair), and the right metadata rail lands (.issue-body
+// flex pair, .issue-rail surface, .issue-type-chip, .issue-deps-* sections) — all tokened and
+// role-routed. Behavioral receipts: witness_issue_detail_page_renders_header_fields_and_tabs,
+// witness_issue_tab_switch_contracts, witness_issue_history_tab_renders_event_history_newest_first,
+// the register censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// a39d8e02482582d4); this digest only pins bytes.
+// Re-derived 2026-09-26 on the merge of this slice with the D VIEWS roster retirement (the two
+// re-pins collided mid-pick; the merged tree's bytes decided by execution, never either side's).
+data roadmap_css_lift_parity_digest: String = "a39d8e02482582d4"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

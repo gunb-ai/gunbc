@@ -1062,8 +1062,59 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-empty=\"1\"] .issue-empty" }, decls: [
       decl(prop: Display, value: "block"),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-detail[data-tab=\"issue\"] .panel-work, .issue-detail[data-tab=\"work\"] .panel-issue" }, decls: [
+    StaticRule { selector: RawSelector { text: ".issue-detail[data-tab=\"comments\"] .panel-dependencies, .issue-detail[data-tab=\"comments\"] .panel-work, .issue-detail[data-tab=\"comments\"] .panel-history" }, decls: [
       decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail[data-tab=\"dependencies\"] .panel-comments, .issue-detail[data-tab=\"dependencies\"] .panel-work, .issue-detail[data-tab=\"dependencies\"] .panel-history" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail[data-tab=\"work\"] .panel-comments, .issue-detail[data-tab=\"work\"] .panel-dependencies, .issue-detail[data-tab=\"work\"] .panel-history" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail[data-tab=\"history\"] .panel-comments, .issue-detail[data-tab=\"history\"] .panel-dependencies, .issue-detail[data-tab=\"history\"] .panel-work" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-body" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_16)),
+      decl(prop: AlignItems, value: "flex-start"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-panels" }, decls: [
+      decl(prop: Flex, value: "1"),
+      decl(prop: MinWidth, value: "0"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-rail" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: Width, value: scale_var(t: measure_page)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_8, b: space_12)),
+      role_decl(prop: Background, r: SurfaceRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-type-chip" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-deps-section" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-deps-heading" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: TextTransform, value: "uppercase"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-deps-body" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-detail" }, decls: [
       decl(prop: Display, value: "flex"),
