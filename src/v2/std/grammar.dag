@@ -1564,6 +1564,7 @@ fn formal_symbol_leading_tag(symbol: FormalGrammarSymbol) -> FormalLeadingTag {
         Absent => FormalNoLeadingTag
       }
     FormalNonterminalOccurrence { nonterminal: _ } => FormalNoLeadingTag
+    FormalNestedNonterminalOccurrence { nonterminal: _, unit: _ } => FormalNoLeadingTag
   }
 }
 
