@@ -1,15 +1,15 @@
 module gunbc.fabric_writer_roster
 
 import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent, tailnet_identity_of }
 import product.placement_supply { HostIdentity }
 import gunbc.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
-import gunbc.fabric_storage_placement { fabric_storage_store_root }
+import gunbc.fabric_storage_placement { fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
 import std.fabric_storage { FabricStoreUnreachable }
-import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
+import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric_writer_identity_observe {
-  FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, NotAReadingOfTheDoor,
+  FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, WriterLocalPeerObserved, NotAReadingOfTheDoor,
 }
 
 // THE SERVED DOOR'S WRITER ROSTER: the tailnet USER principals admitted to put and advance through
@@ -25,10 +25,9 @@ import gunbc.fabric_writer_identity_observe {
 // stripped header or a direct connection produces (extdeps.tailscale.identity), and none is a
 // principal.
 //
-// WHAT THIS ROSTER DOES NOT WALL: the placed host's in-process writers, which never reach the
-// served door (their wall is the store directories' ownership, gunbc.fabric_storage_placement
-// fabric_storage_directory); and anything that reaches the backend socket without the proxy, for
-// which the header is self-asserted (extdeps.tailscale.identity's deployment property).
+// THE HEADER IS BELIEVED ONLY FROM THE PROXY: the door is a unix socket whose peer the kernel
+// attests, so a login is read only when the peer is the tailscale proxy, and a local process that
+// sends the header is judged as itself (fabric_door_principal_of).
 type FabricWriterIdentityObservation {
   run: NonEmptyStr
   receipt: FabricWriterIdentityReceipt
@@ -62,6 +61,7 @@ fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
   match fabric_writer_identity_ground(read: o.receipt.read) {
     WriterUserPrincipalObserved { login: l } => [l]
     WriterPrincipalUnavailable { reason: _ } => []
+    WriterLocalPeerObserved { user: _ } => []
     NotAReadingOfTheDoor { reason: _ } => []
   }
 }
@@ -75,20 +75,43 @@ fn fabric_served_writer_roster() -> List<NonEmptyStr> {
   fabric_served_writer_roster_of(observations: fabric_writer_identity_observations())
 }
 
-type FabricServedWriterAdmission
-  = FabricServedWriterAdmitted { login: NonEmptyStr }
-  | FabricServedWriterRefused { principal: NonEmptyStr }
+// THE DOOR'S TWO ROSTERS, ONE ADMISSION. A proxied request (the peer is the tailscale proxy) is
+// admitted by its login against the served roster above; a local peer is admitted by its account
+// against the door directory's dependents (gunbc.fabric_storage_placement
+// fabric_storage_door_local_writers), the same declaration the kernel enforces on the socket's
+// directory. A proxied request with no login, a local peer outside that roster, and a peer the
+// kernel did not attest are each refused, and each refusal names what was presented.
+type FabricDoorWriterAdmission
+  = FabricDoorWriterAdmitted { principal: NonEmptyStr }
+  | FabricDoorWriterRefused { principal: NonEmptyStr }
+
+fn fabric_door_principal_of(tailscale_identity: String, peer_user: String) -> FabricDoorPrincipal {
+  if peer_user == "" { DoorUnattested }
+  else if peer_user == (fabric_storage_door_proxy_peer as String) { DoorProxied { identity: tailnet_identity_of(header_value: tailscale_identity) } }
+  else { DoorLocalPeer { user: peer_user as NonEmptyStr } }
+}
+
+fn listed(roster: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
+  any(roster, r => (r as String) == (name as String))
+}
 
 // The comparison is exact, as extdeps.tailscale.identity requires of any identity match.
-fn fabric_served_writer_admission_over(roster: List<NonEmptyStr>, identity: TailnetIdentity) -> FabricServedWriterAdmission {
-  match identity {
-    TailnetIdentityAbsent => FabricServedWriterRefused { principal: "no Tailscale-User-Login was presented" as NonEmptyStr }
-    TailnetUser { login: l } =>
-      if any(roster, r => (r as String) == (l as String)) { FabricServedWriterAdmitted { login: l } }
-      else { FabricServedWriterRefused { principal: join([l as String, " is not a rostered fabric writer"], "") as NonEmptyStr } }
+fn fabric_door_writer_admission_over(logins: List<NonEmptyStr>, locals: List<NonEmptyStr>, principal: FabricDoorPrincipal) -> FabricDoorWriterAdmission {
+  match principal {
+    DoorUnattested => FabricDoorWriterRefused { principal: "no kernel-attested peer: the door admits writes only on its unix socket" as NonEmptyStr }
+    DoorLocalPeer { user: u } =>
+      if listed(roster: locals, name: u) { FabricDoorWriterAdmitted { principal: u } }
+      else { FabricDoorWriterRefused { principal: join(["local account ", u as String, " is not a rostered fabric writer"], "") as NonEmptyStr } }
+    DoorProxied { identity: i } =>
+      match i {
+        TailnetIdentityAbsent => FabricDoorWriterRefused { principal: "no Tailscale-User-Login was presented" as NonEmptyStr }
+        TailnetUser { login: l } =>
+          if listed(roster: logins, name: l) { FabricDoorWriterAdmitted { principal: l } }
+          else { FabricDoorWriterRefused { principal: join([l as String, " is not a rostered fabric writer"], "") as NonEmptyStr } }
+      }
   }
 }
 
-fn fabric_served_writer_admission(identity: TailnetIdentity) -> FabricServedWriterAdmission {
-  fabric_served_writer_admission_over(roster: fabric_served_writer_roster(), identity: identity)
+fn fabric_door_local_roster() -> List<NonEmptyStr> {
+  fabric_storage_door_local_writers()
 }

@@ -10,7 +10,7 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -1348,13 +1348,13 @@ test fn the_fabric_storage_area_ensure_repairs_the_ci_principals_entries() -> Bo
     && string_contains(s: heads, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: heads, pattern: "REFUSED")
 }
 
-// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0444, the other-read being
-// the service principal's only route to an entry the CI principal created. The per-rule cases, and
+// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0400, since the service
+// principal is the store's only writer and reader once every writer goes through the door. The per-rule cases, and
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
-test fn the_placed_fabric_store_derives_entry_mode_0444() -> Bool {
+test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
   match fabric_storage_entry_mode() {
-    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0444"
+    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }
 }
@@ -1718,17 +1718,18 @@ test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> 
     && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
-// THE FABRIC DB ENDPOINT IS LOOPBACK-BOUND AND ROUTED ONLY BY TAILSCALE: its unit runs the fabric DB
-// handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
-// on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to
-// exactly that port.
-test fn the_fabric_storage_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
+// THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
+// handler on the placement's unix socket and binds no TCP listener (never 0.0.0.0, and no loopback
+// port any local account could reach with a forged identity header), and its route is tailscale
+// serve's 10000 listener at the root mount, proxying to exactly that socket.
+test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
   let route = deployment_fabric_storage_serve_endpoint()
   unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_storage_listen_port)], ""))
-    && !unit.contains("0.0.0.0")
+    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket() as String], ""))
+    && !unit.contains("--host")
+    && !unit.contains("--port")
     && route.https_port == fabric_storage_https_port
-    && (route.backend as String) == to_string(fabric_storage_listen_port)
+    && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }

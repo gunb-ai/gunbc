@@ -95,6 +95,10 @@ enum RetainedCommands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
+        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
+        #[arg(long = "unix-socket")]
+        unix_socket: Option<String>,
         /// Release revision this process serves, bound ONCE at startup and immutable for the
         /// process lifetime. Required and validated before the listener binds: `gunbc serve`
         /// compiles its graph once, so the launch argument is the only fact describing what
@@ -423,6 +427,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         function: String,
         host: String,
         port: u16,
+        unix_socket: Option<String>,
         release_revision: String,
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
@@ -434,6 +439,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 eval_budget_cpu_ms,
                 eval_budget_wall_ms,
@@ -827,6 +833,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             function,
             host,
             port,
+            unix_socket,
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
@@ -837,6 +844,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 cli_run::ServeEvaluationBudget {
                     cpu_limit_ms: eval_budget_cpu_ms,

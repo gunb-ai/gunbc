@@ -120,10 +120,26 @@ fn fabric_storage_wire_closure(read: FabricClosureRead) -> String {
 // undecodable -- a skewed or malformed reply can never read as the store deliberately saying the
 // proxy supplied no login. `absent` is the arm a tagged device, a direct connection and a stripped
 // header all produce, and it is written as absent, never as an anonymous login.
-fn fabric_storage_wire_identity(identity: TailnetIdentity) -> String {
-  match identity {
-    TailnetUser { login: l } => wire_line(words: ["identity", "present", l as String])
-    TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
+//
+// THE DOOR'S PRINCIPAL, not only the proxy's header. The door listens on a unix socket and reads each
+// connection's peer from the kernel: a peer that is the tailscale proxy stands for the login its
+// header names (or for none), and any other peer IS the principal -- `identity local <user>`. A
+// connection whose peer the kernel did not attest (a TCP listener, which attests nothing) is
+// `identity unattested`, never a login.
+type FabricDoorPrincipal
+  = DoorProxied { identity: TailnetIdentity }
+  | DoorLocalPeer { user: NonEmptyStr }
+  | DoorUnattested
+
+fn fabric_storage_wire_identity(principal: FabricDoorPrincipal) -> String {
+  match principal {
+    DoorProxied { identity: i } =>
+      match i {
+        TailnetUser { login: l } => wire_line(words: ["identity", "present", l as String])
+        TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
+      }
+    DoorLocalPeer { user: u } => wire_line(words: ["identity", "local", u as String])
+    DoorUnattested => wire_line(words: ["identity", "unattested"])
   }
 }
 
@@ -329,6 +345,8 @@ fn fabric_storage_unwire_closure(text: String) -> FabricClosureRead {
 // version answering something else is a skew, never an absent identity.
 type FabricIdentityRead
   = FabricIdentityPresented { identity: TailnetIdentity }
+  | FabricIdentityLocalPeer { user: NonEmptyStr }
+  | FabricIdentityUnattested
   | FabricIdentityUnproxied
   | FabricIdentityReadRefused { fault: FabricStorageFault }
 
@@ -341,6 +359,10 @@ fn fabric_storage_unwire_identity(text: String) -> FabricIdentityRead {
       else {
         match word_at(ws: r.words, i: 1) {
           "absent" => if length(r.words) == 2 { FabricIdentityPresented { identity: TailnetIdentityAbsent } } else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+          "unattested" => if length(r.words) == 2 { FabricIdentityUnattested } else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+          "local" =>
+            if length(r.words) == 3 && word_at(ws: r.words, i: 2) != "" { FabricIdentityLocalPeer { user: word_at(ws: r.words, i: 2) as NonEmptyStr } }
+            else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
           "present" =>
             if length(r.words) == 3 && word_at(ws: r.words, i: 2) != "" { FabricIdentityPresented { identity: TailnetUser { login: word_at(ws: r.words, i: 2) as NonEmptyStr } } }
             else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
