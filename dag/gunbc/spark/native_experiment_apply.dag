@@ -322,7 +322,7 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
 ]
 
 // THE ACTIVE VARIANT, one named row the parent flips per wet run; default a, the repro.
-data spark_active_workload_variant: NonEmptyStr = "c-six-concurrent-short-window" as NonEmptyStr
+data spark_active_workload_variant: NonEmptyStr = "d-six-sequential-full-window" as NonEmptyStr
 
 fn spark_workload_variant_named(name: NonEmptyStr) -> SparkWorkloadVariant? {
   first(filter(spark_workload_variants, v => v.name == name))
