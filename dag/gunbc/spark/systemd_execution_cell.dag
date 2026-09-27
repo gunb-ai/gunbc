@@ -356,6 +356,109 @@ data systemd_workload_unit_marker: NonEmptyStr = "calib" as NonEmptyStr
 // orders of magnitude: 8 tokens of headroom absorption against a 2304-token margin.
 data systemd_workload_header_safety_tokens: Nat = 8
 
+// THE STALL WATCHDOG'S FIGURES. The threshold is the matrix's instrument row naming: variant e
+// arms stall detection at 120 seconds of no output tokens (arm_memory_experiment_observed
+// arm_experiment_2026_09_27_liveness_repro_matrix, row e — the 2026-09-27 hang ran 'Running: 1
+// reqs, Waiting: 0' at 0.0 tokens/s for minutes). The poll cadence is the runbook's five seconds,
+// so the fired bound is 24 consecutive frozen polls. The progress signal is the engine's own
+// throughput line in the head's log — vLLM prints it on the logging interval whenever requests run
+// (the hung run's line PERSISTED, reading 0.0) — never a /metrics counter, whose float and exponent
+// renderings (extdeps.vllm.metrics, gunbc.serving.engine_progress) make shell arithmetic lie.
+data systemd_workload_stall_seconds: Nat = 120
+
+data systemd_workload_watchdog_poll_seconds: Nat = 5
+
+// THE STALL LAW, as a pure tick the watchdog script inhabits and the fixture drives: a poll counts
+// toward the stall exactly when the engine reports zero prompt throughput WITH work running, and
+// any progress or any quiet engine resets the count. The fired bound is the threshold over the
+// poll cadence, floored — 120 seconds at five-second polls is 24 ticks.
+fn systemd_workload_stall_tick(prompt_throughput: Nat, running_requests: Nat, stall_polls: Nat) -> Nat {
+  match prompt_throughput == 0 && running_requests >= 1 {
+    true => stall_polls + 1
+    false => 0
+  }
+}
+
+fn systemd_workload_stall_fired(stall_polls: Nat, stall_seconds: Nat, poll_seconds: Nat) -> Bool {
+  stall_polls >= stall_seconds / poll_seconds
+}
+
+// THE STALL WATCHDOG, rendered as a standalone script the prefill leg backgrounds when the active
+// variant arms it (variant e of the matrix, which must ride every hanging run). It tails the head
+// log's throughput lines — the signal that persisted through the 2026-09-27 hang — and on the
+// fired bound captures a stack dump of EVERY process in the engine container (the hung worker and
+// the head process among them, named by pid and comm) into the workload evidence directory, BEFORE
+// any teardown leg can run: the capture lives inside the prefill leg, which precedes the stops by
+// the route's order. THE CAPTURE INSTRUMENT is py-spy where the host carries it — a dependency the
+// parent confirms on srv9 before the wet run; where py-spy is absent the fallback is the kernel's
+// own /proc/<pid>/stack and wchan, which need no install and still localize kernel-side waits.
+// Either way the dump file names the instrument that produced it. The watchdog stands down the
+// moment the prefills finish (the leg touches the done flag), never extends the admitted budget —
+// its own bound is twice the seat timeout, a backstop the flag always beats — and exits after one
+// capture, so a hanging run yields exactly one dump set.
+fn systemd_workload_watchdog_script(member: SystemdExecutionMember, serve_port: Port, state_dir: String, bound_seconds: Nat) -> String {
+  join([
+    "# stall watchdog, rendered by gunbc.spark.systemd_execution_cell; arms only what the matrix names\n",
+    "state=", state_dir, "\n",
+    "log=", member.log_path as String, "\n",
+    "end=$(( $(date +%s) + ", to_string(bound_seconds), " ))\n",
+    "stall_polls=0\n",
+    "while [ \"$(date +%s)\" -lt \"$end\" ]; do\n",
+    "  if [ -f \"$state/prefill_firing_done\" ]; then echo \"watchdog: prefills completed, standing down\"; exit 0; fi\n",
+    "  line=$(grep \"Avg prompt throughput\" \"$log\" 2>/dev/null | tail -1)\n",
+    "  case \"$line\" in *'Avg prompt throughput'*) : ;; *) sleep ", to_string(systemd_workload_watchdog_poll_seconds), "; continue ;; esac\n",
+    "  thpt=$(printf '%s' \"$line\" | awk -F'Avg prompt throughput: ' '{ print $2 }' | awk -F' tokens' '{ print $1 }')\n",
+    "  running=$(printf '%s' \"$line\" | awk -F'Running: ' '{ print $2 }' | awk -F' ' '{ print $1 }')\n",
+    "  if awk -v t=\"$thpt\" -v r=\"$running\" 'BEGIN { exit !(t + 0 == 0 && r + 0 >= 1) }'; then stall_polls=$(( stall_polls + 1 )); else stall_polls=0; fi\n",
+    "  if [ \"$stall_polls\" -ge ", to_string(systemd_workload_stall_seconds / systemd_workload_watchdog_poll_seconds), " ]; then\n",
+    "    ts=$(date +%s)\n",
+    "    docker top ", member.container_name as String, " -eo pid,comm 2>/dev/null | tail -n +2 | while read -r pid comm; do\n",
+    "      {\n",
+    "        echo \"watchdog stall capture ts=$ts pid=$pid comm=$comm stall_polls=$stall_polls\"\n",
+    "        if command -v py-spy >/dev/null 2>&1; then\n",
+    "          echo \"instrument=py-spy\"\n",
+    "          py-spy dump --pid \"$pid\" 2>&1 || { echo \"instrument=/proc (py-spy dump failed)\"; cat \"/proc/$pid/stack\" 2>&1 || true; cat \"/proc/$pid/wchan\" 2>&1 || true; }\n",
+    "        else\n",
+    "          echo \"instrument=/proc (py-spy absent)\"\n",
+    "          cat \"/proc/$pid/stack\" 2>&1 || true\n",
+    "          cat \"/proc/$pid/wchan\" 2>&1 || true\n",
+    "        fi\n",
+    "      } > \"$state/watchdog_dump_\"$ts\"_pid\"$pid\"_\"$comm\".txt\"\n",
+    "    done\n",
+    "    echo \"watchdog: stall captured at ts=$ts (stall_polls=$stall_polls), dumps in ", state_dir, "\"\n",
+    "    exit 0\n",
+    "  fi\n",
+    "  sleep ", to_string(systemd_workload_watchdog_poll_seconds), "\n",
+    "done\n",
+    "echo \"watchdog: bound reached without stall or completion\"\n",
+    "exit 0\n",
+  ], "")
+}
+
+// ONE SEAT'S REQUEST, in the variant's execution mode. CONCURRENT (the matrix's default) fires the
+// request in a backgrounded subshell and records its pid for the join — six seats in flight
+// together, the occupancy the liveness subproof questions. SEQUENTIAL (variant d, discriminating
+// concurrency from occupancy) awaits each request before the loop issues the next: the curl runs in
+// the foreground, the loop body is the wait, and the leg carries no pids at all — one request in
+// flight by construction, asserted by the witness reading the absence of the concurrency markers.
+// Both modes write the same evidence files (body, header-derived status, rc), so the reporting
+// fold below is one spelling inhabited twice.
+fn systemd_workload_prefill_request(state: String, base: String, sequential: Bool) -> String {
+  if sequential {
+    join([
+      "  echo \"seat $seat awaiting (sequential issue)\"\n",
+      "  if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\"; then seat_rc=0; else seat_rc=$?; fi\n",
+      "  echo \"$seat_rc\" > \"$state/seat_$seat.rc\"\n",
+      "  head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"\n",
+    ], "")
+  } else {
+    join([
+      "  ( if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\"; then seat_rc=0; else seat_rc=$?; fi; echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\" ) &\n",
+      "  seat_pids=\"$seat_pids $!\"\n",
+    ], "")
+  }
+}
+
 // (a) THE COLD FULL-WINDOW PREFILL SEATS, one concurrent request per seat of the plan's workload.
 // THE CONSTRUCTION IS TOKEN-EXACT BY CONSTRUCTION, and the calibration is the proof. Two probe
 // requests measure the verbatim unit against THIS engine: probe A sends the unit once (base count
@@ -370,12 +473,39 @@ data systemd_workload_header_safety_tokens: Nat = 8
 // is written to the seat's evidence file with its header-derived status, and the usage.prompt_tokens
 // readback keeps the over-limit refusal as a located driver-defect backstop: unreachable by
 // construction, kept as the witness that catches any tokenizer non-locality the linearity argument
-// missed. The leg closes by recording the warm process_mib reference the sampler folds the gap
-// against — taken with every seat complete and no request in flight, it is the experiment's
-// accounted baseline.
-fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_window: Nat, context_window: Nat) -> String {
+// missed. THE VARIANT AXES live here as parameters, not forks: the caller names the seat count,
+// the seat window, the execution mode (one request in flight, or all of them — variant d of the
+// liveness matrix), and whether the stall watchdog rides the leg (variant e, which the matrix says
+// must ride every hanging run); the dry renders every value. The leg closes by recording the
+// warm process_mib reference the sampler folds the gap against — taken with every seat complete
+// and no request in flight, it is the experiment's accounted baseline.
+fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_window: Nat, context_window: Nat, sequential: Bool, watchdog: Bool) -> String {
   let state = systemd_workload_state_dir(member: member)
   let body = systemd_workload_block_body as String
+  let request = systemd_workload_prefill_request(state: state, base: join(["http://127.0.0.1:", to_string(serve_port)], ""), sequential: sequential)
+  let concurrent_init = if sequential { "" } else { "seat_pids=\"\"\n" }
+  let concurrent_wait = if sequential { "" } else { "for pid in $seat_pids; do wait \"$pid\"; done\n" }
+  let watchdog_launch = if watchdog {
+    join([
+      "cat > \"$state/stall_watchdog.sh\" <<'GUNBC_WATCHDOG_EOF'\n",
+      systemd_workload_watchdog_script(member: member, serve_port: serve_port, state_dir: state, bound_seconds: 3600),
+      "GUNBC_WATCHDOG_EOF\n",
+      "nohup sh \"$state/stall_watchdog.sh\" > \"$state/stall_watchdog.log\" 2>&1 &\n",
+      "watchdog_pid=$!\n",
+      "echo \"stall-watchdog-armed pid=$watchdog_pid bound_seconds=3600 stall_seconds=", to_string(systemd_workload_stall_seconds), "\"\n",
+    ], "")
+  } else {
+    ""
+  }
+  let watchdog_reap = if watchdog {
+    join([
+      "for i in 1 2 3; do kill -0 \"$watchdog_pid\" 2>/dev/null || break; sleep 5; done\n",
+      "kill \"$watchdog_pid\" 2>/dev/null || true\n",
+      "echo \"stall-watchdog-reaped\"\n",
+    ], "")
+  } else {
+    ""
+  }
   join([
     "set -e\n",
     "state=", state, "\n",
@@ -403,15 +533,17 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     "if [ \"$unit_marginal\" -lt 16 ]; then echo \"prefill-calibration-implausible: unit marginal $unit_marginal below 16 tokens (unit_base=$unit_base probe_b=$probe_b_tokens)\"; exit 26; fi\n",
     "printf '%s' \"$unit_base\" > \"$state/unit_base_tokens\"\n",
     "printf '%s' \"$unit_marginal\" > \"$state/unit_marginal_tokens\"\n",
-    "seat_pids=\"\"\n",
+    watchdog_launch,
+    concurrent_init,
     "seat=1\n",
     "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
     "  seat_units=$(( ( ", to_string(seat_window), " - unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1 ))\n",
     "  awk -v alias=\"$served_alias\" -v body=\"$body\" -v seat=\"$seat\" -v reps=\"$seat_units\" -v marker=\"", systemd_workload_unit_marker as String, "\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; printf \"seat%d %s \", seat, body; r = 1; while (r < reps) { printf \"%s %s \", marker, body; r = r + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/seat_$seat.json\"\n",
-    "  ( if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\"; then seat_rc=0; else seat_rc=$?; fi; echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\" ) &\n",
-    "  seat_pids=\"$seat_pids $!\"\n",
+    request,
     "  seat=$(( seat + 1 ))\ndone\n",
-    "for pid in $seat_pids; do wait \"$pid\"; done\n",
+    concurrent_wait,
+    "touch \"$state/prefill_firing_done\"\n",
+    watchdog_reap,
     "seat=1\n",
     "failed=0\n",
     "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
