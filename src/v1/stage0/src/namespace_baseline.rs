@@ -375,36 +375,6 @@ fn change_universe(
     universe
 }
 
-/// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
-/// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
-/// tree carries; the planned set is producer-derived, never a path filter).
-///
-/// THE CLASS. A declaration's interface changes in one module -- a coproduct grows an arm
-/// (gunbc#11194), a product field is retyped, an alias is re-branded, a parameter or result is
-/// retyped (#11751, whose stranded witness #12120 repaired) -- and a module that reads it has an
-/// empty diff, so no diff-keyed selector sees it and the required floor never Strict-prepares
-/// it. This is the DEPENDENTS direction; `touched_entry_files` seeding is the DEPENDENCY
-/// direction, and neither closes the class alone. `gunbc.recurring_failure_mode`
-/// `changed_declaration_signature_consumer_unplanned` is the row.
-///
-/// THE CHANGED SET. Direct changes are read per module (`direct_interface_changes`), then
-/// closed under ONE propagation rule: a declaration whose INTERFACE references a changed
-/// declaration (`interface_references`, the parser's type occurrences outside any body) has
-/// itself changed, through that reference. Body references never propagate: a function whose
-/// body alone reads a changed type is a consumer and is planned, and its callers are not --
-/// that is what keeps a body-only change from planning every reverse importer.
-///
-/// THE CONSUMERS. A module is a consumer of a changed declaration when one of its reads
-/// (`referenced`, `authored_type_references`, `called_occurrences`, `value_occurrences`,
-/// `matched_arms`) spells the declaration or one of
-/// its arms and `declaring_candidates` for that spelling includes the declaring module on
-/// EITHER side (a read of a REMOVED name has no head-side candidate; its base-side one names
-/// the declarer exactly). No second consumer relation is minted: this is `declaring_candidates`
-/// asked one more question. NOT every importer: an import that is never read is not a consumer.
-///
-/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the diff,
-/// or -- for a propagated change -- it was planned as a consumer of the change it propagates);
-/// a declaration that is NEW at head; and a read whose candidate set names a DIFFERENT declarer.
 /// THE READERS OF A LEAF, INDEXED ONCE. `read_binding` answers `None` for every read whose leaf is
 /// outside the change's universe, so a record none of whose reads spells a universe leaf contributes
 /// nothing to either loop below: no propagation, no consumer. Visiting only the records that DO
@@ -444,6 +414,36 @@ fn records_reading<'a>(
     at.into_iter().map(|i| records[i]).collect()
 }
 
+/// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
+/// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
+/// tree carries; the planned set is producer-derived, never a path filter).
+///
+/// THE CLASS. A declaration's interface changes in one module -- a coproduct grows an arm
+/// (gunbc#11194), a product field is retyped, an alias is re-branded, a parameter or result is
+/// retyped (#11751, whose stranded witness #12120 repaired) -- and a module that reads it has an
+/// empty diff, so no diff-keyed selector sees it and the required floor never Strict-prepares
+/// it. This is the DEPENDENTS direction; `touched_entry_files` seeding is the DEPENDENCY
+/// direction, and neither closes the class alone. `gunbc.recurring_failure_mode`
+/// `changed_declaration_signature_consumer_unplanned` is the row.
+///
+/// THE CHANGED SET. Direct changes are read per module (`direct_interface_changes`), then
+/// closed under ONE propagation rule: a declaration whose INTERFACE references a changed
+/// declaration (`interface_references`, the parser's type occurrences outside any body) has
+/// itself changed, through that reference. Body references never propagate: a function whose
+/// body alone reads a changed type is a consumer and is planned, and its callers are not --
+/// that is what keeps a body-only change from planning every reverse importer.
+///
+/// THE CONSUMERS. A module is a consumer of a changed declaration when one of its reads
+/// (`referenced`, `authored_type_references`, `called_occurrences`, `value_occurrences`,
+/// `matched_arms`) spells the declaration or one of
+/// its arms and `declaring_candidates` for that spelling includes the declaring module on
+/// EITHER side (a read of a REMOVED name has no head-side candidate; its base-side one names
+/// the declarer exactly). No second consumer relation is minted: this is `declaring_candidates`
+/// asked one more question. NOT every importer: an import that is never read is not a consumer.
+///
+/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the diff,
+/// or -- for a propagated change -- it was planned as a consumer of the change it propagates);
+/// a declaration that is NEW at head; and a read whose candidate set names a DIFFERENT declarer.
 pub(crate) fn interface_changed_consumers(
     base: &DeclarationIndex,
     head: &DeclarationIndex,
