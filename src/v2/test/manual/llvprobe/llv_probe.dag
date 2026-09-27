@@ -6,6 +6,10 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
+import v2.compiler.program_assembly { program_assembly_phase_tokenize }
+import v2.compiler.parse { prepare_grammar, parse_module_prepared_seeded }
+import std.occurrence_identity { occurrence_id_allocator_initial }
+import v2.std.diagnostic { bind_outcome }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
@@ -72,3 +76,27 @@ data llv_len80_source: String = "module v2.test.llv_long\n\nimport v2.std.logic 
 fn probe_len80() -> ProcessExit { p_run(source: llv_len80_source) }
 
 fn probe_noop() -> ProcessExit { exit_failure(reason: "noop") }
+
+fn p_parse(source: String) -> ProcessExit {
+  let lm = dag_language_model()
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: _ } => exit_failure(reason: "prepare-rejected")
+    Accepted { value: prepared, diagnostics: residue } =>
+      match p_ingest(source: source) {
+        Empty => exit_failure(reason: "empty")
+        Cons { head: read, tail: _ } =>
+          match bind_outcome(o: program_assembly_phase_tokenize(read: read, lm: lm), f: fn(ts) {
+            parse_module_prepared_seeded(tokens: ts, prepared: prepared, validation_residue: residue, seed: occurrence_id_allocator_initial())
+          }) {
+            Accepted { value: _, diagnostics: _ } => exit_failure(reason: "parsed")
+            Rejected { diagnostics: _ } => exit_failure(reason: "parse-rejected")
+          }
+      }
+  }
+}
+
+fn probe_parse_len40() -> ProcessExit { p_parse(source: llv_len40_source) }
+
+fn probe_parse_len80() -> ProcessExit { p_parse(source: llv_len80_source) }
+
+fn probe_parse_noop() -> ProcessExit { p_parse(source: llv_calls_source) }
