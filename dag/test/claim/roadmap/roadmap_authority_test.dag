@@ -1134,7 +1134,13 @@ test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
   }
 }
 
+// ONE NULLARY PRODUCER, ENROLLED WARM (v2.workflow.floor_pure_producer_share): the verdict projects
+// the live roadmap twice, more than one claim's new-witness budget, so the claim reads it stored.
 test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> Bool {
+  withheld_sized_subject_verdict()
+}
+
+fn withheld_sized_subject_verdict() -> Bool {
   match live_accepted_node_ids() {
     Absent => false
     Present { value: accepted } =>
@@ -1145,11 +1151,14 @@ test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> 
       if count(unfiltered) == 0 {
         false
       } else {
-        let victim = first(unfiltered)
-        !(startable_nodes_missing_closing_contract_for_accepted(
-          accepted: accepted,
-          withheld: [victim.node],
-        ) |> any(x => x.node == victim.node))
+        match first(unfiltered) {
+          Absent => false
+          Present { value: victim } =>
+            !(startable_nodes_missing_closing_contract_for_accepted(
+              accepted: accepted,
+              withheld: [victim.node],
+            ) |> any(x => x.node == victim.node))
+        }
       }
   }
 }
