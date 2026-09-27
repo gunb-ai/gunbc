@@ -16928,16 +16928,31 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
                     ));
                 }
                 if full != heads {
-                    if out.divergent.len() < 4 && std::env::var("DBG_DIFF").is_ok() {
-                        let a = format!("{full:#?}");
-                        let b = format!("{heads:#?}");
-                        let al: Vec<&str> = a.lines().collect();
-                        let bl: Vec<&str> = b.lines().collect();
-                        let i = al.iter().zip(bl.iter()).position(|(x, y)| x != y).unwrap_or(al.len().min(bl.len()));
-                        let lo = i.saturating_sub(12);
-                        eprintln!("[dbg-diff] {path} full_lines={} heads_lines={} first_diff_line={i}", al.len(), bl.len());
-                        for k in lo..(i + 4).min(al.len()) { eprintln!("  F {k}: {}", al[k]); }
-                        for k in lo..(i + 4).min(bl.len()) { eprintln!("  H {k}: {}", bl[k]); }
+                    if std::env::var("DBG_DIFF").is_ok() {
+                        fn erase(t: &str) -> Vec<String> {
+                            let mut out = Vec::new();
+                            let mut skip = 0i32;
+                            for l in t.lines() {
+                                let tl = l.trim_start();
+                                if skip > 0 {
+                                    skip += tl.matches('{').count() as i32 - tl.matches('}').count() as i32;
+                                    continue;
+                                }
+                                if tl.starts_with("occurrence_identity:") {
+                                    let d = tl.matches('{').count() as i32 - tl.matches('}').count() as i32;
+                                    if d > 0 { skip = d; }
+                                    continue;
+                                }
+                                out.push(l.to_string());
+                            }
+                            out
+                        }
+                        let a = erase(&format!("{full:#?}"));
+                        let b = erase(&format!("{heads:#?}"));
+                        if a != b {
+                            let i = a.iter().zip(b.iter()).position(|(x, y)| x != y).unwrap_or(a.len().min(b.len()));
+                            eprintln!("[dbg-erased-diff] {path} first_diff_line={i} F={:?} H={:?}", a.get(i), b.get(i));
+                        }
                     }
                     out.divergent.push(path);
                 }
