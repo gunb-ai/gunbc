@@ -37,6 +37,10 @@ import v2.std.node {
   node_subtree_nodes
 }
 import v2.std.compilers.body_lowering {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order,
   Application,
   ApplicationRefused,
   NotApplication,
@@ -123,7 +127,7 @@ data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\ni
 // position in two declarations keeps the same type and content hash (no occurrence in the type).
 data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(x) { x }\n    g\n  }, v: p)\n}\n"
 
-data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n"
+data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_order(p: Bool) -> Bool { vpw_site(f: (y, x) => y, v: p) }\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -623,7 +627,7 @@ test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> B
 
 // `fn(_, _)`: two wildcard parameters in one domain. A domain is a record (every edge Named, every
 // name distinct), so the wildcards are minted distinct unauthorable labels by the one anonymous-slot
-// mint (v2.std.anonymous_binder anonymous_binder_mint_domain), as a named fn's are; two edges named
+// mint (v2.std.anonymous_binder anonymous_binder_mint_parameter_list), as a named fn's are; two edges named
 // `_` failed the post-normalize well-formedness gate and refused the whole ingest (02_parse c01376 /
 // c02555).
 fn vpw_is_two_wildcard_arrow(n: Node) -> Bool {
@@ -728,4 +732,33 @@ test fn a_nested_fn_literal_resolves_without_a_type_parameter_shadow_refusal() -
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
+}
+
+// A FUNCTION VALUE'S ARROW CARRIES ITS DECLARED PARAMETER ORDER, READ WHERE POSITIONAL BINDING READS
+// IT. The domain is a Conj sorted by label, so `(y, x) => y` stores x before y; positional binding
+// (v2.compiler.infer infer_application_formals, v2.compiler.eval eval_bind_arrow_params) reads order
+// only through v2.std.compilers.body_lowering arrow_declared_parameter_order, off the Arrow's
+// ^arrow_signature_order_edge, and refuses application_parameter_order_absent without one. The
+// lambda is lowered from production source, and the claim asks that reader for [y, x] -- the
+// authored order, not the sorted one. Dropping the order edge from body_lower_function_value_arrow
+// makes the reader answer ArrowParameterOrderAbsent and reds this.
+fn vpw_declares_order(n: Node, first: Symbol, second: Symbol) -> Bool {
+  vpw_is_arrow(n: n) && (match arrow_declared_parameter_order(arrow: n) {
+    ArrowParameterOrderDeclared { labels: ls } =>
+      (length(xs: ls) == 2) && (match list_at_optional(xs: ls, index: 0) {
+        Present { value: a } => (a == first) && (match list_at_optional(xs: ls, index: 1) {
+          Present { value: b } => b == second
+          Absent => false
+        })
+        Absent => false
+      })
+    ArrowParameterOrderAbsent => false
+    ArrowParameterOrderMalformed => false
+  })
+}
+
+test fn a_positionally_bound_lambda_reads_its_declared_order_from_the_order_edge() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_declares_order(n: n, first: ^y, second: ^x) })
+  })
 }
