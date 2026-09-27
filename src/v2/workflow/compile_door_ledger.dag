@@ -211,7 +211,7 @@ type AffectedLedgerResult
   | AffectedLedgered { rows: List<DoorLedgerRow> }
 
 fn dag_module_paths(paths: List<String>) -> List<String> {
-  filter(xs: paths, predicate: fn(p) { ends_with(s: p, suffix: ".dag") })
+  filter(xs: paths, predicate: fn(p) { p.ends_with(suffix: ".dag") })
 }
 
 fn affected_ledger_from_diff(
