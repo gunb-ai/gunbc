@@ -10049,43 +10049,6 @@ pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
     out
 }
 
-// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path lands in the receipt
-// by construction — harvest is not a per-call-site discipline a future site could forget.
-// Sums at the totals grain only: raw ledger keys are address-based and single-ctx.
-static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
-    std::sync::Mutex::new(None);
-
-/// Drain the process-wide ledger totals (e.g. to write a receipt file at the
-/// end of a floor walk). Returns zeroed totals when tracing was disabled.
-pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
-    // A poisoned lock still holds structurally valid totals (absorb is
-    // add-only), so recover the data rather than silently returning zeroes.
-    PROCESS_EVAL_RECOMPUTE_TOTALS
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take()
-        .unwrap_or_default()
-}
-
-impl Drop for InterpContext {
-    fn drop(&mut self) {
-        if !eval_recompute_trace_enabled() {
-            return;
-        }
-        let totals = eval_recompute_totals(self);
-        if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
-            return;
-        }
-        // Recover a poisoned lock rather than dropping this ctx's contribution
-        // without a trace — absorb is add-only, so the state stays valid.
-        let mut g = PROCESS_EVAL_RECOMPUTE_TOTALS
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        g.get_or_insert_with(EvalRecomputeTotals::default)
-            .absorb(&totals);
-    }
-}
-
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {

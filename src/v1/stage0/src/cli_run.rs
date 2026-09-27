@@ -41194,76 +41194,43 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
-/// TEARDOWN ATTRIBUTION FOR THE 168 SILENT SECONDS AFTER THE FLOOR REPORTS ITS VERDICT.
+/// THE PROCESS CACHES ARE RELEASED TO THE OPERATING SYSTEM AT EXIT, NOT FREED NODE BY NODE.
 ///
-/// MEASURED, NOT SUPPOSED. On run 35365418267 the `D0-MEASURE: witnesses lane` step printed its
-/// last line -- `required-ci: lane=witnesses phases_run=3 phases_failed=0` -- at 16:40:33 and the
-/// next step did not begin until 16:43:21: 167.8 SECONDS WITH NO OUTPUT. That is not runner
-/// overhead, and the discriminator is in the same log: every other inter-step gap in that job is
-/// between 0.0s and 1.3s, so this one is a hundredfold outlier unique to this step.
+/// WHY THIS EXISTS. `claim_executor`'s `main` returns an `ExitCode`, so after the verdict every
+/// thread-local still alive is dropped -- and the shared resolve index, its store and the
+/// per-subject scope and closure memos are `Rc`/`im` graphs over the whole corpus. Freeing them is
+/// O(nodes) with poor locality: this function's earlier revision timed each drop and measured
+/// 51 s explicit plus ~30 s of residue after `main` returned on merge-queue run 36339106604, and
+/// 23 s in that run's build lane. Nothing reads any of that memory after the verdict, and the
+/// kernel reclaims a process's pages at exit in one step, so walking the graphs to free them is
+/// work no consumer demands (DESIGN section 2).
 ///
-/// WHY THE PROCESS IS STILL RUNNING THERE. `claim_executor`'s `main` returns an `ExitCode` and
-/// calls `process::exit` nowhere, so after the verdict is printed Rust runs destructors over
-/// everything still alive -- and what is still alive is thread-local: the shared resolve index and
-/// its store hold the whole `MultiEntryIndex` (source files, pool parse, typed caches), beside the
-/// per-subject scope and closure memos. Dropping an `Rc`/`im` graph of that size is O(nodes) with
-/// poor locality, which is the right order of magnitude for the gap.
+/// WHAT MADE THIS WAIT, AND WHY IT NO LONGER HOLDS. The earlier revision declined to skip
+/// destructors because `v1_interpreter`'s `InterpContext` had a `Drop` that absorbed recompute
+/// totals into a process global "that a CI gate reads". That global had no reader: its only
+/// drain, `take_process_eval_recompute_totals`, had no call site, so the absorb fed a write-only
+/// value. It is deleted with this change, and the per-context ledger it summarised is untouched.
 ///
-/// THIS FUNCTION DOES NOT MAKE THAT CHEAPER AND IS NOT THE REPAIR. It moves the cost from after
-/// `main` returns to inside it, where it can be TIMED AND ATTRIBUTED per cache, so the next lane
-/// chooses a repair against a measurement instead of against this paragraph. The eventual repair
-/// is a different question -- exiting without running destructors is the obvious candidate and is
-/// NOT safe by inspection, because `v1_interpreter`'s `InterpContext` has a `Drop` that absorbs
-/// recompute totals into a process global that a CI gate reads. On the measured run that receipt
-/// was printed at 16:36:16, four minutes before the gap, so the contexts dropped during it absorb
-/// into a total nothing reads again -- but that is an argument about one run's ordering, not a
-/// property anyone has established, and it is exactly the kind of claim this file has been wrong
-/// about before.
-///
-/// Silent below one millisecond: a roster of zeroes would bury the one line that matters.
-pub fn drop_process_caches_with_attribution() {
-    fn timed<F: FnOnce()>(name: &str, f: F) {
-        let started = std::time::Instant::now();
-        f();
-        let ms = started.elapsed().as_millis();
-        if ms >= 1 {
-            eprintln!("[floor-teardown] cache={name} drop_ms={ms}");
-        }
-    }
+/// ONLY THESE CACHES ARE FORGOTTEN, and each is pure memory: no file, child process, lock or
+/// guard lives in them, which is what makes forgetting them indistinguishable from dropping them
+/// to everything outside this process. Other thread-locals still drop after `main` returns; that
+/// residue is unmeasured here and is not claimed to be zero.
+pub fn release_process_caches_at_exit() {
+    use std::mem::{forget, take};
     let whole = std::time::Instant::now();
-    timed("process_resolve_index", || {
-        entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| *s.borrow_mut() = [None, None]);
-    });
-    timed("process_resolve_store", || {
-        entry_resolve::PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
-    });
-    timed("scope_fragment_caches", || {
-        SCOPE_FRAGMENT_CACHES.with(|c| c.borrow_mut().clear());
-    });
-    timed("reference_closure_indexes", || {
-        REFERENCE_CLOSURE_INDEXES.with(|c| c.borrow_mut().clear());
-    });
-    timed("scope_order_indexes", || {
-        SCOPE_ORDER_INDEXES.with(|c| c.borrow_mut().clear());
-    });
-    timed("module_path_index_cache", || {
-        MODULE_PATH_INDEX_CACHE.with(|c| c.borrow_mut().clear());
-    });
-    timed("module_graph_facts_cache", || {
-        MODULE_GRAPH_FACTS_CACHE.with(|c| c.borrow_mut().clear());
-    });
-    timed("reference_edge_cache", || {
-        REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().clear());
-    });
-    timed("compile_dag_rust_emit_check_memo", || {
-        COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().clear());
-    });
-    timed("compile_dag_diagnostic_census_memo", || {
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().clear());
-    });
+    entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| forget(take(&mut *s.borrow_mut())));
+    entry_resolve::PROCESS_RESOLVE_STORE.with(|s| forget(take(&mut *s.borrow_mut())));
+    SCOPE_FRAGMENT_CACHES.with(|c| forget(take(&mut *c.borrow_mut())));
+    REFERENCE_CLOSURE_INDEXES.with(|c| forget(take(&mut *c.borrow_mut())));
+    SCOPE_ORDER_INDEXES.with(|c| forget(take(&mut *c.borrow_mut())));
+    MODULE_PATH_INDEX_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
-        "[floor-teardown] explicit_total_ms={} (the residue after this line is whatever main's \
-         return still drops)",
+        "[floor-teardown] released process caches without freeing them in {} ms (the residue after \
+         this line is whatever main's return still drops)",
         whole.elapsed().as_millis()
     );
 }
