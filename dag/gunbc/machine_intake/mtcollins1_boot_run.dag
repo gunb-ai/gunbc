@@ -12,7 +12,8 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value }
+import std.measure { Second, second, second_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
   mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
@@ -39,6 +40,8 @@ import gunbc.machine_intake_host_capture_envelope {
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
   host_capture_bind, host_capture_section_reading, host_capture_output_value_after, host_capture_output_has_line,
   host_capture_mc0_counter, host_capture_workload_write_rc_token, host_capture_workload_stable_token,
+  host_capture_workload_bytes_token, host_capture_workload_preflight_refused, host_capture_workload_total_bytes,
+  host_capture_workload_shm_avail_token, host_capture_workload_mem_available_token, HostCaptureWorkloadShape,
   HostCaptureLiveStream, host_capture_lines,
 }
 import gunbc.machine_intake_pre_os_bringup_verdict {
@@ -421,6 +424,8 @@ type MtCollins1BootTerminalCause
   | SocketPlacementUnread
   | BootMediaLabelAbsent { label: NonEmptyStr }
   | EdacCountersNotClean { name: String }
+  | WorkloadPreflightRefused { declared: ByteSize, shm_avail: WorkloadByteReading, mem_available: WorkloadByteReading }
+  | WorkloadFootprintMismatch { declared: ByteSize, observed: WorkloadByteReading }
   | WorkloadWriteFailed { rc: String }
   | WorkloadDigestUnstable
   | PreOsFirmwareRefusal { statement: NonEmptyStr, locus: FirmwareStatedLocus }
@@ -519,16 +524,127 @@ fn edac_judge(name: String, out: List<String>) -> MtCollins1BootTerminalCause? {
   }
 }
 
-fn workload_judge(out: List<String>) -> MtCollins1BootTerminalCause? {
-  match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
-    Absent => Present { value: WorkloadWriteFailed { rc: "unreported" } }
-    Present { value: rc } =>
-      if rc != "0" {
-        Present { value: WorkloadWriteFailed { rc: rc } }
-      } else if host_capture_output_has_line(output: out, line: host_capture_workload_stable_token) {
-        none
+// THE FOOTPRINT IS JUDGED BEFORE THE WRITES. The capture states the bytes it declared; if that is
+// not the profile's declared total the host ran a different census than the one this verdict
+// qualifies, and every later fact is about the wrong workload. A preflight refusal is its own
+// cause carrying both capacities, never folded into "write rc unreported".
+// A BYTE FIGURE THE HOST PRINTED, READ AS A MEASURE OR AS WHY IT IS NOT ONE. Absence and a spelling
+// that is not a non-negative integer are different facts and stay different arms; neither is a zero.
+type WorkloadByteReading
+  = WorkloadBytesReported { bytes: ByteSize }
+  | WorkloadBytesUnreported
+  | WorkloadBytesUnparsed { spelling: String }
+
+fn workload_byte_reading(out: List<String>, token: String) -> WorkloadByteReading {
+  match host_capture_output_value_after(output: out, token: token) {
+    Absent => WorkloadBytesUnreported
+    Present { value: v } =>
+      match parse_int(s: v) {
+        Present { value: n } =>
+          match checked_int_to_nat(n: n) {
+            Present { value: k } => WorkloadBytesReported { bytes: byte_size(count: k) }
+            Absent => WorkloadBytesUnparsed { spelling: v }
+          }
+        Absent => WorkloadBytesUnparsed { spelling: v }
+      }
+  }
+}
+
+fn workload_byte_reading_text(r: WorkloadByteReading) -> String {
+  match r {
+    WorkloadBytesReported { bytes: b } => byte_size_count(b: b) as String
+    WorkloadBytesUnreported => "unreported"
+    WorkloadBytesUnparsed { spelling: sp } => concat("unparsed '", sp, "'")
+  }
+}
+
+// A capacity holds the declared total only when it was REPORTED as a measure at least that large.
+fn workload_capacity_holds(declared: ByteSize, r: WorkloadByteReading) -> Bool {
+  match r {
+    WorkloadBytesReported { bytes: b } => byte_size_count(b: b) >= byte_size_count(b: declared)
+    _ => false
+  }
+}
+
+fn workload_reading_is(declared: ByteSize, r: WorkloadByteReading) -> Bool {
+  match r {
+    WorkloadBytesReported { bytes: b } => byte_size_count(b: b) == byte_size_count(b: declared)
+    _ => false
+  }
+}
+
+// THE FIT IS DECIDED HERE, OVER MEASURES, not taken from the host's word. The census program must
+// refuse on the host BEFORE writing -- once dd has run, the tmpfs is already full -- so it carries its
+// own guard (gunbc.machine_intake_host_capture_envelope host_capture_workload_command, declared under
+// host_capture_program_shell_emit_dissolution_trigger). This verdict does not trust that guard: it
+// re-derives the fit from the two printed capacities against the profile's declared ByteSize, and
+// refuses when EITHER the host said refused OR the readings do not hold the declared total. A host
+// guard that wrongly printed `fits` is therefore still a refusal here.
+fn workload_footprint_judge(workload: HostCaptureWorkloadShape, out: List<String>) -> MtCollins1BootTerminalCause? {
+  let declared = host_capture_workload_total_bytes(workload: workload)
+  let observed = workload_byte_reading(out: out, token: host_capture_workload_bytes_token)
+  let shm = workload_byte_reading(out: out, token: host_capture_workload_shm_avail_token)
+  let mem = workload_byte_reading(out: out, token: host_capture_workload_mem_available_token)
+  if !workload_reading_is(declared: declared, r: observed) {
+    Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
+  } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
+      || !workload_capacity_holds(declared: declared, r: shm)
+      || !workload_capacity_holds(declared: declared, r: mem) {
+    Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
+  } else {
+    none
+  }
+}
+
+// A PENDING SECTION IS JUDGED ONLY ON WHAT IT HAS ALREADY PROVEN (review 5326655399). The stage
+// prints the footprint, then the two capacities, then its verdict line, so a poll can land between any
+// two of them. The completed-section judge treats a capacity not yet printed as Unreported and
+// refuses -- right for a closed section, wrong for one still being written. So, while pending:
+// no footprint yet is pending; a footprint that is malformed or not the declared total refuses; the
+// host's refused marker refuses; a capacity ALREADY printed that is unparsed or proves non-fit
+// refuses; a capacity not yet printed keeps it pending. Both capacities printed and holding: pending
+// on the writes, which the rc and stable-token reads that follow decide.
+fn workload_capacity_already_refuses(declared: ByteSize, r: WorkloadByteReading) -> Bool {
+  match r {
+    WorkloadBytesUnreported => false
+    other => !workload_capacity_holds(declared: declared, r: other)
+  }
+}
+
+fn workload_pending_footprint_judge(workload: HostCaptureWorkloadShape, out: List<String>) -> MtCollins1BootTerminalCause? {
+  let declared = host_capture_workload_total_bytes(workload: workload)
+  let observed = workload_byte_reading(out: out, token: host_capture_workload_bytes_token)
+  let shm = workload_byte_reading(out: out, token: host_capture_workload_shm_avail_token)
+  let mem = workload_byte_reading(out: out, token: host_capture_workload_mem_available_token)
+  match observed {
+    WorkloadBytesUnreported => none
+    _ =>
+      if !workload_reading_is(declared: declared, r: observed) {
+        Present { value: WorkloadFootprintMismatch { declared: declared, observed: observed } }
+      } else if host_capture_output_has_line(output: out, line: host_capture_workload_preflight_refused)
+          || workload_capacity_already_refuses(declared: declared, r: shm)
+          || workload_capacity_already_refuses(declared: declared, r: mem) {
+        Present { value: WorkloadPreflightRefused { declared: declared, shm_avail: shm, mem_available: mem } }
       } else {
-        Present { value: WorkloadDigestUnstable }
+        none
+      }
+  }
+}
+
+fn workload_judge(workload: HostCaptureWorkloadShape, out: List<String>) -> MtCollins1BootTerminalCause? {
+  match workload_footprint_judge(workload: workload, out: out) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
+        Absent => Present { value: WorkloadWriteFailed { rc: "unreported" } }
+        Present { value: rc } =>
+          if rc != "0" {
+            Present { value: WorkloadWriteFailed { rc: rc } }
+          } else if host_capture_output_has_line(output: out, line: host_capture_workload_stable_token) {
+            none
+          } else {
+            Present { value: WorkloadDigestUnstable }
+          }
       }
   }
 }
@@ -538,17 +654,21 @@ fn workload_judge(out: List<String>) -> MtCollins1BootTerminalCause? {
 // section carries neither. A PENDING workload section that has already printed a nonzero write rc
 // has refused: the writes are over and failed, whatever the hashing after them is still doing --
 // boot 23 attempt 3 sat in exactly that state for eight minutes.
-fn workload_qualification(envelope: BoundHostCaptureEnvelope) -> TerminalQualification {
+fn workload_qualification(envelope: BoundHostCaptureEnvelope, workload: HostCaptureWorkloadShape) -> TerminalQualification {
   match host_capture_section_reading(envelope: envelope, name: "workload") {
     SectionAbsent => QualificationPending
     SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: "workload", reason: r } }
     SectionPending { output: out } =>
-      match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
-        Absent => QualificationPending
-        Present { value: rc } => if rc == "0" { QualificationPending } else { QualificationRefused { cause: WorkloadWriteFailed { rc: rc } } }
+      match workload_pending_footprint_judge(workload: workload, out: out) {
+        Present { value: c } => QualificationRefused { cause: c }
+        Absent =>
+          match host_capture_output_value_after(output: out, token: host_capture_workload_write_rc_token) {
+            Absent => QualificationPending
+            Present { value: rc } => if rc == "0" { QualificationPending } else { QualificationRefused { cause: WorkloadWriteFailed { rc: rc } } }
+          }
       }
     SectionComplete { exit_code: code, output: out } =>
-      match workload_judge(out: out) {
+      match workload_judge(workload: workload, out: out) {
         Present { value: c } => QualificationRefused { cause: c }
         Absent => if code == "0" { QualificationHeld } else { QualificationRefused { cause: TerminalSectionFailed { name: "workload", exit_code: code } } }
       }
@@ -579,7 +699,7 @@ fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, topology: 
     NamedQualification { name: "numa", qualification: placement_qualification(envelope: envelope, expected: topology) },
     NamedQualification { name: "boot-media", qualification: boot_media_qualification(envelope: envelope, label: label) },
     NamedQualification { name: "edac-before", qualification: edac_qualification(envelope: envelope, name: "edac-before") },
-    NamedQualification { name: "workload", qualification: workload_qualification(envelope: envelope) },
+    NamedQualification { name: "workload", qualification: workload_qualification(envelope: envelope, workload: topology.workload) },
     NamedQualification { name: "edac-after", qualification: edac_qualification(envelope: envelope, name: "edac-after") },
   ]
 }
@@ -721,6 +841,9 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     SocketPlacementUnread => "numa section carries no node cpus line; socket placement is not read"
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
+    WorkloadPreflightRefused { declared: d, shm_avail: sh, mem_available: ma } =>
+      concat("workload preflight refused: declared ", byte_size_count(b: d) as String, " bytes, /dev/shm free ", workload_byte_reading_text(r: sh), ", MemAvailable ", workload_byte_reading_text(r: ma))
+    WorkloadFootprintMismatch { declared: d, observed: o } => concat("workload footprint ", workload_byte_reading_text(r: o), " bytes, profile declares ", byte_size_count(b: d) as String)
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
     WorkloadDigestUnstable => "workload digest not stable across passes"
     PreOsFirmwareRefusal { statement: st, locus: locus } =>
