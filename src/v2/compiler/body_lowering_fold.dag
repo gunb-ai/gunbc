@@ -1436,7 +1436,11 @@ fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRe
   OperatorExpressionRefused { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: reason, n: at)) }
 }
 
-// One operand of an operator expression, lowered whole or refused at the operand.
+// One operand of an operator expression, lowered whole or refused at the operand. An operand the
+// bottom-up fold does not bring to a lowered node is a VALUE, read by the one value reader
+// (body_lower_value_read), so a block operand (`t && match w {..}`) lowers as that block and its
+// refusal is the value's, located at the value. It used to fall to body_lower_operand_ref_optional,
+// an operand reader that cannot read a block, and refuse as operator_operand_unread.
 fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   let operand = body_lower_strip_operator_free_levels(node: node)
   match body_lower_read_operator_expression(node: operand) {
@@ -1450,14 +1454,7 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: Present { value: lowered }, diagnostics: d } =>
             outcome_with_diagnostics(value: lowered, diagnostics: d)
-          Accepted { value: Absent, diagnostics: _ } =>
-            match body_lower_operand_ref_optional(node: operand) {
-              Present { value: lowered } => outcome_accepted(value: lowered)
-              Absent =>
-                outcome_rejected(
-                  d: body_lower_diagnostic(reason: ^body_lowering_reason_operator_operand_unread, n: operand)
-                )
-            }
+          Accepted { value: Absent, diagnostics: _ } => body_lower_value_read(value: operand)
         }
       }
   }
