@@ -1,6 +1,7 @@
 module gunbc.native_frontier_ratchet
 
-import v2.std.algebra { any, filter, fold_list, is_empty, length, list_append, list_flat_map, list_map }
+import v2.std.algebra { any, filter, fold_list, is_empty, length, list_flat_map, list_map }
+import std.algebra { list_append }
 import v2.std.collection { List, Map, map_lookup }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }

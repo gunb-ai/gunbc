@@ -4,10 +4,9 @@ import v2.std.algebra {
   any,
   contains,
   fold_list,
-  list_reverse,
-  list_snoc_item,
+  list_reverse
 }
-import std.algebra { Cons }
+import std.algebra { Cons, list_snoc_item }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.text { String, string_eq }

@@ -14,7 +14,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_flat_map }
+import v2.std.algebra { FreeSemigroup, fold_list, list_flat_map }
+import std.algebra { list_append }
 import gunbc.floor_attempt_standing {
   floor_attempt_receipt_prefix,
   floor_attempt_receipt_measured_head_label,

@@ -5,33 +5,59 @@ import std.types { String }
 import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import gunbc.command_runner { run_shell_command_observe }
-import gunbc.cli_wire { CliWireResponse, CliWireUnprintable }
+import gunbc.cli_wire { CliWireResponse, CliWireUnprintable, CliWirePrintable }
 import gunbc.auth.approval_device_routes { issue_device_enrolment_code }
 import gunbc.auth.approval_device_redemption { approval_device_store_root }
+import gunbc.auth.approval_ntfy_runtime_observe {
+  approval_ntfy_runtime_observe, ntfy_runtime_observe_decode,
+  NtfyRuntimeReadingDecoded, NtfyRuntimeReadingUndecodable, NtfyRuntimeObserved, NtfyRuntimeObserveRefused,
+}
 
 // THE ROOT, BY REAL EXECUTION, on the required floor's local-repo wet lane
 // (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule): issue_device_enrolment_code
-// accepts nothing, so this claim calls it exactly as production does, and every read it takes (the
-// gunbc.auth.approval_ntfy_access_readback reads_in_order population) is shell.Exec.RunArgv, which
-// the hermetic route has no published mock case for. The verdict over every reading is refusal -- a
-// failed or inactive unit, any runtime gap, and, on a host where every modeled read holds,
-// ActiveProcessJoinsUnbound -- so the claim holds on ANY host: the verb refuses before any code is
-// minted and the store root is never created. Forcing the verdict (the verb proceeding without its
+// accepts only the release revision, so this claim calls it exactly as production does, and every
+// read it takes (the gunbc.auth.approval_ntfy_access_readback reads_in_order population) is
+// shell.Exec.RunArgv, which the hermetic route has no published mock case for. The revision it
+// passes is never installed, so the one read that can bind the process -- the per-release helper at
+// /opt/gunbc/approval-broker-helpers/<revision> -- cannot run on any host, and the verdict over
+// every reading is refusal: a failed or inactive unit, any runtime gap, or that failed helper read.
+// So the claim holds on ANY host: the verb refuses before any code is minted and the store root is
+// never created. Forcing the verdict (the verb proceeding without its
 // reading) reds it: it then goes on to the clock, the entropy and the store. Every refusal arm is
 // witnessed hermetically over supplied readings in
 // test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real
 // root.
+data never_installed_revision: String = "0000000000000000000000000000000000000000"
+
 fn path_exists(path: String) -> Bool {
   run_shell_command_observe(command: posix_sh_program_command(script: "test -e '" + path + "'\n"), transport: LocalExec).exit_code == 0
 }
 
 test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool {
   let before = path_exists(path: approval_device_store_root as String)
-  let r = issue_device_enrolment_code()
+  let r = issue_device_enrolment_code(revision: never_installed_revision)
   !before
     && (match r {
       CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted")
       _ => false
     })
     && !path_exists(path: approval_device_store_root as String)
+}
+
+// THE HELPER'S REAL OUTPUT READS THROUGH THE REAL CODEC. The helper entry
+// (gunbc.auth.approval_ntfy_runtime_observe approval_ntfy_runtime_observe) runs its reads for real
+// on this host -- systemctl show, then /proc/<MainPID>/{stat,environ,exe,fd} -- and prints its
+// outcome; the verb's decoder must read those bytes as an outcome. On a host with no active
+// gunbc-ntfy unit it is the helper's refusal naming the `unit` read; on a host running the server as
+// this principal it is an observation. Either way it DECODES: an encoder/decoder drift, a helper that
+// printed a diagnostic instead of its outcome, or one that exited nonzero reds this.
+test fn the_helper_output_decodes_as_an_outcome_by_real_execution() -> Bool {
+  match approval_ntfy_runtime_observe() {
+    CliWirePrintable { bytes: b, exit: _ } => match ntfy_runtime_observe_decode(text: b) {
+      NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveRefused { read: r, cause: _ } } => r == "unit" || r == "stat" || r == "environ" || starts_with(s: r, prefix: "exe") || starts_with(s: r, prefix: "fd")
+      NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserved { observation: o } } => o.main_pid > 0
+      NtfyRuntimeReadingUndecodable { cause: _ } => false
+    }
+    _ => false
+  }
 }

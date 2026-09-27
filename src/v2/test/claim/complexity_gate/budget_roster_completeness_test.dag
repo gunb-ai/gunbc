@@ -8,7 +8,8 @@ import v2.lens.complexity {
   complexity_lens,
   incomplete_complexity
 }
-import v2.std.algebra { fold_list, is_empty, list_append }
+import v2.std.algebra { fold_list, is_empty }
+import std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }

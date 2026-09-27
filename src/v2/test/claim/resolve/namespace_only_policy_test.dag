@@ -74,6 +74,7 @@ fn policy_pilot_resolve(
   match resolve_atom(
     ctx: ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: policy,
       position: position,
@@ -116,6 +117,7 @@ fn policy_pilot_resolve_rejects_with_reason(
   match resolve_atom(
     ctx: ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: policy,
       position: position,

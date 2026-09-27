@@ -4,7 +4,8 @@ import std.types { String }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.algebra { any, count_where, fold_list, length, list_snoc_item }
+import v2.std.algebra { any, count_where, fold_list, length }
+import std.algebra { list_snoc_item }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 
 // WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries fifteen identities that the

@@ -21,7 +21,8 @@ module gunbc.executor_privileged_operation
 import std.types { String, NonEmptyStr, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_as, sudo_elevate_argv }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_as, sudo_elevate_argv, sudo_elevate_command, sudo_elevate_as_command }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
@@ -254,6 +255,17 @@ fn executor_privileged_operation_elevated(op: ExecutorPrivilegedOperation) -> El
 fn executor_privileged_operation_elevated_argv(op: ExecutorPrivilegedOperation) -> List<String> {
   let e = executor_privileged_operation_elevated(op: op)
   concat([e.bin_path], e.args)
+}
+
+// THE SAME ELEVATION AS AN ArgvCommand, for a caller that RUNS the operation through the command
+// transport (gunbc.command_runner) rather than rendering it: the principal dispatch is the one above,
+// so the words run are the words the sudoers line grants.
+fn executor_privileged_operation_elevated_command(op: ExecutorPrivilegedOperation) -> ArgvCommand {
+  let argv = map(executor_privileged_operation_argv(op: op), w => w as String)
+  match executor_privileged_operation_principal(op: op) {
+    RunsAsRoot => sudo_elevate_command(command: argv)
+    RunsAsAccount { login: l } => sudo_elevate_as_command(user: l, command: argv)
+  }
 }
 
 // WHY SystemdSetUnitProperty IS ADMISSIBLE WHERE A PRIVILEGED FILE-INSTALL WAS VETOED (parent

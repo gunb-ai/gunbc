@@ -27,9 +27,9 @@ import v2.compiler.reference_conservation_admission {
   conservation_read_of
 }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.integer { integer_int_to_decimal_string }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.collection { List }

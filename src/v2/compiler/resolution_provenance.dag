@@ -1,14 +1,13 @@
 module v2.compiler.resolution_provenance
 
-import std.algebra { Empty, FreeMonoid }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
 import v2.std.algebra {
   contains,
   fold_list,
   is_empty,
-  length,
-  list_snoc_item
+  length
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
