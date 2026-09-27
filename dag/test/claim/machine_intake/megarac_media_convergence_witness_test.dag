@@ -78,9 +78,15 @@ import gunbc.machine_intake_megarac_media_attach {
   CdErrorUncatalogued,
   CdErrorAtReadiness,
   MegaRacCdErrorReported,
+  MegaRacPresentationObserved,
+  MegaRacSessionRefused,
+  PresentationStillReady,
+  PresentationNoLongerReady,
+  presentation_still_served,
+  SessionReleaseNotAttempted,
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaHandedOff, HandoffMediaWithheldAtRecheck, handoff_media_findings }
 import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -456,4 +462,59 @@ test fn a_ready_presentation_with_cd_error_16_is_withheld_at_readiness() -> Bool
       MegaRacPresentationReady { route: _, evidence: _ } => true
       _ => false
     })
+}
+
+// ─── THE LOOKS AROUND THE HANDOFF ───────────────────────────────────────────────────────────────
+fn observed(general: String, configurations: String) -> MegaRacAttachResult {
+  MegaRacAttachResult {
+    outcome: MegaRacPresentationObserved {
+      share: share_binding_standing(body: general, expected: mtcollins1_media_share),
+      readiness: attach_readiness(answered: true, body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
+    },
+    session_release: SessionReleased,
+  }
+}
+
+data served_look: MegaRacAttachResult = observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: presenting_in(name: desired_census as String, status: "1", session: "0"))
+
+test fn a_started_bound_presentation_is_still_served() -> Bool {
+  match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false }
+}
+
+// The after-state of boot run 36330382023, as a post-handoff look: status 16 on the row AND
+// cd_error_code 16 in the settings. Either alone is not served; the finding names the loss.
+test fn the_36330382023_after_state_is_a_loss_after_handoff() -> Bool {
+  let lost = observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "16", session: "255"))
+  (match presentation_still_served(result: lost) { PresentationNoLongerReady { reason: _ } => true _ => false })
+    && (match handoff_media_findings(h: HandoffMediaHandedOff { before: served_look, after: lost }) {
+      [f] => string_contains(s: f, pattern: "LOST at or after")
+      _ => false
+    })
+    && (match handoff_media_findings(h: HandoffMediaHandedOff { before: served_look, after: served_look }) { [] => true _ => false })
+}
+
+test fn a_withdrawn_row_or_an_unobserved_look_is_not_served() -> Bool {
+  (match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]")) { PresentationNoLongerReady { reason: _ } => true _ => false })
+    && (match presentation_still_served(result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "403" }, session_release: SessionReleaseNotAttempted }) { PresentationNoLongerReady { reason: _ } => true _ => false })
+    && (match handoff_media_findings(h: HandoffMediaWithheldAtRecheck { before: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }) { [f] => string_contains(s: f, pattern: "no boot-device or power write") _ => false })
+}
+
+// ─── RECEIPTS FOR THE TWO BETS ──────────────────────────────────────────────────────────────────
+//
+// Manual stops on 2026-09-27, host off, supplied verbatim by eager-owl-205. Both bodies carried
+// image_index 0 and both rows read media_index 0, so they are CONSISTENT with stop_media_body's
+// media_index bet and do NOT discriminate it from the image-list reading (the two indices coincided).
+// The second read-back cleared image and status while session_index read 255 -- the observation the
+// unbound-session reading of 255 rests on.
+data manual_stop_readback_1545z: String = "[ { \"id\": 1, \"media_type\": 1, \"media_index\": 0, \"session_index\": 0, \"image_name\": \"\", \"redirection_status\": 0 } ]"
+data manual_stop_readback_1630z: String = "[ { \"id\": 1, \"media_type\": 1, \"media_index\": 0, \"session_index\": 255, \"image_name\": \"\", \"redirection_status\": 0 } ]"
+
+test fn both_manual_stop_readbacks_establish_the_detach_whatever_stop_media_answered() -> Bool {
+  (match detach_verdict(evidence: detach(success: true, body: "echoed body", readback_read: true, readback: manual_stop_readback_1545z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+    && (match detach_verdict(evidence: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+}
+
+test fn the_stop_body_this_module_sends_is_byte_equal_to_the_manual_stop_that_worked() -> Bool {
+  stop_media_body(image_name: stale_census as String, media_index: "0") as String
+    == "{\"image_name\":\"gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso\",\"image_type\":1,\"image_index\":0,\"image_redirection\":1}"
 }

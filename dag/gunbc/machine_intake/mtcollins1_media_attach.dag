@@ -28,6 +28,11 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacPresentationEvidence,
   MegaRacPresentationReady,
   MegaRacReplacementPolicy,
+  MegaRacConverge,
+  MegaRacObserve,
+  MegaRacAttachResult,
+  MegaRacSessionRefused,
+  SessionReleaseNotAttempted,
   MegaRacShareBinding,
   MegaRacShareNfs,
   SessionReleased,
@@ -103,10 +108,12 @@ fn mtcollins1_attach_diskless_image(
               cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
               image_name: subject.image_name,
               firmware: mtcollins1_firmware,
-              policy: MegaRacReplacementPolicy {
-                replaceable_seeded_stem: mtcollins1_census_image_stem,
-                detach: mtcollins1_detach_admission(power: power),
-                share: mtcollins1_media_share,
+              task: MegaRacConverge {
+                policy: MegaRacReplacementPolicy {
+                  replaceable_seeded_stem: mtcollins1_census_image_stem,
+                  detach: mtcollins1_detach_admission(power: power),
+                  share: mtcollins1_media_share,
+                },
               },
             ),
           }
@@ -173,6 +180,43 @@ fn mtcollins1_media_gate(record: MtCollins1MediaAttachRecord) -> MtCollins1Media
             Present { value: why } => MediaGateWithheld { reason: concat("mtcollins1 media attach: ", why) as NonEmptyStr }
             Absent => MediaGateWithheld { reason: "mtcollins1 media attach: the outcome carries no ready presentation" }
           }
+      }
+  }
+}
+
+// ONE READ-ONLY LOOK AT THE PRESENTATION, under the same hold, for the handoff to consult just before
+// it writes and to record just after. The jar is suffixed per look so two looks in one attempt
+// never share a bearer file.
+fn mtcollins1_observe_presentation(
+  proof: UnitHoldProof,
+  image_name: NonEmptyStr,
+  password_file: String,
+  attempt: String,
+  look: NonEmptyStr,
+) -> MegaRacAttachResult
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+  ]
+{
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 media observe") {
+    Present { value: why } => return MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: why }, session_release: SessionReleaseNotAttempted }
+    Absent => {}
+  }
+  match mtcollins1_media_username {
+    Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "BMC is not BmcSecured; no account to observe with" }, session_release: SessionReleaseNotAttempted }
+    Present { value: username } =>
+      if password_file == "" || attempt == "" {
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted }
+      } else {
+        megarac_attach_remote_image(
+          bmc_host: mtcollins1_endpoint.host,
+          username: username,
+          password_file: password_file as NonEmptyStr,
+          cookie_jar: mtcollins1_media_cookie_jar(attempt: join([attempt, "-", look as String], "") as NonEmptyStr),
+          image_name: image_name,
+          firmware: mtcollins1_firmware,
+          task: MegaRacObserve { share: mtcollins1_media_share },
+        )
       }
   }
 }

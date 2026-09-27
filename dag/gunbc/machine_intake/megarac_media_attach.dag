@@ -129,6 +129,7 @@ type MegaRacAttachOutcome
   | MegaRacConfigurationsUnreadable { detail: String }
   | MegaRacShareMismatch { expected: MegaRacShareBinding, observed: MegaRacObservedShare }
   | MegaRacShareUnreadable { detail: String }
+  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness }
   | MegaRacCdErrorReported { at: MegaRacCdErrorPoint, error: MegaRacCdErrorCode, general: String }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
@@ -194,6 +195,15 @@ type MegaRacDetachEvidence {
 type MegaRacDetachAdmission
   = MegaRacDetachAdmitted
   | MegaRacDetachNotAdmitted { reason: NonEmptyStr }
+
+// ONE SESSION ROUTE, TWO TASKS. Converging writes; observing only reads, and exists because a
+// presentation observed ready can be lost before or after the boot-device and power handoff that
+// consumes it (side chat on gunbc#12425: a re-read narrows the window, it cannot close it, so the
+// loss after the handoff has to be an observed outcome too). Both go through the same session
+// open, token parse and observed release, so an observation cannot leak a session either.
+type MegaRacSessionTask
+  = MegaRacConverge { policy: MegaRacReplacementPolicy }
+  | MegaRacObserve { share: MegaRacShareBinding }
 
 type MegaRacReplacementPolicy {
   replaceable_seeded_stem: NonEmptyStr
@@ -502,10 +512,11 @@ fn megarac_attach_remote_image(
   cookie_jar: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
-  policy: MegaRacReplacementPolicy,
+  task: MegaRacSessionTask,
 ) -> MegaRacAttachResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_observe_presentation"),
   ]
 {
   session = megarac.Media.OpenSession(
@@ -544,7 +555,7 @@ fn megarac_attach_remote_image(
         csrf_token: token as NonEmptyStr,
         image_name: image_name,
         firmware: firmware,
-        policy: policy,
+        task: task,
       )
   }
 }
@@ -579,17 +590,29 @@ fn megarac_attach_then_release(
   csrf_token: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
-  policy: MegaRacReplacementPolicy,
+  task: MegaRacSessionTask,
 ) -> MegaRacAttachResult
 {
-  let outcome = megarac_attach_with_token(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-    image_name: image_name,
-    firmware: firmware,
-    policy: policy,
-  )
+  let outcome = match task {
+    MegaRacConverge { policy: policy } =>
+      megarac_attach_with_token(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        image_name: image_name,
+        firmware: firmware,
+        policy: policy,
+      )
+    MegaRacObserve { share: share } =>
+      megarac_observe_with_token(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        image_name: image_name,
+        firmware: firmware,
+        share: share,
+      )
+  }
 
   return MegaRacAttachResult {
     outcome: outcome,
@@ -1558,5 +1581,62 @@ fn readiness_wait_outcome(
           }
         _ => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n }
       }
+  }
+}
+
+// ─── OBSERVING A PRESENTATION WITHOUT WRITING ─────────────────────────────────────────────────
+//
+// One look at the three members that together say "this unit is being served this image": the share
+// binding (with its CD error code) and the configurations row. Nothing is written. The readiness
+// reading uses the already-presented phase: at this point the image was observed Started, so its
+// absence is a withdrawal, not a pending start.
+fn megarac_observe_with_token(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  share: MegaRacShareBinding,
+) -> MegaRacAttachOutcome
+{
+  let general = megarac.Media.GetMediaGeneral(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  let configurations = megarac.Media.GetRemoteConfigurations(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  return MegaRacPresentationObserved {
+    share: if general.success { share_binding_standing(body: general.body, expected: share) } else { ShareUnreadable { detail: general.body } },
+    readiness: attach_readiness(answered: configurations.success, body: configurations.body, image_name: image_name, firmware: firmware),
+  }
+}
+
+type PresentationStillServed
+  = PresentationStillReady
+  | PresentationNoLongerReady { reason: NonEmptyStr }
+
+// PURE: still ready exactly when the share is bound with no CD error AND the row is Started with a
+// bound session. A session refusal, an unanswered read or any other arm is not ready: an unobserved
+// presentation is not a served one.
+fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
+  match result.outcome {
+    MegaRacPresentationObserved { share: sh, readiness: r } =>
+      match sh {
+        ShareBound =>
+          match r {
+            ReadinessStarted { row: _ } => PresentationStillReady
+            _ => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
+          }
+        ShareCdError { error: _, body: _ } => PresentationNoLongerReady { reason: "the general settings now carry an uncatalogued cd_error_code" }
+        ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
+        ShareUnreadable { detail: _ } => PresentationNoLongerReady { reason: "the general settings could not be read" }
+      }
+    _ => PresentationNoLongerReady { reason: "the presentation could not be observed (session or transport refused)" }
   }
 }

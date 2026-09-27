@@ -78,6 +78,14 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacShareMismatch,
   MegaRacShareUnreadable,
   MegaRacCdErrorReported,
+  MegaRacPresentationObserved,
+  PresentationStillReady,
+  PresentationNoLongerReady,
+  presentation_still_served,
+  ShareBound,
+  ShareMismatch,
+  ShareCdError,
+  ShareUnreadable,
   CdErrorBeforeAnyWrite,
   CdErrorAtReadiness,
   CdErrorNone,
@@ -542,7 +550,49 @@ fn media_attach_findings(record: MtCollins1MediaAttachRecord) -> List<String> {
   }
 }
 
+// THE HANDOFF'S OWN VIEW OF THE MEDIUM: the look just before the boot-device and power writes, and
+// the look just after. A re-read narrows the window between readiness and handoff; it cannot close
+// it, so the loss AT or AFTER the handoff is an observed, recorded outcome rather than an assumption
+// that a ready medium stays ready.
+type MtCollins1HandoffMedia
+  = HandoffMediaNotReached { reason: NonEmptyStr }
+  | HandoffMediaWithheldAtRecheck { before: MegaRacAttachResult }
+  | HandoffMediaHandedOff { before: MegaRacAttachResult, after: MegaRacAttachResult }
+
+fn observation_text(r: MegaRacAttachResult) -> String {
+  match r.outcome {
+    MegaRacPresentationObserved { share: sh, readiness: rd } =>
+      join([
+        "share ", match sh { ShareBound => "bound"  ShareMismatch { observed: o } => concat("MISMATCH ", concat(o.server_address, concat(":", o.source_path)))  ShareCdError { error: _, body: _ } => "CD ERROR"  ShareUnreadable { detail: d } => concat("UNREADABLE ", d) },
+        "; row ", readiness_reading_text(r: rd),
+        "; session ", session_release_text(standing: r.session_release),
+      ], "")
+    other => match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" }
+  }
+}
+
+fn handoff_media_text(h: MtCollins1HandoffMedia) -> String {
+  match h {
+    HandoffMediaNotReached { reason: r } => concat("not reached: ", r as String)
+    HandoffMediaWithheldAtRecheck { before: b } => concat("WITHHELD at the pre-handoff recheck: ", observation_text(r: b))
+    HandoffMediaHandedOff { before: b, after: a } => concat("before handoff: ", concat(observation_text(r: b), concat(" | after handoff: ", observation_text(r: a))))
+  }
+}
+
+fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
+  match h {
+    HandoffMediaNotReached { reason: _ } => []
+    HandoffMediaWithheldAtRecheck { before: b } => [concat("media was ready at the gate but not at the pre-handoff recheck, so no boot-device or power write was made: ", observation_text(r: b))]
+    HandoffMediaHandedOff { before: _, after: a } =>
+      match presentation_still_served(result: a) {
+        PresentationStillReady => []
+        PresentationNoLongerReady { reason: why } => [concat("the presentation was LOST at or after the boot-device and power handoff (", concat(why as String, concat("): ", observation_text(r: a))))]
+      }
+  }
+}
+
 type MtCollins1BootRunRecord {
+  handoff_media: MtCollins1HandoffMedia
   media: MtCollins1MediaAttachRecord
   smpro_power_on: SmproReading
   smpro_census: SmproReading
@@ -554,6 +604,7 @@ type MtCollins1BootRunRecord {
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
   MtCollins1BootRunRecord {
+    handoff_media: HandoffMediaNotReached { reason: reason },
     media: MediaAttachNotAttempted { reason: reason },
     smpro_power_on: SmproNotTaken { reason: reason },
     smpro_census: SmproNotTaken { reason: reason },
@@ -673,6 +724,7 @@ fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
 fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   join([
     concat("media=", media_attach_text(record: r.media)),
+    concat("handoff_media=", handoff_media_text(h: r.handoff_media)),
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
     boot_param5_text(label: "before", r: r.override_before),
@@ -1011,7 +1063,7 @@ fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> Li
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),
-    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(smpro_findings(s: bundle.run.smpro_power_on), concat(smpro_findings(s: bundle.run.smpro_census), concat(media_attach_findings(record: bundle.run.media), concat(override_findings(c: bundle.run.override), concat(power_after_findings(p: bundle.run.power_after), concat(console_findings(c: bundle.console), shred))))))))))))
+    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(smpro_findings(s: bundle.run.smpro_power_on), concat(smpro_findings(s: bundle.run.smpro_census), concat(media_attach_findings(record: bundle.run.media), concat(handoff_media_findings(h: bundle.run.handoff_media), concat(override_findings(c: bundle.run.override), concat(power_after_findings(p: bundle.run.power_after), concat(console_findings(c: bundle.console), shred)))))))))))))
 }
 
 // THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a

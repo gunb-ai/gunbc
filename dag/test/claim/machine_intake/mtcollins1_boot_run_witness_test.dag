@@ -10,7 +10,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
-  MediaAttachNotAttempted, BootParam5Read, SmproNotTaken, SmproProbed, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
+  MediaAttachNotAttempted, HandoffMediaNotReached, BootParam5Read, SmproNotTaken, SmproProbed, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
 }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_run {
@@ -737,9 +737,9 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd)
+  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd)
   let ended = mtcollins1_boot_run_record(
-    media: MediaAttachNotAttempted { reason: "fixture" },
+    media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" },
     stage: ActuationCensusEnded { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproProbed { outcomes: [] } },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
   )
@@ -747,7 +747,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
     && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
     && (match mtcollins1_boot_run_record(
-      media: MediaAttachNotAttempted { reason: "fixture" },
+      media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" },
       stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })

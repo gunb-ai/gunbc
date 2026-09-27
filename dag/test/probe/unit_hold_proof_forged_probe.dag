@@ -21,7 +21,8 @@ import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachNotAttempted }
 import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff, oob_power_action_after_confirmed_selection, oob_power_actuate_and_read_back, OobPowerUp }
-import gunbc.machine_intake_megarac_media_attach { MegaRacDetachAdmitted, MegaRacReplacementPolicy, megarac_attach_remote_image }
+import gunbc.machine_intake_megarac_media_attach { MegaRacObserve, megarac_attach_remote_image }
+import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_media_share, mtcollins1_observe_presentation }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
 
 fn forged_proof() -> UnitHoldProof {
@@ -80,13 +81,18 @@ fn bundle_chassis_read_from_outside_the_hold() -> String {
 
 // THE GATED HANDOFF IS SEALED TO THE ACTUATION: an outside caller cannot reach the boot-device and
 // power handoff even with a media record in hand.
+fn observe_presentation_from_outside() -> String {
+  let _x = mtcollins1_observe_presentation(proof: forged_proof(), image_name: "x.iso", password_file: "/tmp/pw", attempt: "forged", look: "outside")
+  ""
+}
+
 fn gated_handoff_from_outside() -> String {
-  let _x = mtcollins1_boot_handoff_when_media_ready(proof: forged_proof(), media: MediaAttachNotAttempted { reason: "forged" }, password_file: "/tmp/pw", selection: mtcollins1_cdrom_selection)
+  let _x = mtcollins1_boot_handoff_when_media_ready(proof: forged_proof(), media: MediaAttachNotAttempted { reason: "forged" }, image_name: "x.iso", password_file: "/tmp/pw", attempt: "forged", selection: mtcollins1_cdrom_selection)
   ""
 }
 
 fn attach_through_the_generic_megarac_route_from_outside() -> String {
-  let _x = megarac_attach_remote_image(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", cookie_jar: "/tmp/jar", image_name: "x.iso", firmware: mtcollins1_firmware, policy: MegaRacReplacementPolicy { replaceable_seeded_stem: "x", detach: MegaRacDetachAdmitted })
+  let _x = megarac_attach_remote_image(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", cookie_jar: "/tmp/jar", image_name: "x.iso", firmware: mtcollins1_firmware, task: MegaRacObserve { share: mtcollins1_media_share })
   ""
 }
 
