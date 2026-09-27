@@ -1,5 +1,7 @@
 module gunbc.roadmap_page
 
+import gunbc.roadmap_allocation_location { allocation_page_path }
+
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
@@ -275,6 +277,7 @@ fn roadmap_header(page: String) -> Fragment {
         el("h1", [ txt(page) ]),
         header_surface_link(label: "workspace", href: "/"),
         header_surface_link(label: "fleet", href: "/fleet"),
+        header_surface_link(label: "allocations", href: allocation_page_path),
         sound_toggle_control(),
         theme_toggle_control(),
       ],

@@ -3563,25 +3563,28 @@ fn account_swap_statements() -> List<TsStmt> {
     ts_const(name: "gunbcAccountSlot", value: account_query_expr(selector: "[data-account-session]")),
     ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
     ts_if(
-      cond: ts_binop(left: js_b_member(name: "gunbcAccountSlot"), op: "&&", right: js_b_member(name: "gunbcAccountSignin")),
-      then: ts_expr_stmt(expr: ts_call(
-        callee: ts_member(
-          object: ts_call(
-            callee: ts_member(
-              object: ts_call(
-                callee: ts_ident(name: "fetch"),
-                args: [ts_lit_str(value: "/auth/session")]),
-              property: "then"),
-            args: [ts_arrow(params: ["r"], body: ts_return(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "r"), property: "json"),
-              args: [])))]),
-          property: "then"),
-        args: [ts_arrow(params: ["s"], body: ts_if(
-          cond: ts_binop(
-            left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
-            op: "&&",
-            right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
-          then: ts_block(stmts: [
+      cond: ts_binop(left: ts_ident(name: "gunbcAccountSlot"), op: "&&", right: ts_ident(name: "gunbcAccountSignin")),
+      then: ts_block(stmts: [
+        ts_const(name: "gunbcAccountRequest", value: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/auth/session")]),
+                property: "then"),
+              args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                ts_return(expr: Present { value: ts_cond(
+                  test: ts_member(object: ts_ident(name: "r"), property: "ok"),
+                  consequent: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []),
+                  alternate: ts_ident(name: "null")) }),
+              ]))]),
+            property: "then"),
+          args: [ts_arrow(params: ["s"], body: ts_block(stmts: [
+            ts_if(
+              cond: ts_binop(
+                left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
+                op: "&&",
+                right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
+              then: ts_block(stmts: [
             ts_const(name: "gunbcViewer", value: ts_binop(
               left: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal")),
               op: "||",
@@ -3605,9 +3608,10 @@ fn account_swap_statements() -> List<TsStmt> {
               left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-name]")]), property: "textContent"),
               op: "=",
               right: ts_ident(name: "gunbcShort"))),
-          ]),
-          else_stmt: none))])),
-      else_stmt: none),
+              ]), else_stmt: none),
+          ]))])),
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountRequest"), property: "catch"), args: [ts_arrow(params: ["error"], body: ts_block(stmts: []))])),
+      ]), else_stmt: none),
   ]
 }
 

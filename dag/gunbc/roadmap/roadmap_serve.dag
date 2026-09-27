@@ -1,5 +1,10 @@
 module gunbc.roadmap_serve
 
+import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap_allocation_page { allocation_page, allocation_client_path }
+import gunbc.roadmap_allocation_client { allocation_client_source }
+
+
 import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
 import extdeps.http.server { ServeResponseHeaderNoStore }
 
@@ -294,6 +299,8 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 type RoadmapServeHandler
   = RoadmapDailyPageHandler
   | RoadmapFullPageHandler
+  | AllocationPageHandler
+  | AllocationClientHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
   | DispatchJsonHandler
@@ -389,6 +396,8 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   [
     RoadmapServeRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
@@ -1373,6 +1382,8 @@ fn roadmap_serve_invoke_over(
         proj: plan,
         launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
       ))
+    AllocationPageHandler => allocation_page_response(request: request)
+    AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan))
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan))
@@ -2694,4 +2705,18 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "viewer", value: json_string(s: "")),
     ]
   }))
+}
+
+// Session-dependent HTML must not be reused for a different viewer.
+fn allocation_page_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let signed_in = match request.security.authentication {
+    GoogleOidcSession { session: _ } => true
+    AuthAbsent => false
+    SessionStandingInvalid { standing: _ } => false
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+  }
+  match try_serialize_html_source(node: allocation_page(signed_in: signed_in)) {
+    EmitOk { html } => serve_text_response_with_headers(status: 200, content_type: text_html_utf8, body: html, headers: [ServeResponseHeaderNoStore])
+    EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
+  }
 }

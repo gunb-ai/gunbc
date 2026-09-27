@@ -1,0 +1,43 @@
+module test.claim.long.allocation_page_witness
+
+import std.types { String, Bool }
+import gunbc.roadmap_allocation_page { allocation_page }
+import gunbc.roadmap_allocation_client { allocation_draft_source }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+
+fn allocation_preview_signed_in() -> String {
+  match try_serialize_html_source(node: allocation_page(signed_in: true)) {
+    EmitOk { html } => html
+    EmitRejected { reason } => reason
+  }
+}
+
+fn allocation_preview_signed_out() -> String {
+  match try_serialize_html_source(node: allocation_page(signed_in: false)) {
+    EmitOk { html } => html
+    EmitRejected { reason } => reason
+  }
+}
+
+test fn allocation_signed_out_cannot_edit_draft() -> Bool {
+  let html = allocation_preview_signed_out()
+  string_contains(s: html, pattern: "<fieldset disabled")
+    && string_contains(s: html, pattern: "Sign in to prepare an allocation.")
+    && string_contains(s: html, pattern: "/auth/login")
+}
+
+test fn allocation_signed_in_can_prepare_but_cannot_submit() -> Bool {
+  let html = allocation_preview_signed_in()
+  !string_contains(s: html, pattern: "<fieldset disabled")
+    && string_contains(s: html, pattern: "Request allocation")
+    && string_contains(s: html, pattern: "aria-describedby=\"allocation-submit-reason\"")
+    && string_contains(s: html, pattern: "Allocation requests are not available yet.")
+}
+
+test fn allocation_client_has_no_request_effect() -> Bool {
+  let js = allocation_draft_source()
+  !string_contains(s: js, pattern: "fetch(")
+    && !string_contains(s: js, pattern: "localStorage")
+    && string_contains(s: js, pattern: "preventDefault")
+    && string_contains(s: js, pattern: "reportValidity")
+}
