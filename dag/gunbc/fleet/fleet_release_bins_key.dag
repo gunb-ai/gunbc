@@ -404,17 +404,13 @@ fn release_bins_receipt_tail(kind: ReleaseBinsReceiptKind) -> List<Node> {
 }
 
 fn release_bins_receipt_statements(kind: ReleaseBinsReceiptKind) -> List<Node> {
-  [
-    assign_sub(name: "OUTPUT_DIGEST", body: bash_build_pipe(
-      left: cmd(ws: [lit(t: "sha256sum"), staged(file: release_bins_manifest_name)]),
-      right: cmdl(ls: ["cut", "-d", " ", "-f", "1"]),
-    )),
+  concat(digest_of(name: "OUTPUT_DIGEST", path: staged(file: release_bins_manifest_name)), [
     cmd(ws: [lit(t: "echo"), words(ws: concat([
       lit(t: join([release_bins_receipt_name(kind: kind), ": request="], "")), var(n: "RELEASE_BINS_KEY"),
       lit(t: " output=sha256:"), var(n: "OUTPUT_DIGEST"),
       lit(t: " dispatch="), var(n: "GITHUB_RUN_ID"), lit(t: "/"), var(n: "GITHUB_RUN_ATTEMPT"),
     ], release_bins_receipt_tail(kind: kind)))]),
-  ]
+  ])
 }
 
 fn root_statement() -> Node {
@@ -438,20 +434,36 @@ fn source_closure_statements() -> List<Node> {
   ]
 }
 
-// C7 FRONTIER [producer-status-pipeline]: the bash fold emits `set -e` without pipefail and has no
-// two-stage argv transport that reports the PRODUCING stage's status, so `rustc -vV | tr` cannot
-// report a failing rustc by itself. Each axis value is therefore required to read back non-empty
-// (AxisValueUnread); a producer that fails while still printing a partial line is the residue this
-// check does not close, and it closes when that capability lands in the fold.
+// C7 [producer-status-pipeline] IS CLOSED HERE BY CONSTRUCTION, not recorded: no producer runs in a
+// pipeline (see seq / produce_to below), so a failing producer stops the step under set -e even if it
+// printed part of its output. The only pipeline left is append_line's `echo | tee -a`, whose producer
+// is the shell builtin echo writing a model-rendered line and whose last stage (tee) set -e does check.
+// An axis that reads back empty still refuses by name, because a producer can succeed and print nothing.
 fn read_nonempty(variable: String) -> Node {
   or_refuse(check: test_words(ws: [lit(t: "-n"), var(n: variable)]), r: AxisValueUnread { variable: variable })
 }
 
-fn first_line_of(name: String, argv: List<String>) -> Node {
-  assign_sub(name: name, body: bash_build_pipe(
-    left: bash_build_with_redir(inner: cmdl(ls: argv), redir: ^bash_production_fold_redir_stderr_to_stdout),
-    right: cmdl(ls: ["head", "-n", "1"]),
-  ))
+// NO PRODUCER RUNS INSIDE A PIPELINE. The fold emits `set -e` without pipefail, so a producer's
+// status is only observed when the producer is its own statement: each one writes its output to a
+// file under RUNNER_TEMP (the statement set -e checks), and a second command reads that file as an
+// argument. A producer that fails, even after printing part of its output, stops the step.
+fn seq(parts: List<List<Node>>) -> List<Node> {
+  fold(parts, init: [], f: (acc, p) => concat(acc, p))
+}
+
+fn produce_to(file: String, command: Node) -> Node {
+  bash_build_with_redir_to_file(inner: command, path: temp(file: file))
+}
+
+fn read_back(name: String, file: String, reader: List<String>) -> Node {
+  assign_sub(name: name, body: cmd(ws: concat(map(reader, r => lit(t: r)), [temp(file: file)])))
+}
+
+fn first_line_of(name: String, argv: List<String>) -> List<Node> {
+  [
+    produce_to(file: join([name, ".out"], ""), command: cmdl(ls: argv)),
+    read_back(name: name, file: join([name, ".out"], ""), reader: ["head", "-n", "1"]),
+  ]
 }
 
 // One preimage line per pre-materialization axis, in generation_axes order. An axis that is not an
@@ -460,23 +472,27 @@ fn axis_reads(axis: GenerationAxis) -> List<Node> {
   match axis {
     SourceClosureAxis => []
     ToolchainAxis => [
-      assign_sub(name: "AXIS_TOOLCHAIN", body: bash_build_pipe(left: cmdl(ls: ["rustc", "-vV"]), right: cmdl(ls: ["tr", "\n", ";"]))),
+      produce_to(file: "rustc-vV.out", command: cmdl(ls: ["rustc", "-vV"])),
+      read_back(name: "AXIS_TOOLCHAIN", file: "rustc-vV.out", reader: ["paste", "-s", "-d", ";"]),
       read_nonempty(variable: "AXIS_TOOLCHAIN"),
     ]
     ProducerCompilerAxis => [
       assign_sub(name: "AXIS_PRODUCER", body: cmd(ws: [var(n: "CARGO_BIN"), lit(t: "-V")])),
       read_nonempty(variable: "AXIS_PRODUCER"),
     ]
-    TargetModelAxis => [
-      assign_sub(name: "AXIS_HOST", body: bash_build_pipe(left: cmdl(ls: ["rustc", "-vV"]), right: cmdl(ls: ["sed", "-n", "s/^host: //p"]))),
+    TargetModelAxis => seq(parts: [[
+      produce_to(file: "rustc-host.out", command: cmdl(ls: ["rustc", "-vV"])),
+      read_back(name: "AXIS_HOST", file: "rustc-host.out", reader: ["sed", "-n", "s/^host: //p"]),
+    ], seq(parts: [
       first_line_of(name: "AXIS_CC", argv: ["cc", "--version"]),
       first_line_of(name: "AXIS_LD", argv: ["ld", "--version"]),
       first_line_of(name: "AXIS_LIBC", argv: ["ldd", "--version"]),
+    ]), [
       read_nonempty(variable: "AXIS_HOST"),
       read_nonempty(variable: "AXIS_CC"),
       read_nonempty(variable: "AXIS_LD"),
       read_nonempty(variable: "AXIS_LIBC"),
-    ]
+    ]])
     BuildConfigurationAxis => []
     RequiredLensContractAxis => []
     MaterializedArtifactAxis => []
@@ -517,11 +533,11 @@ fn preimage_statements() -> List<Node> {
   )
 }
 
-fn digest_of(name: String, path: Node) -> Node {
-  assign_sub(name: name, body: bash_build_pipe(
-    left: cmd(ws: [lit(t: "sha256sum"), path]),
-    right: cmdl(ls: ["cut", "-d", " ", "-f", "1"]),
-  ))
+fn digest_of(name: String, path: Node) -> List<Node> {
+  [
+    produce_to(file: join([name, ".out"], ""), command: cmd(ws: [lit(t: "sha256sum"), path])),
+    read_back(name: name, file: join([name, ".out"], ""), reader: ["cut", "-d", " ", "-f", "1"]),
+  ]
 }
 
 fn key_matches(digest_var: String) -> Node {
@@ -535,14 +551,11 @@ fn roster_file_statement() -> Node {
   )
 }
 
-fn manifest_roster_check(manifest: Node, r: ReleaseBinsRefusal) -> Node {
-  or_refuse(
-    check: bash_build_pipe(
-      left: cmd(ws: [lit(t: "cut"), lit(t: "-c"), lit(t: "67-"), manifest]),
-      right: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), lit(t: "-"), temp(file: "release-bins.roster")]),
-    ),
-    r: r,
-  )
+fn manifest_roster_check(manifest: Node, r: ReleaseBinsRefusal) -> List<Node> {
+  [
+    produce_to(file: "manifest-names.out", command: cmd(ws: [lit(t: "cut"), lit(t: "-c"), lit(t: "67-"), manifest])),
+    or_refuse(check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "manifest-names.out"), temp(file: "release-bins.roster")]), r: r),
+  ]
 }
 
 fn member_digest_check(dir: Node, manifest: Node, r: ReleaseBinsRefusal) -> Node {
@@ -573,8 +586,7 @@ fn release_bins_key_statements() -> List<Node> {
       ], source_closure_statements()),
       concat(
         concat([bash_build_assign(name: "EXPECTED", value: temp(file: join([release_bins_preimage_name, ".expected"], "")))], preimage_statements()),
-        [
-          digest_of(name: "PREIMAGE_DIGEST", path: var(n: "EXPECTED")),
+        concat(digest_of(name: "PREIMAGE_DIGEST", path: var(n: "EXPECTED")), [
           bash_build_assign(name: "KEY", value: words(ws: [lit(t: release_bins_key_prefix), var(n: "PREIMAGE_DIGEST")])),
           cmd(ws: [lit(t: "rm"), lit(t: "-rf"), rooted(file: release_bins_staging_dir)]),
           cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: release_bins_staging_dir)]),
@@ -582,7 +594,7 @@ fn release_bins_key_statements() -> List<Node> {
           cmd(ws: [lit(t: "cat"), var(n: "EXPECTED")]),
           append_line(file_var: "GITHUB_OUTPUT", line: words(ws: [lit(t: "key="), var(n: "KEY")])),
           append_line(file_var: "GITHUB_ENV", line: words(ws: [lit(t: "GUNBC_MATERIALIZED_TREE_IDENTITY="), var(n: "SOURCE_CLOSURE")])),
-        ],
+        ]),
       ),
     )
   }
@@ -648,7 +660,7 @@ fn release_bins_outcome_statements() -> List<Node> {
       map(entry_files(), f => or_refuse(check: test_words(ws: [lit(t: "-f"), staged(file: f)]), r: StoredEntryIncomplete { file: f })),
     ),
     concat(
-      [
+      seq(parts: [[
         bash_build_or_else(
           left: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), var(n: "EXPECTED"), staged(file: release_bins_preimage_name)]),
           right: bash_build_subshell_from_stmts(stmts: [
@@ -656,21 +668,22 @@ fn release_bins_outcome_statements() -> List<Node> {
             refuse(r: StoredPreimageDiffers),
           ]),
         ),
-        digest_of(name: "STORED_DIGEST", path: staged(file: release_bins_preimage_name)),
+      ], digest_of(name: "STORED_DIGEST", path: staged(file: release_bins_preimage_name)), [
         or_refuse(check: key_matches(digest_var: "STORED_DIGEST"), r: StoredPreimageKeyMismatch),
         roster_file_statement(),
-        manifest_roster_check(manifest: staged(file: release_bins_manifest_name), r: StoredManifestRosterMismatch),
+      ], manifest_roster_check(manifest: staged(file: release_bins_manifest_name), r: StoredManifestRosterMismatch), [
         cmd(ws: [lit(t: "rm"), lit(t: "-rf"), staged(file: "unpacked")]),
         cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), staged(file: "unpacked")]),
         cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), staged(file: "unpacked")]),
-        assign_sub(name: "MEMBERS", body: bash_build_pipe(left: cmd(ws: [lit(t: "ls"), lit(t: "-A"), staged(file: "unpacked")]), right: cmdl(ls: ["sort"]))),
+        produce_to(file: "members.out", command: cmd(ws: [lit(t: "ls"), lit(t: "-A"), staged(file: "unpacked")])),
+        read_back(name: "MEMBERS", file: "members.out", reader: ["sort"]),
         assign_sub(name: "ROSTER_SORTED", body: cmd(ws: [lit(t: "sort"), temp(file: "release-bins.roster")])),
         or_refuse(check: test_words(ws: [var(n: "MEMBERS"), lit(t: "="), var(n: "ROSTER_SORTED")]), r: StoredPackMembersNotRoster),
         member_digest_check(dir: staged(file: "unpacked"), manifest: staged(file: release_bins_manifest_name), r: StoredMemberDigestMismatch),
         cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
         cmd(ws: [lit(t: "cp"), lit(t: "-pR"), staged(file: "unpacked/."), rooted(file: "target/release/")]),
         cmd(ws: [lit(t: "rm"), lit(t: "-rf"), staged(file: "unpacked")]),
-      ],
+      ]]),
       concat(
         release_bins_receipt_statements(kind: ReleaseBinsReuseReceipt),
         [append_line(file_var: "GITHUB_OUTPUT", line: lit(t: join(["outcome=", release_bins_reuse_wire], "")))],
@@ -719,26 +732,26 @@ fn release_bins_consumer_statements() -> List<Node> {
     ),
     concat(
       concat(
-        [
+        concat(
           digest_of(name: "DOWNLOADED_DIGEST", path: rooted(file: release_bins_preimage_name)),
-          or_refuse(check: key_matches(digest_var: "DOWNLOADED_DIGEST"), r: ConsumerPreimageKeyMismatch),
-        ],
+          [or_refuse(check: key_matches(digest_var: "DOWNLOADED_DIGEST"), r: ConsumerPreimageKeyMismatch)],
+        ),
         source_closure_statements(),
       ),
-      [
+      seq(parts: [[
         or_refuse(
           check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), rooted(file: release_bins_preimage_name)]),
           r: ConsumerSourceTreeMismatch,
         ),
         roster_file_statement(),
-        manifest_roster_check(manifest: rooted(file: release_bins_manifest_name), r: ConsumerManifestRosterMismatch),
+      ], manifest_roster_check(manifest: rooted(file: release_bins_manifest_name), r: ConsumerManifestRosterMismatch), [
         bash_build_assign(name: "CHECK", value: temp(file: "release-bins-check")),
         cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "CHECK")]),
         cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "CHECK")]),
         cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), rooted(file: ci_release_bins_archive_name), lit(t: "-C"), var(n: "CHECK")]),
         member_digest_check(dir: var(n: "CHECK"), manifest: rooted(file: release_bins_manifest_name), r: ConsumerMemberDigestMismatch),
         cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "CHECK")]),
-      ],
+      ]]),
     ),
   )
 }

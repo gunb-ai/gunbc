@@ -138,19 +138,24 @@ jobs:
           EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
           AXIS_PRODUCER=$("$CARGO_BIN" '-V')
           '[' '-n' "$AXIS_PRODUCER" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_PRODUCER read back empty, so the key would not name the build; refusing to key'; exit 1)
-          AXIS_HOST=$('rustc' '-vV' | 'sed' '-n' 's/^host: //p')
-          AXIS_CC=$('cc' '--version' 2>&1 | 'head' '-n' '1')
-          AXIS_LD=$('ld' '--version' 2>&1 | 'head' '-n' '1')
-          AXIS_LIBC=$('ldd' '--version' 2>&1 | 'head' '-n' '1')
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-host.out'
+          AXIS_HOST=$('sed' '-n' 's/^host: //p' "$RUNNER_TEMP"'/rustc-host.out')
+          'cc' '--version' > "$RUNNER_TEMP"'/AXIS_CC.out'
+          AXIS_CC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_CC.out')
+          'ld' '--version' > "$RUNNER_TEMP"'/AXIS_LD.out'
+          AXIS_LD=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LD.out')
+          'ldd' '--version' > "$RUNNER_TEMP"'/AXIS_LIBC.out'
+          AXIS_LIBC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LIBC.out')
           '[' '-n' "$AXIS_HOST" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_HOST read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$AXIS_CC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_CC read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$AXIS_LD" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LD read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$AXIS_LIBC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LIBC read back empty, so the key would not name the build; refusing to key'; exit 1)
-          AXIS_TOOLCHAIN=$('rustc' '-vV' | 'tr' '
-          ' ';')
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
+          AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
           '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
           ('printf' 'kind=%s\n' 'gunbc.fleet_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin discover_source_root_ingest --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "$SOURCE_CLOSURE" "$RUSTFLAGS" "$CARGO_ENCODED_RUSTFLAGS" "$CC" "$CFLAGS" "$LDFLAGS" 'claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
-          PREIMAGE_DIGEST=$('sha256sum' "$EXPECTED" | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
+          PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
           KEY='release-bins-'"$PREIMAGE_DIGEST"
           'rm' '-rf' "$ROOT"'/.release-bins-staging'
           'mkdir' '-p' "$ROOT"'/.release-bins-staging'
@@ -207,7 +212,8 @@ jobs:
           '[' '-f' "$STAGE"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.manifest is missing'; exit 1)
           '[' '-f' "$STAGE"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.tgz is missing'; exit 1)
           'cmp' '-s' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ('diff' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ':' 'no-op'; ('echo' '::error title=release-bins StoredPreimageDiffers::the stored preimage differs from this run'\''s independently derived preimage'; exit 1))
-          STORED_DIGEST=$('sha256sum' "$STAGE"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$STAGE"'/release-bins.preimage' > "$RUNNER_TEMP"'/STORED_DIGEST.out'
+          STORED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/STORED_DIGEST.out')
           '[' 'release-bins-'"$STORED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins StoredPreimageKeyMismatch::the stored preimage does not hash to the probed key'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
@@ -226,18 +232,21 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$STAGE"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins StoredManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          'cut' '-c' '67-' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins StoredManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
           'rm' '-rf' "$STAGE"'/unpacked'
           'mkdir' '-p' "$STAGE"'/unpacked'
           'tar' '-xzf' "$STAGE"'/release-bins.tgz' '-C' "$STAGE"'/unpacked'
-          MEMBERS=$('ls' '-A' "$STAGE"'/unpacked' | 'sort')
+          'ls' '-A' "$STAGE"'/unpacked' > "$RUNNER_TEMP"'/members.out'
+          MEMBERS=$('sort' "$RUNNER_TEMP"'/members.out')
           ROSTER_SORTED=$('sort' "$RUNNER_TEMP"'/release-bins.roster')
           '[' "$MEMBERS" '=' "$ROSTER_SORTED" ']' || ('echo' '::error title=release-bins StoredPackMembersNotRoster::the stored pack'\''s members are not exactly the roster'; exit 1)
           ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins StoredMemberDigestMismatch::a stored member'\''s sha256 differs from the manifest; refusing before any restored binary runs'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           'cp' '-pR' "$STAGE"'/unpacked/.' "$ROOT"'/target/release/'
           'rm' '-rf' "$STAGE"'/unpacked'
-          OUTPUT_DIGEST=$('sha256sum' "$STAGE"'/release-bins.manifest' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
           'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
         env:
@@ -296,7 +305,8 @@ jobs:
           ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$STAGE"'/release-bins.manifest'
           'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session'
           'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
-          OUTPUT_DIGEST=$('sha256sum' "$STAGE"'/release-bins.manifest' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
@@ -346,7 +356,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -371,7 +382,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -1615,7 +1627,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -1640,7 +1653,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -1771,7 +1785,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -1796,7 +1811,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -1860,7 +1876,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -1885,7 +1902,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -1970,7 +1988,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -1995,7 +2014,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -2045,7 +2065,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -2070,7 +2091,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -2124,7 +2146,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -2149,7 +2172,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
@@ -2290,7 +2314,8 @@ jobs:
           '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
           '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
@@ -2315,7 +2340,8 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
           CHECK="$RUNNER_TEMP"'/release-bins-check'
           'rm' '-rf' "$CHECK"
           'mkdir' '-p' "$CHECK"
