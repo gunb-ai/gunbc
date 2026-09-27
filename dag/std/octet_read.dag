@@ -111,3 +111,23 @@ fn octet_hex(octet: Int) -> String {
 fn octets_hex(octets: List<Int>) -> String {
   octets |> map(o => octet_hex(octet: o)) |> join(separator: "")
 }
+
+fn zero_extended(bytes: List<Int>, n: Int) -> List<Int> {
+  if count(bytes) >= n { bytes } else { zero_extended(bytes: list_push(bytes, 0), n: n) }
+}
+
+fn octets_overwritten(bytes: List<Int>, patch: OctetPatch) -> List<Int> {
+  let base = zero_extended(bytes: bytes, n: patch.offset + count(patch.octets))
+  concat(concat(base.take(n: patch.offset), patch.octets), base.skip(n: patch.offset + count(patch.octets)))
+}
+
+fn range_copied(original: List<Int>, bytes: List<Int>, copy: OctetRangeCopy) -> List<Int> {
+  octets_overwritten(bytes: bytes, patch: OctetPatch { offset: copy.target_offset, octets: original.skip(n: copy.source_offset).take(n: copy.length) })
+}
+
+// What a plan of range copies and literal writes means: the original, grown with zeros where the
+// plan reaches past its end, with every copy (reading only the original) and then every write
+// applied. Any realization of such a plan must produce these octets.
+fn octets_after_plan(original: List<Int>, copies: List<OctetRangeCopy>, writes: List<OctetPatch>) -> List<Int> {
+  fold(writes, init: fold(copies, init: original, f: (acc, c) => range_copied(original: original, bytes: acc, copy: c)), f: (acc, w) => octets_overwritten(bytes: acc, patch: w))
+}

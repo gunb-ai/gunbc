@@ -44,6 +44,26 @@ service shasum.Shasum {
   }
 }
 
+// The SHA-1 of `length` octets of a file from `offset`: tail(1) -c +N starts at octet N (1-based) and
+// head(1) -c stops after `length` octets, both POSIX; a file that ends inside the range digests the
+// shorter run, so a caller that needs the whole range establishes the file's size first.
+service shasum.ShasumRange {
+  operation Sha1Range {
+    input { path: String, offset: Int, length: Int }
+    output {
+      line: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["sh", "-c", "tail -c +\"$(( $2 + 1 ))\" -- \"$1\" | head -c \"$3\" | shasum -a 1", "sh", "{path}", "{offset}", "{length}"] }
+    exit {
+      0 => Unit
+      nonzero => String "the range could not be read and digested"
+    }
+  }
+}
+
 // A SHA-1 digest as 40 lowercase hex digits.
 type Sha1Hex {
   hex: String
@@ -65,5 +85,10 @@ fn shasum_line_sha1(line: String) -> Sha1Hex? {
 
 fn sha1_file(path: String) -> Sha1Hex? {
   let r = shasum.Shasum.Sha1File(path: path)
+  if r.success { shasum_line_sha1(line: r.line) } else { none }
+}
+
+fn sha1_range(path: String, offset: Int, length: Int) -> Sha1Hex? {
+  let r = shasum.ShasumRange.Sha1Range(path: path, offset: offset, length: length)
   if r.success { shasum_line_sha1(line: r.line) } else { none }
 }

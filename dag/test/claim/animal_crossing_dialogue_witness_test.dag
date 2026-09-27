@@ -4,15 +4,18 @@ import std.types { Bool, Int, List, String }
 import v2.std.algebra { any }
 import extdeps.games.animal_crossing.message {
   LineWidthRange, LineUnbounded, TextLine, message_lines,
-  MessageAccepted, MessageRefused, message_table_ends, message_table_octets, message_tokens, message_text,
+  MessageAccepted, MessageRefused, message_start, message_table_ends, message_table_octets, message_tokens, message_text,
   steering_tokens, text_message, vanilla_control_codes,
 }
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
 import extdeps.games.animal_crossing.dialogue_catalog { CatalogEntry, Personality, dialogue_catalog, personalities, personality_looks, personality_of_looks }
-import std.octet_read { OctetPatch, OctetRangeCopy }
-import extdeps.formats.gamecube.disc { GcmFile, GcmHeader }
-import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader }
-import extdeps.games.animal_crossing.disc_messages { DiscMessageLayout, MessageReplacement, MessageRewritePlan, plan_message_rewrite }
+import std.octet_read { OctetPatch, OctetRangeCopy, be_u32_at, hex_octets, octets_after_plan, octets_at, zero_extended }
+import extdeps.formats.gamecube.disc { GcmDecoded, GcmRejected, GcmFile, GcmHeader, gcm_files, gcm_find, gcm_header, gcm_header_read_length }
+import extdeps.formats.jsystem.rarc { RarcDecoded, RarcRejected, RarcFile, RarcHeader, rarc_find, rarc_header, rarc_prefix_length }
+import extdeps.games.animal_crossing.disc_messages {
+  DiscMessageLayout, MessageReplacement, MessageRewritePlan, message_archive, message_layout, message_members, message_table_image_offset,
+  plan_message_rewrite, message_data_image_offset,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -188,8 +191,8 @@ fn zero_head(n: Int, acc: List<Int>) -> List<Int> {
 // Three messages (ends 3, 5, 9) in an archive at disc offset 1000 whose data section starts 64
 // octets in: message data at data offset 0, the 12-octet table at 32.
 fn tiny_layout() -> DiscMessageLayout {
-  let data = RarcFile { path: "data/message_data.bin", entry_offset: 0, data_offset: 0, size: 9 }
-  let table = RarcFile { path: "data/message_data_table.bin", entry_offset: 20, data_offset: 32, size: 12 }
+  let data = RarcFile { path: "data/message_data.bin", flags: 33, entry_offset: 0, data_offset: 0, size: 9 }
+  let table = RarcFile { path: "data/message_data_table.bin", flags: 33, entry_offset: 20, data_offset: 32, size: 12 }
   DiscMessageLayout {
     image_size: 6000,
     disc: GcmHeader { game_code: [], dol_offset: 5000, fst_offset: 4000, fst_size: 40 },
@@ -228,4 +231,183 @@ test fn replacements_out_of_order_or_outside_the_table_are_refused() -> Bool {
   return plan_refused(rs: [MessageReplacement { id: 2, octets: [1] }, MessageReplacement { id: 1, octets: [1] }])
     && plan_refused(rs: [MessageReplacement { id: 3, octets: [1] }])
     && plan_refused(rs: [MessageReplacement { id: 1, octets: [1] }, MessageReplacement { id: 1, octets: [2] }])
+}
+
+test fn a_table_whose_ends_decrease_is_refused() -> Bool {
+  return table_refused(table: [0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 9]) && table_refused(table: [0, 0, 0, 12, 0, 0, 0, 3, 0, 0, 0, 9]) && table_refused(table: [0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 9]) == false
+}
+
+fn table_refused(table: List<Int>) -> Bool {
+  match message_table_ends(table: table) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+}
+
+// ---- an applied rewrite, decoded again ----
+
+fn hex_or_empty(hex: String) -> List<Int> {
+  match hex_octets(hex: hex) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+// An 8 KiB disc: forest_2nd.arc at 0x800 (messages "ABC" "DE" "FGHI" and their table as MRAM
+// members, extra.bin 01..05 as an ARAM member), other.bin (C8..D7) packed directly after it at
+// 0x9c0, and a 16-octet executable at 0x1c00.
+data fixture_segments: List<OctetPatch> = [
+  OctetPatch { offset: 0, octets: hex_or_empty(hex: "474146453031") },
+  OctetPatch { offset: 1058, octets: hex_or_empty(hex: "1c00000004400000003d") },
+  OctetPatch { offset: 1088, octets: hex_or_empty(hex: "0100000000000000000000030000000000000800000001c00000000f000009c000000010666f726573745f326e642e617263006f746865722e62696e") },
+  OctetPatch { offset: 2048, octets: hex_or_empty(hex: "52415243000001c00000002000000140000000600000004000000020000000000000000200000020000000080000004000000060000000e00003010000000000524f4f54000000050000000300000000444154410000000d0000000500000003ffff00000200000d000000010000001000000000ffff000002000000000000000000001000000000ffff000002000002ffffffff000000100000000000000000110000120000000000000009000000000001000011000023000000200000000c00000000000200002100003a000000400000000500000000ffff000002000000000000010000001000000000ffff0000020000020000000000000010000000002e002e2e00617263686976650064617461006d6573736167655f646174612e62696e006d6573736167655f646174615f7461626c652e62696e0065787472612e62696e") },
+  OctetPatch { offset: 2400, octets: hex_or_empty(hex: "414243444546474849") },
+  OctetPatch { offset: 2435, octets: hex_or_empty(hex: "030000000500000009") },
+  OctetPatch { offset: 2464, octets: hex_or_empty(hex: "0102030405") },
+  OctetPatch { offset: 2496, octets: hex_or_empty(hex: "c8c9cacbcccdcecfd0d1d2d3d4d5d6d7") },
+  OctetPatch { offset: 7168, octets: hex_or_empty(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") }
+]
+
+fn fixture_image() -> List<Int> {
+  octets_after_plan(original: zero_extended(bytes: [], n: 8192), copies: [], writes: fixture_segments)
+}
+
+type Decoded {
+  layout: DiscMessageLayout
+  messages: List<List<Int>>
+  extra: List<Int>
+  other: List<Int>
+  executable: List<Int>
+  mram: Int
+  aram: Int
+}
+
+fn slice(bytes: List<Int>, offset: Int, n: Int) -> List<Int> {
+  match octets_at(bytes: bytes, offset: offset, n: n) {
+    Present { value: o } => o
+    Absent => [-1]
+  }
+}
+
+fn member_octets(image: List<Int>, layout: DiscMessageLayout, path: String) -> List<Int> {
+  match rarc_find(files: layout.archive_files, path: path) {
+    Absent => [-1]
+    Present { value: f } => slice(bytes: image, offset: layout.archive.offset + layout.archive_header.data_start + f.data_offset, n: f.size)
+  }
+}
+
+fn file_octets(image: List<Int>, files: List<GcmFile>, path: String) -> List<Int> {
+  match gcm_find(files: files, path: path) {
+    Absent => [-1]
+    Present { value: f } => slice(bytes: image, offset: f.offset, n: f.size)
+  }
+}
+
+fn messages_of(image: List<Int>, layout: DiscMessageLayout) -> List<List<Int>> {
+  let data = slice(bytes: image, offset: message_data_image_offset(layout: layout), n: layout.data_file.size)
+  fold(layout.ends, init: [], f: (acc, e) => list_push(acc, slice(bytes: data, offset: message_start(ends: layout.ends, id: count(acc)), n: e - message_start(ends: layout.ends, id: count(acc)))))
+}
+
+fn decoded_with(image: List<Int>, layout: DiscMessageLayout) -> Decoded {
+  Decoded {
+    layout: layout,
+    messages: messages_of(image: image, layout: layout),
+    extra: member_octets(image: image, layout: layout, path: "data/extra.bin"),
+    other: file_octets(image: image, files: layout.disc_files, path: "other.bin"),
+    executable: slice(bytes: image, offset: layout.disc.dol_offset, n: 16),
+    mram: layout.archive_header.mram_length,
+    aram: layout.archive_header.aram_length,
+  }
+}
+
+fn decode(image: List<Int>) -> Decoded? {
+  match gcm_header(header: image.take(n: gcm_header_read_length)) {
+    GcmRejected { reason: _ } => none
+    GcmDecoded { value: disc } =>
+      match gcm_files(fst: slice(bytes: image, offset: disc.fst_offset, n: disc.fst_size)) {
+        GcmRejected { reason: _ } => none
+        GcmDecoded { value: files } =>
+          match message_archive(disc_files: files) {
+            MessageRefused { reason: _ } => none
+            MessageAccepted { value: archive } =>
+              match rarc_header(head: slice(bytes: image, offset: archive.offset, n: rarc_prefix_length)) {
+                RarcRejected { reason: _ } => none
+                RarcDecoded { value: h } => {
+                  let head = slice(bytes: image, offset: archive.offset, n: h.data_start)
+                  match message_members(archive_head: head, archive_header: h) {
+                    MessageRefused { reason: _ } => none
+                    MessageAccepted { value: members } =>
+                      match message_table_ends(table: slice(bytes: image, offset: message_table_image_offset(archive: archive, archive_header: h, members: members), n: members.table_file.size)) {
+                        MessageRefused { reason: _ } => none
+                        MessageAccepted { value: ends } =>
+                          match message_layout(image_size: count(image), disc: disc, disc_files: files, archive: archive, archive_head: head, archive_header: h, members: members, ends: ends) {
+                            MessageRefused { reason: _ } => none
+                            MessageAccepted { value: layout } => Present { value: decoded_with(image: image, layout: layout) }
+                          }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn extra_offset(layout: DiscMessageLayout) -> Int {
+  match rarc_find(files: layout.archive_files, path: "data/extra.bin") {
+    Absent => -100000
+    Present { value: f } => f.data_offset
+  }
+}
+
+fn filled(n: Int, value: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { filled(n: n, value: value, acc: list_push(acc, value)) }
+}
+
+// Plans `replacement` against the fixture, applies the plan, decodes the output from scratch, and
+// holds every observable to what the edit should leave: the three messages (one replaced), the
+// untouched members and files, the preload region lengths, the archive's full advertised extent,
+// and zeros in the alignment gap after its last member.
+fn applied_rewrite_holds(replacement: MessageReplacement, archive_moves: Bool, mram: Int, aram: Int) -> Bool {
+  let image = fixture_image()
+  match decode(image: image) {
+    Absent => false
+    Present { value: before } =>
+      match plan_message_rewrite(layout: before.layout, replacements: [replacement]) {
+        MessageRefused { reason: _ } => false
+        MessageAccepted { value: plan } => {
+          let out = octets_after_plan(original: image, copies: plan.copies, writes: plan.writes)
+          match decode(image: out) {
+            Absent => false
+            Present { value: after } => {
+              let expected = fold(before.messages, init: [], f: (acc, m) => list_push(acc, if count(acc) == replacement.id { replacement.octets } else { m }))
+              let arc_end = plan.archive_offset + plan.archive_size
+              let gap_start = after.layout.archive.offset + after.layout.archive_header.data_start + extra_offset(layout: after.layout) + 5
+              after.messages == expected
+                && after.extra == before.extra
+                && after.other == before.other
+                && after.executable == before.executable
+                && (after.layout.archive.offset != before.layout.archive.offset) == archive_moves
+                && after.layout.archive.size == plan.archive_size
+                && count(out) >= arc_end
+                && slice(bytes: out, offset: gap_start, n: arc_end - gap_start) == filled(n: arc_end - gap_start, value: 0, acc: [])
+                && after.mram == mram
+                && after.aram == aram
+            }
+          }
+        }
+      }
+  }
+}
+
+test fn a_grown_message_relocates_the_archive_and_everything_else_survives() -> Bool {
+  return applied_rewrite_holds(replacement: MessageReplacement { id: 1, octets: filled(n: 1000, value: 90, acc: []) }, archive_moves: true, mram: 1056, aram: 32)
+}
+
+test fn a_message_that_still_fits_is_rewritten_in_place() -> Bool {
+  return applied_rewrite_holds(replacement: MessageReplacement { id: 1, octets: [80, 81, 82, 83] }, archive_moves: false, mram: 64, aram: 32)
+}
+
+test fn a_shrunk_message_is_rewritten_in_place() -> Bool {
+  return applied_rewrite_holds(replacement: MessageReplacement { id: 2, octets: [80] }, archive_moves: false, mram: 64, aram: 32)
 }

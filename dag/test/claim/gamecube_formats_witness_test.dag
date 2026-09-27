@@ -3,9 +3,9 @@ module test.claim.gamecube_formats_witness
 import std.types { Bool, Int, List, String }
 import std.octet_read { OctetPatch, OctetRangeCopy, be_u16_at, be_u32_at, be_u32_octets, hex_octets, octets_hex }
 import extdeps.tools.xxd { xxd_revert_lines, xxd_revert_patch_text }
-import extdeps.tools.dd { dd_block_size }
+import extdeps.tools.dd { DdCopied, DdCopyRefused, DdCopyOutcome, dd_block_size, dd_copy_verdict }
 import extdeps.formats.gamecube.disc { GcmDecoded, GcmRejected, GcmFile, GcmHeader, gcm_files, gcm_placement }
-import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader, RarcResize, rarc_repack }
+import extdeps.formats.jsystem.rarc { RarcDecoded, RarcRejected, RarcFile, RarcHeader, RarcRepack, RarcResize, rarc_repack }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -95,19 +95,77 @@ data synthetic_rarc_header: RarcHeader = RarcHeader {
   node_offset: 32, entry_offset: 48, string_offset: 56,
 }
 data synthetic_rarc_files: List<RarcFile> = [
-  RarcFile { path: "y", entry_offset: 20, data_offset: 32, size: 40 },
-  RarcFile { path: "x", entry_offset: 0, data_offset: 0, size: 10 },
+  RarcFile { path: "y", flags: 33, entry_offset: 20, data_offset: 32, size: 40 },
+  RarcFile { path: "x", flags: 33, entry_offset: 0, data_offset: 0, size: 10 },
 ]
 
+fn repacked(files: List<RarcFile>, resizes: List<RarcResize>) -> RarcRepack? {
+  match rarc_repack(header: synthetic_rarc_header, files: files, resizes: resizes) {
+    RarcDecoded { value: r } => Present { value: r }
+    RarcRejected { reason: _ } => none
+  }
+}
+
+fn region_lengths(r: RarcRepack) -> List<Int> {
+  match get(r.header_patches, 1) {
+    null => []
+    other => other.octets
+  }
+}
+
 test fn rarc_repack_without_resizes_is_the_original_layout() -> Bool {
-  let r = rarc_repack(header: synthetic_rarc_header, files: synthetic_rarc_files, resizes: [])
-  return r.data_length == 96 && r.archive_size == 160 && (r.placements |> map(p => p.new_offset)) == [0, 32]
+  return match repacked(files: synthetic_rarc_files, resizes: []) {
+    Absent => false
+    Present { value: r } => r.data_length == 96 && r.archive_size == 160 && (r.placements |> map(p => p.new_offset)) == [0, 32]
+  }
 }
 
 test fn rarc_repack_shifts_later_members_to_the_next_boundary_and_grows_aram() -> Bool {
-  let r = rarc_repack(header: synthetic_rarc_header, files: synthetic_rarc_files, resizes: [RarcResize { path: "x", size: 40 }])
-  return (r.placements |> map(p => p.new_offset)) == [0, 64]
-    && r.data_length == 128
-    && r.archive_size == 192
-    && (get(r.header_patches, 1) ?? OctetPatch { offset: -1, octets: [] }) == OctetPatch { offset: 16, octets: [0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 128] }
+  return match repacked(files: synthetic_rarc_files, resizes: [RarcResize { path: "x", size: 40 }]) {
+    Absent => false
+    Present { value: r } =>
+      (r.placements |> map(p => p.new_offset)) == [0, 64]
+        && r.data_length == 128
+        && r.archive_size == 192
+        && region_lengths(r: r) == [0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 128]
+  }
+}
+
+// An MRAM member followed by an ARAM member; growing the MRAM one moves the boundary between the
+// regions, which the loader reads from the MRAM length.
+data mixed_rarc_files: List<RarcFile> = [
+  RarcFile { path: "m", flags: 17, entry_offset: 0, data_offset: 0, size: 32 },
+  RarcFile { path: "a", flags: 33, entry_offset: 20, data_offset: 32, size: 32 },
+]
+
+test fn growing_an_mram_member_grows_mram_not_aram() -> Bool {
+  return match repacked(files: mixed_rarc_files, resizes: [RarcResize { path: "m", size: 64 }]) {
+    Absent => false
+    Present { value: r } => region_lengths(r: r) == [0, 0, 0, 96, 0, 0, 0, 64, 0, 0, 0, 32]
+  }
+}
+
+test fn interleaved_or_unflagged_regions_are_refused() -> Bool {
+  let interleaved = [
+    RarcFile { path: "a", flags: 33, entry_offset: 0, data_offset: 0, size: 8 },
+    RarcFile { path: "m", flags: 17, entry_offset: 20, data_offset: 32, size: 8 },
+  ]
+  let unflagged = [RarcFile { path: "n", flags: 1, entry_offset: 0, data_offset: 0, size: 8 }]
+  return repacked(files: interleaved, resizes: []) == none && repacked(files: unflagged, resizes: []) == none
+}
+
+fn copied(o: DdCopyOutcome) -> Bool {
+  match o {
+    DdCopied => true
+    DdCopyRefused { reason: _ } => false
+  }
+}
+
+// dd exiting 0 is not a copy: a source that ends inside the range leaves a short copy behind and
+// still exits 0, so the source's length and the copied range's digest both have to hold.
+test fn a_copy_counts_only_when_the_source_covers_the_range_and_the_digests_match() -> Bool {
+  return copied(o: dd_copy_verdict(source_covers_range: true, dd_succeeded: true, ranges_equal: true))
+    && !copied(o: dd_copy_verdict(source_covers_range: false, dd_succeeded: true, ranges_equal: true))
+    && !copied(o: dd_copy_verdict(source_covers_range: true, dd_succeeded: true, ranges_equal: false))
+    && !copied(o: dd_copy_verdict(source_covers_range: true, dd_succeeded: false, ranges_equal: true))
 }

@@ -1,8 +1,10 @@
 module extdeps.tools.dd
 
-import std.types { Bool, Int, String, Unit }
+import std.types { Bool, FilePath, Int, String, Unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.octet_read { OctetRangeCopy }
+import extdeps.tools.shasum { sha1_range }
+import extdeps.tools.wc { FileByteCountObserved, FileByteCountUnavailable, file_byte_count_via_wc }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -57,15 +59,54 @@ fn dd_block_size(copy: OctetRangeCopy) -> Int {
   dd_block_size_from(size: dd_block_size_ceiling, copy: copy)
 }
 
-fn dd_copy_range(source: String, target: String, copy: OctetRangeCopy) -> Bool {
-  let bs = dd_block_size(copy: copy)
-  let r = dd.Dd.CopyBlocks(
-    source: source,
-    target: target,
-    block_size: bs,
-    skip: copy.source_offset / bs,
-    seek: copy.target_offset / bs,
-    count: copy.length / bs,
-  )
-  r.success
+// dd's exit status says the process ran, not that `count` blocks were copied: a source that ends
+// inside the range yields a short final read, a partial copy, and exit 0. So a copy is admitted only
+// when the source is long enough to hold the range, dd succeeded, and the target's range then
+// digests the same as the source's (extdeps.tools.shasum sha1_range). A range comparison by cmp is
+// not used because BSD cmp reports EOF whenever the two files' lengths past their skip offsets
+// differ, even under -n, so it refuses every correctly shifted copy.
+type DdCopyOutcome
+  = DdCopied
+  | DdCopyRefused { reason: String }
+
+fn dd_copy_verdict(source_covers_range: Bool, dd_succeeded: Bool, ranges_equal: Bool) -> DdCopyOutcome {
+  if source_covers_range == false { DdCopyRefused { reason: "the source ends inside the requested range" } }
+  else if dd_succeeded == false { DdCopyRefused { reason: "dd failed" } }
+  else if ranges_equal == false { DdCopyRefused { reason: "after dd, the target range does not digest the same as the source range" } }
+  else { DdCopied }
+}
+
+fn source_covers(source: String, copy: OctetRangeCopy) -> Bool {
+  match file_byte_count_via_wc(path: source as FilePath) {
+    FileByteCountObserved { count: n } => copy.source_offset + copy.length <= n
+    FileByteCountUnavailable { reason: _ } => false
+  }
+}
+
+fn digests_equal(source: String, target: String, copy: OctetRangeCopy) -> Bool {
+  match sha1_range(path: source, offset: copy.source_offset, length: copy.length) {
+    Absent => false
+    Present { value: a } =>
+      match sha1_range(path: target, offset: copy.target_offset, length: copy.length) {
+        Absent => false
+        Present { value: b } => a == b
+      }
+  }
+}
+
+fn dd_copy_range(source: String, target: String, copy: OctetRangeCopy) -> DdCopyOutcome {
+  if source_covers(source: source, copy: copy) == false { dd_copy_verdict(source_covers_range: false, dd_succeeded: false, ranges_equal: false) }
+  else {
+    let bs = dd_block_size(copy: copy)
+    let r = dd.Dd.CopyBlocks(
+      source: source,
+      target: target,
+      block_size: bs,
+      skip: copy.source_offset / bs,
+      seek: copy.target_offset / bs,
+      count: copy.length / bs,
+    )
+    if r.success == false { dd_copy_verdict(source_covers_range: true, dd_succeeded: false, ranges_equal: false) }
+    else { dd_copy_verdict(source_covers_range: true, dd_succeeded: true, ranges_equal: digests_equal(source: source, target: target, copy: copy)) }
+  }
 }

@@ -221,11 +221,34 @@ fn message_indices(from: Int, to: Int, acc: List<Int>) -> List<Int> {
 }
 
 // Each message's end offset in the data file, in id order.
+// Each entry ends one message where the next begins, so the ends never decrease: a decreasing
+// entry would give a message a negative length. `bad` is the first such message id, or -1.
+type EndsOrderFold {
+  previous: Int
+  id: Int
+  bad: Int
+}
+
+fn ends_order_step(acc: EndsOrderFold, end: Int) -> EndsOrderFold {
+  if acc.bad >= 0 { acc }
+  else if end < acc.previous { EndsOrderFold { previous: acc.previous, id: acc.id, bad: acc.id } }
+  else { EndsOrderFold { previous: end, id: acc.id + 1, bad: -1 } }
+}
+
+fn first_decreasing_end(ends: List<Int>) -> Int {
+  fold(ends, init: EndsOrderFold { previous: 0, id: 0, bad: -1 }, f: (acc, e) => ends_order_step(acc: acc, end: e)).bad
+}
+
 fn message_table_ends(table: List<Int>) -> MessageOutcome<List<Int>> {
   if count(table) % 4 != 0 { MessageRefused { reason: "message table length is not a multiple of 4" } }
   else {
     let r = fold(message_indices(from: 0, to: count(table) / 4, acc: []), init: TableFold { ends: [], valid: true }, f: (acc, i) => table_step(table: table, acc: acc, index: i))
-    if r.valid { MessageAccepted { value: r.ends } } else { MessageRefused { reason: "message table entry unreadable" } }
+    if r.valid == false { MessageRefused { reason: "message table entry unreadable" } }
+    else {
+      let bad = first_decreasing_end(ends: r.ends)
+      if bad >= 0 { MessageRefused { reason: join(["message table end ", to_string(bad), " is below the one before it"], "") } }
+      else { MessageAccepted { value: r.ends } }
+    }
   }
 }
 

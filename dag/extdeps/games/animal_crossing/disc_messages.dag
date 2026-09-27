@@ -8,7 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.formats.gamecube.disc {
   GcmFile, GcmHeader, gcm_find, gcm_placement, gcm_fst_entry_location_offset, gcm_fst_entry_location_octets,
 }
-import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader, RarcPlacement, RarcRepack, RarcResize, rarc_find, rarc_files, rarc_repack }
+import extdeps.formats.jsystem.rarc { RarcDecoded, RarcRejected, RarcFile, RarcHeader, RarcPlacement, RarcRepack, RarcResize, rarc_find, rarc_files, rarc_repack }
 import extdeps.games.animal_crossing.message {
   MessageAccepted, MessageRefused, MessageOutcome,
   message_archive_path, message_data_path, message_table_path, message_start, message_end, message_table_octets,
@@ -251,23 +251,35 @@ fn plan_message_rewrite(layout: DiscMessageLayout, replacements: List<MessageRep
   else {
     let ends = rewritten_ends(layout: layout, replacements: replacements)
     let table = message_table_octets(ends: ends)
-    let repack = rarc_repack(header: layout.archive_header, files: layout.archive_files, resizes: [
+    match rarc_repack(header: layout.archive_header, files: layout.archive_files, resizes: [
       RarcResize { path: message_data_path, size: get(ends, count(ends) - 1) ?? 0 },
       RarcResize { path: message_table_path, size: count(table) },
-    ])
-    let at = gcm_placement(header: layout.disc, files: layout.disc_files, target: layout.archive, new_size: repack.archive_size, image_size: layout.image_size)
-    let in_place = at == layout.archive.offset
-    let members = fold(repack.placements, init: MemberFold { copies: [], writes: [], cursor: 0 }, f: (acc, p) => member_step(layout: layout, replacements: replacements, table: table, data_at: at + layout.archive_header.data_start, in_place: in_place, acc: acc, p: p))
-    let old_end = layout.archive.offset + layout.archive.size
-    let new_end = at + repack.archive_size
-    let tail = if in_place && new_end < old_end { [OctetPatch { offset: new_end, octets: zero_octets(n: old_end - new_end) }] } else { [] }
-    match gcm_fst_entry_location_octets(offset: at, size: repack.archive_size) {
-      Absent => MessageRefused { reason: "archive placement does not fit the file system table's 32-bit fields" }
-      Present { value: fst_octets } => {
-        let head = OctetPatch { offset: at, octets: fold(repack.header_patches, init: layout.archive_head, f: (acc, p) => overwrite(bytes: acc, patch: p)) }
-        let fst = OctetPatch { offset: gcm_fst_entry_location_offset(header: layout.disc, target: layout.archive), octets: fst_octets }
-        MessageAccepted { value: MessageRewritePlan { copies: members.copies, writes: concat(concat([head, fst], members.writes), tail), archive_offset: at, archive_size: repack.archive_size } }
-      }
+    ]) {
+      RarcRejected { reason: r } => MessageRefused { reason: r }
+      RarcDecoded { value: repack } => plan_repacked_archive(layout: layout, replacements: replacements, table: table, repack: repack)
+    }
+  }
+}
+
+// Every octet of the new archive is written or copied: its header region, each member, the
+// alignment gap before each member, and the gap after the last one up to the archive's advertised
+// size. When the archive stays in place and shrinks, the octets it no longer covers are cleared.
+fn plan_repacked_archive(layout: DiscMessageLayout, replacements: List<MessageReplacement>, table: List<Int>, repack: RarcRepack) -> MessageOutcome<MessageRewritePlan> {
+  let at = gcm_placement(header: layout.disc, files: layout.disc_files, target: layout.archive, new_size: repack.archive_size, image_size: layout.image_size)
+  let in_place = at == layout.archive.offset
+  let data_at = at + layout.archive_header.data_start
+  let members = fold(repack.placements, init: MemberFold { copies: [], writes: [], cursor: 0 }, f: (acc, p) => member_step(layout: layout, replacements: replacements, table: table, data_at: data_at, in_place: in_place, acc: acc, p: p))
+  let trailing = repack.data_length - members.cursor
+  let pad = if trailing > 0 { [OctetPatch { offset: data_at + members.cursor, octets: zero_octets(n: trailing) }] } else { [] }
+  let old_end = layout.archive.offset + layout.archive.size
+  let new_end = at + repack.archive_size
+  let tail = if in_place && new_end < old_end { [OctetPatch { offset: new_end, octets: zero_octets(n: old_end - new_end) }] } else { [] }
+  match gcm_fst_entry_location_octets(offset: at, size: repack.archive_size) {
+    Absent => MessageRefused { reason: "archive placement does not fit the file system table's 32-bit fields" }
+    Present { value: fst_octets } => {
+      let head = OctetPatch { offset: at, octets: fold(repack.header_patches, init: layout.archive_head, f: (acc, p) => overwrite(bytes: acc, patch: p)) }
+      let fst = OctetPatch { offset: gcm_fst_entry_location_offset(header: layout.disc, target: layout.archive), octets: fst_octets }
+      MessageAccepted { value: MessageRewritePlan { copies: members.copies, writes: concat(concat(concat([head, fst], members.writes), pad), tail), archive_offset: at, archive_size: repack.archive_size } }
     }
   }
 }
