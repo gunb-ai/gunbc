@@ -36,8 +36,10 @@ increment does not yet connect that DNS mutation consumer.
 Live status: secret creation and the allowlist are operator-reported. No enabled
 version or applied IAM binding has been independently observed. This local shell
 has no WIF token or gcloud installation. No provider request, IAM write, key
-access, or DNS mutation has been executed. A read-only CI mode that supplies WIF
-and records version metadata remains to be connected before live verification.
+access, or DNS mutation has been executed. The `namecheap_observe` fleet mode now has a dedicated job that supplies WIF
+and records the exact secret version plus authenticated getHosts readback. It
+still must land on main and its federation must converge before a live dispatch
+can pass the provider's main-only claim pins.
 The earlier DNS model lives on `work/daily-end-to-end`; this lane is based on the
 current repository so it can reuse the landed approval app rather than copying
 its newer authorities into that older checkout. The previous local `api_key_file`
@@ -49,3 +51,44 @@ existing approval, expiry, stale-policy and controller-trust controls. All five
 `namecheap_credential_witness_test` claims passed. These are model checks, not
 live GCP or Namecheap observations. The current repository binary was required;
 the older stage0 experiment binary cannot parse this base's newer declarations.
+
+
+## Read-only verification workflow
+
+`fleet-converge` mode `namecheap_observe` uses the selected fleet runner and the
+`namecheap-dns` environment. The build and observer both check out the event SHA;
+`expected_revision` cannot substitute another revision under the trusted WIF
+identity. The shared fleet job is excluded, and this job receives no SSH key.
+
+The entry checks public IPv4 egress against the owner-reported allowlist, fetches
+one Secret Manager version through the shared checked reader, and issues only
+`namecheap.domains.dns.getHosts`. The encoded query travels to curl via stdin,
+not argv or a persistent credential file. There is no setter or configurable
+command in this provider interface. Every read has a timeout. Transport and
+provider refusals omit raw response bodies, and a response that contains the
+credential is withheld before decoding or writing the receipt.
+
+The XML subset reader refuses unsupported syntax and ambiguous envelopes rather
+than guessing: DTDs and external entities, duplicate attributes, extra documents,
+namespace overrides, malformed records, duplicate provider record IDs, and a
+response for another domain/command cannot yield an observation. It preserves
+all provider host attributes, including unknown ones. Unsupported XML features
+(including numeric character references) are a located read refusal; this is not
+a claim to implement every XML document.
+
+`target/namecheap-observation.json` records the run ID, attempt, revision, start
+time, exact credential version, account, observed public egress, domain and
+returned host fields. The job uploads it only after success, so failure cannot
+publish a previous run's receipt. `mail_mode=unobserved` and
+`write_authority=withheld` are deliberate: getHosts does not independently prove
+the console's mail mode, and this observer grants no DNS mutation authority.
+
+The remaining live sequence is: land the reviewed code on main; observe/update
+the existing IAM controller's resource-local bootstrap reach for the new target;
+run `gcp_iam_converge` and approve its exact plan in the existing app; then run
+`namecheap_observe` on a runner whose public egress is allowlisted. Secret
+possession, a modeled grant, and a pure witness are not substitutes for those
+readbacks. Full-zone DNS mutation, DNS-01 renewal coordination, and dashboard
+fleet cutover remain separate unfinished consumers of this observation.
+
+Provider authority: [Namecheap getHosts](https://www.namecheap.com/support/api/methods/domains-dns/get-hosts/).

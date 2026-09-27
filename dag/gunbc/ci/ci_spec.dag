@@ -889,6 +889,11 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
   function: "runner_password_session_tool_converge_ci_wet",
 }
 
+data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/namecheap/observe.dag",
+  function: "namecheap_observe_ci_wet",
+}
+
 data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/host_credential_custody_converge.dag",
   function: "host_credential_custody_converge_ci_wet",
@@ -1252,6 +1257,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
+    gunbc_ci_namecheap_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_host_reset_return_target,
@@ -3325,5 +3331,16 @@ fn gunbc_ci_heal_publication_publish_invoke() -> String {
     function: gunbc_ci_heal_publication_publish_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+
+fn gunbc_ci_namecheap_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_namecheap_observe_target.entry,
+    function: gunbc_ci_namecheap_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/namecheap-observe-execution.txt"
   )
 }
