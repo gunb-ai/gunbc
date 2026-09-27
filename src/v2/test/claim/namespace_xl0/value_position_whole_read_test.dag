@@ -127,7 +127,7 @@ data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\ni
 // position in two declarations keeps the same type and content hash (no occurrence in the type).
 data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(x) { x }\n    g\n  }, v: p)\n}\n"
 
-data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_order(p: Bool) -> Bool { vpw_site(f: (y, x) => y, v: p) }\n"
+data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_order_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_order(p: Bool) -> Bool { vpw_order_site(f: (y, x) => y, v: p) }\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
