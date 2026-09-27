@@ -20,7 +20,6 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.node {
-  Atom,
   Edge,
   Node,
   Symbol,
