@@ -1,5 +1,6 @@
 module v2.test.claim.refinement_discharge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
@@ -58,7 +59,7 @@ fn rdt_false() -> Node {
 // infer's own output over the application, with ONE supplied obligation naming it.
 fn rdt_obligated(body: Node) -> Optional<ObligatedInferredTree> {
   let app = rdt_application(body: body)
-  match infer(tree: app) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: app)) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: t, diagnostics: _ } =>
       optional_present(value: ObligatedInferredTree {
@@ -115,7 +116,7 @@ test fn rdt_an_unevaluable_application_refuses_undischargeable_whatever_its_body
 
 // (2) ZERO OBLIGATIONS: the identity, and the cost path every module takes today.
 test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
-  match infer(tree: rdt_application(body: rdt_true())) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: rdt_application(body: rdt_true()))) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       match discharge_refinement_obligations(t: t) {

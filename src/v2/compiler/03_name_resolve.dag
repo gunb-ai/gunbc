@@ -14,7 +14,7 @@ import v2.compiler.resolve {
   ResolveNodeWalk,
   ResolveWalkRefused,
   ResolvedTree,
-  resolve_walk_outcome,
+  resolved_tree_outcome,
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
   try_edge_declared_binding
@@ -772,6 +772,8 @@ fn resolve_with_admission_policy(
   )
 }
 
+// The admitted namespace is built over the context's own index (namespace_for_subject_in_context),
+// so that index is the one this resolution consulted. A refused context resolved nothing.
 fn resolve_with_admission_context_policy(
   context: Outcome<ResolutionContext>,
   admission: Admission,
@@ -779,13 +781,20 @@ fn resolve_with_admission_context_policy(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  resolve_walk_outcome(w: resolve_walk_with_admission_context_policy(
-    context: context,
-    admission: admission,
-    index: index,
-    active_roots: active_roots,
-    policy: policy
-  ))
+  match context {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: shared, diagnostics: _ } =>
+      resolved_tree_outcome(
+        w: resolve_walk_with_admission_context_policy(
+          context: context,
+          admission: admission,
+          index: index,
+          active_roots: active_roots,
+          policy: policy
+        ),
+        symbol_index: shared.symbol_index
+      )
+  }
 }
 
 // THE SUBJECT'S WHOLE RESOLUTION OBSERVATION, every independent failure chain in walk order. The

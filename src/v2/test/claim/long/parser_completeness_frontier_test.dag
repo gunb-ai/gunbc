@@ -29,7 +29,7 @@ fn parser_frontier_admission() -> Admission {
   }
 }
 
-fn parser_frontier_assemble_for(src: String) -> Outcome<Node> {
+fn parser_frontier_assemble_for(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: parser_frontier_ingest_for(src: src),
     admission: parser_frontier_admission(),

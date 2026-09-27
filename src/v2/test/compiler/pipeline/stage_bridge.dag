@@ -1,5 +1,6 @@
 module v2.test.compiler.pipeline.stage_bridge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.infer { InferredTree }
@@ -128,8 +129,8 @@ fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
 
 fn pipeline_inferred_arrow_from_resolved(resolved: Node) -> Outcome<InferredTree> {
   match pipeline_find_arrow_in_module(root: resolved) {
-    Present { value: arrow } => infer_and_discharge(tree: arrow)
-    Absent => infer_and_discharge(tree: resolved)
+    Present { value: arrow } => infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: arrow))
+    Absent => infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: resolved))
   }
 }
 
