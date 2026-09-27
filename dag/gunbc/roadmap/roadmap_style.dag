@@ -1230,6 +1230,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-assign-form" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
+      decl(prop: FlexWrap, value: "wrap"),
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: FlexWrap, value: "wrap"),
     ] },
@@ -1432,6 +1433,40 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-slot" }, decls: [
+      decl(prop: MarginLeft, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-signin" }, decls: [
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-signin:hover" }, decls: [
+      decl(prop: TextDecoration, value: "underline"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-name" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-signout" }, decls: [
+      decl(prop: Display, value: "inline"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-signout-btn" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Cursor, value: "pointer"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-publication" }, decls: [
       decl(prop: Background, value: "var(--issue-bg-subtle)"),

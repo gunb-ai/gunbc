@@ -2193,7 +2193,7 @@ test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_a
         && string_contains(s: h, pattern: "reply to #comment-1")
         && occurrence_count(s: h, pattern: "class=\"issue-comment issue-comment-deleted\"") == 1
         && string_contains(s: h, pattern: "<div class=\"issue-comment-body\">comment deleted</div>")
-        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 7
+        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 8
   }
 }
 
@@ -2343,36 +2343,74 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
   }
 }
 
-
-// TEMPORARY PROBE (delete after debugging)
-fn probe_assign_datalist() -> String {
-  match issue_detail_fixture_html() {
-    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
-    EmitOk { html: h } => string_at(parts: split(s: string_at(parts: split(s: h, delimiter: "<datalist"), index: 1), delimiter: "</datalist>"), index: 0)
-  }
-}
-
-// TEMPORARY PROBE (delete after debugging)
-fn probe_assign_conjuncts() -> String {
-  match issue_detail_fixture_html() {
-    EmitRejected { reason: r } => join(["REJECTED: ", r], "")
+// THE HEADER ACCOUNT AREA (owner ask 2026-09-26), witnessed in BOTH STATES through the page's
+// viewer seam. SIGNED OUT: the rightmost slot renders a Sign-in link to GET /auth/login — the
+// landed route refuses with a located cause until the OAuth config lands, and the button's
+// tooltip says so — with no avatar and no identity claim anywhere in the header.
+test fn witness_header_account_renders_signin_when_signed_out() -> Bool {
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: [],
+    viewer: "",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "")) {
+    EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() {
-        Present { value: b } => b
-        Absent => h
-      }
-      join([
-        if occurrence_count(s: body, pattern: "class=\"issue-action\"") == 0 { "T" } else { "F" },
-        if string_contains(s: body, pattern: "data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"") { "T" } else { "F" },
-        if occurrence_count(s: body, pattern: "Start Work") == 0 { "T" } else { "F" },
-        if occurrence_count(s: body, pattern: "issue-action-bar") == 0 { "T" } else { "F" },
-        if string_contains(s: body, pattern: "<span class=\"issue-field-label\">assignee</span><span class=\"issue-field-value\">") { "T" } else { "F" },
-        if string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\">F<span class=\"issue-avatar-badge\">workflow</span>") { "T" } else { "F" },
-        if string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"") { "T" } else { "F" },
-        if occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3 { "T" } else { "F" },
-      ], "")
+      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
+      occurrence_count(s: body, pattern: "<a class=\"header-account header-account-signin\" href=\"/auth/login\"") == 1
+        && string_contains(s: body, pattern: "sign in with Google — the login route refuses with a located cause until the OAuth config lands")
+        && occurrence_count(s: body, pattern: "Sign in") == 1
+        && occurrence_count(s: body, pattern: "header-account-session") == 0
+        && occurrence_count(s: body, pattern: "Sign out") == 0
   }
 }
 
+// AUTHENTICATED: the session state's principal label yields the avatar chip (initials under the
+// never-blocks law), the display name, and the small menu — one honest form, Sign out POSTing
+// /auth/logout natively.
+test fn witness_header_account_renders_avatar_name_and_signout_when_session() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
+      occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\">") == 1
+        && string_contains(s: body, pattern: "class=\"issue-avatar\" data-avatar=\"absent\">s</span><span class=\"header-account-name\">principal:google-oidc/accounts/sub-viewer</span>")
+        && string_contains(s: body, pattern: "<form class=\"header-account-signout\" method=\"post\" action=\"/auth/logout\">")
+        && occurrence_count(s: body, pattern: "header-account-signout-btn") == 1
+  }
+}
 
+// NO AUTH EVIDENCE, NO IDENTITY CLAIM: a viewer string that is NOT a principal spelling — the
+// fabric display alias is exactly what fabric service evidence yields, a machine caller — renders
+// the SIGNED-OUT affordance, never an avatar claiming a human.
+test fn witness_header_account_claims_no_identity_without_a_session() -> Bool {
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: [],
+    viewer: "fabric@gunb.ai",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "")) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
+      occurrence_count(s: body, pattern: "header-account-session") == 0
+        && occurrence_count(s: body, pattern: "header-account-signin") == 1
+  }
+}
 
+// THE RAIL-FIT LAW (owner polish 2026-09-26: the Assign button clipped the rail's right edge):
+// the input flexes with min-width 0 — it shrinks below its default intrinsic size instead of
+// overflowing — and the form wraps as the belt-and-braces, so the input+button row's declared
+// geometry fits the 34ch rail's inner width (padding included) by construction.
+test fn witness_issue_assign_form_fits_the_rail() -> Bool {
+  let css = roadmap_css()
+  string_contains(s: css, pattern: ".issue-assign-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) }")
+    && string_contains(s: css, pattern: ".issue-assign-input { font-family: var(--font-mono); font-size: var(--text-13); color: var(--issue-text); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-3); padding: var(--space-2) var(--space-4); flex: 1; min-width: 0 }")
+    && occurrence_count(s: css, pattern: "width: 34ch") == 1
+}
