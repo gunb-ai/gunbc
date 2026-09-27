@@ -106,10 +106,19 @@ fn observe_threads(nproc: List<String>?) -> ObservationAttempt<HardwareThreadCou
   }
 }
 
-// `node N cpus: a b c` -- N and every CPU a non-negative integer. A line that STARTS as a node cpus
-// line and fails this grammar is Unparsed for the whole section, never skipped.
+// THE CPU-RECORD FAMILY IS RECOGNIZED LOOSELY AND PARSED STRICTLY. A line is a CPU record when its
+// first token is `node` and its third starts with `cpus`; only then is the grammar
+// `node N cpus: a b c` applied. Recognizing by the full grammar instead would drop a malformed
+// record (`node 1 cpus 2 3`, no colon) as if it were not a record, and a valid row beside it would
+// establish a partial topology (review 5328361038). numactl's other lines -- `node N size:`,
+// `node N free:`, `node distances:`, the distance table's `node 0 1` header, `available:` -- are
+// outside the family and are ignored as the non-CPU lines they are. `node N cpus:` with no ids is a
+// well-formed EMPTY list, not a malformed one.
 fn is_node_cpus_line(line: String) -> Bool {
-  starts_with(s: line, prefix: "node ") && string_contains(s: line, pattern: " cpus:")
+  let tokens = filter(split(s: line, delimiter: " "), t => t != "")
+  count(tokens) >= 3
+    && join(tokens.take(n: 1), "") == "node"
+    && starts_with(s: join(tokens.skip(n: 2).take(n: 1), ""), prefix: "cpus")
 }
 
 fn numa_node_line(line: String) -> NumaNode? {

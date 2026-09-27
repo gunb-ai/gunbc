@@ -178,3 +178,39 @@ test fn more_available_than_total_memory_refuses_the_reading_and_the_offer() -> 
   let no_offer = match host_offered_shape(observed: o, reserve: kibibyte(count: 0), architecture: none) { ObservationRefused { cause: _ } => true  _ => false }
   refused && no_offer
 }
+
+// A CPU record missing its colon, beside a valid one, in either order: the record is kept as
+// MALFORMED (not dropped), so the topology is unread, the assessment indeterminate, fitting work is
+// withheld on health, and the proved 80-of-160 shortfall still travels with it.
+fn missing_colon_withholds_with_the_shortfall(numa: List<String>) -> Bool {
+  let o = observed(nproc: "80", numa: numa)
+  let unread = match o.numa { ObservationRefused { cause: SectionUnparsed { section: _, detail: _ } } => true  _ => false }
+  let indeterminate = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
+  let withheld = match eligibility(o: o, needed: work(threads: 8, gib: 1)) {
+    WorkloadHealthWithheld { known: ks, unknowns: _ } =>
+      any(ks, d => match d { ThreadsBelowIntent { intended: i, observed: s } => hardware_thread_count_value(t: i) == 160 && hardware_thread_count_value(t: s) == 80  _ => false })
+    _ => false
+  }
+  unread && indeterminate && withheld
+}
+
+test fn a_cpu_record_missing_its_colon_after_a_valid_row_is_kept_as_malformed() -> Bool {
+  missing_colon_withholds_with_the_shortfall(numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), "node 1 cpus 80 81"])
+}
+
+test fn a_cpu_record_missing_its_colon_before_a_valid_row_is_kept_as_malformed() -> Bool {
+  missing_colon_withholds_with_the_shortfall(numa: ["0-1", "node 1 cpus 80 81", concat("node 0 cpus: ", eighty_cpus)])
+}
+
+// The other numactl lines are NOT CPU records and do not make the section malformed: size/free
+// lines, the distances header and table, and an empty CPU list all sit beside a satisfied topology.
+test fn numactl_non_cpu_lines_and_an_empty_cpu_list_are_not_malformed() -> Bool {
+  let o = observed(nproc: "160", numa: [
+    "0-2", "available: 3 nodes (0-2)",
+    concat("node 0 cpus: ", eighty_cpus), "node 0 size: 128000 MB", "node 0 free: 120000 MB",
+    concat("node 1 cpus: ", second_eighty_cpus), "node 1 size: 128000 MB", "node 1 free: 120000 MB",
+    "node 2 cpus:", "node 2 size: 0 MB", "node 2 free: 0 MB",
+    "node distances:", "node   0   1   2", "  0:  10  20  20", "  1:  20  10  20", "  2:  20  20  10",
+  ])
+  match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalSatisfied { evidence: _ } => true  _ => false }
+}
