@@ -17,15 +17,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // so one generator serves the small fidelity specimen and the long cost specimen alike.
 //
 // WHY A LONG SPECIMEN IS A DISCRIMINATING CONTROL. The seed's eval-frame memo
-// (extdeps.realization.eval_memo) once admitted every pure call by default and keyed it by a
-// recursive content hash of its arguments. The parse threads one ParseTable through every call,
-// and that table's memo map is a new allocation after each insert, so every call re-hashed the
-// whole table: O(n) per call, O(n^2) per parse, under a key that could never recur. Measured on
-// the llv probe (probe/calm-pike-745-llv) at len80: ~75s of parse with that admission, ~1s
-// without. Admission is now by derived reuse obligation only. If default admission returns, the
-// claim below goes from a fraction of a second to tens of seconds and is refused on the per-claim budget: that
-// refusal is its red. The subject is ADMISSION, not a timing threshold, so the claim asserts only
-// that the parse is accepted and leaves cost to the budget that already binds every claim.
+// (extdeps.realization.eval_memo) keys every pure named call by a content hash of its arguments.
+// The parse threads one ParseTable through every call, and that table's memo map is a new
+// allocation after each insert. Until the map key was derived per insert
+// (v1_interpreter eval_recompute_extend_insert_hash, beside #12066's per-push list key), every
+// call re-hashed the whole table: O(n) per call, O(n^2) per parse. Measured on the llv probe
+// (probe/calm-pike-745-llv) at len80 that was ~75s of parse. If the derivation is lost, the claim
+// below goes from a fraction of a second to several seconds and is refused on the per-claim
+// budget: that refusal is its red. The claim asserts only that the parse is accepted and leaves
+// cost to the budget that already binds every claim.
 //
 // THE PAIRING OBLIGATION (DESIGN section 3): the generator is a hypothesis about what tokenize
 // emits; lpc_fidelity_small runs the real tokenizer over the same generator's text and compares
