@@ -48,11 +48,10 @@ import gunbc.fabric.engram_materialization { engram_component_identity }
 // token time, a per-tensor record is not what fetch_rows reads, and no file's SHA-256 can equal an
 // FNV of a string. The FNV rank digest is deleted, not kept beside the new one.
 //
-// WHAT REMAINS A FRONTIER. The patch still does not rebind ParallelEngramEmbedding._allocate_weights
-// (gunbc.spark.v41_runtime_candidate v41_storage_backed_patch_population says so), so the path each
-// (layer, rank) store is opened at is not yet decided by a consumer; this module keys stores by
-// (layer, rank) and names no path. TRIGGER: the wiring patch that constructs FileBackedEngramStorage
-// in _allocate_weights, which will name that path and consume v41_rank_digest_of per (layer, rank).
+// THE PATH EACH STORE IS OPENED AT is decided by its consumer, not here: this module keys stores by
+// (layer, rank), and gunbc.spark.v41_engram_store_manifest derives the launch manifest the file-backed
+// overlay reads -- each store's path from gunbc.spark.v41_row_store_encode v41_store_out_path and its
+// digest from v41_published_store_readings.
 data v41_row_store_format_revision: Nat = 2
 data v41_row_store_endianness: Endianness = LittleEndian
 data v41_row_store_rank_count: Nat = 4

@@ -329,8 +329,6 @@ fn floor_route_gap_chunk_02() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds",
       tail: Cons {
-      head: "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds",
-      tail: Cons {
       head: "test.claim.self_host_program_assembly_behavioral_witness.self_host_program_assembly_behavioral_receipt_holds",
       tail: Cons {
       head: "test.claim.self_host_program_partition_behavioral_witness.self_host_program_partition_behavioral_receipt_holds",
@@ -379,7 +377,6 @@ fn floor_route_gap_chunk_02() -> List<String> {
       tail: Cons {
       head: "test.claim.typed_witness_invocation.typed_witness_bin_run_argv_holds",
       tail: Empty {}
-    }
     }
     }
     }
