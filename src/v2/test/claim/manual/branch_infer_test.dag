@@ -76,7 +76,7 @@ fn branch_infer_positional_target(body: Node, index: Int) -> Node {
 }
 
 fn branch_infer_run(tree: ResolvedTree) -> Outcome<InferredTree> {
-  infer(tree: tree)
+  infer_and_discharge(tree: tree)
 }
 
 fn branch_infer_cond_child_is_bool(tree: InferredTree, body: Node) -> Bool {

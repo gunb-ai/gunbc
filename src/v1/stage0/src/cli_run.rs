@@ -17896,7 +17896,10 @@ fn render_witness_claim_result_text(
 /// so a shared pool re-binds bare cross-module references. This walk resolves nothing — it
 /// tokenizes and parses each file in isolation, with a fresh empty table per file — so no
 /// module of one root is ever visible to another and that objection cannot reach it.
-pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
+// The required runtime producer also participates in declaration/citation integrity.
+// This parse-only enrollment does not add it to the v1 stage0 regeneration sweep.
+pub const DAG_PARSE_SWEEP_ROOTS: [&str; 4] =
+    ["src/v1", "dag", "src/v2", "test/primitive_runtime_body"];
 
 /// The `.dag` parse sweep, as a callable phase rather than a separate binary.
 ///

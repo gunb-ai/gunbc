@@ -5,12 +5,14 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.self_host.closure_emission {
+  closure_census_refusals_json,
   closure_emission_first_refusal,
   closure_emission_json,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
 }
-import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.source_authority { SourceRootIngest, source_root_ingest_from_files }
+import gunbc.source_root_read { source_root_read, SourceRootFilesRead, SourceRootFilesRefused }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
@@ -57,71 +59,20 @@ import v2.std.text { String }
 // on one instrument is not evidence about the other in either direction, and widening the proven
 // population is something this entry does rather than a side effect of being bigger.
 //
-// WHERE THE HOST BOUNDARY IS -- AND THE FIRST VERSION OF THIS PARAGRAPH PUT IT IN THE WRONG PLACE,
-// WHICH IS CORRECTED HERE RATHER THAN SOFTENED. It read "a `.dag` fold cannot read a file", and
-// gunbc#11526 retracts that from the design document's Two CLIs rule. What is measured stays: a
-// resource METHOD on an ordinary `fn` is a located compiler refusal -- `Filesystem.Read` off a plain
-// function answers "receiver type 'Primitive(Filesystem)' establishes no method surface". What was
-// false is the conclusion drawn from it -- and the MECHANISM this paragraph offered for it was
-// false too, which gunbc#11528 settled hours after the paragraph landed. It read "resource
-// operations resolve only inside a workflow function". There is no workflow function: `workflow`
-// was never a semantic kind, only the emitter predicate `v1.compiler.emit_rust` `is_workflow_item`,
-// and that predicate is DELETED. Admissibility is the `uses` clause binding the resource into body
-// scope -- a fact about a function's declared effect requirement, not about any function kind. The
-// census is #11528's and the ruling is D12 in `gunbc.plans.demand_engine_program`, which also keeps
-// `uses` at its one meaning as an effect requirement. The FREE primitive `filesystem_read`
-// is a different route with no interpreter in it: typed by `v1.compiler.infer_method`
-// `builtin_function_registry`, bridged by `extdeps.languages.rust.emit` `rt_function_registry`, and
-// realized by `v1.compiler.runtime_rust` `rt_filesystem` as `std::fs::read_to_string`. An emitted
-// binary reads files. The seed carries the receipt in one block: `rt_filesystem` emits
-// `unrealized_host_seam` and `filesystem_read` two declarations apart, so the paragraph denying the
-// reader was landed beside the reader.
+// The native entry binds extdeps.filesystem.filesystem_io Filesystem, whose operations already
+// emit through v1.compiler.emit_rust emit_file_call. gunbc.source_root_read owns the traversal,
+// sorts the observed paths, and reads them through FilesystemExactRead. Neither an unsuccessful
+// listing nor a failed read can become an empty ingest. The legacy free filesystem_read helper
+// is not this door's transport: its content-only contract cannot carry a typed read refusal.
 //
-// SO WHAT ACTUALLY KEEPS THE WALK IN THE RENDERED MAIN IS TWO GAPS, NOT A WALL, and the difference
-// decides where the repair goes. `filesystem_read` PANICS on a missing file rather than returning a
-// typed outcome, which is the refusal arm DESIGN section 5 requires of a door whose whole job is to
-// refuse precisely; and the emitted surface carries no directory listing, which a source-root walk
-// needs before it can be a fold at all. Both close in EMISSION -- a bridged primitive gaining an
-// outcome type and a listing row -- and neither closes by growing the interpreter, so neither is a
-// reason to call this boundary permanent.
+// v2_cli_main is the one entry fold: parse before acquisition, acquire exactly the plan's roots,
+// then compile. The rendered main binds the handler, supplies argv, writes the returned text,
+// and realizes ProcessExit. Pure parse/run witnesses remain useful, and walk_cli_door executes
+// the built CLI with accepting, parse-refusal, missing-root and unreadable-source controls.
+// That instrument is operator-invoked; it is not a required CI phase.
 //
-// What is unchanged by the correction is the DECISION split, which was never the file-reading claim:
-// EVERY decision -- which verb, which refusal, what to emit, what status to exit with -- is decided
-// in this module, and that split is the capability `gunbc.source_root_eval_driver_seed_growth` names
-// as the trigger that retires ITS row: "the rendered main becomes one call into that fold". This
-// driver's main is written to that shape from the start, so it adds a door without adding the debt.
-// Closing the two gaps above moves the walk itself into this fold, which is what the second
-// generation needs.
-//
-// AND THE DOOR IS NOW WALKED THROUGH RATHER THAN ONLY COMPILED.
-// `//gunbc/instruments:v2-native-cli` used to end at cargo: the closure emitted, the crate built,
-// and the process this module decides for was started by nobody. The witnesses in
-// `v2.test.cli.v2_native_cli` executed the folds below over SUPPLIED argv and a SUPPLIED ingest,
-// which is the right subject for those rows and is not evidence that any program runs -- DESIGN
-// section 3's pairing obligation asks for one inhabitance claim that the real path executes, and
-// there was none. The instrument now spawns the built binary twice over
-// `fixtures/native_cli_door`: once with `--entry` removed, admitted only when stderr carries
-// `cli_no_entry`'s located sentence -- which is the EXECUTING evidence, because that cause is
-// produced by the fold below and by nothing else -- and once on a complete argv, which is an
-// EXPECTING-RED probe.
-//
-// THE EMIT ARM EXPECTS RED BECAUSE THIS DOOR CANNOT EMIT, MEASURED ON THE BUILT BINARY. Over the
-// fixture root it answers `infer_grounding_not_derived`; over the real corpus it answers a located
-// `parse_g0_tokens_remain` at `dag/extdeps/access/posix_effective_principal_read_op.dag`, whose
-// bytes there are the `service ... { operation ... }` form. That is consistent with the gunbc#11507
-// measurement recorded further down this file, on three different entries. The probe pins the cause
-// by NAME, so a different refusal or a crash fails the instrument, and an exit 0 fails it too and
-// says to flip it into a regression control rather than to relax it.
-//
-// WHAT THAT STILL DOES NOT MAKE IT. The second generation is unchanged and unclaimed, and the gap is
-// wider than a passing instrument would suggest: this door has never emitted any closure at all.
-//
-// THE PROTOCOL IS TWO CALLS AND A WRITE, and the shape is forced by the boundary above. The host
-// cannot know which roots to walk until the argv has been parsed, and this module cannot parse argv
-// and then read the roots itself, so the plan must come back to the host as a VALUE it can act on:
-// `v2_cli_parse` returns a plan, `v2_cli_plan_source_roots` says what to walk, and `v2_cli_run`
-// receives the resulting ingest and answers. A single call would have forced either the parse or
-// the read to the wrong side.
+// This removes the filesystem portion of source_root_eval_driver_seed_growth. It does not retire
+// that row: the eval driver's remaining host facts and orchestration are separate obligations.
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 
@@ -356,6 +307,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
 type CliRunOutcome
   = CliEmitted { text: String, closure_size: Int, refused_count: Int, refusal_detail: String }
   | CliRunRefused { reason: Symbol, detail: String }
+  | CliCensusRefused { reason: Symbol, detail: String, text: String }
   | CliUsageRefused { reason: Symbol, detail: String }
 
 // THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
@@ -422,9 +374,18 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                   }
                 }
               Rejected { diagnostics: d } =>
-                CliRunRefused {
-                  reason: diagnostics_fatal_reason(d: d),
-                  detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
+                match emitted.census_refusals {
+                  Empty =>
+                    CliRunRefused {
+                      reason: diagnostics_fatal_reason(d: d),
+                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
+                    }
+                  Cons { head: _, tail: _ } =>
+                    CliCensusRefused {
+                      reason: diagnostics_fatal_reason(d: d),
+                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans),
+                      text: closure_census_refusals_json(refusals: emitted.census_refusals, spans: emitted.spans)
+                    }
                 }
             }
           }
@@ -473,6 +434,7 @@ fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
         exit_failure(reason: detail)
       }
     CliRunRefused { reason: _, detail: detail } => exit_failure(reason: detail)
+    CliCensusRefused { reason: _, detail: detail, text: _ } => exit_failure(reason: detail)
     CliUsageRefused { reason: _, detail: detail } =>
       ExitFailure { code: exit_code_misuse, reason: detail }
   }
@@ -482,6 +444,23 @@ fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
   match outcome {
     CliEmitted { text: text, closure_size: _, refused_count: _, refusal_detail: _ } => text
     CliRunRefused { reason: _, detail: _ } => ""
+    CliCensusRefused { reason: _, detail: _, text: text } => text
     CliUsageRefused { reason: _, detail: _ } => ""
+  }
+}
+
+// One entry fold owns parse, source acquisition, and compilation. The native main supplies
+// the existing Filesystem realization; a refused plan never acquires the filesystem.
+fn v2_cli_main(argv: FreeMonoid<String>) -> CliRunOutcome {
+  let plan = v2_cli_parse(argv: argv)
+  match plan {
+    CliPlanRefused { reason: reason, detail: detail } => CliUsageRefused { reason: reason, detail: detail }
+    CliPlanParsed { verb: _ } => match source_root_read(roots: v2_cli_plan_source_roots(plan: plan)) {
+      SourceRootFilesRead { files: files } =>
+        v2_cli_run(plan: plan, ingest: source_root_ingest_from_files(files: files))
+      SourceRootFilesRefused { path: path, kind: kind, cause: cause } =>
+        CliUsageRefused { reason: ^cli_source_root_read_refused,
+          detail: concat("could not read source root at ", path, " [", kind, "]: ", cause) }
+    }
   }
 }

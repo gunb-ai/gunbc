@@ -164,10 +164,3 @@ test fn w_every_rank_launches_one_image() -> Bool {
     && all(lines, l => !string_contains(s: l.image_reference as String, pattern: "@"))
     && all(lines, l => string_contains(s: l.image_reference as String, pattern: "sha256:"))
 }
-
-test fn w_all_glm_group_b_launch_authority_claims_hold() -> Bool {
-  w_the_two_launch_projections_agree_word_for_word()
-    && w_the_head_unit_exec_line_is_the_projection()
-    && w_the_drifted_fields_reach_the_rendered_unit()
-    && w_every_rank_launches_one_image()
-}

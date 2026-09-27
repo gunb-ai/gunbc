@@ -267,6 +267,7 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
     "approval-broker-dark-install",
     "microvm-controller-install",
     "rlm-launch-deployment-receipt",
+    "gcp-iam-converge",
   ]
     && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
       e.needs == []

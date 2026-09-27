@@ -3,25 +3,26 @@ module gunbc.spark.v41_capacity_measurement
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat, nat_min }
+import std.nat { Nat, nat_min, nat_max }
 import std.measure {
   ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value,
   Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count,
   BasisPoint, basis_point, basis_point_count, concurrent_request_hundredths_count,
   Gibibyte, gibibyte, gibibyte_to_byte_size,
 }
-import std.content_hash { ContentHash }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingExplicit, PrefixCachingOmitted }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved }
 import extdeps.vllm.kv_layout { VllmReportedCapacity, observed_revisions_agree }
 import extdeps.linux.psi { PsiReading, PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable, psi_full_stall_interval }
 import extdeps.linux.diskstats { DiskstatsReading, DiskReadInterval, DiskReadMeasured, DiskReadUnmeasurable, disk_read_interval }
 import extdeps.linux.mincore { MincoreFileResidency, mincore_resident_bytes }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }
-import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
+import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, render_oci_content_digest_wire }
 import gunbc.floor_memory_demand { CgroupMemoryEvents }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
 import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyUnread, ClientBenchLatencyReported }
@@ -53,6 +54,55 @@ data v41_measurement_max_model_len: TokenCount = token_count(count: 262144)
 // The staircase concurrencies, in order. A capacity is always one of these, never a value between two.
 data v41_staircase_concurrencies: List<Nat> = [1, 2, 4, 6, 8, 12, 16]
 
+// ── THE MEASUREMENT SERVE'S LAUNCH SHAPE ─────────────────────────────────────────────────────────
+//
+// ONE SERVE FOR THE WHOLE STAIRCASE. The load generator raises concurrency; the serve is not relaunched
+// per step, because a relaunch resets the page cache, the refault and fault baselines and the KV pool
+// the stop rules and the Engram-resident capacity read across steps, and every step shares one run id
+// and one startup receipt. The launch (the V4.1 Group A realization) takes its shape from here.
+//
+// max_num_seqs is the largest staircase concurrency, derived from the plan. The other two are AXES OF
+// THE MEASUREMENT, not production policy and not measured facts: no V4.1 figure exists to ground them
+// (V4's were measured on V4 and are not borrowed), so they are declared here, recorded in every rank's
+// startup receipt as resolved, and every capacity this plan reports is a capacity AT them -- the same
+// rule extdeps.vllm.kv_cache applies to cap and pool (measured pairs at a stated utilization, no curve).
+//   gpu memory utilization 8000 bp: vLLM's pool is a fraction of the ~121 GiB unified memory; the
+//     remaining ~20% is left for the OS and the file-backed Engram page cache, whose residency is one of
+//     the three capacities measured. A different utilization is a different measurement.
+//   max_num_batched_tokens 8192: the prefill chunk per scheduler step; it also sizes the file-backed
+//     lookup's pinned staging (max_num_batched_tokens x local heads x record).
+//   prefix caching explicitly OFF: every request pays its own KV and its own Engram lookups, so the
+//     pool, residency and refault readings are not flattered by shared prefixes, and the probe cells'
+//     "prefix caching defeated" holds by the launch rather than by prompt construction alone. Left
+//     omitted, the V4.1 image would resolve it from the model config, so the engine and not this plan
+//     would decide what is measured.
+type V41MeasurementLaunchShape sole_constructor {
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  max_num_batched_tokens: TokenCount
+  gpu_memory_utilization: BasisPoint
+  prefix_caching: VllmPrefixCachingRequest
+}
+
+data v41_measurement_gpu_memory_utilization: BasisPoint = basis_point(count: 8000)
+data v41_measurement_max_num_batched_tokens: TokenCount = token_count(count: 8192)
+
+// CONSUMER: A DECLARED FRONTIER. The V4.1 TP4 Group A launch realization (zesty-ant-800's lane, the mp
+// arm route across srv5-8) reads its max_model_len, max_num_seqs, max_num_batched_tokens,
+// gpu-memory-utilization and prefix caching from this function; until it lands its dry run refuses
+// with this obligation named.
+data v41_measurement_launch_shape_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the V4.1 TP4 Group A launch realization (the mp arm route across srv5-8) takes max_model_len, max_num_seqs, max_num_batched_tokens, gpu memory utilization and prefix caching from gunbc.spark.v41_capacity_measurement v41_measurement_launch_shape and renders them into the launch. SUFFICIENT FOR: the measurement serve runs at exactly the shape the plan declares, and every rank's startup receipt can be checked against it." as NonEmptyStr)
+
+fn v41_measurement_launch_shape() -> V41MeasurementLaunchShape {
+  V41MeasurementLaunchShape {
+    max_model_len: v41_measurement_max_model_len,
+    max_num_seqs: fold(v41_staircase_concurrencies, init: nat_min(a: 0, b: 0), f: (acc, c) => nat_max(a: acc, b: c)),
+    max_num_batched_tokens: v41_measurement_max_num_batched_tokens,
+    gpu_memory_utilization: v41_measurement_gpu_memory_utilization,
+    prefix_caching: PrefixCachingExplicit { enabled: false },
+  }
+}
+
 type V41ProbeCell { context: TokenCount, concurrency: Nat }
 
 data v41_probe_cells: List<V41ProbeCell> = [
@@ -63,32 +113,52 @@ data v41_probe_cells: List<V41ProbeCell> = [
   V41ProbeCell { context: token_count(count: 262144), concurrency: 6 },
 ]
 
-// THE ENGRAM STARTUP ARMS ARE IMAGES, NOT A RUNTIME FLAG. Arm A keeps the page cache after the
-// checksum pass: it is the pre-release overlay on main. Arm B releases it: it is the image built
-// after the fetch_rows / page-release change lands. There is deliberately no switch inside one
-// image that keeps the cache (the release refuses if pages stay resident). So the arm is read off
-// the image's patch digest by a binding, and an image no binding names has no arm and refuses.
-type V41EngramStartupArm = EngramCacheRetained | EngramCacheReleased
+// THE ENGRAM STARTUP ARMS ARE IMAGES, NOT A RUNTIME FLAG, and they are named for the storage the image
+// actually SERVES. Arm A is upstream pinned: ParallelEngramEmbedding._allocate_weights constructs
+// DPSharedEngramStorage, which holds the whole table in /dev/shm and registers it with the device.
+// Every image built before the _allocate_weights cutover serves this, whatever file-backed code it
+// merely carries (the release in #12304 runs only inside FileBackedEngramStorage, which such an image
+// never constructs). Arm B is file-backed released: the first image built after the cutover, where
+// each rank opens its row store through allocate_file_backed and the page cache is released after
+// the checksum. A file-backed arm that keeps the cache is not built: the release is unconditional
+// and a switch to keep it is the escape hatch #12304 refused. The arm is read off the image by a
+// binding keyed on the image's CONFIG DIGEST, the same digest every rank's startup receipt carries,
+// and an image no binding names (or two bindings name) has no arm and refuses. The build run that
+// produced the image is carried beside the digest as its provenance.
+type V41EngramStartupArm = EngramUpstreamPinned | EngramFileBackedReleased
 
-type V41EngramArmBinding { arm: V41EngramStartupArm, patch_digest: ContentHash }
+type V41EngramArmBinding { arm: V41EngramStartupArm, image_config: OciContentDigest, build_run: NonEmptyStr }
 
-// Empty until the first srv8 image exists: its patch digest is read from that image, never typed
-// in from a prefix relayed in chat.
-data v41_engram_arm_bindings: List<V41EngramArmBinding> = []
+// Arm A: fleet-converge spark_v41_runtime_image_build run 36207135528 (tag
+// gunbc-vllm-dsv41-gb10:d73e307009a5d716), reported by proud-deer-538 2026-09-26. Built before the
+// _allocate_weights cutover, so it serves upstream pinned storage.
+data v41_engram_arm_bindings: List<V41EngramArmBinding> = [
+  V41EngramArmBinding {
+    arm: EngramUpstreamPinned,
+    image_config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
+    build_run: "36207135528" as NonEmptyStr,
+  },
+]
 
-data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image is built (after #12294) and its source-patch digest is read from the image (gunbc.spark.v41_runtime_realized); that digest is bound to EngramCacheRetained. The image built after the Engram page-release change lands is bound to EngramCacheReleased. SUFFICIENT FOR: every residency timeline cell names the arm by image content, not by a flag or a label." as NonEmptyStr)
+data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image built after the ParallelEngramEmbedding._allocate_weights cutover to allocate_file_backed finishes, and its config digest is bound to EngramFileBackedReleased with its build run. An image built after #12304 but before the cutover serves upstream pinned storage and binds to EngramUpstreamPinned, not here. SUFFICIENT FOR: both residency timelines name their arm by image content, so a cell from either image resolves to exactly one arm." as NonEmptyStr)
 
-fn v41_engram_arm_of(patch_digest: ContentHash, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
-  match list_at_optional(xs: filter(bindings, b => b.patch_digest == patch_digest), index: 0) {
-    Present { value: b } => Present { value: b.arm }
-    Absent => none
+fn v41_engram_arm_of(image: V41OciImageDigest, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
+  let wire = render_oci_content_digest_wire(d: image.config)
+  let matching = filter(bindings, b => render_oci_content_digest_wire(d: b.image_config) == wire)
+  if length(matching) != 1 {
+    none
+  } else {
+    match list_at_optional(xs: matching, index: 0) {
+      Present { value: b } => Present { value: b.arm }
+      Absent => none
+    }
   }
 }
 
 fn v41_arm_wire(a: V41EngramStartupArm) -> String {
   match a {
-    EngramCacheRetained => "A-cache-retained"
-    EngramCacheReleased => "B-cache-released"
+    EngramUpstreamPinned => "A-upstream-pinned"
+    EngramFileBackedReleased => "B-file-backed-released"
   }
 }
 
@@ -187,6 +257,16 @@ type V41RankMemoryBreakdown {
   available_kv: ByteSize
 }
 
+// AN IMAGE CAPABILITY FACT, READ FROM THE RANK'S STARTUP LOG. The V4.1 indexer top-k kernel ships as
+// the DeepSelect extension (vllm._deepselect_C). When its import fails vLLM may take a slower
+// fallback, which could dominate TTFT at 262k, so the receipt carries which one the rank ran. A
+// failed import is a recorded fact, not a refusal; a rank whose log was not read for it refuses,
+// like every other missing reading.
+type V41ImageExtensionStanding
+  = ExtensionLoaded
+  | ExtensionImportFailed { logged: NonEmptyStr }
+  | ExtensionUnobserved
+
 type V41RankStartupReading {
   run_id: NonEmptyStr
   rank: Nat
@@ -204,6 +284,7 @@ type V41RankStartupReading {
   reported: VllmReportedCapacity?
   num_gpu_blocks: Nat?
   kv_cache_groups: Nat?
+  deepselect: V41ImageExtensionStanding
 }
 
 type V41RankStartupReceipt sole_constructor {
@@ -222,6 +303,7 @@ type V41RankStartupReceipt sole_constructor {
   reported: VllmReportedCapacity
   num_gpu_blocks: Nat
   kv_cache_groups: Nat
+  deepselect: V41ImageExtensionStanding
 }
 
 fn v41_missing_if<T>(v: T?, name: String) -> List<String> {
@@ -232,7 +314,7 @@ fn v41_missing_if<T>(v: T?, name: String) -> List<String> {
 }
 
 fn v41_rank_reading_missing(r: V41RankStartupReading) -> List<String> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
     v41_missing_if(v: r.image, name: "image digest"),
     v41_missing_if(v: r.vllm_revision, name: "vLLM commit")),
     v41_missing_if(v: r.parallelism, name: "TP/DCP/PP/DP")),
@@ -245,7 +327,8 @@ fn v41_rank_reading_missing(r: V41RankStartupReading) -> List<String> {
     v41_missing_if(v: r.memory, name: "memory breakdown (free/total, weights, non-torch, activation peak, CUDA graphs, available KV)")),
     v41_missing_if(v: r.reported, name: "GPU KV cache size tokens and max concurrency")),
     v41_missing_if(v: r.num_gpu_blocks, name: "num_gpu_blocks")),
-    v41_missing_if(v: r.kv_cache_groups, name: "KV cache groups"))
+    v41_missing_if(v: r.kv_cache_groups, name: "KV cache groups")),
+    match r.deepselect { ExtensionUnobserved => ["DeepSelect extension import (vllm._deepselect_C)"]  ExtensionLoaded => [] as List<String>  ExtensionImportFailed { logged: _ } => [] as List<String> })
 }
 
 type V41RankStartupAdmission
@@ -265,15 +348,27 @@ fn v41_admit_rank_startup(r: V41RankStartupReading) -> V41RankStartupAdmission {
   Present { value: mem } => match r.reported { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
   Present { value: rep } => match r.num_gpu_blocks { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
   Present { value: blocks } => match r.kv_cache_groups { Absent => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
-  Present { value: groups } => match r.kv_format {
+  Present { value: groups } => match r.deepselect {
+    ExtensionUnobserved => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
+    ExtensionLoaded => v41_admit_rank_resolved(r: r, image: image, rev: rev, par: par, block: block, mml: mml, seqs: seqs, batched: batched, spec: spec, mem: mem, rep: rep, blocks: blocks, groups: groups)
+    ExtensionImportFailed { logged: _ } => v41_admit_rank_resolved(r: r, image: image, rev: rev, par: par, block: block, mml: mml, seqs: seqs, batched: batched, spec: spec, mem: mem, rep: rep, blocks: blocks, groups: groups)
+  } } } } } } } } } } } } }
+}
+
+fn v41_admit_rank_resolved(
+  r: V41RankStartupReading, image: V41OciImageDigest, rev: VllmSourceRevision, par: V41RankParallelism,
+  block: Nat, mml: TokenCount, seqs: Nat, batched: Nat, spec: NonEmptyStr, mem: V41RankMemoryBreakdown,
+  rep: VllmReportedCapacity, blocks: Nat, groups: Nat,
+) -> V41RankStartupAdmission {
+  match r.kv_format {
     ResolvedUnobserved => RankStartupRefused { rank: r.rank, missing: v41_rank_reading_missing(r: r) }
     ResolvedFp8DsMla => RankStartupAdmitted { receipt: V41RankStartupReceipt {
       run_id: r.run_id, rank: r.rank, host: r.host, image: image, vllm_revision: rev,
       parallelism: par, block_size: block, max_model_len: mml, max_num_seqs: seqs,
       max_num_batched_tokens: batched, spec_decode_config: spec, memory: mem, reported: rep,
-      num_gpu_blocks: blocks, kv_cache_groups: groups,
+      num_gpu_blocks: blocks, kv_cache_groups: groups, deepselect: r.deepselect,
     } }
-  } } } } } } } } } } } } }
+  }
 }
 
 // EFFECTIVE BYTES PER TOKEN IS AVAILABLE KV BYTES OVER THE ENGINE'S OWN TOKEN FIGURE. Blocks times
@@ -684,6 +779,27 @@ type V41CapacityReport {
   kv_admission: V41Capacity
   engram_resident: V41Capacity
   sla_sustainable: V41Capacity
+  indexer_kernel: V41ImageExtensionStanding
+}
+
+// WHICH INDEXER TOP-K KERNEL THE CAPACITIES WERE MEASURED ON. A report's SLA and TTFT figures belong to
+// the kernel the ranks ran, so the report carries it: if any rank's DeepSelect import failed, the
+// report says so with that rank's logged line. A refused startup receipt leaves it unobserved.
+fn v41_report_indexer_kernel(s: V41StartupAdmission) -> V41ImageExtensionStanding {
+  match s {
+    StartupRefused { causes: _ } => ExtensionUnobserved
+    StartupAdmitted { receipt: r } => {
+      let failed = flat_map(r.ranks, k => match k.deepselect {
+        ExtensionImportFailed { logged: l } => [l]
+        ExtensionLoaded => [] as List<NonEmptyStr>
+        ExtensionUnobserved => [] as List<NonEmptyStr>
+      })
+      match list_at_optional(xs: failed, index: 0) {
+        Present { value: l } => ExtensionImportFailed { logged: l }
+        Absent => ExtensionLoaded
+      }
+    }
+  }
 }
 
 // KV ADMISSION: the largest planned concurrency whose max_model_len requests fit the MIN rank's pool.
@@ -778,6 +894,7 @@ fn v41_capacity_report(
     kv_admission: v41_kv_admission_capacity(s: startup),
     engram_resident: v41_engram_resident_capacity(verdicts: map(probes, p => v41_judge_probe(p: p))),
     sla_sustainable: v41_sla_capacity(o: staircase),
+    indexer_kernel: v41_report_indexer_kernel(s: startup),
   }
 }
 
@@ -841,7 +958,7 @@ data v41_wet_runner_frontier: DissolutionCondition = unbound_dissolution(descrip
 
 fn v41_capacity_measurement_plan_text() -> String {
   let arms = if length(v41_engram_arm_bindings) == 0 {
-    "engram arms: unbound (no image patch digest bound yet)"
+    "engram arms: unbound (no image config digest bound yet)"
   } else {
     join(["engram arms: ", join(map(v41_engram_arm_bindings, b => v41_arm_wire(a: b.arm)), ", ")], "")
   }

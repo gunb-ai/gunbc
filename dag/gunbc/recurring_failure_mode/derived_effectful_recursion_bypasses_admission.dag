@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.derived_effectful_recursion_bypasses_admission
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data derived_effectful_recursion_bypasses_admission: RecurringFailureMode = RecurringFailureMode {
+  identity: "derived_effectful_recursion_bypasses_admission" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: the Rust emitter selects the async realization from derived service demand, but its recursion admission tests only the authored uses clause. An ordinary function calling Filesystem.List can therefore emit an unboxed async self-call while the same self-call with an explicit resource requirement refuses.",
+    "RECEIPT: emitting gunbc.source_root_read against source base main 906c321f033 with the pre-change installed seed reported zero blocking diagnostics; cargo then refused source_root_walk and source_root_read_paths with E0733. Both are tail-recursive ordinary functions with derived Filesystem demand.",
+    "HARM: accepted source produces a native artifact that cannot compile; the interpreter can conceal the absent emission realization.",
+    "DISCRIMINATOR: v1.compiler.emit_rust effectful_self_recursion_diagnostics now reads item_is_effectful_callee, the same registry fact used to select emit_func_def. Non-tail self-recursion refuses. Tail self-recursion uses emit_typed_tco_body with fixed effect bindings and value-parameter loop slots, wrapped once in the effectful result.",
+    "RUNG: mechanically preventable for non-tail direct effectful self-calls; the tail-call realization removes recursive async calls by construction. test.claim.effectful_item_kind_collapse_witness_test retains the non-tail refusal and flips the former tail refusal to a loop control. test/native_filesystem/controls.rs additionally exercises the emitted traversal over a large population; that native qualification is local, not a required lane.",
+    "CEILING: this reads the existing direct-self-call facts. It does not establish a realization or admission for mutual effectful recursion, nor for recursion through opaque function values.",
+    "NEXT TRIGGER: cycle-grain effectful recursion admission or realization consumes the same derived call graph for every emitter path, and executes discriminating native controls on the required path.",
+  ],
+  evidence: [],
+}

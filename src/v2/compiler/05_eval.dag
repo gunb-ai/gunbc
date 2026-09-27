@@ -14,6 +14,12 @@ import v2.compiler.infer {
   inferred_facts_resolved_type
 }
 import std.algebra { Cons, Empty }
+import v2.std.compilers.body_lowering {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order
+}
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
@@ -80,6 +86,7 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.node {
+  positional_edges,
   ArrowBodyForm,
   Behavior,
   Bind,
@@ -1162,9 +1169,22 @@ fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
   )
 }
 
+// A BIND'S SLOTS ARE ITS POSITIONAL EDGES. A let's <type-annotation> edge (v2.std.type_binder) is a
+// static ascription that evaluation does not read, and it may stand anywhere among the children a
+// producer wrote, so binder, value and body are indexed among the positionals only.
+fn eval_nth_positional_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: positional_edges(children: node.children),
+      wanted: wanted,
+      absent: eval_diagnostic(reason: absent_reason, node: node)
+    )
+  )
+}
+
 fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
   bind_outcome(
-    o: eval_nth_child(
+    o: eval_nth_positional_child(
       node: node,
       wanted: 0,
       absent_reason: ^eval_rejected_bind_key_absent
@@ -1176,7 +1196,7 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
 }
 
 fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
-  eval_nth_child(
+  eval_nth_positional_child(
     node: node,
     wanted: 1,
     absent_reason: ^eval_rejected_bind_value_absent
@@ -1185,7 +1205,7 @@ fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
 
 fn eval_bind_body(node: Node) -> Outcome<Node> {
   bind_outcome(
-    o: eval_nth_child(
+    o: eval_nth_positional_child(
       node: node,
       wanted: 2,
       absent_reason: ^eval_rejected_bind_body_absent
@@ -1287,9 +1307,9 @@ type EvalParamBindAcc {
   acc: Outcome<EvaluationEnvironment>
 }
 
-fn eval_bind_param_edge_step(
+fn eval_bind_param_label_step(
   state: EvalParamBindAcc,
-  param_edge: Edge,
+  label: Symbol,
   args: List<RuntimeValue>,
   bind: BindInterpreter,
   node: Node
@@ -1298,29 +1318,24 @@ fn eval_bind_param_edge_step(
     Rejected { diagnostics: r } =>
       EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
     Accepted { value: env, diagnostics: _ } =>
-      match param_edge.label {
-        Named { name: binding_id } =>
-          EvalParamBindAcc {
-            idx: state.idx + 1,
-            acc: bind_outcome(
-              o: eval_witness_outcome(
-                witness: list_nth(
-                  xs: args,
-                  wanted: state.idx,
-                  absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
-                )
-              ),
-              f: fn(value) {
-                bind.bind_value(
-                  environment_binding_key_for_symbol(sym: binding_id),
-                  value,
-                  env
-                )
-              }
+      EvalParamBindAcc {
+        idx: state.idx + 1,
+        acc: bind_outcome(
+          o: eval_witness_outcome(
+            witness: list_nth(
+              xs: args,
+              wanted: state.idx,
+              absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
+            )
+          ),
+          f: fn(value) {
+            bind.bind_value(
+              environment_binding_key_for_symbol(sym: label),
+              value,
+              env
             )
           }
-        Positional =>
-          EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
+        )
       }
   }
 }
@@ -1335,17 +1350,12 @@ fn eval_bind_arrow_params(
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
+      bind_outcome(o: eval_param_labels_in_declared_order(arrow: arrow, domain: domain_edge.target, node: node), f: fn(labels) {
       match fold_list(
-        xs: domain_edge.target.children,
+        xs: labels,
         empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
-        cons: fn(state, param_edge) {
-          eval_bind_param_edge_step(
-            state: state,
-            param_edge: param_edge,
-            args: args,
-            bind: bind,
-            node: node
-          )
+        cons: fn(state, label) {
+          eval_bind_param_label_step(state: state, label: label, args: args, bind: bind, node: node)
         }
       ) {
         EvalParamBindAcc { idx: param_count, acc: bound } =>
@@ -1357,8 +1367,36 @@ fn eval_bind_arrow_params(
             bound
           }
       }
+      })
     }
   )
+}
+
+// THE PARAMETERS' BINDING LABELS, IN DECLARED ORDER. A domain of named binders is a Conj sorted by
+// label for identity, so its stored sequence is not a declared order; the order is read from the
+// Arrow's ^arrow_signature_order_edge through the one reader infer also uses
+// (v2.std.compilers.body_lowering arrow_declared_parameter_order), so the two stages cannot bind one
+// call differently. The answer is the LABELS, not edges: a binder's type is not what binding reads,
+// and an edge built here would have to point somewhere it does not. A named domain with no readable
+// order refuses. A domain with no named binder binds no name, exactly as its positional edges bound
+// nothing before, so it answers no labels.
+fn eval_param_labels_in_declared_order(arrow: Node, domain: Node, node: Node) -> Outcome<List<Symbol>> {
+  if fold(domain.children, init: false, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => true
+      Positional => acc
+    }
+  }) {
+    match arrow_declared_parameter_order(arrow: arrow) {
+      ArrowParameterOrderDeclared { labels: labels } => Accepted { value: labels, diagnostics: None }
+      ArrowParameterOrderAbsent =>
+        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_absent, node: node))
+      ArrowParameterOrderMalformed =>
+        outcome_rejected(d: eval_diagnostic(reason: ^application_parameter_order_malformed, node: node))
+    }
+  } else {
+    Accepted { value: Empty, diagnostics: None }
+  }
 }
 
 fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {
@@ -2676,12 +2714,7 @@ fn run_test_claim_round_trip_verdict_runtime(
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match actual {
-    Rejected { diagnostics: _ } =>
-      verdict_fail(
-        actual: outcome_rejected(
-          d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
-        )
-      )
+    Rejected { diagnostics: ds } => verdict_fail(actual: Rejected { diagnostics: ds })
     Accepted { value: _, diagnostics: _ } =>
       if dag_round_trip_authorities_ready() {
         Pass
@@ -2709,12 +2742,7 @@ fn run_test_claim_structural_equals_verdict(
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match actual {
-    Rejected { diagnostics: _ } =>
-      verdict_fail(
-        actual: outcome_rejected(
-          d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)
-        )
-      )
+    Rejected { diagnostics: ds } => verdict_fail(actual: Rejected { diagnostics: ds })
     Accepted { value: admitted, diagnostics: _ } =>
       if outcome_node_eq(
         a: Accepted { value: admitted, diagnostics: None },

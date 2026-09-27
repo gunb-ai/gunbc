@@ -4,7 +4,7 @@ import v2.compiler.ingested_fixture_arrows { ingested_resolved_module_from_sourc
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
-import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.infer { InferredTree }
 import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
 import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
@@ -20,6 +20,7 @@ import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 
 // CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per
 // identity — replacing the circular census whose capability verdict was bundle membership. One
@@ -282,7 +283,7 @@ fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealiza
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer(tree: decl) {
+        match infer_and_discharge(tree: decl) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
