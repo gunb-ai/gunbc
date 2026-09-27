@@ -486,10 +486,14 @@ data witness_session_file_without_picture: String = "{\"schema\":\"gunbc-auth-se
 // Uri spelling — a located refusal naming the member, never a silently dropped fact.
 data witness_session_file_with_malformed_picture: String = "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"old-session\",\"principal\":\"principal:google-oidc/accounts/sub-123\",\"authenticated_at\":\"2026-09-25T00:00:00Z\",\"expires_at\":\"2026-09-25T12:00:00Z\",\"auth_method\":\"google-oidc\",\"client\":\"tracker-web\",\"csrf\":\"csrf-old\",\"picture\":\"not-a-uri\"}"
 
-// THE PROFILE PICTURE'S DURABLE SPELLING: the codec round-trips the OPTIONAL picture member in
-// the Uri wire form; a file written before the projection landed decodes to a picture-less
-// profile rather than a malformed file — the projection never forces a re-login; and a picture
-// member of any other spelling refuses with the member named.
+// THE EMPTY-NAME FILE: the projection landed but the name member is present and empty — a
+// spelling the mint never writes, so a located refusal naming the member.
+data witness_session_file_with_empty_name: String = "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"old-session\",\"principal\":\"principal:google-oidc/accounts/sub-123\",\"authenticated_at\":\"2026-09-25T00:00:00Z\",\"expires_at\":\"2026-09-25T12:00:00Z\",\"auth_method\":\"google-oidc\",\"client\":\"tracker-web\",\"csrf\":\"csrf-old\",\"name\":\"\"}"
+
+// THE PROFILE'S DURABLE SPELLING: the codec round-trips the OPTIONAL picture and name members;
+// a file written before the projection landed decodes to a projection-less profile rather
+// than a malformed file — the projection never forces a re-login; and a member of a spelling
+// the mint never writes refuses with the member named.
 test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool {
   match witness_mint_session(
     verdict: witness_verdict_with_picture(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
@@ -501,10 +505,15 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
     SessionMinted { session: s } =>
       let written = authenticated_session_json(session: s)
       string_contains(s: written, pattern: "\"picture\": \"https://lh3.googleusercontent.com/a/photo-sub-123\"")
+        && string_contains(s: written, pattern: "\"name\": \"A Person\"")
         && match authenticated_session_of_json(text: written) {
           SessionFileDecoded { session: d } =>
             match d.profile.picture {
               Present { value: u } => (u.locator as String) == "lh3.googleusercontent.com/a/photo-sub-123"
+              Absent => false
+            }
+            && match d.profile.name {
+              Present { value: n } => n == "A Person"
               Absent => false
             }
           SessionFileMalformed { detail: _ } => false
@@ -518,10 +527,18 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
             Absent => true
             Present { value: _ } => false
           }
+          && match d.profile.name {
+            Absent => true
+            Present { value: _ } => false
+          }
       SessionFileMalformed { detail: _ } => false
     }
     && match authenticated_session_of_json(text: witness_session_file_with_malformed_picture) {
       SessionFileMalformed { detail } => string_contains(s: detail, pattern: "picture")
+      SessionFileDecoded { session: _ } => false
+    }
+    && match authenticated_session_of_json(text: witness_session_file_with_empty_name) {
+      SessionFileMalformed { detail } => string_contains(s: detail, pattern: "name")
       SessionFileDecoded { session: _ } => false
     }
 }

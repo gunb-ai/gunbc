@@ -83,12 +83,12 @@ fn session_store_file_path(layout: SessionStoreLayout, session_id: NonEmptyStr) 
 // decodes under any revision whose label parse holds — the same round-trip discipline the v3
 // event codec keeps. The CSRF token rides the file because the file is owner-only (0600); the
 // cookie value itself is NEVER in the store (the store maps an id to a session; the id is the
-// only cookie fact). The profile picture rides as the ONE OPTIONAL MEMBER: a login whose token
-// carried no picture writes no picture member, and a file written before the projection landed
-// decodes to an absent picture — never a malformed file, so the projection never forces a
+// only cookie fact). The profile rides as TWO OPTIONAL MEMBERS: a login whose token carried
+// no picture or name writes no such member, and a file written before the projection landed
+// decodes both to absent — never a malformed file, so the projection never forces a
 // re-login (the never-blocks law at the durable carrier).
 fn authenticated_session_json(session: AuthenticatedSession) -> String {
-  serialize_json(v: json_object(members: concat([
+  serialize_json(v: json_object(members: concat(concat([
     json_kv(key: "schema", value: json_string(s: session_file_schema)),
     json_kv(key: "session_id", value: json_string(s: session.session_id as String)),
     json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
@@ -97,7 +97,7 @@ fn authenticated_session_json(session: AuthenticatedSession) -> String {
     json_kv(key: "auth_method", value: json_string(s: session_auth_method_label(method: session.auth_method))),
     json_kv(key: "client", value: json_string(s: session_client_label(client: session.client) as String)),
     json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
-  ], session_profile_picture_members(picture: session.profile.picture))))
+  ], session_profile_picture_members(picture: session.profile.picture)), session_profile_name_members(name: session.profile.name))))
 }
 
 // THE OPTIONAL PICTURE MEMBER, emitted only when the login projected one: absence is the
@@ -106,6 +106,15 @@ fn authenticated_session_json(session: AuthenticatedSession) -> String {
 fn session_profile_picture_members(picture: Uri?) -> List<JsonValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
+// never an empty string standing in for none.
+fn session_profile_name_members(name: String?) -> List<JsonValue> {
+  match name {
+    Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
   }
 }
@@ -129,9 +138,10 @@ type SessionFileDecode
 // admitted client; the principal parses as the one label spelling), or the file is Malformed
 // with the located cause. A malformed session file is a deployment fact about ONE session, so
 // the refusal names the member that refused rather than refusing the whole store. The picture
-// member is the ONE OPTIONAL member: absent decodes to no picture (a file written before the
-// projection landed is a picture-less profile, never a malformed file), and present decodes
-// only as the http/https Uri spellings, same admission the ID-token reader keeps.
+// and name members are the TWO OPTIONAL members: each absent decodes to none (a file written
+// before the projection landed is a projection-less profile, never a malformed file), a
+// present picture decodes only as the http/https Uri spellings, and a present name decodes
+// only as non-empty — the same admissions the ID-token reader keeps.
 fn authenticated_session_of_json(text: String) -> SessionFileDecode {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: g } =>
@@ -248,6 +258,27 @@ fn session_file_picture_of(doc: JsonValue) -> SessionFilePicture {
   }
 }
 
+// THE OPTIONAL NAME MEMBER, decoded three-valued like the picture. ABSENT names a file written
+// before the projection landed and decodes to none — never Malformed. PRESENT decodes only as
+// a non-empty string (the mint never writes an empty name, so a present empty member names a
+// malformed file with the member named).
+type SessionFileName
+  = SessionFileNameRead { name: String? }
+  | SessionFileNameMalformed { detail: String }
+
+fn session_file_name_of(doc: JsonValue) -> SessionFileName {
+  match json_field_string(obj: doc, key: "name") {
+    FieldAbsent => SessionFileNameRead { name: none }
+    FieldMalformed { cause: c } => SessionFileNameMalformed { detail: join(["member name refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        SessionFileNameMalformed { detail: "member name is present but empty" }
+      } else {
+        SessionFileNameRead { name: Present { value: raw } }
+      }
+  }
+}
+
 fn session_file_decode_finish(
   doc: JsonValue,
   session_id: String,
@@ -260,6 +291,9 @@ fn session_file_decode_finish(
   match session_file_picture_of(doc: doc) {
     SessionFilePictureMalformed { detail: d } => SessionFileMalformed { detail: d }
     SessionFilePictureRead { picture: pic } =>
+      match session_file_name_of(doc: doc) {
+        SessionFileNameMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileNameRead { name: nm } =>
       match principal_ref_parse_label(s: principal_label) {
         Absent =>
           SessionFileMalformed {
@@ -290,12 +324,13 @@ fn session_file_decode_finish(
                     auth_method: AuthMethodGoogleOidc,
                     client: client,
                     csrf: CsrfToken { token: csrf_value as NonEmptyStr },
-                    profile: SessionProfile { picture: pic },
+                    profile: SessionProfile { picture: pic, name: nm },
                   }
                 }
             }
           }
       }
+        }
   }
 }
 

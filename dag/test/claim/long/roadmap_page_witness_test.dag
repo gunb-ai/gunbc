@@ -2348,9 +2348,11 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
 
 // THE SWAP TABLE (the client program's contract): fetch('/auth/session') on load; an
 // authenticated response (s && s.authenticated === true) hides Sign in, unhides the session
-// target, and writes the principal's short form (viewer split on '/'), initials in the avatar
-// (substring 0..1) — the name and avatar ride the SESSION RESPONSE alone; unauthenticated,
-// absent, or a FAILED fetch leaves Sign in (never an identity claim from a failed fetch). THE
+// target, and writes the display name (the wire's OPTIONAL name member preferred, the
+// principal's short form — viewer split on '/' — when the login projected no name), initials
+// in the avatar (substring 0..1) — the name and avatar ride the SESSION RESPONSE alone;
+// unauthenticated, absent, or a FAILED fetch leaves Sign in (never an identity claim from a
+// failed fetch). THE
 // PFP BRANCH is the never-blocks law rendered: when the wire's OPTIONAL picture member is
 // present, an <img> (src = s.picture, alt = '' so a broken image renders nothing) appends INSIDE
 // the same avatar chip and the standing flips to data-avatar="resolved" — the initials are
@@ -2362,7 +2364,7 @@ test fn witness_header_account_swap_table() -> Bool {
     && string_contains(s: js, pattern: "s && s.authenticated && s.authenticated === true")
     && string_contains(s: js, pattern: "gunbcAccountSignin.hidden = true")
     && string_contains(s: js, pattern: "gunbcAccountSlot.hidden = false")
-    && string_contains(s: js, pattern: "s.viewer || s.principal")
+    && string_contains(s: js, pattern: "s.name || s.viewer || s.principal")
     && string_contains(s: js, pattern: "if (s.picture) {")
     && string_contains(s: js, pattern: "const gunbcAvatarImg = document.createElement('img');")
     && string_contains(s: js, pattern: "gunbcAvatarImg.src = s.picture;")

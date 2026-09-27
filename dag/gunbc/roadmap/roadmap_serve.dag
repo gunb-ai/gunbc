@@ -2641,9 +2641,12 @@ fn session_refusal_reason(c: SessionRefusalCause) -> String {
 // THE LOGOUT: the server-side session named by the cookie is deleted (idempotent — an
 // already-reaped session is a success, the desired end state), and the answer always carries
 // the cookie-clearing Set-Cookie, so the browser drops the cookie whether or not the server
-// had anything to delete. The session cookie is SameSite=Lax, so a cross-site POST does not
-// carry it in the first place; a logout that arrives with no valid session has nothing to
-// mutate and says so.
+// had anything to delete. The answer is a 303 REDIRECT to the dashboard root, not a bare text
+// page: the native form's navigation lands back on the main page, where the account client
+// re-fetches /auth/session against the cleared cookie and Sign in returns — no raw receipt
+// page, no bfcache-restored session area. The session cookie is SameSite=Lax, so a cross-site
+// POST does not carry it in the first place; a logout that arrives with no valid session has
+// nothing to mutate and redirects the same.
 fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let deletion = match request.security.authentication {
     GoogleOidcSession { session } =>
@@ -2653,17 +2656,23 @@ fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpReque
   match deletion {
     SessionStoreDeleted { session_id: _ } =>
       serve_text_response_with_headers(
-        status: 200,
+        status: 303,
         content_type: text_plain_utf8,
         body: "logged out: the session is deleted\n",
-        headers: [ServeResponseHeaderSetCookie { set_cookie: session_cookie_clear_line() as NonEmptyStr }],
+        headers: [
+          ServeResponseHeaderLocation { location: "/" as NonEmptyStr },
+          ServeResponseHeaderSetCookie { set_cookie: session_cookie_clear_line() as NonEmptyStr },
+        ],
       )
     SessionStoreNothingToDelete { session_id: _ } =>
       serve_text_response_with_headers(
-        status: 200,
+        status: 303,
         content_type: text_plain_utf8,
         body: "logged out: no live session was presented\n",
-        headers: [ServeResponseHeaderSetCookie { set_cookie: session_cookie_clear_line() as NonEmptyStr }],
+        headers: [
+          ServeResponseHeaderLocation { location: "/" as NonEmptyStr },
+          ServeResponseHeaderSetCookie { set_cookie: session_cookie_clear_line() as NonEmptyStr },
+        ],
       )
     SessionStoreDeleteRefused { session_id: _, detail: d } =>
       serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["logout refused: the session could not be deleted: ", d, "\n"], ""))
@@ -2673,10 +2682,12 @@ fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpReque
 // ── GET /auth/session ──────────────────────────────────────────────────────────────────────────
 // THE SESSION READ: the standing the seam decoded, rendered as JSON — the authenticated
 // principal's label and expiry for a live session, the invalid standing's reason for anything
-// else, anonymous for absence. THE PROFILE PICTURE rides the wire as its ONE OPTIONAL MEMBER:
+// else, anonymous for absence. THE PROFILE rides the wire as OPTIONAL MEMBERS: the picture is
 // emitted only when the seated session's login projected one (the verified ID token's picture
 // claim, stored at login and re-read from the session file), so the client renders the Google
-// PFP when present and the initials fallback when absent — presentation only, never an input to
+// PFP when present and the initials fallback when absent; the name is the same shape (the
+// verified token's name claim), so the header greets the operator's display name and falls
+// back to the principal label's short form. Both are presentation only, never an input to
 // identity or authorization, and a read renders; it never decides.
 fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
   serve_text_response(
@@ -2697,6 +2708,15 @@ fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
   }
 }
 
+// THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
+// never an empty string standing in for none.
+fn auth_session_name_members(name: String?) -> List<JsonValue> {
+  match name {
+    Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
+    Absent => []
+  }
+}
+
 fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
   serialize_json(v: json_object(members: match evidence {
     GoogleOidcSession { session } => concat([
@@ -2704,7 +2724,7 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
       json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
-    ], auth_session_picture_members(picture: session.profile.picture))
+    ], concat(auth_session_picture_members(picture: session.profile.picture), auth_session_name_members(name: session.profile.name)))
     SessionStandingInvalid { standing } => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),

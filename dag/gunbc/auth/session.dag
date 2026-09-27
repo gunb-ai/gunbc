@@ -57,9 +57,12 @@ type CsrfToken {
 // session store is the durable carrier that already answers per-request. THE NEVER-BLOCKS LAW:
 // the picture is OPTIONAL END TO END — absent from the token, absent from the file, unreadable,
 // or malformed renders the initials fallback and never refuses authentication, authorization,
-// or rendering.
+// or rendering. THE DISPLAY NAME is the same projection shape — the verified token's name
+// claim, optional end to end, presentation only: the header prefers it over the principal
+// label's short form and falls back when absent; identity is never derived from a name.
 type SessionProfile {
   picture: Uri?
+  name: String?
 }
 
 type AuthenticatedSession {
@@ -134,7 +137,7 @@ fn mint_authenticated_session(
                   auth_method: AuthMethodGoogleOidc,
                   client: client,
                   csrf: CsrfToken { token: csrf_token_value },
-                  profile: SessionProfile { picture: claims.standard.picture },
+                  profile: SessionProfile { picture: claims.standard.picture, name: claims.standard.name },
                 }
               }
           }

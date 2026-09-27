@@ -915,6 +915,7 @@ fn witness_auth_session() -> AuthenticatedSession {
     csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
     profile: SessionProfile {
       picture: Present { value: Uri { scheme: Https, locator: "lh3.googleusercontent.com/a/avatar-sub-1" as NonEmptyStr } },
+      name: Present { value: "Test Operator" },
     },
   }
 }
@@ -934,7 +935,7 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
     auth_method: AuthMethodGoogleOidc,
     client: SessionClientTrackerWeb,
     csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
-    profile: SessionProfile { picture: none },
+    profile: SessionProfile { picture: none, name: none },
   }
 }
 
@@ -1018,25 +1019,35 @@ test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Boo
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "2026-09-27T12:00:00Z")
 }
 
-// THE SESSION WIRE CARRIES THE AVATAR PROJECTION, OPTIONALLY (the never-blocks law on the
+// THE SESSION WIRE CARRIES THE PROFILE PROJECTION, OPTIONALLY (the never-blocks law on the
 // wire): a session whose login projected a picture answers with the picture member spelled as
-// the Uri wire form; a session without one — and every non-authenticated standing — answers
-// with NO picture member at all: absence is the member's ABSENCE, never an empty string
-// standing in for none, and the client renders initials on absence, never an identity claim
-// from a hole in the wire.
+// the Uri wire form, and a named login answers with the name member; a session without them —
+// and every non-authenticated standing — answers with NO such member at all: absence is the
+// member's ABSENCE, never an empty string standing in for none, and the client renders
+// initials on absence, never an identity claim from a hole in the wire.
 test fn the_session_wire_carries_the_picture_only_when_the_profile_projects_one() -> Bool {
   string_contains(
     s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }),
     pattern: "\"picture\": \"https://lh3.googleusercontent.com/a/avatar-sub-1\"",
   )
+    && string_contains(
+      s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }),
+      pattern: "\"name\": \"Test Operator\"",
+    )
     && !string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session_without_picture() }), pattern: "\"picture\"")
+    && !string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session_without_picture() }), pattern: "\"name\"")
     && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "\"picture\"")
+    && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "\"name\"")
     && !string_contains(s: auth_session_body(evidence: SessionStandingInvalid { standing: SessionCookieAbsent }), pattern: "\"picture\"")
+    && !string_contains(s: auth_session_body(evidence: SessionStandingInvalid { standing: SessionCookieAbsent }), pattern: "\"name\"")
 }
 
-// LOGOUT CLEARS THE COOKIE AND DELETES NOTHING IT WAS NOT SHOWN: a request presenting no
-// session answers 200 with the Set-Cookie clearing line (the browser drops the cookie whether
-// or not the server had anything to delete), and names that no live session was presented.
+// LOGOUT CLEARS THE COOKIE, DELETES NOTHING IT WAS NOT SHOWN, AND REDIRECTS HOME: a request
+// presenting no session answers 303 to the dashboard root with the Set-Cookie clearing line
+// (the browser drops the cookie whether or not the server had anything to delete, and the
+// follow-navigation reloads the main page, where the account client re-fetches against the
+// cleared cookie and Sign in returns — no raw receipt page), and names that no live session
+// was presented.
 test fn logout_clears_the_cookie_even_with_no_live_session() -> Bool {
   let request = ServeHttpRequest {
     method: POST,
@@ -1046,11 +1057,15 @@ test fn logout_clears_the_cookie_even_with_no_live_session() -> Bool {
   }
   match auth_logout_response(instance: srv2_preview_dashboard_instance(), request: request) {
     ServeHttpResponse { status, content_type: _, body, headers } =>
-      status == 200
+      status == 303
         && string_contains(s: body, pattern: "no live session was presented")
+        && string_contains(s: join(map(headers, h => auth_header_wire(header: h)), "|"), pattern: "gunbc_session=")
+        && string_contains(s: join(map(headers, h => auth_header_wire(header: h)), "|"), pattern: "Max-Age=0")
         && match headers.first() {
-          Present { value: h } => string_contains(s: auth_header_wire(h), pattern: "gunbc_session=")
-            && string_contains(s: auth_header_wire(h), pattern: "Max-Age=0")
+          Present { value: h } => match h {
+            ServeResponseHeaderLocation { location: l } => (l as String) == "/"
+            _ => false
+          }
           Absent => false
         }
     _ => false

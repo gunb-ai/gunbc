@@ -3547,16 +3547,18 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 // THE ACCOUNT SWAP (owner defect 2026-09-27: the main page body is the belt's pre-rendered
 // static body, so the account area can only personalize CLIENT-SIDE): on load, fetch
 // GET /auth/session; an authenticated response swaps the hidden session target in — the display
-// name and the avatar initials render from the SESSION RESPONSE ALONE (the principal's short
-// form: the session wire carries viewer + principal, and the display-name projection is the
-// follow-up) — anything else (401, absent flag, fetch failure) leaves Sign in: never an
-// identity claim from a failed fetch. THE PFP rides the wire's OPTIONAL picture member (shape
+// name and the avatar initials render from the SESSION RESPONSE ALONE (the wire's OPTIONAL
+// name member, the verified token's name claim, preferred; the principal label's short form
+// when the login projected no name) — anything else (401, absent flag, fetch failure) leaves
+// Sign in: never an identity claim from a failed fetch. THE PFP rides the wire's OPTIONAL
+// picture member (shape
 // (a) of the identity doctrine: the verified Google picture URL rendered directly; the
 // /avatar/<principal> proxy is the tailnet-privacy follow-up): when present, an <img> layers
 // over the initials INSIDE the same chip and the standing flips to data-avatar="resolved" —
 // the initials are NEVER removed, so a slow or failed image renders the initials fallback
 // under the never-blocks law (alt="" keeps a broken image invisible). Sign out is the target's
-// native form POSTing /auth/logout; the reload re-runs this fetch and Sign in returns.
+// native form POSTing /auth/logout; the 303 lands back here, this fetch re-runs against the
+// cleared cookie, and Sign in returns.
 fn account_query_expr(selector: String) -> TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -3591,7 +3593,10 @@ fn account_swap_statements() -> List<TsStmt> {
                 right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
               then: ts_block(stmts: [
             ts_const(name: "gunbcViewer", value: ts_binop(
-              left: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal")),
+              left: ts_binop(
+                left: ts_member(object: ts_ident(name: "s"), property: "name"),
+                op: "||",
+                right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal"))),
               op: "||",
               right: ts_lit_str(value: ""))),
             ts_const(name: "gunbcShort", value: ts_call(
