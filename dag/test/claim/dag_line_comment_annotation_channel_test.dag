@@ -31,7 +31,7 @@ import v2.extdeps.languages.dag { dag_lex_rules }
 // the payload is opaque and they are ordinary text.
 
 fn artifact_of(source: String) -> LexArtifact? {
-  match lex_walk_artifact(source: source, file: ^annotation_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: chars(s: source), file: ^annotation_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => Present { value: a }
     v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
   }
