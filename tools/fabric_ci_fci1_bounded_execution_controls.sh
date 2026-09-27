@@ -2,10 +2,11 @@
 set -euo pipefail
 
 # FCI-1 bounded-driver one-axis controls. This starts no Work command and touches no reservation.
-# SCAFFOLD - dissolve-on: bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2)
-# realizes this runner through orchestration emit or typed host_effect_apply, without a
-# medium-as-string concat scaffold. That capability -- .dag-to-bash emission for a foreign
-# executor -- is what replaces a hand-shell carrier; modeled lifecycle actuation alone would
+# SCAFFOLD - dissolve-on: [C1 typed-argv-leaf] (v2.std.orchestration Run.command is a String),
+# [C2 scope-exit-cleanup] (trap ... EXIT) and [C3 shell-options] (set -euo pipefail) land in the orchestration-to-bash fold and this
+# runner is re-expressed as emitted orchestration intent over them, or as typed host_effect_apply.
+# That capability -- .dag-to-bash emission for a foreign executor -- is what replaces a hand-shell
+# carrier; modeled lifecycle actuation alone would
 # sequence the gate and still leave this transport hand-authored.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || {
