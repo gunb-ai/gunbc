@@ -48,7 +48,7 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
-import v2.std.anonymous_binder { anonymous_binder_mint_domain, fresh_return_type_variable, fresh_type_variable, is_unpositioned_fresh_type_variable }
+import v2.std.anonymous_binder { anonymous_binder_mint_domain, fresh_return_type_variable, fresh_type_variable }
 import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
   List,
@@ -4036,8 +4036,8 @@ fn body_lower_position_function_values(node: Node, path: List<Int>) -> Node {
 fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node {
   match node.kind {
     TypeNode { connective: Arrow } =>
-      if body_lower_arrow_has_unpositioned_fresh_type_params(arrow: node) {
-        let renames = body_lower_fresh_type_variable_renames(arrow: node, path: path)
+      let renames = body_lower_fresh_type_variable_renames(arrow: node, path: path)
+      if body_lower_arrow_declares_a_renamed_type_param(arrow: node, renames: renames) {
         node_with_occurrence_id(
           kind: node.kind,
           children: fold(node.children, init: body_lower_no_type_param_edges(), f: fn(acc, e) {
@@ -4052,17 +4052,25 @@ fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node
   }
 }
 
+// WHETHER AN ARROW IS AN UNPOSITIONED FUNCTION VALUE IS DECIDED BY CONSTRUCTION, NOT BY READING A
+// NAME BACK. The rename map is built from the Arrow's OWN domain labels: its keys are exactly the
+// unpositioned variables the producer minted for those binders (and for an unwritten return). The
+// Arrow is renamed when it declares one of those keys as a type parameter -- symbol equality with
+// names built from its structure, never a parse of a spelling. A named fn's authored `<T>` can never
+// equal one: the minted spelling is unauthorable.
+fn body_lower_arrow_declares_a_renamed_type_param(arrow: Node, renames: Map<Symbol, Symbol>) -> Bool {
+  fold(type_param_names(n: arrow), init: false, f: fn(acc, name) {
+    acc || (match map_lookup(m: renames, key: name) {
+      Present { value: _ } => true
+      Absent => false
+    })
+  })
+}
+
 fn body_lower_edge_is_arrow_body(e: Edge) -> Bool {
   match e.label {
     Named { name: n } => n == ^arrow_body_edge
     Positional => false
-  }
-}
-
-fn body_lower_arrow_has_unpositioned_fresh_type_params(arrow: Node) -> Bool {
-  match type_param_names(n: arrow) {
-    Empty => false
-    Cons { head: first, tail: _ } => is_unpositioned_fresh_type_variable(sym: first)
   }
 }
 
