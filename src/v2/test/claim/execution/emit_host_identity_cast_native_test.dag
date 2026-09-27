@@ -1,0 +1,100 @@
+module v2.test.execution.emit_host_identity_cast_native
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.emit_on_demand { emit_on_demand_family_cache_root }
+import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached_with_run_args }
+import v2.compiler.eval { Inputs, inputs_root_only }
+import v2.compiler.self_host.closure_emission { ClosureMemberEmitted, ClosureMemberRefused }
+import v2.extdeps.languages.rust_test { rust_identity_cast_run_args, rust_identity_cast_target_model }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.host_run { EmitHostRunReceipt, HostLogicalRun }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, node_synthetic }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.test.claim.coercion.identity_cast_emission_route { identity_cast_route_emit, identity_cast_source }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. v2.test.claim.coercion.identity_cast_emission_route
+// establishes that `fn f(x: Int) -> Int { x as Int }` is admitted and reaches Rust on the source
+// route; this module establishes what the emitted function DOES. The text under test is the entry
+// member that route emits -- never a hand-written `f` -- and the host row
+// (v2.extdeps.languages.rust_test rust_identity_cast_target_model) only reads the value from argv,
+// calls it and frames the return value.
+//
+// STANDING, STATED SO IT IS NOT READ AS COVERAGE: this claim builds with cargo, so it is WET and the
+// required floor does not execute it. The wet roster has no scheduled executor
+// (v2.compiler.self_host.wet_receipt_enrollment), so this is manually observed native evidence on a
+// reviewed revision, not automatic regression enforcement; the landing PR carries the run. It is not
+// a member of gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population
+// and does not discharge that stall.
+//
+// ONE BUILD, FOUR RUNS: every run shares one workspace, so the second through fourth must report
+// compile_skipped -- the inputs are supplied to one artifact after it is built, and constant
+// evaluation cannot have removed the operation under test. The inputs are distinct, include zero and
+// a negative, and each expected frame is the input's own little-endian i32 bytes, so an `f` that
+// returned a constant, or the magnitude, or dropped the sign, is false on at least one row.
+data identity_cast_native_workspace: String = emit_on_demand_family_cache_root(family: "identity_cast_native")
+
+fn identity_cast_native_inputs() -> Inputs {
+  inputs_root_only(root: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_cast_native_probe } }, children: []))
+}
+
+// The entry member's emitted text from the source route, or Absent when that route did not emit it.
+fn identity_cast_native_emitted() -> Optional<String> {
+  match identity_cast_route_emit(source: identity_cast_source).outcome {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ce, diagnostics: _ } =>
+      match first(ce.modules) {
+        Present { value: ClosureMemberEmitted { module: _, text: t } } =>
+          if count(ce.modules) == 1 { optional_present(value: t) } else { optional_absent() }
+        Present { value: ClosureMemberRefused { module: _, diagnostics: _ } } => optional_absent()
+        Absent => optional_absent()
+      }
+  }
+}
+
+// One run of the emitted program on one argv value: true only when it exited through the logical-run
+// arm, its compile-skip standing is the one expected, and its frame is exactly `octets`.
+fn identity_cast_native_run_is(text: String, value: String, expect_skipped: Bool, octets: List<Int>) -> Bool {
+  match run_emit_host_cached_with_run_args(
+    workspace_dir: identity_cast_native_workspace,
+    target: rust_identity_cast_target_model(),
+    source: Medium { carried: text, fidelity: Lossless },
+    fixture_inputs: identity_cast_native_inputs(),
+    run_args: rust_identity_cast_run_args(value: value)
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          (!expect_skipped || receipt.compile_skipped)
+            && stdout.bytes == emit_host_octets_byte_string(octets: octets)
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_emitted_identity_cast_preserves_its_runtime_argument_holds() -> Bool {
+  match identity_cast_native_emitted() {
+    Absent => false
+    Present { value: text } =>
+      identity_cast_native_run_is(text: text, value: "7", expect_skipped: false, octets: [0, 7, 0, 0, 0])
+        && identity_cast_native_run_is(text: text, value: "-17", expect_skipped: true, octets: [0, 239, 255, 255, 255])
+        && identity_cast_native_run_is(text: text, value: "0", expect_skipped: true, octets: [0, 0, 0, 0, 0])
+        && identity_cast_native_run_is(text: text, value: "70000", expect_skipped: true, octets: [0, 112, 17, 1, 0])
+  }
+}
+
+// THE HOST FAILS RATHER THAN DEFAULTING. A malformed argument must not produce a frame: if the driver
+// defaulted to zero, this row would see [0, 0, 0, 0, 0] and the positive row above would not notice.
+test fn a_malformed_runtime_argument_fails_the_invocation_holds() -> Bool {
+  match identity_cast_native_emitted() {
+    Absent => false
+    Present { value: text } =>
+      !identity_cast_native_run_is(text: text, value: "not-an-int", expect_skipped: true, octets: [0, 0, 0, 0, 0])
+        && identity_cast_native_run_is(text: text, value: "3", expect_skipped: true, octets: [0, 3, 0, 0, 0])
+  }
+}
