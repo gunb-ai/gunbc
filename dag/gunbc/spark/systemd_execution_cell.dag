@@ -399,7 +399,10 @@ fn systemd_workload_stall_fired(stall_polls: Nat, stall_seconds: Nat, poll_secon
 // localize kernel-side waits. Either way the dump file names the instrument that produced it. The
 // watchdog never extends the admitted budget — its own bound, twice the seat timeout, covers the
 // worst-case phase (a seat timeout plus the churn window plus the sampling tail) with room — and
-// exits after one capture, so a hanging run yields exactly one dump set.
+// exits after one capture, so a hanging run yields exactly one dump set. THE ARMING LEG CLEARS A
+// STALE DONE FLAG FIRST: the state directory persists between runs, and the flag is the watchdog's
+// stand-down signal, so a previous run's workload_phase_done would disarm this run's watchdog
+// before its first poll — the same cross-run staleness class as the churn driver's exit file.
 fn systemd_workload_watchdog_script(member: SystemdExecutionMember, serve_port: Port, state_dir: String, bound_seconds: Nat) -> String {
   join([
     "# stall watchdog, rendered by gunbc.spark.systemd_execution_cell; arms only what the matrix names\n",
@@ -491,6 +494,7 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
   let concurrent_wait = if sequential { "" } else { "for pid in $seat_pids; do wait \"$pid\"; done\n" }
   let watchdog_launch = if watchdog {
     join([
+      "rm -f \"$state/workload_phase_done\"\n",
       "cat > \"$state/stall_watchdog.sh\" <<'GUNBC_WATCHDOG_EOF'\n",
       systemd_workload_watchdog_script(member: member, serve_port: serve_port, state_dir: state, bound_seconds: 3600),
       "GUNBC_WATCHDOG_EOF\n",
@@ -568,12 +572,20 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
 // calibration unit, whose marginal cost m and base count a the prefill's probes measured and left
 // in the state directory. A request's realized count is the header's (within the named safety bound
 // of a) plus (units - 1) x m, and the unit draw tops out at (seat_window - a - safety) / m, so no
-// request can approach the context window — the margin is untouched by construction. Every
-// response body is captured with its header-derived status: a refused request fails the driver WITH
-// the engine's message in the driver log, never an empty exit. The driver writes its exit file as
-// its LAST act — "done fail=0" only when every client finished inside both bounds with every
-// request answered — and the sampler reaps it through that file, so a driver that is killed without
-// writing refuses located instead of reading as a quiet success.
+// request can approach the context window — the margin is untouched by construction. THE DRAW IS
+// SEEDED PER CLIENT AND REQUEST, not from the wall clock: srand() with no argument seeds from the
+// current second, so six clients drawing in the same second drew byte-identical request_1 bodies
+// (measured on the 2026-09-27 variant-d run: all six churn_N_1.json one byte-count), and the mixed
+// band collapsed to one length per second across the cohort. THE EVIDENCE FILES ARE PER CLIENT: a
+// request's header and body land in churn_c<client>_last.hdr/resp, never in one cohort-shared pair —
+// the six concurrent subshells raced on the shared churn_last.* (one client's successful body was
+// the file every failing client logged, a stale body from a prior run stood in for a run whose
+// requests the engine never answered, and the interleaving was visible as character-shuffled lines
+// in churn_driver.log). Every response body is captured with its header-derived status: a refused
+// request fails the driver WITH the engine's message in the driver log, never an empty exit. The
+// driver writes its exit file as its LAST act — "done fail=0" only when every client finished
+// inside both bounds with every request answered — and the sampler reaps it through that file, so a
+// driver that is killed without writing refuses located instead of reading as a quiet success.
 fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmptyStr, state_dir: String, body: String, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
   join([
     "# churn driver, rendered by gunbc.spark.systemd_execution_cell; bounded by design\n",
@@ -597,12 +609,14 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
     "    n=0\n",
     "    while [ \"$(date +%s)\" -lt \"$end\" ] && [ \"$n\" -lt ", to_string(requests_per_client), " ]; do\n",
     "      n=$(( n + 1 ))\n",
-    "      units=$(( low_units + $(awk -v span=\"$(( high_units - low_units ))\" 'BEGIN { srand(); printf \"%d\", int(rand() * (span + 1)) }') ))\n",
+    "      units=$(( low_units + $(awk -v client=\"$client\" -v req=\"$n\" -v span=\"$(( high_units - low_units ))\" 'BEGIN { srand(client * 1000003 + req); printf \"%d\", int(rand() * (span + 1)) }') ))\n",
     "      awk -v alias=\"$served_alias\" -v body=\"$body\" -v client=\"$client\" -v req=\"$n\" -v reps=\"$units\" -v marker=\"", systemd_workload_unit_marker as String, "\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; printf \"c%02dr%05d %s \", client, req, body; r = 1; while (r < reps) { printf \"%s %s \", marker, body; r = r + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/churn_\"$client\"_\"$n\".json\"\n",
-    "      if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$state/churn_last.hdr\" -o \"$state/churn_last.resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
-    "      churn_http=$(head -1 \"$state/churn_last.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
-    "      if [ \"$churn_rc\" != \"0\" ]; then echo \"churn-request-failed client=$client request=$n transport rc=$churn_rc body=$(tr -d '\\n' < \"$state/churn_last.resp\")\"; exit 31; fi\n",
-    "      if [ \"$churn_http\" != \"200\" ]; then echo \"churn-request-failed client=$client request=$n http=$churn_http body=$(tr -d '\\n' < \"$state/churn_last.resp\")\"; exit 31; fi\n",
+    "      last_hdr=\"$state/churn_c\"$client\"_last.hdr\"\n",
+    "      last_resp=\"$state/churn_c\"$client\"_last.resp\"\n",
+    "      if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
+    "      churn_http=$(head -1 \"$last_hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+    "      if [ \"$churn_rc\" != \"0\" ]; then echo \"churn-request-failed client=$client request=$n transport rc=$churn_rc body=$(tr -d '\\n' < \"$last_resp\")\"; exit 31; fi\n",
+    "      if [ \"$churn_http\" != \"200\" ]; then echo \"churn-request-failed client=$client request=$n http=$churn_http body=$(tr -d '\\n' < \"$last_resp\")\"; exit 31; fi\n",
     "    done\n",
     "  ) &\n",
     "  client_pids=\"$client_pids $!\"\n",
@@ -620,7 +634,15 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
 // sampler leg reaps it through the exit file. Detached is not unbounded: the driver renders the
 // same window end and request count the launcher banner names, so even a sampler that never runs
 // leaves a driver that stops by construction, and the worst case the receipt can show is a bounded
-// driver whose window expired, never an unbounded process.
+// driver whose window expired, never an unbounded process. THE LAUNCHER CLEARS THE PRIOR RUN'S
+// LIVENESS ARTIFACTS FIRST, because the state directory deliberately persists between runs: a
+// stale churn_driver.exit makes the sampler's first loop check read the previous run's verdict and
+// refuse "churn-driver-failed" before this run's driver has issued a single request (measured on
+// the 2026-09-27 variant-d run: the sampler exited 44 one second after launch, the route read it as
+// a workload halt and released the deterministic stop legs, and the engine was torn down under the
+// brand-new churn — every client then failed transport rc 52), and stale churn evidence files let a
+// prior run's bodies stand in for this run's. The rm is the launcher's own contract: the sampler
+// reaps through the exit file only what this run's driver wrote.
 fn systemd_workload_churn_launch_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
   let state = systemd_workload_state_dir(member: member)
   let body = systemd_workload_block_body as String
@@ -628,6 +650,8 @@ fn systemd_workload_churn_launch_script(member: SystemdExecutionMember, serve_po
     "set -e\n",
     "state=", state, "\n",
     "install -d -m 755 \"$state\"\n",
+    "rm -f \"$state/churn_driver.exit\"\n",
+    "rm -f \"$state\"/churn_c*_last.hdr \"$state\"/churn_c*_last.resp \"$state/churn_last.hdr \"$state/churn_last.resp\n",
     "cat > \"$state/churn_driver.sh\" <<'GUNBC_CHURN_DRIVER_EOF'\n",
     systemd_workload_churn_driver_script(serve_port: serve_port, served_alias: served_alias, state_dir: state, body: body, clients: clients, low_tokens: low_tokens, high_tokens: high_tokens, requests_per_client: requests_per_client, window_seconds: window_seconds, request_timeout_seconds: request_timeout_seconds),
     "GUNBC_CHURN_DRIVER_EOF\n",
