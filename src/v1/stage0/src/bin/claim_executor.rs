@@ -436,11 +436,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
-    // THE COMPOSED CI RUN — one process per LANE. The roster is four phases: the .dag parse
+    // THE COMPOSED CI RUN — one process per LANE. The roster includes the runtime-body gate and the retained .dag parse
     // sweep, one generated-artifact comparison over registry projections and stage0 mirrors,
     // its fixed-point comparison, and the witness floor.
     // `--required-lane` selects which of them
-    // this process owns; with no lane, it owns all four, which is what a local run wants.
+    // this process owns; with no lane, it owns the whole roster.
     //
     // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
     // workflow is a realization of the intent, not the place the intent lives), so the order
@@ -482,7 +482,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // `namespace_wave_admission_wall_removed`; the baseline-reconstruction machinery the floor's
     // planning row shares survives as `cli_run::namespace_baseline`.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -548,7 +548,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
-        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // PHASE 1 — the .dag parse sweep, over the authored roots in DAG_PARSE_SWEEP_ROOTS.
         // Independent of everything below it. The roster is
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
         // local check and this phase cover the same files.
@@ -718,6 +718,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("parse");
+        }
+
+        // A separate source universe: the runtime producer is in src/v1, whose module-name
+        // collisions must not widen the floor's prepared subject. The .dag door owns both
+        // the population verdict and the permanent missing-body mutation control.
+        if required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane) {
+            eprintln!("required-ci: phase primitive-runtime-body (live emitted source + mutation control)");
+            if !run_required_primitive_runtime_body() {
+                phase_failures.push("primitive-runtime-body".to_string());
+            }
+            ran.push("primitive-runtime-body");
         }
 
         // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
@@ -1612,9 +1623,44 @@ impl RequiredCiLane {
     }
 }
 
+// Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
+// The witnesses job already builds this sibling binary. Use a child so the extra src/v1
+// preparation and its process-wide caches are released before the ordinary floor starts.
+fn run_required_primitive_runtime_body() -> bool {
+    let executable = match std::env::current_exe() {
+        Ok(path) => path.with_file_name("gunbc"),
+        Err(error) => {
+            eprintln!("primitive-runtime-body: cannot locate sibling gunbc: {error}");
+            return false;
+        }
+    };
+    let mut command = std::process::Command::new(executable);
+    command.arg("run");
+    for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
+        command.args(["--source-root", root]);
+    }
+    // The producer spans v1 and v2. Keep it outside both default floor roots and
+    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
+    // parse/declaration universe above so the carrier citation is also checked.
+    command.args([
+        "--entry",
+        "test/primitive_runtime_body/producer.dag",
+        "--function",
+        "check",
+    ]);
+    match command.status() {
+        Ok(status) => status.success(),
+        Err(error) => {
+            eprintln!("primitive-runtime-body: gunbc did not execute: {error}");
+            false
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
+    PrimitiveRuntimeBody,
     GeneratedArtifact,
     RegenFixedPoint,
     Floor,
@@ -1624,6 +1670,7 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
+            RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
@@ -1639,6 +1686,7 @@ impl RequiredCiPhase {
             // lane means the cheapest total refusal over the witness corpus arrives from the
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
+            RequiredCiPhase::PrimitiveRuntimeBody => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1651,7 +1699,8 @@ impl RequiredCiPhase {
     }
 }
 
-// THE REQUIRED GATE IS FOUR PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// The runtime-body phase adds a live definition-presence check to the retained roster.
+// The original four phases are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
@@ -1662,8 +1711,9 @@ impl RequiredCiPhase {
 // (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
 // refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
 // namespace_wave_admission_wall_removed.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
+    RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
@@ -1678,8 +1728,9 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 4] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
     "ParsePhase",
+    "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
     "FloorPhase",
@@ -2254,10 +2305,16 @@ mod tests {
     fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
         vec![
             lane_phase_row("witnesses", "parse"),
+            lane_phase_row("witnesses", "primitive-runtime-body"),
             lane_phase_row("build", "generated-artifact"),
             lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
         ]
+    }
+
+    #[test]
+    fn primitive_runtime_body_phase_executes_the_live_gate() {
+        assert!(run_required_primitive_runtime_body());
     }
 
     #[test]
@@ -2317,7 +2374,13 @@ mod tests {
             .into_iter()
             .collect()
         );
-        assert_eq!(expected_lane_phases(&rows, None).len(), 4);
+        assert_eq!(
+            expected_lane_phases(&rows, None),
+            REQUIRED_CI_PHASES
+                .iter()
+                .map(|phase| phase.name().to_string())
+                .collect()
+        );
     }
 
     #[test]
