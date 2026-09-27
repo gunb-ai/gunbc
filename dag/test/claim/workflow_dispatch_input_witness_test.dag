@@ -10,9 +10,9 @@ import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
-  fleet_converge_mode_step_if, fleet_converge_mode_scope,
+  fleet_converge_mode_step_if, fleet_converge_mode_scope, fleet_converge_host_reset_return_job,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
-  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy, HostResetReturn,
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
@@ -457,7 +457,9 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // admission, or whose run invokes a different entry: it holds that the step reaches the modeled fold
 // (host_reset_return_dispatch_admission_wet reads both env names) with both inputs wired. Control:
 // dropping fleet_converge_reset_observer_dispatch_admission_step() from the own list turns this red,
-// and so does removing its own-mode gate (it once ran, for minutes, on every mode's dispatch).
+// and so does removing its own-mode gate (it once ran, for minutes, on every mode's dispatch), or
+// letting that gate drift from the consuming host-reset-return job's gate: the admission must run
+// in exactly the mode whose job it protects, or the observer refusal is skipped where it applies.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
   any(
     fleet_converge_build_job_own_steps(),
@@ -466,7 +468,15 @@ test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
         match i {
           Present { value: v } =>
             v == "reset_observer_dispatch_admission"
-              && (match c { Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn)  Absent => false })
+              && (match c {
+                    Present { value: g } =>
+                      g == fleet_converge_mode_step_if(mode: HostResetReturn)
+                        && (match fleet_converge_host_reset_return_job().if_condition {
+                              Present { value: jg } => g == jg
+                              Absent => false
+                            })
+                    Absent => false
+                  })
               && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
               && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
               && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
