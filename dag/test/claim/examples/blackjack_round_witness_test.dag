@@ -1,0 +1,258 @@
+module test.claim.examples.blackjack_round_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import examples.blackjack.cards { Card, Ace, Five, Six, Nine, Ten, King, Queen, Clubs, Diamonds, Hearts, Spades }
+import examples.blackjack.hand { Hand }
+import examples.blackjack.round {
+    Shoe,
+    PlayerHits,
+    PlayerStands,
+    BlackjackRules,
+    PlayerTurn,
+    DealerTurn,
+    RoundComplete,
+    PlayerWon,
+    DealerWon,
+    Pushed,
+    ShoeExhausted,
+    ActionAfterRoundComplete,
+    DealerActedOutOfTurn,
+    PlayerActedOutOfTurn,
+    RoundStepped,
+    RoundRefused,
+    deal,
+    apply_player_action,
+    play_dealer_turn,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data standard_rules: BlackjackRules = BlackjackRules {
+    dealer_hits_soft_17: true,
+}
+
+test fn deal_refuses_when_shoe_is_empty() -> Bool {
+    match deal(shoe: Shoe { cards: [] }) {
+        RoundRefused { cause: ShoeExhausted } => true
+        other => false
+    }
+}
+
+test fn deal_starts_player_turn_with_four_non_natural_cards() -> Bool {
+    match deal(
+        shoe: Shoe {
+            cards: [
+                Card { rank: Ten, suit: Clubs },
+                Card { rank: Five, suit: Diamonds },
+                Card { rank: Nine, suit: Hearts },
+                Card { rank: King, suit: Spades },
+            ],
+        },
+    ) {
+        RoundStepped {
+            state: PlayerTurn { player: player, dealer: dealer, shoe: remaining_shoe },
+        } =>
+            player.cards.length() == 2
+            && dealer.cards.length() == 2
+            && remaining_shoe.cards.length() == 0
+
+        other => false
+    }
+}
+
+test fn deal_completes_player_natural_blackjack() -> Bool {
+    match deal(
+        shoe: Shoe {
+            cards: [
+                Card { rank: Ace, suit: Clubs },
+                Card { rank: Nine, suit: Diamonds },
+                Card { rank: King, suit: Hearts },
+                Card { rank: Five, suit: Spades },
+            ],
+        },
+    ) {
+        RoundStepped {
+            state: RoundComplete {
+                player: _,
+                dealer: _,
+                outcome: PlayerWon,
+            },
+        } => true
+
+        other => false
+    }
+}
+
+test fn player_action_refuses_after_round_complete() -> Bool {
+    match apply_player_action(
+        state: RoundComplete {
+            player: Hand { cards: [] },
+            dealer: Hand { cards: [] },
+            outcome: Pushed,
+        },
+        action: PlayerHits,
+    ) {
+        RoundRefused { cause: ActionAfterRoundComplete } => true
+        other => false
+    }
+}
+
+test fn player_action_refuses_during_dealer_turn() -> Bool {
+    match apply_player_action(
+        state: DealerTurn {
+            player: Hand { cards: [] },
+            dealer: Hand { cards: [] },
+            shoe: Shoe { cards: [] },
+        },
+        action: PlayerHits,
+    ) {
+        RoundRefused { cause: PlayerActedOutOfTurn } => true
+        other => false
+    }
+}
+
+test fn dealer_turn_refuses_during_player_turn() -> Bool {
+    match play_dealer_turn(
+        state: PlayerTurn {
+            player: Hand { cards: [] },
+            dealer: Hand { cards: [] },
+            shoe: Shoe { cards: [] },
+        },
+        rules: standard_rules,
+    ) {
+        RoundRefused { cause: DealerActedOutOfTurn } => true
+        other => false
+    }
+}
+
+test fn player_hit_bust_completes_round_with_dealer_win() -> Bool {
+    match apply_player_action(
+        state: PlayerTurn {
+            player: Hand {
+                cards: [
+                    Card { rank: Ten, suit: Clubs },
+                    Card { rank: Nine, suit: Diamonds },
+                ],
+            },
+            dealer: Hand {
+                cards: [
+                    Card { rank: Five, suit: Hearts },
+                    Card { rank: King, suit: Spades },
+                ],
+            },
+            shoe: Shoe {
+                cards: [Card { rank: Five, suit: Clubs }],
+            },
+        },
+        action: PlayerHits,
+    ) {
+        RoundStepped {
+            state: RoundComplete {
+                player: player,
+                dealer: _,
+                outcome: DealerWon,
+            },
+        } => player.cards.length() == 3
+
+        other => false
+    }
+}
+
+test fn player_stand_starts_dealer_turn() -> Bool {
+    match apply_player_action(
+        state: PlayerTurn {
+            player: Hand {
+                cards: [
+                    Card { rank: Ten, suit: Clubs },
+                    Card { rank: Nine, suit: Diamonds },
+                ],
+            },
+            dealer: Hand {
+                cards: [
+                    Card { rank: Five, suit: Hearts },
+                    Card { rank: King, suit: Spades },
+                ],
+            },
+            shoe: Shoe { cards: [] },
+        },
+        action: PlayerStands,
+    ) {
+        RoundStepped {
+            state: DealerTurn {
+                player: player,
+                dealer: dealer,
+                shoe: _,
+            },
+        } =>
+            player.cards.length() == 2
+            && dealer.cards.length() == 2
+
+        other => false
+    }
+}
+
+test fn dealer_draws_and_busts_for_player_win() -> Bool {
+    match play_dealer_turn(
+        state: DealerTurn {
+            player: Hand {
+                cards: [
+                    Card { rank: Ten, suit: Clubs },
+                    Card { rank: Nine, suit: Diamonds },
+                ],
+            },
+            dealer: Hand {
+                cards: [
+                    Card { rank: Ten, suit: Hearts },
+                    Card { rank: Five, suit: Spades },
+                ],
+            },
+            shoe: Shoe {
+                cards: [Card { rank: King, suit: Clubs }],
+            },
+        },
+        rules: standard_rules,
+    ) {
+        RoundStepped {
+            state: RoundComplete {
+                player: _,
+                dealer: dealer,
+                outcome: PlayerWon,
+            },
+        } => dealer.cards.length() == 3
+
+        other => false
+    }
+}
+
+test fn dealer_hits_soft_seventeen_when_rule_enabled() -> Bool {
+    match play_dealer_turn(
+        state: DealerTurn {
+            player: Hand {
+                cards: [
+                    Card { rank: Ten, suit: Clubs },
+                    Card { rank: Nine, suit: Diamonds },
+                ],
+            },
+            dealer: Hand {
+                cards: [
+                    Card { rank: Ace, suit: Hearts },
+                    Card { rank: Six, suit: Spades },
+                ],
+            },
+            shoe: Shoe {
+                cards: [Card { rank: Ten, suit: Clubs }],
+            },
+        },
+        rules: standard_rules,
+    ) {
+        RoundStepped {
+            state: RoundComplete {
+                player: _,
+                dealer: dealer,
+                outcome: PlayerWon,
+            },
+        } => dealer.cards.length() == 3
+
+        other => false
+    }
+}

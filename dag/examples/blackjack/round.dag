@@ -6,4 +6,211 @@ module examples.blackjack.round
 // gunbc.plans.blackjack_onboarding). The variants are spelled PlayerHits / PlayerStands
 // rather than Hit / Stand because the corpus shares one name census and Hit is already a
 // variant of std.cache_interface; that section explains the naming rule.
+
+import examples.blackjack.cards { Card }
+import examples.blackjack.hand { Hand, HandValue, hand_value, is_bust, is_blackjack, add_card }
+
 type PlayerAction = PlayerHits | PlayerStands
+
+type BlackjackRules { dealer_hits_soft_17: Bool }
+
+type Shoe { cards: List<Card> }
+
+type RoundState
+    = PlayerTurn { player: Hand, dealer: Hand, shoe: Shoe }
+    | DealerTurn { player: Hand, dealer: Hand, shoe: Shoe }
+    | RoundComplete { player: Hand, dealer: Hand, outcome: RoundOutcome }
+
+type RoundOutcome = PlayerWon | DealerWon | Pushed
+
+type RoundRefusal
+    = ShoeExhausted
+    | ActionAfterRoundComplete
+    | DealerActedOutOfTurn
+    | PlayerActedOutOfTurn
+
+type RoundStep
+    = RoundStepped { state: RoundState }
+    | RoundRefused { cause: RoundRefusal }
+
+fn deal(shoe: Shoe) -> RoundStep {
+    match shoe.cards.first() {
+        Absent => RoundRefused { cause: ShoeExhausted }
+        Present { value: player_first } => match shoe.cards.skip(n: 1).first() {
+            Absent => RoundRefused { cause: ShoeExhausted }
+            Present { value: dealer_first } => match shoe.cards.skip(n: 2).first() {
+                Absent => RoundRefused { cause: ShoeExhausted }
+                Present { value: player_second } => match shoe.cards.skip(n: 3).first() {
+                    Absent => RoundRefused { cause: ShoeExhausted }
+                    Present { value: dealer_second } => {
+                        let player = Hand {
+                            cards: [player_first, player_second],
+                        }
+                        let dealer = Hand {
+                            cards: [dealer_first, dealer_second],
+                        }
+                        let remaining_shoe = Shoe {
+                            cards: shoe.cards.skip(n: 4),
+                        }
+
+                        if is_blackjack(hand: player) && is_blackjack(hand: dealer) {
+                            RoundStepped {
+                                state: RoundComplete {
+                                    player: player,
+                                    dealer: dealer,
+                                    outcome: Pushed,
+                                },
+                            }
+                        } else if is_blackjack(hand: player) {
+                            RoundStepped {
+                                state: RoundComplete {
+                                    player: player,
+                                    dealer: dealer,
+                                    outcome: PlayerWon,
+                                },
+                            }
+                        } else if is_blackjack(hand: dealer) {
+                            RoundStepped {
+                                state: RoundComplete {
+                                    player: player,
+                                    dealer: dealer,
+                                    outcome: DealerWon,
+                                },
+                            }
+                        } else {
+                            RoundStepped {
+                                state: PlayerTurn {
+                                    player: player,
+                                    dealer: dealer,
+                                    shoe: remaining_shoe,
+                                },
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+fn apply_player_action(state: RoundState, action: PlayerAction) -> RoundStep {
+    match state {
+        RoundComplete { player: _, dealer: _, outcome: _ } =>
+            RoundRefused { cause: ActionAfterRoundComplete }
+
+        DealerTurn { player: _, dealer: _, shoe: _ } =>
+            RoundRefused { cause: PlayerActedOutOfTurn }
+
+        PlayerTurn { player: player, dealer: dealer, shoe: shoe } => match action {
+            PlayerStands => RoundStepped {
+                state: DealerTurn {
+                    player: player,
+                    dealer: dealer,
+                    shoe: shoe,
+                },
+            }
+
+            PlayerHits => match shoe.cards.first() {
+                Absent => RoundRefused { cause: ShoeExhausted }
+                Present { value: next_card } => {
+                    let new_player = add_card(hand: player, card: next_card)
+                    let remaining_shoe = Shoe {
+                        cards: shoe.cards.skip(n: 1),
+                    }
+
+                    if is_bust(v: hand_value(hand: new_player)) {
+                        RoundStepped {
+                            state: RoundComplete {
+                                player: new_player,
+                                dealer: dealer,
+                                outcome: DealerWon,
+                            },
+                        }
+                    } else {
+                        RoundStepped {
+                            state: PlayerTurn {
+                                player: new_player,
+                                dealer: dealer,
+                                shoe: remaining_shoe,
+                            },
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn play_dealer_turn(state: RoundState, rules: BlackjackRules) -> RoundStep {
+    match state {
+        RoundComplete { player: _, dealer: _, outcome: _ } =>
+            RoundRefused { cause: ActionAfterRoundComplete }
+
+        PlayerTurn { player: _, dealer: _, shoe: _ } =>
+            RoundRefused { cause: DealerActedOutOfTurn }
+
+        DealerTurn { player: player, dealer: dealer, shoe: shoe } => {
+            let dealer_value = hand_value(hand: dealer)
+            let should_hit =
+                dealer_value.total < 17
+                || (rules.dealer_hits_soft_17 && dealer_value.total == 17 && dealer_value.soft)
+
+            if should_hit {
+                match shoe.cards.first() {
+                    Absent => RoundRefused { cause: ShoeExhausted }
+                    Present { value: next_card } => {
+                        let new_dealer = add_card(hand: dealer, card: next_card)
+                        let remaining_shoe = Shoe {
+                            cards: shoe.cards.skip(n: 1),
+                        }
+
+                        if is_bust(v: hand_value(hand: new_dealer)) {
+                            RoundStepped {
+                                state: RoundComplete {
+                                    player: player,
+                                    dealer: new_dealer,
+                                    outcome: PlayerWon,
+                                },
+                            }
+                        } else {
+                            play_dealer_turn(
+                                state: DealerTurn {
+                                    player: player,
+                                    dealer: new_dealer,
+                                    shoe: remaining_shoe,
+                                },
+                                rules: rules,
+                            )
+                        }
+                    }
+                }
+            } else {
+                RoundStepped {
+                    state: RoundComplete {
+                        player: player,
+                        dealer: dealer,
+                        outcome: settle(
+                            player: hand_value(hand: player),
+                            dealer: dealer_value,
+                        ),
+                    },
+                }
+            }
+        }
+    }
+}
+
+fn settle(player: HandValue, dealer: HandValue) -> RoundOutcome {
+    if player.total > 21 {
+        DealerWon
+    } else if dealer.total > 21 {
+        PlayerWon
+    } else if player.total > dealer.total {
+        PlayerWon
+    } else if player.total < dealer.total {
+        DealerWon
+    } else {
+        Pushed
+    }
+}
