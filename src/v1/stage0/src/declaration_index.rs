@@ -106,7 +106,7 @@
     clippy::items_after_test_module,  // 1
 )]
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::std_occurrence_identity::{OccurrenceCategory, OccurrenceTransport};
@@ -1165,18 +1165,70 @@ fn lexical_reads_from_transport(
     let path = |ancestors: &im::Vector<crate::std_occurrence_identity::OccurrenceId>| -> Vec<i64> {
         ancestors.iter().map(|a| a.value).collect()
     };
+    // A variant pattern's field bindings are FieldOccurrence declarations, and the binder each
+    // carries (`u` in `Wrap { inner: u }`) is stamped UNDER its field-binding node. The binder's
+    // scope is the arm, not that node: strip trailing field-binding ancestors (one per nesting
+    // level) so the arm body's reads extend it. Read raw, the scope was one step too deep and a
+    // field-pattern binder shadowed nothing -- its arm-body read then planned every module
+    // spelling a same-named global through the flat channel.
+    let field_bindings: HashSet<i64> = transport
+        .declarations
+        .iter()
+        .filter(|d| d.category == OccurrenceCategory::FieldOccurrence)
+        .map(|d| d.occurrence.value)
+        .collect();
     let binders: Vec<(String, Vec<i64>)> = transport
         .declarations
         .iter()
         .filter(|d| d.category == OccurrenceCategory::LexicalValueOccurrence)
         .filter_map(|d| {
             let name = by_id.get(&d.occurrence.value)?;
-            Some((name.clone(), path(&d.containment.ancestors)))
+            let mut scope = path(&d.containment.ancestors);
+            while scope.last().is_some_and(|id| field_bindings.contains(id)) {
+                scope.pop();
+            }
+            Some((name.clone(), scope))
         })
         .collect();
+    // A call node carries its callee as its own name, and its children are ONLY its arguments;
+    // the parser stamps the first argument node with the call's head role, so a named first
+    // argument's node -- whose name is its LABEL -- arrives as a callable reference (`take(u: 1)`
+    // reads as a call of `u`). The role is load-bearing for resolution (it passes down to a
+    // positional function value, `host(cmp)`), so it is not removed at the parser; here, a
+    // callable reference whose direct parent is a call node is that argument node, and its name
+    // is a parameter of the callee, never a read. An argument node is itself a callable
+    // reference, so "call node" alternates with depth: `g` in `f(g(1))` has the argument node as
+    // its parent and IS a call. Decided shallowest first, so every parent is decided before its
+    // child.
+    let mut callable: Vec<_> = transport
+        .references
+        .iter()
+        .filter(|r| r.category == OccurrenceCategory::CallableOccurrence)
+        .collect();
+    callable.sort_by_key(|r| r.containment.ancestors.len());
+    let mut call_nodes: HashSet<i64> = HashSet::new();
+    for r in callable {
+        let is_argument = r
+            .containment
+            .ancestors
+            .last()
+            .is_some_and(|parent| call_nodes.contains(&parent.value));
+        if !is_argument {
+            call_nodes.insert(r.occurrence.value);
+        }
+    }
     let mut out = BTreeSet::new();
     for reference in transport.references.iter() {
         if reference.category != category {
+            continue;
+        }
+        if category == OccurrenceCategory::CallableOccurrence
+            && reference
+                .containment
+                .ancestors
+                .last()
+                .is_some_and(|parent| call_nodes.contains(&parent.value))
+        {
             continue;
         }
         let Some(spelling) = by_id

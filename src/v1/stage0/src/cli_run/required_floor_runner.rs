@@ -13573,6 +13573,132 @@ fn mint(tag: String) -> Sealed = Sealed { tag: tag }\n";
         assert!(planned.is_err(), "the bare caller must refuse");
     }
 
+    /// The #12354 shape: a fixture declares a top-level `fn u()`, and unrelated modules spell `u`
+    /// only as a FIELD-PATTERN BINDER read in its arm body, or as a NAMED-ARGUMENT LABEL. Neither
+    /// is a read of the declaration: the binder is a local scoped to its arm, and a label names
+    /// the callee's parameter. A field-pattern binder is stamped under its field-binding node, so
+    /// its containment path is one step deeper than the arm body's -- read as a raw prefix it
+    /// shadowed nothing, and every such module was planned through the flat channel (203 on
+    /// floor run 36265763185).
+    const FLATU_A_BASE: &str = "module flatu.a\n\nfn u() -> Int {\n  1\n}\n";
+    const FLATU_A_HEAD: &str = "module flatu.a\n\nfn u() -> String {\n  \"1\"\n}\n";
+    const FLATU_PATTERN: &str = "module flatu.p\n\ntype Box = Wrap { inner: Int } | Empty\n\n\
+fn open(b: Box) -> Int {\n  match b {\n    Wrap { inner: u } => u\n    Empty => 0\n  }\n}\n";
+    const FLATU_LABEL: &str = "module flatu.l\n\nfn take(u: Int) -> Int {\n  u\n}\n\n\
+fn call() -> Int {\n  take(u: 1)\n}\n";
+    const FLATU_READ: &str = "module flatu.r\n\nfn read() -> Int {\n  u()\n}\n";
+    /// A BARE POSITIONAL FUNCTION VALUE: the argument node carries no label (empty name), and
+    /// `u` is its child, whose parent is the argument node rather than the call -- a genuine read
+    /// the label skip must NOT drop.
+    const FLATU_POSITIONAL: &str =
+        "module flatu.v\n\nfn host(g: fn() -> Int) -> Int {\n  g()\n}\n\n\
+fn pass() -> Int {\n  host(u)\n}\n";
+    /// A RECORD-LITERAL FIELD LABEL: `u` names a field of `Holder`, not the changed fn.
+    const FLATU_RECORD: &str = "module flatu.f\n\ntype Holder { u: Int }\n\n\
+fn make() -> Holder {\n  Holder { u: 1 }\n}\n";
+    /// A genuine call NESTED as a labelled argument: its parent is the argument node, not the
+    /// call, so it stays a read.
+    const FLATU_NESTED: &str = "module flatu.n\n\nfn id(x: Int) -> Int {\n  x\n}\n\n\
+fn nested() -> Int {\n  id(x: u())\n}\n";
+
+    #[test]
+    fn a_field_pattern_binder_or_argument_label_spelled_like_a_changed_fn_plans_nothing() {
+        let (selection, head_fx) = interface_selection(
+            "flatu",
+            &[
+                ("a.dag", FLATU_A_BASE),
+                ("p.dag", FLATU_PATTERN),
+                ("l.dag", FLATU_LABEL),
+                ("r.dag", FLATU_READ),
+                ("n.dag", FLATU_NESTED),
+                ("f.dag", FLATU_RECORD),
+                ("v.dag", FLATU_POSITIONAL),
+            ],
+            &[
+                ("a.dag", FLATU_A_HEAD),
+                ("p.dag", FLATU_PATTERN),
+                ("l.dag", FLATU_LABEL),
+                ("r.dag", FLATU_READ),
+                ("n.dag", FLATU_NESTED),
+                ("f.dag", FLATU_RECORD),
+                ("v.dag", FLATU_POSITIONAL),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatu.n", "flatu.r", "flatu.v"],
+            "{:?}",
+            selection.consumers
+        );
+    }
+
+    /// THE WINDOW INSTRUMENT: the floor's dependents selector over an arbitrary historical
+    /// window, printing the same counts as the floor's `[floor-phase]
+    /// phase=interface-changed-consumers` line. The floor itself only ever measures its own diff,
+    /// so a before/after figure for a PAST change needs this entry. The head tree is read from a
+    /// checkout (`GUNBC_SELECTOR_HEAD_TREE`) and swept over the parse phase's own roster
+    /// (`DAG_PARSE_SWEEP_ROOTS`); the base side is reconstructed from git exactly as the floor
+    /// reconstructs it.
+    ///
+    ///   GUNBC_SELECTOR_BASE=<sha> GUNBC_SELECTOR_HEAD=<sha> GUNBC_SELECTOR_HEAD_TREE=<checkout> \
+    ///     cargo test --release -p v1-compiler --lib -- --ignored interface_consumer_window_census
+    #[test]
+    #[ignore = "instrument: needs a head checkout and a commit window from the environment"]
+    fn interface_consumer_window_census() {
+        use crate::cli_run::namespace_baseline::{
+            reconstruct_base_index, BaselineReconstruction, InterfaceConsumerBinding,
+        };
+        let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} unset"));
+        let (base, head) = (var("GUNBC_SELECTOR_BASE"), var("GUNBC_SELECTOR_HEAD"));
+        let tree = PathBuf::from(var("GUNBC_SELECTOR_HEAD_TREE"));
+        let head_index = match crate::cli_run::run_dag_parse_sweep(
+            &tree,
+            &crate::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
+            Ok(sweep) => sweep.index,
+            Err(errors) => panic!("head tree must parse; sweep refused: {errors:?}"),
+        };
+        let reconstructed = reconstruct_base_index(&tree, &base, &head, &head_index)
+            .expect("base side reconstructs");
+        let BaselineReconstruction::Reconstructed { base_index, .. } = reconstructed else {
+            panic!("window has no reconstructable base side");
+        };
+        let selection = crate::cli_run::namespace_baseline::interface_changed_consumers(
+            &base_index,
+            &head_index,
+        );
+        for change in &selection.changes {
+            let of_change: Vec<_> = selection
+                .consumers
+                .iter()
+                .filter(|c| {
+                    c.changed_module_path == change.module_path
+                        && c.changed_declaration == change.declaration
+                })
+                .collect();
+            let flat = of_change
+                .iter()
+                .filter(|c| c.binding == InterfaceConsumerBinding::BoundThroughFlatBareChannel)
+                .count();
+            println!(
+                "[selector-window] declaration={}.{} ground={:?} consumers={} flat_channel={}",
+                change.module_path,
+                change.declaration,
+                change.ground,
+                of_change.len(),
+                flat
+            );
+        }
+        println!(
+            "[selector-window] base={base} head={head} changed_declarations={} consumers={} \
+             consumer_modules={}",
+            selection.changes.len(),
+            selection.consumers.len(),
+            consumers_of(&selection).len()
+        );
+    }
+
     #[test]
     fn a_bare_read_of_a_changed_data_value_plans_its_reader() {
         let (selection, head_fx) = interface_selection(
