@@ -3546,12 +3546,17 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 
 // THE ACCOUNT SWAP (owner defect 2026-09-27: the main page body is the belt's pre-rendered
 // static body, so the account area can only personalize CLIENT-SIDE): on load, fetch
-// GET /auth/session; an authenticated response swaps the hidden session target in — avatar
-// initials and the display name render from the SESSION RESPONSE ALONE (the principal's short
-// form: the session wire carries viewer + principal, and the profile projection with the display
-// name is the follow-up) — anything else (401, absent flag, fetch failure) leaves Sign in:
-// never an identity claim from a failed fetch. Sign out is the target's native form POSTing
-// /auth/logout; the reload re-runs this fetch and Sign in returns.
+// GET /auth/session; an authenticated response swaps the hidden session target in — the display
+// name and the avatar initials render from the SESSION RESPONSE ALONE (the principal's short
+// form: the session wire carries viewer + principal, and the display-name projection is the
+// follow-up) — anything else (401, absent flag, fetch failure) leaves Sign in: never an
+// identity claim from a failed fetch. THE PFP rides the wire's OPTIONAL picture member (shape
+// (a) of the identity doctrine: the verified Google picture URL rendered directly; the
+// /avatar/<principal> proxy is the tailnet-privacy follow-up): when present, an <img> layers
+// over the initials INSIDE the same chip and the standing flips to data-avatar="resolved" —
+// the initials are NEVER removed, so a slow or failed image renders the initials fallback
+// under the never-blocks law (alt="" keeps a broken image invisible). Sign out is the target's
+// native form POSTing /auth/logout; the reload re-runs this fetch and Sign in returns.
 fn account_query_expr(selector: String) -> TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -3608,6 +3613,31 @@ fn account_swap_statements() -> List<TsStmt> {
               left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-name]")]), property: "textContent"),
               op: "=",
               right: ts_ident(name: "gunbcShort"))),
+            ts_if(
+              cond: ts_member(object: ts_ident(name: "s"), property: "picture"),
+              then: ts_block(stmts: [
+                ts_const(name: "gunbcAvatarImg", value: ts_call(
+                  callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                  args: [ts_lit_str(value: "img")])),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "src"),
+                  op: "=",
+                  right: ts_member(object: ts_ident(name: "s"), property: "picture"))),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "alt"),
+                  op: "=",
+                  right: ts_lit_str(value: ""))),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
+                    property: "setAttribute"),
+                  args: [ts_lit_str(value: "data-avatar"), ts_lit_str(value: "resolved")])),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
+                    property: "appendChild"),
+                  args: [ts_ident(name: "gunbcAvatarImg")])),
+              ]), else_stmt: none),
               ]), else_stmt: none),
           ]))])),
         ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountRequest"), property: "catch"), args: [ts_arrow(params: ["error"], body: ts_block(stmts: []))])),

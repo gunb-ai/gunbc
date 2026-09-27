@@ -2325,6 +2325,11 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
 // BODY always renders the Sign-in link plus a HIDDEN, EMPTY session target — witnessed here: the
 // Sign-in href is /auth/login, the session span carries hidden with EMPTY avatar and name fields
 // (no identity claim in the static bytes), and the sign-out form posts /auth/logout natively.
+// THE HIDDEN-RULE PIN reads the live selector (the allocation-page repair broadened it to cover
+// the sign-in link too — the old single-selector pin went stale on the merged tree and is
+// re-transcribed here), and the avatar pins land the PFP slice: the chip becomes the image's
+// positioning context and clips it, and the .issue-avatar img rule paints any image inside a
+// chip — the projection the assignee avatar slots reuse.
 test fn witness_header_account_static_body_carries_signin_and_hidden_target() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
@@ -2335,7 +2340,9 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
         && occurrence_count(s: body, pattern: "<span class=\"issue-avatar\" data-account-avatar=\"\" data-avatar=\"absent\"></span>") == 1
         && occurrence_count(s: body, pattern: "<span class=\"header-account-name\" data-account-name=\"\"></span>") == 1
         && string_contains(s: body, pattern: "<form class=\"header-account-signout\" method=\"post\" action=\"/auth/logout\">")
-        && string_contains(s: roadmap_css(), pattern: ".header-account-session[hidden] { display: none }")
+        && string_contains(s: roadmap_css(), pattern: ".header-account-session[hidden], .header-account-signin[hidden] { display: none }")
+        && string_contains(s: roadmap_css(), pattern: ".issue-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }")
+        && string_contains(s: roadmap_css(), pattern: "var(--issue-text-dim); position: relative; overflow: hidden }")
   }
 }
 
@@ -2343,7 +2350,12 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
 // authenticated response (s && s.authenticated === true) hides Sign in, unhides the session
 // target, and writes the principal's short form (viewer split on '/'), initials in the avatar
 // (substring 0..1) — the name and avatar ride the SESSION RESPONSE alone; unauthenticated,
-// absent, or a FAILED fetch leaves Sign in (never an identity claim from a failed fetch).
+// absent, or a FAILED fetch leaves Sign in (never an identity claim from a failed fetch). THE
+// PFP BRANCH is the never-blocks law rendered: when the wire's OPTIONAL picture member is
+// present, an <img> (src = s.picture, alt = '' so a broken image renders nothing) appends INSIDE
+// the same avatar chip and the standing flips to data-avatar="resolved" — the initials are
+// never removed, so a slow or failed image falls back to them; when the member is absent the
+// branch never runs and the initials stand alone.
 test fn witness_header_account_swap_table() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/auth/session')")
@@ -2351,6 +2363,12 @@ test fn witness_header_account_swap_table() -> Bool {
     && string_contains(s: js, pattern: "gunbcAccountSignin.hidden = true")
     && string_contains(s: js, pattern: "gunbcAccountSlot.hidden = false")
     && string_contains(s: js, pattern: "s.viewer || s.principal")
+    && string_contains(s: js, pattern: "if (s.picture) {")
+    && string_contains(s: js, pattern: "const gunbcAvatarImg = document.createElement('img');")
+    && string_contains(s: js, pattern: "gunbcAvatarImg.src = s.picture;")
+    && string_contains(s: js, pattern: "gunbcAvatarImg.alt = '';")
+    && string_contains(s: js, pattern: ".setAttribute('data-avatar', 'resolved');")
+    && string_contains(s: js, pattern: ".appendChild(gunbcAvatarImg);")
 }
 // THE RAIL-FIT LAW (owner polish 2026-09-26: the Assign button clipped the rail's right edge):
 // the input flexes with min-width 0 — it shrinks below its default intrinsic size instead of

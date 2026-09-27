@@ -3,6 +3,7 @@ module gunbc.auth.session
 import std.types { NonEmptyStr, String, Bool, Timestamp }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
+import extdeps.uri { Uri }
 import extdeps.auth.oidc {
   OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal,
   OidcLoginTransaction, login_transaction_expired,
@@ -14,8 +15,10 @@ import gunbc.principal_projection {
 // THE APPLICATION SESSION (ruling authority placement: gunbc.auth.session). An
 // AuthenticatedSession is what a completed Google login mints: the verdict-sealed human
 // principal, the method (Google OIDC — the only human authentication method this deployment
-// admits), the client the login ran for, a bounded lifetime, and the CSRF token the session's
-// mutations must present. The session IDENTIFIES the operator; it never authorizes anything by
+// admits), the client the login ran for, a bounded lifetime, the CSRF token the session's
+// mutations must present, and the login-time slice of the operator's mutable profile
+// projection (today the avatar picture; display-name enrichment is the follow-up). The session
+// IDENTIFIES the operator; it never authorizes anything by
 // itself — action authorization is gunbc.auth.request_authentication's law, and an approval
 // decision additionally requires the exact scoped capability (std.scoped_authorization and the
 // signed approval capability stay that authority; login never substitutes for it).
@@ -45,6 +48,20 @@ type CsrfToken {
   token: NonEmptyStr
 }
 
+// THE LOGIN-TIME PROFILE PROJECTION the session carries beside the identity facts. Profile
+// facts are MUTABLE PROJECTIONS, NEVER IDENTITY — the law gunbc.principal_projection states for
+// PrincipalProfile holds verbatim here: the picture can change (a re-login re-projects it, and
+// the A9 directory lane moves it forward later) while the PrincipalRef does not, and no
+// principal is ever derived from a picture. The projection rides the session for one reason: a
+// completed login is the moment the verified ID token's picture claim is in hand, and the
+// session store is the durable carrier that already answers per-request. THE NEVER-BLOCKS LAW:
+// the picture is OPTIONAL END TO END — absent from the token, absent from the file, unreadable,
+// or malformed renders the initials fallback and never refuses authentication, authorization,
+// or rendering.
+type SessionProfile {
+  picture: Uri?
+}
+
 type AuthenticatedSession {
   session_id: NonEmptyStr
   principal: PrincipalRef
@@ -53,14 +70,17 @@ type AuthenticatedSession {
   auth_method: SessionAuthMethod
   client: SessionClient
   csrf: CsrfToken
+  profile: SessionProfile
 }
 
 // THE SESSION MINT, the sealed boundary that turns a completed login into session identity. The
 // principal comes ONLY from the verdict through the caller-sealed principal mint — there is no
 // principal parameter, so no caller can seat a session on a principal the evidence did not
 // establish (a service writer cannot present a human Google session as workload identity, and a
-// fabricated PrincipalRef cannot be seated at all). The transaction is checked here too:
-// expired or nonce-mismatched transactions refuse before any session exists.
+// fabricated PrincipalRef cannot be seated at all). The profile projection is the same shape of
+// fact: the picture is read from the VERIFIED claims inside the seal — there is no picture
+// parameter, so no caller can seat a picture the evidence did not carry. The transaction is
+// checked here too: expired or nonce-mismatched transactions refuse before any session exists.
 type SessionMint
   = SessionMinted { session: AuthenticatedSession }
   | SessionRefused { cause: SessionRefusalCause }
@@ -114,6 +134,7 @@ fn mint_authenticated_session(
                   auth_method: AuthMethodGoogleOidc,
                   client: client,
                   csrf: CsrfToken { token: csrf_token_value },
+                  profile: SessionProfile { picture: claims.standard.picture },
                 }
               }
           }

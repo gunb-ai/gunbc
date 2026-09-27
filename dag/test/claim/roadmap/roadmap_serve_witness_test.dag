@@ -79,8 +79,10 @@ import extdeps.auth.oidc {
 }
 import gunbc.auth.session {
   AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken,
+  SessionProfile, SessionCookieAbsent,
   session_cookie_clear_line,
 }
+import extdeps.uri { Uri, Https }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
 import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
@@ -911,6 +913,28 @@ fn witness_auth_session() -> AuthenticatedSession {
     auth_method: AuthMethodGoogleOidc,
     client: SessionClientTrackerWeb,
     csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
+    profile: SessionProfile {
+      picture: Present { value: Uri { scheme: Https, locator: "lh3.googleusercontent.com/a/avatar-sub-1" as NonEmptyStr } },
+    },
+  }
+}
+
+// THE PICTURE-LESS SESSION, the never-blocks control: a login whose token carried no picture
+// seats a session whose profile projects none, and the wire answers with NO picture member.
+fn witness_auth_session_without_picture() -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "session-1" as NonEmptyStr,
+    principal: PrincipalRef {
+      authority: "google-oidc" as NonEmptyStr,
+      namespace: "accounts" as NonEmptyStr,
+      subject: "sub-1" as NonEmptyStr,
+    },
+    authenticated_at: "2026-09-27T00:00:00Z",
+    expires_at: "2026-09-27T12:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
+    profile: SessionProfile { picture: none },
   }
 }
 
@@ -992,6 +1016,22 @@ test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Boo
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "\"authenticated\": true")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "principal:google-oidc/accounts/sub-1")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "2026-09-27T12:00:00Z")
+}
+
+// THE SESSION WIRE CARRIES THE AVATAR PROJECTION, OPTIONALLY (the never-blocks law on the
+// wire): a session whose login projected a picture answers with the picture member spelled as
+// the Uri wire form; a session without one — and every non-authenticated standing — answers
+// with NO picture member at all: absence is the member's ABSENCE, never an empty string
+// standing in for none, and the client renders initials on absence, never an identity claim
+// from a hole in the wire.
+test fn the_session_wire_carries_the_picture_only_when_the_profile_projects_one() -> Bool {
+  string_contains(
+    s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }),
+    pattern: "\"picture\": \"https://lh3.googleusercontent.com/a/avatar-sub-1\"",
+  )
+    && !string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session_without_picture() }), pattern: "\"picture\"")
+    && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "\"picture\"")
+    && !string_contains(s: auth_session_body(evidence: SessionStandingInvalid { standing: SessionCookieAbsent }), pattern: "\"picture\"")
 }
 
 // LOGOUT CLEARS THE COOKIE AND DELETES NOTHING IT WAS NOT SHOWN: a request presenting no

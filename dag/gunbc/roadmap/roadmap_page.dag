@@ -231,7 +231,10 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 // GET /auth/session on load and swaps the target in when the response says authenticated — name
 // and avatar render from the SESSION RESPONSE alone; a 401, an absent flag, or a failed fetch
 // leaves Sign in, never an identity claim from a failed fetch. THE AVATAR rides the never-blocks
-// law: initials computed client-side, the /avatar/<principal> image when that endpoint lands.
+// law: the session wire's OPTIONAL picture member renders as an <img> layered over the
+// client-computed initials (the standing flips to data-avatar="resolved" only when the picture
+// lands); an absent picture, a failed fetch, or a failed image all render the initials — the
+// /avatar/<principal> proxy endpoint is the tailnet-privacy follow-up, not a blocker.
 // Sign out is the target's native form POSTing /auth/logout: the page reloads, the fetch re-runs,
 // Sign in returns.
 fn header_account_nodes() -> List<Fragment> {

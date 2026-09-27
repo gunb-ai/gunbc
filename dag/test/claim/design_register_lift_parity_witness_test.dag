@@ -429,9 +429,19 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_header_account_claims_no_identity_without_a_session,
 // witness_issue_assign_form_fits_the_rail, the register censuses unchanged. Derived by execution
 // (roadmap_css_derived_digest on the merged tree, 18b798669b7c1358); this digest only pins bytes.
-// Account visibility: hidden now suppresses the sign-in link as well as the session chip.
-// Re-derived from emitted CSS; allocation-page validation executes the digest witness.
-data roadmap_css_lift_parity_digest: String = "31fe6a606fac3fa7"
+// Re-pinned 2026-09-27 for the header avatar PFP slice (the Google picture rides the session
+// wire as its optional member; the /avatar proxy endpoint remains the tailnet-privacy
+// follow-up): the .issue-avatar chip becomes the image's positioning context and clips it
+// (position: relative; overflow: hidden) and the .issue-avatar img rule paints any image
+// inside a chip (absolute / inset 0 / 100% x 100% / object-fit cover via RawProperty — the
+// projection the assignee avatar slots reuse). Behavioral receipts:
+// witness_header_account_static_body_carries_signin_and_hidden_target (the stale
+// single-selector hidden pin re-transcribed to the live broadened selector),
+// witness_header_account_swap_table (the s.picture branch), the auth-session and serve
+// witnesses for the wire/file picture member, the register censuses unchanged. Derived by
+// execution (roadmap_css_derived_digest on this tree, 82fd3d556e4957a0); this digest only pins
+// bytes.
+data roadmap_css_lift_parity_digest: String = "82fd3d556e4957a0"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

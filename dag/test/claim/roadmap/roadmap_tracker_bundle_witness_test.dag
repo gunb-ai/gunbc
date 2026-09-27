@@ -5,7 +5,7 @@ import extdeps.google.issue_tracker {
   issue_type_vocabulary, issue_type_wire, issue_results_columns, issue_results_sort_key_wire,
   issue_results_column_kind_wire, issue_results_sort_numeric, IssueSortPriority, IssueSortTitle,
 }
-import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken }
+import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
 import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal, principal_ref_label }
 import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label }
 import gunbc.roadmap_inline_assignment { inline_assignment_choices, inline_assignment_context_body }
@@ -22,6 +22,7 @@ fn tracker_session_fixture() -> AuthenticatedSession {
     auth_method: AuthMethodGoogleOidc,
     client: SessionClientTrackerWeb,
     csrf: CsrfToken { token: "tracker-fixture-csrf" as NonEmptyStr },
+    profile: SessionProfile { picture: none },
   }
 }
 

@@ -8,7 +8,7 @@ import gunbc.design.material {
 import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
 import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration, FontSize, FontFamily, BorderRadius, Padding, MaxWidth, Overflow, TextOverflow, WhiteSpace, Background, Color }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, standing_chip_class }
-import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline, Flex, Position, Inset }
+import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline, Flex, Position, Inset, Width, Height, RawProperty }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
   scale_var, scale_pair, scale_triple, scale_border, scale_root_css,
@@ -629,6 +629,18 @@ fn issue_tracker_root_css() -> String {
 // this list — one table renders, nothing hides or shows by view, and no served surface renders a
 // frontier-bucket class any more. The kept machinery's rules stay (the /sandbox exhibit and the
 // /roadmap taskbar still render project chains, taskbars, and dispatch controls).
+
+// THE AVATAR IMAGE LAYERS OVER THE INITIALS inside the same chip (2026-09-27 avatar lane): the
+// chip gains position:relative + overflow:hidden, and the .issue-avatar img rule paints any
+// image inside a chip absolute / inset 0 / 100% x 100% / object-fit cover — the never-blocks
+// law rendered (the initials stay in the span, so a slow or failed image renders them; the
+// client's alt="" keeps a broken image invisible). The DESCENDANT SELECTOR is the projection
+// the assignee avatar slots reuse: any <img> inside an .issue-avatar chip paints the same way
+// when the resolution chain lands their pictures. object-fit rides RawProperty — the one
+// property outside the modeled set this rule needs (same escape the repo-atlas stroke-width
+// rows use).
+data issue_avatar_image_note: String = "THE AVATAR IMAGE LAYERS OVER THE INITIALS inside the same chip (2026-09-27 avatar lane): the chip gains position:relative + overflow:hidden, and .issue-avatar img paints any image inside a chip absolute / inset 0 / 100% x 100% / object-fit cover — the never-blocks law rendered (the initials stay in the span, so a slow or failed image renders them; the client's alt=\"\" keeps a broken image invisible). The descendant selector is the projection the assignee avatar slots reuse, and object-fit rides RawProperty — the one property outside the modeled set this rule needs (same escape the repo-atlas stroke-width rows use)."
+
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
@@ -1316,6 +1328,15 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontWeight, value: "500"),
       decl(prop: Color, value: "var(--issue-bg-subtle)"),
       decl(prop: Background, value: "var(--issue-text-dim)"),
+      decl(prop: Position, value: "relative"),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-avatar img" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "0"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "100%"),
+      decl(prop: RawProperty { name: "object-fit" }, value: "cover"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-avatar-workflow" }, decls: [
       decl(prop: Background, value: "var(--issue-action)"),

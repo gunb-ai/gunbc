@@ -62,7 +62,7 @@ import extdeps.auth.oidc {
   OidcLoginScope, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label,
 }
 import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
-import extdeps.uri { uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.uri { uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused, Uri, uri_wire }
 import extdeps.entropy { Urandom }
 import extdeps.clock { Clock }
 import extdeps.http.client
@@ -130,6 +130,7 @@ import extdeps.languages.json.emit {
   json_string,
   json_int,
   json_array,
+  JsonValue,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
@@ -2672,7 +2673,11 @@ fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpReque
 // ── GET /auth/session ──────────────────────────────────────────────────────────────────────────
 // THE SESSION READ: the standing the seam decoded, rendered as JSON — the authenticated
 // principal's label and expiry for a live session, the invalid standing's reason for anything
-// else, anonymous for absence. A read renders; it never decides.
+// else, anonymous for absence. THE PROFILE PICTURE rides the wire as its ONE OPTIONAL MEMBER:
+// emitted only when the seated session's login projected one (the verified ID token's picture
+// claim, stored at login and re-read from the session file), so the client renders the Google
+// PFP when present and the initials fallback when absent — presentation only, never an input to
+// identity or authorization, and a read renders; it never decides.
 fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
   serve_text_response(
     status: 200,
@@ -2681,14 +2686,25 @@ fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence
   )
 }
 
+// THE OPTIONAL PICTURE MEMBER of the session wire: present only when the session's profile
+// projected one — absence is the member's ABSENCE, never an empty string standing in for none,
+// and the client reads absence (like a failed fetch) as the initials fallback, never an
+// identity claim from a hole in the wire.
+fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
+  match picture {
+    Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
+    Absent => []
+  }
+}
+
 fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
   serialize_json(v: json_object(members: match evidence {
-    GoogleOidcSession { session } => [
+    GoogleOidcSession { session } => concat([
       json_kv(key: "authenticated", value: json_bool(b: true)),
       json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
       json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
-    ]
+    ], auth_session_picture_members(picture: session.profile.picture))
     SessionStandingInvalid { standing } => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
