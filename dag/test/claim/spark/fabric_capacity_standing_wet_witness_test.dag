@@ -3,7 +3,10 @@ module test.claim.spark.fabric_capacity_standing_wet_witness
 import std.logic { Bool }
 import std.types { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.process { ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
 import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -12,16 +15,46 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // over a SUPPLIED roster so the real group_report producer and its binding run hermetically; this
 // file is the other half of DESIGN §3's pairing obligation, the one that cannot be hermetic: the
 // entry reads the executor's hostname (shell.Exec.RunArgv, no mock_response), resolves its event
-// log layout and reads every claimed group's authority from the log before any standing is
-// judged. On the wet lane's runner that read does not reach a log -- the runner is no dashboard
-// host, or its remote is unreachable -- so the honest verdict is a refusal that NAMES THE READ:
-// every claimed group is reported "serving authority could not be read at <step>", and no
-// group's capacity is stood for. That is the route: deleting the live binding, or letting an
-// unreadable log fall back to the source row, changes this text.
-test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
-  match fabric_capacity_standing() {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: reason } =>
-      string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+// log layout and reads every claimed group's authority from the log before any standing is judged.
+//
+// THE CLAIM IS KEYED TO ITS SUBJECT, NOT TO THE RUNNER THAT DEQUEUES IT. Which host that is decides
+// which arm is honest, so the claim reads the host's standing through the layout resolution
+// (gunbc.fabric_event_log_host event_log_store_for_host) and asserts the RELATION: off the fleet no
+// store is declared, so the verdict refuses every claimed group naming that read; on a fleet host a
+// store IS declared, so no group may be refused for want of one, and any group the log still could
+// not answer is refused naming the step that failed rather than stood for from the source row. Before
+// this the claim asserted the off-fleet arm alone and was red on every fleet runner (srv1) and green
+// elsewhere -- gunbc.recurring_failure_mode wet_witness_keyed_to_the_runner_not_its_subject. The
+// fleet arm is weaker by construction: where the log answers every group the route is exercised
+// only up to the store resolution, and the discriminating off-fleet half runs on an off-fleet runner.
+data undeclared_store: String = "no dashboard instance is declared for host "
+
+fn verdict_text(e: ProcessExit) -> String? {
+  match e {
+    ExitSuccess => none
+    ExitFailure { code: _, reason: reason } => Present { value: reason as String }
+  }
+}
+
+test fn the_live_entry_reads_the_authority_before_judging_on_and_off_the_fleet() -> Bool {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: _ } => false
+    ExecutorReachKnown { short_hostname: executor, path: _ } => {
+      let verdict = verdict_text(e: fabric_capacity_standing())
+      match event_log_store_for_host(short_hostname: executor) {
+        HostStoreRefused { detail: _ } =>
+          match verdict {
+            Absent => false
+            Present { value: reason } =>
+              string_contains(s: reason, pattern: join(["group-a: serving authority could not be read at store: ", undeclared_store], ""))
+          }
+        HostStoreResolved { store: _, executor: _ } =>
+          match verdict {
+            Absent => true
+            Present { value: reason } =>
+              !string_contains(s: reason, pattern: undeclared_store)
+          }
+      }
+    }
   }
 }
