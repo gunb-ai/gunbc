@@ -2105,7 +2105,8 @@ fn empty_runtime_values() -> List<RuntimeValue> {
 }
 
 // An applied callee's actuals are every edge after the callee, positional AND named, evaluated in
-// authored order; eval_bind_arrow_params binds them through the one binding plan. Every other
+// authored order -- never a cast's <cast-target>, which is a type (v2.std.type_binder), whichever arm
+// the node takes; eval_bind_arrow_params binds them through the one binding plan. Every other
 // Transform -- including an application whose callee is a resolved declaration reference, which
 // eval_transform_has_callee_reference does not recognise -- evaluates EVERY child: its named edges are
 // named actuals (v2.std.node PositionalPrefixThenLabeled), and filtering to positional edges dropped
@@ -2113,9 +2114,9 @@ fn empty_runtime_values() -> List<RuntimeValue> {
 fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } => p != 0
-      ReadyToInterpret => true
-      Interpreted => true
+      AwaitingChildren { processed: p } => (p != 0) && !edge_is_cast_target(e: edge)
+      ReadyToInterpret => !edge_is_cast_target(e: edge)
+      Interpreted => !edge_is_cast_target(e: edge)
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {
