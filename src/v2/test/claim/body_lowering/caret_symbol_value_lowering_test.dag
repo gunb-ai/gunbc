@@ -110,10 +110,10 @@ fn csv_is_bare_caret(n: Node) -> Bool {
 // witness is about carets, and a lambda call argument is a separate native-lowering frontier.
 fn csv_payloads(nodes: List<Node>) -> List<Symbol> {
   match nodes {
-    Empty => Empty
+    Empty => []
     Cons { head: n, tail: rest } =>
       if csv_is_symbol_literal(n: n) {
-        Cons { head: csv_node_tag(n: n), tail: csv_payloads(nodes: rest) }
+        concat([csv_node_tag(n: n)], csv_payloads(nodes: rest))
       } else {
         csv_payloads(nodes: rest)
       }
@@ -137,17 +137,17 @@ fn csv_any_symbol_literal(operands: List<Node>) -> Bool {
 
 fn csv_tags(operands: List<Node>) -> List<Symbol> {
   match operands {
-    Empty => Empty
-    Cons { head: o, tail: rest } => Cons { head: csv_node_tag(n: o), tail: csv_tags(operands: rest) }
+    Empty => []
+    Cons { head: o, tail: rest } => concat([csv_node_tag(n: o)], csv_tags(operands: rest))
   }
 }
 
 fn csv_operand_rows(nodes: List<Node>) -> List<List<Symbol>> {
   match nodes {
-    Empty => Empty
+    Empty => []
     Cons { head: n, tail: rest } =>
       if csv_any_symbol_literal(operands: node_positional_child_targets(node: n)) {
-        Cons { head: csv_tags(operands: node_positional_child_targets(node: n)), tail: csv_operand_rows(nodes: rest) }
+        concat([csv_tags(operands: node_positional_child_targets(node: n))], csv_operand_rows(nodes: rest))
       } else {
         csv_operand_rows(nodes: rest)
       }
