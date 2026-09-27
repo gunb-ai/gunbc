@@ -54,6 +54,50 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
+import gunbc.machine_intake_megarac_media_attach {
+  AttachReadiness,
+  MegaRacAttachOutcome,
+  MegaRacAttachResult,
+  MegaRacAttachRoute,
+  MegaRacDetachEvidence,
+  MegaRacPresentationEvidence,
+  ReadinessLook,
+  RouteAlreadyPresented,
+  RouteAttached,
+  RouteReplaced,
+  SessionRelease,
+  SessionReleased,
+  SessionReleaseNotAttempted,
+  SessionReleaseRefused,
+  MegaRacPresentationReady,
+  MegaRacReadinessTimedOut,
+  MegaRacReadinessRefused,
+  MegaRacReadinessClockUnreadable,
+  MegaRacConfigurationsUnreadable,
+  MegaRacSessionRefused,
+  MegaRacSessionTokenUnreadable,
+  MegaRacImagesUnreadable,
+  MegaRacImageListingEmpty,
+  MegaRacImageListingUnparseable,
+  MegaRacImageNotEnumerated,
+  MegaRacForeignImagePresented,
+  MegaRacSeveralImagesPresented,
+  MegaRacStaleDetachNotAdmitted,
+  MegaRacStaleDetachUnconfirmed,
+  MegaRacRedirectionUncatalogued,
+  MegaRacRefreshClockUnreadable,
+  MegaRacNotEnumeratedAfterRefresh,
+  ReadinessStarted,
+  ReadinessConnecting,
+  ReadinessStartedUnbound,
+  ReadinessNotPresented,
+  ReadinessUnanswered,
+  ReadinessUncatalogued,
+  ReadinessMalformed,
+  ReadinessDuplicate,
+  ReadinessWrongPresentation,
+}
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
 // said about the machine around the attempt, recorded on every terminal arm so that a remote
@@ -326,7 +370,156 @@ type PowerAfterAttempt
   | PowerAfterUnobserved { observation: ChassisPowerObservation }
   | PowerAfterNotTaken { reason: NonEmptyStr }
 
+// ─── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ─────────────────────────────────────────────────
+//
+// THE HANDOFF IS GATED ON THIS RECORD, AND THE BUNDLE CARRIES THE SAME RECORD (side chat on
+// gunbc#12425). What the boot was gated on — which firmware, which intended medium and its verified
+// digest, which route, the three indices kept apart, the redirection wire, when, and after how many
+// looks — reaches the actuation, the attempt and this bundle as a value, including the refusal and
+// timeout arms, never as a bare exit. The power reading the detach admission was taken from is kept
+// beside it.
+type MtCollins1MediaAttachRecord
+  = MediaAttachNotAttempted { reason: NonEmptyStr }
+  | MediaAttachAttempted {
+      attempt: String,
+      medium_image_name: NonEmptyStr,
+      medium_image_sha256: NonEmptyStr,
+      power: ChassisPowerObservation,
+      result: MegaRacAttachResult
+    }
+
+fn optional_text(v: String?) -> String {
+  match v {
+    Present { value: x } => x
+    Absent => "absent"
+  }
+}
+
+fn attach_route_text(route: MegaRacAttachRoute) -> String {
+  match route {
+    RouteAlreadyPresented => "already presented (no listing consulted, no write)"
+    RouteAttached { image_list_index: i } => concat("attached at image-list index ", i)
+    RouteReplaced { image_list_index: i, detach: d } => concat("replaced (", concat(detach_evidence_text(detach: d), concat(") then attached at image-list index ", i)))
+  }
+}
+
+fn detach_evidence_text(detach: MegaRacDetachEvidence) -> String {
+  join([
+    "stopped '", detach.stale_image, "' on media index ", detach.media_index,
+    "; stop-media answered ", if detach.command.success { "success" } else { "FAILURE" }, ": ", detach.command.body,
+    "; configurations read-back ", if detach.readback_read { "read" } else { "UNREAD" }, ": ", detach.readback,
+  ], "")
+}
+
+fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
+  join([
+    "'", e.image_name as String, "' media_index=", optional_text(v: e.media_index),
+    " session_index=", optional_text(v: e.session_index),
+    " redirection_status=", to_string(e.redirection_wire),
+    " established_at=", to_string(e.established_at), " looks=", to_string(e.looks),
+  ], "")
+}
+
+fn readiness_reading_text(r: AttachReadiness) -> String {
+  match r {
+    ReadinessStarted { row: w } => concat("started, session_index ", optional_text(v: w.session_index))
+    ReadinessConnecting { row: w } => concat("connecting (status ", concat(to_string(w.redirection_wire), concat("), session_index ", optional_text(v: w.session_index))))
+    ReadinessStartedUnbound { row: w } => concat("started with no bound session, session_index ", optional_text(v: w.session_index))
+    ReadinessNotPresented { configurations: c } => concat("not presented: ", c)
+    ReadinessUnanswered { detail: d } => concat("configurations GET unanswered: ", d)
+    ReadinessUncatalogued { image_name: n, wire: w, configurations: c } => concat("UNCATALOGUED redirection_status ", concat(to_string(w), concat(" on '", concat(n, concat("': ", c)))))
+    ReadinessMalformed { detail: d } => concat("MALFORMED configurations: ", d)
+    ReadinessDuplicate { configurations: c } => concat("DUPLICATE rows present the image: ", c)
+    ReadinessWrongPresentation { image_name: n, configurations: c } => concat("WRONG presentation '", concat(n, concat("': ", c)))
+  }
+}
+
+fn readiness_look_text(l: ReadinessLook) -> String {
+  concat("at ", concat(to_string(l.observed_at), concat(": ", readiness_reading_text(r: l.reading))))
+}
+
+// THE ONE AUTHORITY FOR WHAT EACH ATTACH OUTCOME MEANS TO AN OPERATOR; absent only for the ready
+// presentation. The gate and this bundle both read it, so the reason a handoff was withheld and
+// the reason the bundle records are the same sentence.
+fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
+  match outcome {
+    MegaRacPresentationReady { route: _, evidence: _ } => none
+    MegaRacReadinessTimedOut { image_name: n, route: r, last: l, deadline: d, looks: k } =>
+      Present { value: join(["the presentation of '", n as String, "' did not reach Started with a bound session before ", to_string(d), " (", to_string(k), " looks, route: ", attach_route_text(route: r), "); last look ", readiness_look_text(l: l), ". No boot-device or power handoff was made"], "") }
+    MegaRacReadinessRefused { image_name: n, route: r, look: l, looks: k } =>
+      Present { value: join(["the presentation of '", n as String, "' was refused by the readiness policy after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), ". No boot-device or power handoff was made"], "") }
+    MegaRacReadinessClockUnreadable { image_name: n, route: _, detail: d } =>
+      Present { value: concat("the clock could not be read, so the readiness window for '", concat(n as String, concat("' could not be declared or judged: ", d))) }
+    MegaRacConfigurationsUnreadable { detail: d } =>
+      Present { value: concat("the presented-media listing could not be read, so whether anything is attached is UNKNOWN; refusing rather than attaching over an unknown state: ", d) }
+    MegaRacSessionRefused { detail: d } => Present { value: concat("session refused: ", d) }
+    MegaRacSessionTokenUnreadable { detail: d } => Present { value: concat("session succeeded but no CSRFToken could be read from its document: ", d) }
+    MegaRacImagesUnreadable { detail: d } => Present { value: concat("images listing unreadable: ", d) }
+    MegaRacImageListingEmpty =>
+      Present { value: "the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file" }
+    MegaRacImageListingUnparseable { detail: d } => Present { value: concat("the images listing was not valid JSON: ", d) }
+    MegaRacImageNotEnumerated { image_name: n } =>
+      Present { value: concat("the image is not presented, and the controller offers other images but not '", concat(n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file")) }
+    MegaRacForeignImagePresented { image_name: n, configurations: c } =>
+      Present { value: concat("the controller is presenting '", concat(n, concat("', which is not a census image of this lane; it is not this workflow's to stop, so nothing was written: ", c))) }
+    MegaRacSeveralImagesPresented { configurations: c } =>
+      Present { value: concat("more than one census image is presented at once, a state never observed on this single-CD unit; nothing was written: ", c) }
+    MegaRacStaleDetachNotAdmitted { stale_image: n, reason: why } =>
+      Present { value: concat("the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))) }
+    MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
+      Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
+    MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: c } =>
+      Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
+    MegaRacRefreshClockUnreadable { detail: d } => Present { value: concat("the clock could not be read, so the re-enumeration window could not be declared or judged: ", d) }
+    MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _ } =>
+      Present { value: join(["NotEnumeratedAfterRefresh: after the stale image was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file"], "") }
+  }
+}
+
+fn session_release_text(standing: SessionRelease) -> String {
+  match standing {
+    SessionReleased => "released"
+    SessionReleaseNotAttempted => "never opened"
+    SessionReleaseRefused { detail: d } => concat("NOT released, still allocated on the controller: ", d)
+  }
+}
+
+fn media_attach_text(record: MtCollins1MediaAttachRecord) -> String {
+  match record {
+    MediaAttachNotAttempted { reason: r } => concat("not attempted: ", r as String)
+    MediaAttachAttempted { attempt: a, medium_image_name: n, medium_image_sha256: h, power: p, result: res } =>
+      join([
+        "attempt ", a, " medium '", n as String, "' sha256 ", h as String,
+        "; power before the session: ", chassis_observation_text(observation: p) as String,
+        "; session ", session_release_text(standing: res.session_release), "; ",
+        match res.outcome {
+          MegaRacPresentationReady { route: r, evidence: e } => concat("READY via ", concat(attach_route_text(route: r), concat(": ", presentation_evidence_text(e: e))))
+          other => match media_attach_outcome_reason(outcome: other) {
+            Present { value: why } => concat("WITHHELD: ", why)
+            Absent => "WITHHELD"
+          }
+        },
+      ], "")
+  }
+}
+
+fn media_attach_findings(record: MtCollins1MediaAttachRecord) -> List<String> {
+  match record {
+    MediaAttachNotAttempted { reason: _ } => []
+    MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, result: res } =>
+      match media_attach_outcome_reason(outcome: res.outcome) {
+        Present { value: why } => [concat("media attach: ", why)]
+        Absent =>
+          match res.session_release {
+            SessionReleased => []
+            other => [concat("media attach: the presentation is ready but the session was ", session_release_text(standing: other))]
+          }
+      }
+  }
+}
+
 type MtCollins1BootRunRecord {
+  media: MtCollins1MediaAttachRecord
   smpro_power_on: SmproReading
   smpro_census: SmproReading
   override_before: BootParam5Reading
@@ -337,6 +530,7 @@ type MtCollins1BootRunRecord {
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
   MtCollins1BootRunRecord {
+    media: MediaAttachNotAttempted { reason: reason },
     smpro_power_on: SmproNotTaken { reason: reason },
     smpro_census: SmproNotTaken { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
@@ -454,6 +648,7 @@ fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
 
 fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   join([
+    concat("media=", media_attach_text(record: r.media)),
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
     boot_param5_text(label: "before", r: r.override_before),
@@ -792,7 +987,7 @@ fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> Li
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),
-    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(smpro_findings(s: bundle.run.smpro_power_on), concat(smpro_findings(s: bundle.run.smpro_census), concat(override_findings(c: bundle.run.override), concat(power_after_findings(p: bundle.run.power_after), concat(console_findings(c: bundle.console), shred)))))))))))
+    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(smpro_findings(s: bundle.run.smpro_power_on), concat(smpro_findings(s: bundle.run.smpro_census), concat(media_attach_findings(record: bundle.run.media), concat(override_findings(c: bundle.run.override), concat(power_after_findings(p: bundle.run.power_after), concat(console_findings(c: bundle.console), shred))))))))))))
 }
 
 // THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a

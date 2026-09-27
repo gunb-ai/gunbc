@@ -139,7 +139,7 @@ fn mtcollins1_drive_handoff(
   selection: IpmiBootSelection,
 ) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: label as String) {

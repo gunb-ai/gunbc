@@ -116,9 +116,16 @@ type MegaRacAttachResult {
   session_release: SessionRelease
 }
 
+// THE ONE SUCCESS IS A READY PRESENTATION, AND IT CARRIES HOW IT WAS REACHED AND WHAT WAS SEEN.
+// Already-presented, freshly attached and replaced-then-attached are three ROUTES to the same
+// verdict, and all three pass the same readiness fold (side chat on gunbc#12425): a name match on
+// an already-presented row is not readiness, and was the gap that let a boot power on over a
+// presentation that had not started.
 type MegaRacAttachOutcome
-  = MegaRacAttached { image_name: NonEmptyStr, image_index: String }
-  | MegaRacAlreadyAttached { image_name: NonEmptyStr }
+  = MegaRacPresentationReady { route: MegaRacAttachRoute, evidence: MegaRacPresentationEvidence }
+  | MegaRacReadinessTimedOut { image_name: NonEmptyStr, route: MegaRacAttachRoute, last: ReadinessLook, deadline: EpochMs, looks: Int }
+  | MegaRacReadinessRefused { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int }
+  | MegaRacReadinessClockUnreadable { image_name: NonEmptyStr, route: MegaRacAttachRoute, detail: String }
   | MegaRacConfigurationsUnreadable { detail: String }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
@@ -126,15 +133,50 @@ type MegaRacAttachOutcome
   | MegaRacImageListingEmpty
   | MegaRacImageListingUnparseable { detail: String }
   | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
-  | MegaRacAttachUnconfirmed { image_name: NonEmptyStr, configurations: String }
-  | MegaRacRefreshedAndAttached { image_name: NonEmptyStr, image_index: String, detached: String }
-  | MegaRacForeignImagePresented { image_name: String }
+  | MegaRacForeignImagePresented { image_name: String, configurations: String }
   | MegaRacSeveralImagesPresented { configurations: String }
   | MegaRacStaleDetachNotAdmitted { stale_image: String, reason: NonEmptyStr }
-  | MegaRacStaleDetachUnconfirmed { stale_image: String, configurations: String }
-  | MegaRacRedirectionUncatalogued { image_name: String, wire: Int }
+  | MegaRacStaleDetachUnconfirmed { detach: MegaRacDetachEvidence, reason: NonEmptyStr }
+  | MegaRacRedirectionUncatalogued { image_name: String, wire: Int, configurations: String }
   | MegaRacRefreshClockUnreadable { detail: String }
-  | MegaRacNotEnumeratedAfterRefresh { image_name: NonEmptyStr, standing: RemoteMediaMountStanding }
+  | MegaRacNotEnumeratedAfterRefresh { image_name: NonEmptyStr, detach: MegaRacDetachEvidence, standing: RemoteMediaMountStanding }
+
+// THREE INDICES, THREE CONCEPTS, NEVER JOINED. image_list_index is the image's position in
+// /remote/images at the look that resolved it (absent on the already-presented route, where no
+// listing was consulted); media_index is the virtual device slot; session_index is the redirection
+// session. See configuration_row_reading for the nicknaming failure that joining them was.
+type MegaRacAttachRoute
+  = RouteAlreadyPresented
+  | RouteAttached { image_list_index: String }
+  | RouteReplaced { image_list_index: String, detach: MegaRacDetachEvidence }
+
+type MegaRacPresentationEvidence {
+  firmware: BmcFirmwareReleaseIdentity
+  image_name: NonEmptyStr
+  media_index: String?
+  session_index: String?
+  redirection_wire: Int
+  established_at: EpochMs
+  looks: Int
+}
+
+// THE STOP COMMAND'S ANSWER AND THE READ-BACK ARE TWO FACTS AND BOTH ARE KEPT. This firmware has
+// answered 1411 "Error stopping the remote media redirection" to a stop after which configurations
+// read image '' and status 0: the read-back establishes the detach, and the error is retained
+// beside it rather than discarded. A success whose read-back still presents the image, or cannot be
+// read, establishes nothing.
+type StopCommandAnswer {
+  success: Bool
+  body: String
+}
+
+type MegaRacDetachEvidence {
+  stale_image: String
+  media_index: String
+  command: StopCommandAnswer
+  readback_read: Bool
+  readback: String
+}
 
 // WHICH PRESENTED IMAGES THIS ATTACH MAY REPLACE, AND WHETHER IT MAY WRITE ANYTHING DESTRUCTIVE
 // NOW. Both are the caller's policy and neither is this operation's to decide: the replaceable set
@@ -457,10 +499,11 @@ fn megarac_attach_then_release(
 // should be ensuring the correct image"). Boot run 36328950865 refused with the previous census
 // image still presented and the new one missing from the listing although it was in the export:
 // the rmedia daemon enumerates the share when it mounts it. So the step is: the desired image
-// presented is done; another image of the caller's replaceable stem presented is stopped, under
-// the caller's admission, and read back as gone; the share is re-mounted so the listing
-// re-enumerates; the desired image is attached by the index its NAME resolves to and read back.
-// A presented image outside the replaceable stem is somebody else's and refuses.
+// presented goes straight to the readiness fold; another image of the caller's replaceable stem
+// presented is stopped, under the caller's admission, and read back as gone; the listing is
+// re-read and the desired image's CURRENT index resolved; it is attached; and the attach passes the
+// same readiness fold. A presented image outside the replaceable stem is somebody else's and
+// refuses.
 fn megarac_attach_with_token(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -474,6 +517,7 @@ fn megarac_attach_with_token(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
   )
   if presented.success == false {
     return MegaRacConfigurationsUnreadable { detail: presented.body }
@@ -484,14 +528,19 @@ fn megarac_attach_with_token(
     replaceable_seeded_stem: policy.replaceable_seeded_stem,
   )
   return match megarac_convergence_step(convergence: convergence, detach: policy.detach, configurations: presented.body) {
-    ConvergeStepAlreadyAttached =>
-      match megarac_await_readiness(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, image_name: image_name, firmware: firmware, remaining: megarac_readiness_ticks) {
-        ReadinessReady => MegaRacAlreadyAttached { image_name: image_name }
-        other => readiness_refusal(readiness: other, image_name: image_name)
-      }
     ConvergeStepRefuse { outcome: o } => o
+    ConvergeStepAwaitReadiness =>
+      megarac_readiness_outcome(
+        bmc_host: bmc_host,
+        cookie_jar: cookie_jar,
+        csrf_token: csrf_token,
+        image_name: image_name,
+        firmware: firmware,
+        route: RouteAlreadyPresented,
+        phase: ReadinessOfPresented,
+      )
     ConvergeStepDetachStale { row: row } =>
-      megarac_detach_then_refresh(
+      megarac_detach_then_attach(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
         csrf_token: csrf_token,
@@ -511,6 +560,15 @@ fn megarac_attach_with_token(
   }
 }
 
+// EVERY READ IS BOUNDED, not only the window. A configurations or images GET that hangs would
+// otherwise hold the readiness window open past its deadline with no look to judge it by, so each
+// call carries curl's --max-time and a call that runs out is one unanswered look.
+data megarac_media_read_max_time: Second = second(count: 10)
+
+fn megarac_media_read_max_time_operand() -> NonEmptyStr {
+  to_string(second_count(s: megarac_media_read_max_time)) as NonEmptyStr
+}
+
 // NOTHING PRESENTED: the listing is consulted as before. With nothing presented there is nothing
 // to stop, and stopping is what re-enumerates the share, so an image the listing does not offer
 // refuses as it always has.
@@ -526,6 +584,7 @@ fn megarac_attach_from_listing(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
   )
   if images.success == false {
     return MegaRacImagesUnreadable { detail: images.body }
@@ -535,21 +594,22 @@ fn megarac_attach_from_listing(
     ImagesListingEmpty => MegaRacImageListingEmpty
     ImagesListingLacks => MegaRacImageNotEnumerated { image_name: image_name }
     ImagesListingOffers { image_index: idx } =>
-      megarac_start_and_confirm(
+      megarac_start_then_readiness(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
         csrf_token: csrf_token,
         image_name: image_name,
-        image_index: idx,
+        image_list_index: idx,
         firmware: firmware,
+        route: RouteAttached { image_list_index: idx },
       )
   }
 }
 
 // THE STOP IS READ BACK BEFORE THE LISTING IS AWAITED, so an attach never follows a stop whose effect
-// is unknown. The controller's HTTP status decides nothing (code 1411 on a stop that took effect); the
-// configurations listing presenting nothing does.
-fn megarac_detach_then_refresh(
+// is unknown. The command's answer and the read-back are both kept (MegaRacDetachEvidence); only the
+// read-back decides.
+fn megarac_detach_then_attach(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
@@ -559,73 +619,94 @@ fn megarac_detach_then_refresh(
   stale: PresentingRow,
 ) -> MegaRacAttachOutcome
 {
-  match stale.media_index {
-    Absent =>
-      return MegaRacStaleDetachUnconfirmed { stale_image: stale.image_name, configurations: "the presenting row carries no media_index, so no stop-media body can name its device; nothing was written" }
-    Present { value: _ } => none
+  let media_index = match stale.media_index {
+    Present { value: i } => i
+    Absent => ""
   }
-  let _stopped = megarac.Media.StopMedia(
+  if media_index == "" {
+    return MegaRacStaleDetachUnconfirmed {
+      detach: MegaRacDetachEvidence {
+        stale_image: stale.image_name,
+        media_index: "",
+        command: StopCommandAnswer { success: false, body: "not sent" },
+        readback_read: false,
+        readback: "",
+      },
+      reason: "the presenting row carries no media_index, so no stop-media body can name its device; nothing was written",
+    }
+  }
+  let stopped = megarac.Media.StopMedia(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
     json_body: stop_media_body(row: stale),
   )
-  after = megarac.Media.GetRemoteConfigurations(
+  let after = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
   )
-  if after.success == false {
-    return MegaRacStaleDetachUnconfirmed { stale_image: stale.image_name, configurations: after.body }
+  let evidence = MegaRacDetachEvidence {
+    stale_image: stale.image_name,
+    media_index: media_index,
+    command: StopCommandAnswer { success: stopped.success, body: stopped.body },
+    readback_read: after.success,
+    readback: after.body,
   }
-  return match presented_convergence(
-    presented: presented_media(body: after.body, image_name: image_name, firmware: firmware),
-    image_name: image_name,
-    replaceable_seeded_stem: policy.replaceable_seeded_stem,
-  ) {
-    ConvergeNothingPresented =>
+  return match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stem: policy.replaceable_seeded_stem) {
+    DetachNotEstablished { reason: why } => MegaRacStaleDetachUnconfirmed { detach: evidence, reason: why }
+    DetachEstablished =>
       megarac_enumerate_then_attach(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
         csrf_token: csrf_token,
         image_name: image_name,
         firmware: firmware,
-        detached: stale.image_name,
+        detach: evidence,
       )
-    _ => MegaRacStaleDetachUnconfirmed { stale_image: stale.image_name, configurations: after.body }
   }
 }
 
-// THE STOP-MEDIA BODY. extdeps.bmc.megarac records only that stop-media takes start-media's body
-// shape; which index it wants is not recorded anywhere, so this is a typed bet rather than a fact:
-// the row's media_index, the virtual device the presentation occupies, since the image enumeration
-// index of an attached image is not listed (it has left /remote/images). The read-back above is
-// what decides whether the bet held; a wrong index is StaleDetachUnconfirmed, never a success.
-fn stop_media_body(row: PresentingRow) -> NonEmptyStr {
-  let idx = match row.media_index {
-    Present { value: i } => i
-    Absent => ""
+type DetachVerdict
+  = DetachEstablished
+  | DetachNotEstablished { reason: NonEmptyStr }
+
+// PURE: the detach is established exactly when the read-back was read and presents nothing. The
+// command's success is not consulted, in either direction.
+fn detach_verdict(
+  evidence: MegaRacDetachEvidence,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  replaceable_seeded_stem: NonEmptyStr,
+) -> DetachVerdict {
+  if evidence.readback_read == false {
+    DetachNotEstablished { reason: "the configurations read-back after stop-media failed, so the stop is unestablished whatever stop-media answered" }
+  } else {
+    match presented_convergence(
+      presented: presented_media(body: evidence.readback, image_name: image_name, firmware: firmware),
+      image_name: image_name,
+      replaceable_seeded_stem: replaceable_seeded_stem,
+    ) {
+      ConvergeNothingPresented => DetachEstablished
+      _ => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
+    }
   }
-  join([
-    "{\"image_name\":\"", row.image_name,
-    "\",\"image_type\":1,\"image_index\":", idx,
-    ",\"image_redirection\":1}"
-  ], "") as NonEmptyStr
 }
 
 // STOP-MEDIA IS THE RE-ENUMERATION. Measured on mtcollins1 2026-09-27 with the host off: after
 // stop-media cleared the stale presentation, /remote/images listed the newly published census image
 // within 15s, while PUT /api/settings/media/general with mount_cd 0 and then 1 was REFUSED both
 // times (code 16425, "Error in setting Remote Media Misc Configuration", settings unchanged). So no
-// mount_cd cycle is written here: the listing is awaited after the stop, and the stop is the only
-// effect the wait is judged against.
+// mount_cd cycle is written here: the listing is awaited after the stop, and the index attached is
+// the one the CURRENT listing gives the name, never one read before the stop.
 fn megarac_enumerate_then_attach(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
-  detached: String,
+  detach: MegaRacDetachEvidence,
 ) -> MegaRacAttachOutcome
 {
   return match clock_unix_millis_read() {
@@ -642,28 +723,36 @@ fn megarac_enumerate_then_attach(
       ) {
         EnumerationClockUnreadable { detail: d } => MegaRacRefreshClockUnreadable { detail: d }
         EnumerationUnparseable { detail: d } => MegaRacImageListingUnparseable { detail: d }
-        NotEnumeratedAfterRefresh { standing: st } => MegaRacNotEnumeratedAfterRefresh { image_name: image_name, standing: st }
+        NotEnumeratedAfterRefresh { standing: st } => MegaRacNotEnumeratedAfterRefresh { image_name: image_name, detach: detach, standing: st }
         EnumeratedAfterRefresh { image_index: idx } =>
-          refreshed_outcome(
-            attached: megarac_start_and_confirm(
-              bmc_host: bmc_host,
-              cookie_jar: cookie_jar,
-              csrf_token: csrf_token,
-              image_name: image_name,
-              image_index: idx,
-              firmware: firmware,
-            ),
-            detached: detached,
+          megarac_start_then_readiness(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_token: csrf_token,
+            image_name: image_name,
+            image_list_index: idx,
+            firmware: firmware,
+            route: RouteReplaced { image_list_index: idx, detach: detach },
           )
       }
   }
 }
 
-fn refreshed_outcome(attached: MegaRacAttachOutcome, detached: String) -> MegaRacAttachOutcome {
-  match attached {
-    MegaRacAttached { image_name: n, image_index: i } => MegaRacRefreshedAndAttached { image_name: n, image_index: i, detached: detached }
-    other => other
+// THE STOP-MEDIA BODY. extdeps.bmc.megarac records only that stop-media takes start-media's body
+// shape; which index it wants is not recorded anywhere, so this is a typed bet rather than a fact:
+// the row's media_index, the virtual device the presentation occupies, since the image enumeration
+// index of an attached image is not listed (it has left /remote/images). The read-back decides
+// whether the bet held; a wrong index is StaleDetachUnconfirmed, never a success.
+fn stop_media_body(row: PresentingRow) -> NonEmptyStr {
+  let idx = match row.media_index {
+    Present { value: i } => i
+    Absent => ""
   }
+  join([
+    "{\"image_name\":\"", row.image_name,
+    "\",\"image_type\":1,\"image_index\":", idx,
+    ",\"image_redirection\":1}"
+  ], "") as NonEmptyStr
 }
 
 // THE RE-ENUMERATION IS A BOUNDED ESTABLISHMENT, folded by gunbc.machine_intake_mount_establishment
@@ -685,12 +774,13 @@ fn megarac_refresh_enumeration_ticks() -> Int {
   (second_count(s: megarac_refresh_enumeration_budget) as Int) / (second_count(s: megarac_refresh_poll_interval) as Int) + 2
 }
 
-// WHAT THE WHOLE CONVERGENCE MAY SPEND, for a caller that budgets its step: the enumeration window
-// and its pacing past the deadline, the readiness wait after start-media, and the reads and writes
-// around them.
+// WHAT THE WHOLE CONVERGENCE MAY SPEND, for a caller that budgets its step: both windows, each
+// window's last bounded call past its deadline, and the reads and writes around them.
 fn megarac_convergence_allowance() -> Second {
-  second(count: (second_count(s: megarac_refresh_enumeration_budget) as Int) + 2 * (second_count(s: megarac_refresh_poll_interval) as Int)
-    + megarac_readiness_ticks * (second_count(s: megarac_readiness_interval) as Int) + 30)
+  let read = second_count(s: megarac_media_read_max_time) as Int
+  second(count: (second_count(s: megarac_refresh_enumeration_budget) as Int) + (second_count(s: megarac_refresh_poll_interval) as Int) + read
+    + (second_count(s: megarac_readiness_budget) as Int) + (second_count(s: megarac_readiness_interval) as Int) + read
+    + 6 * read)
 }
 
 type EnumerationAfterRefresh
@@ -702,7 +792,8 @@ type EnumerationAfterRefresh
 // A LISTING THAT REFUSES IS PENDING, A LISTING THAT PARSES AND LACKS THE NAME IS ABSENT, AND BOTH
 // ARE ONE MISS INSIDE THE WINDOW. extdeps.bmc.megarac records that "Could not mount the remote
 // path" on the images route means the daemon has not mounted yet; a body that answers but is not a
-// JSON array is a protocol failure and refuses at once.
+// JSON array is a protocol failure and refuses at once. The first look is taken at once; the pacing
+// sleep runs only between looks that were still pending.
 fn megarac_await_enumeration(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -713,11 +804,11 @@ fn megarac_await_enumeration(
   remaining: Int,
 ) -> EnumerationAfterRefresh
 {
-  let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
   let images = megarac.Media.GetRemoteImages(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
   )
   let reading = if images.success { images_listing_reading(body: images.body, image_name: image_name) } else { ImagesListingLacks }
   match clock_unix_millis_read() {
@@ -739,7 +830,8 @@ fn megarac_await_enumeration(
           )
           match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
             EnumerationDecided { result: r } => r
-            EnumerationLookAgain =>
+            EnumerationLookAgain => {
+              let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
               megarac_await_enumeration(
                 bmc_host: bmc_host,
                 cookie_jar: cookie_jar,
@@ -749,6 +841,7 @@ fn megarac_await_enumeration(
                 observations: seen,
                 remaining: remaining - 1,
               )
+            }
           }
         }
       }
@@ -819,6 +912,8 @@ type PresentingRow {
   image_name: String
   media_index: String?
   session_index: String?
+  redirection_wire: Int
+  redirection: MegaRacRedirectionStatus
 }
 
 // THE CONFIRMATION READS EXACT ACTIVE ROWS, not a substring of a body. An earlier form asked
@@ -871,25 +966,30 @@ fn configuration_row_reading(
             if name == "" { ConfigurationRowIdle } else { ConfigurationRowUnreadable { detail: concat("redirection_status missing on a row that names ", name) } }
           Present { value: st } =>
             match parse_int(s: st) {
-              Absent => ConfigurationRowUnreadable { detail: "redirection_status is not an integer" }
+              Absent => ConfigurationRowUnreadable { detail: concat("redirection_status is not an integer: ", st) }
               Present { value: wire } =>
-                match megarac_redirection_presentation_standing(
-                  lookup: megarac_redirection_status_of_wire(firmware: firmware, wire: wire),
-                ) {
-                  RedirectionKnownStopped => ConfigurationRowIdle
-                  RedirectionPresentationUnknown =>
-                    if name == "" {
-                      ConfigurationRowIdle
-                    } else {
-                      ConfigurationRowUncatalogued { image_name: name, wire: wire }
-                    }
-                  RedirectionPresenting =>
-                    if name == "" {
-                      ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
-                    } else {
-                      ConfigurationRowPresenting {
-                        row: PresentingRow { image_name: name, media_index: json_number_member(doc: row, key: "media_index"), session_index: json_number_member(doc: row, key: "session_index") },
-                      }
+                match megarac_redirection_status_of_wire(firmware: firmware, wire: wire) {
+                  RedirectionStatusFirmwareUncatalogued { firmware: _, wire: w } =>
+                    if name == "" { ConfigurationRowIdle } else { ConfigurationRowUncatalogued { image_name: name, wire: w } }
+                  RedirectionStatusKnown { firmware: _, status: status } =>
+                    match status {
+                      RedirectionStopped => ConfigurationRowIdle
+                      RedirectionWireUncatalogued { wire: w } =>
+                        if name == "" { ConfigurationRowIdle } else { ConfigurationRowUncatalogued { image_name: name, wire: w } }
+                      _ =>
+                        if name == "" {
+                          ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
+                        } else {
+                          ConfigurationRowPresenting {
+                            row: PresentingRow {
+                              image_name: name,
+                              media_index: json_number_member(doc: row, key: "media_index"),
+                              session_index: json_number_member(doc: row, key: "session_index"),
+                              redirection_wire: wire,
+                              redirection: status,
+                            },
+                          }
+                        }
                     }
                 }
             }
@@ -931,31 +1031,11 @@ fn presented_media(
   }
 }
 
-// WHETHER THE DESIRED IMAGE IS PRESENTED — the read-back after a start, over the same row reader
-// the convergence uses, so the two can never disagree about what "presented" means.
-type PresentedMediaStanding
-  = PresentedMediaUnreadable { detail: String }
-  | PresentedMediaAttached
-  | PresentedMediaNotAttached
-
-fn presented_media_standing(
-  body: String,
-  image_name: NonEmptyStr,
-  firmware: BmcFirmwareReleaseIdentity,
-) -> PresentedMediaStanding {
-  match presented_media(body: body, image_name: image_name, firmware: firmware) {
-    PresentedMediaDocumentUnreadable { detail: d } => PresentedMediaUnreadable { detail: d }
-    PresentedMediaUncatalogued { image_name: n, wire: w } => PresentedMediaUnreadable { detail: concat("redirection_status is uncatalogued for this firmware on the row naming ", concat(n, concat(": ", to_string(w)))) }
-    PresentedMediaRead { presenting: ps } =>
-      if ps |> any(r => r.image_name == (image_name as String)) { PresentedMediaAttached } else { PresentedMediaNotAttached }
-  }
-}
-
 // WHAT IS PRESENTED, RELATIVE TO THE DESIRED IMAGE AND THE REPLACEABLE STEM. The desired image
-// presented is converged whatever else is. Otherwise any presented image the stem's naming
-// inverse does not recognise is foreign and decides the answer; this unit presents one CD device,
-// so two replaceable images presented at once is a state never observed and refuses rather than
-// being stopped in some order.
+// presented goes to the readiness fold, which is where duplicate or mixed rows are judged.
+// Otherwise any presented image the stem's naming inverse does not recognise is foreign and
+// decides the answer; this unit presents one CD device, so two replaceable images presented at
+// once is a state never observed and refuses rather than being stopped in some order.
 type PresentedConvergence
   = ConvergeUnreadable { detail: String }
   | ConvergeUncatalogued { image_name: String, wire: Int }
@@ -996,14 +1076,15 @@ fn presented_convergence(
 }
 
 type ConvergenceStep
-  = ConvergeStepAlreadyAttached
+  = ConvergeStepAwaitReadiness
   | ConvergeStepRefuse { outcome: MegaRacAttachOutcome }
   | ConvergeStepDetachStale { row: PresentingRow }
   | ConvergeStepAttachFromListing
 
 // THE DECISION, PURE, so every control is a supplied configurations reading rather than a
 // controller. The admission is read only on the arm that would write destructively: a host that is
-// on with the desired image presented is a no-op, not a refusal.
+// on with the desired image presented makes no write, and goes to the readiness fold like any other
+// presentation.
 fn megarac_convergence_step(
   convergence: PresentedConvergence,
   detach: MegaRacDetachAdmission,
@@ -1011,10 +1092,10 @@ fn megarac_convergence_step(
 ) -> ConvergenceStep {
   match convergence {
     ConvergeUnreadable { detail: d } => ConvergeStepRefuse { outcome: MegaRacConfigurationsUnreadable { detail: d } }
-    ConvergeUncatalogued { image_name: n, wire: w } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, wire: w } }
-    ConvergeDesiredPresented => ConvergeStepAlreadyAttached
+    ConvergeUncatalogued { image_name: n, wire: w } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: configurations } }
+    ConvergeDesiredPresented => ConvergeStepAwaitReadiness
     ConvergeNothingPresented => ConvergeStepAttachFromListing
-    ConvergeForeignPresented { image_name: n } => ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n } }
+    ConvergeForeignPresented { image_name: n } => ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: configurations } }
     ConvergeSeveralPresented => ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: configurations } }
     ConvergeStalePresented { row: r } =>
       match detach {
@@ -1024,37 +1105,73 @@ fn megarac_convergence_step(
   }
 }
 
-// A NON-ZERO START FOLLOWED BY NO CONFIRMATION IS PENDING, NOT REFUSED, and this firmware is why:
-// the same controller answers HTTP 500 on writes that take effect, and its mount daemon is
-// asynchronous. Treating start.success as refusal would refuse an attach that is merely still
-// mounting. The bounded read-back decides.
-//
-// THE READ-BACK IS A READINESS WAIT, NOT ONE READ, AND IT GATES POWER. Boot run 36330382023 read
-// configurations 0.11s after start-media, then powered on 0.7s later; the firmware printed "Boot
-// option loading failed" and fell to the UEFI shell, and configurations afterwards showed the image
-// at redirection_status 16 with session_index 255. So Attached now means: the row naming the image
-// is Started or Connecting AND carries a bound session, observed within a declared number of looks.
-// An uncatalogued status on that row (16 among them) refuses at once, keeping the wire value,
-// because decoder ignorance is not a retry cue; running out of looks is Unconfirmed.
-fn megarac_start_and_confirm(
+// A NON-ZERO START IS NOT A REFUSAL, and this firmware is why: the same controller answers HTTP 500
+// on writes that take effect, and its mount daemon is asynchronous. The readiness fold decides.
+fn megarac_start_then_readiness(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
   image_name: NonEmptyStr,
-  image_index: String,
+  image_list_index: String,
   firmware: BmcFirmwareReleaseIdentity,
+  route: MegaRacAttachRoute,
 ) -> MegaRacAttachOutcome
 {
   let _start = megarac.Media.StartMedia(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
-    json_body: start_media_body(image_name: image_name, image_index: image_index),
+    json_body: start_media_body(image_name: image_name, image_index: image_list_index),
   )
-  return match megarac_await_readiness(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, image_name: image_name, firmware: firmware, remaining: megarac_readiness_ticks) {
-    ReadinessReady => MegaRacAttached { image_name: image_name, image_index: image_index }
-    other => readiness_refusal(readiness: other, image_name: image_name)
-  }
+  return megarac_readiness_outcome(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    image_name: image_name,
+    firmware: firmware,
+    route: route,
+    phase: ReadinessAfterStart,
+  )
+}
+
+// ─── READINESS ────────────────────────────────────────────────────────────────────────────────
+//
+// THE POLICY, AND WHY IT IS NOT THE FIRMWARE'S STATE. Boot run 36330382023 read configurations
+// 0.11s after start-media and powered on 0.7s later; the firmware printed "Boot option loading
+// failed" and fell to the UEFI shell, and configurations afterwards read status 16, session_index
+// 255. So the POLICY here is: only STARTED, on exactly one CD row naming the intended image, with a
+// bound session, is ready. CONNECTING is pending and is observed again within the window. That is a
+// readiness policy, not a claim that 100 never serves: a boot on this unit once reached GRUB from a
+// session that still read 100 (extdeps.bmc.megarac megarac_redirection_presentation_standing keeps
+// Connecting as presenting, and this does not redefine it). The manual re-attach of 2026-09-27 read
+// 100 at +6s and 1 with session_index 0 from +12s, stable to +120s, so waiting for Started costs
+// seconds and buys the state a boot is known to succeed from.
+//
+// NOT PRESENTED is pending only after this attempt's own start-media — the admitted establishment
+// transition. On the already-presented route the row was just seen, so its disappearance is a
+// withdrawal nobody here requested and refuses.
+//
+// UNCATALOGUED, MALFORMED, AMBIGUOUS OR WRONG refuse at once with the evidence: an uncatalogued
+// wire keeps its number, duplicate rows naming the image and a row presenting a different image
+// keep the configurations document. Decoder ignorance is not a retry cue.
+type ReadinessPhase
+  = ReadinessAfterStart
+  | ReadinessOfPresented
+
+type AttachReadiness
+  = ReadinessStarted { row: PresentingRow }
+  | ReadinessConnecting { row: PresentingRow }
+  | ReadinessStartedUnbound { row: PresentingRow }
+  | ReadinessNotPresented { configurations: String }
+  | ReadinessUnanswered { detail: String }
+  | ReadinessUncatalogued { image_name: String, wire: Int, configurations: String }
+  | ReadinessMalformed { detail: String }
+  | ReadinessDuplicate { configurations: String }
+  | ReadinessWrongPresentation { image_name: String, configurations: String }
+
+type ReadinessLook {
+  observed_at: EpochMs
+  reading: AttachReadiness
 }
 
 // THE SESSION IS BOUND WHEN session_index NAMES A SLOT. 255 is what the failed boot's row carried
@@ -1074,67 +1191,214 @@ fn presenting_session_bound(row: PresentingRow) -> Bool {
   }
 }
 
-type AttachReadiness
-  = ReadinessReady
-  | ReadinessPending { configurations: String }
-  | ReadinessUncatalogued { image_name: String, wire: Int }
-  | ReadinessUnreadable { detail: String }
-
-// PURE, over one configurations document, so every control is a supplied body.
-fn attach_readiness(body: String, image_name: NonEmptyStr, firmware: BmcFirmwareReleaseIdentity) -> AttachReadiness {
-  match presented_media(body: body, image_name: image_name, firmware: firmware) {
-    PresentedMediaDocumentUnreadable { detail: d } => ReadinessUnreadable { detail: d }
-    PresentedMediaUncatalogued { image_name: n, wire: w } => ReadinessUncatalogued { image_name: n, wire: w }
-    PresentedMediaRead { presenting: ps } =>
-      if ps |> any(r => r.image_name == (image_name as String) && presenting_session_bound(row: r)) {
-        ReadinessReady
-      } else {
-        ReadinessPending { configurations: body }
+// ONE LOOK, PURE, over one configurations answer, so every control is a supplied body.
+fn attach_readiness(
+  answered: Bool,
+  body: String,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+) -> AttachReadiness {
+  if answered == false {
+    ReadinessUnanswered { detail: body }
+  } else {
+    match presented_media(body: body, image_name: image_name, firmware: firmware) {
+      PresentedMediaDocumentUnreadable { detail: d } => ReadinessMalformed { detail: d }
+      PresentedMediaUncatalogued { image_name: n, wire: w } => ReadinessUncatalogued { image_name: n, wire: w, configurations: body }
+      PresentedMediaRead { presenting: ps } => {
+        let named = ps |> filter(r => r.image_name == (image_name as String))
+        let others = ps |> filter(r => r.image_name != (image_name as String))
+        if (others |> count) > 0 {
+          match others.first() {
+            Present { value: o } => ReadinessWrongPresentation { image_name: o.image_name, configurations: body }
+            Absent => ReadinessMalformed { detail: body }
+          }
+        } else if (named |> count) > 1 {
+          ReadinessDuplicate { configurations: body }
+        } else {
+          match named.first() {
+            Absent => ReadinessNotPresented { configurations: body }
+            Present { value: r } =>
+              match r.redirection {
+                RedirectionStartedConnectionAccepted =>
+                  if presenting_session_bound(row: r) { ReadinessStarted { row: r } } else { ReadinessStartedUnbound { row: r } }
+                _ => ReadinessConnecting { row: r }
+              }
+          }
+        }
       }
+    }
   }
 }
 
-fn readiness_refusal(readiness: AttachReadiness, image_name: NonEmptyStr) -> MegaRacAttachOutcome {
-  match readiness {
-    ReadinessReady => MegaRacAttachUnconfirmed { image_name: image_name, configurations: "readiness_refusal called on a ready reading" }
-    ReadinessPending { configurations: c } => MegaRacAttachUnconfirmed { image_name: image_name, configurations: c }
-    ReadinessUncatalogued { image_name: n, wire: w } => MegaRacRedirectionUncatalogued { image_name: n, wire: w }
-    ReadinessUnreadable { detail: d } => MegaRacConfigurationsUnreadable { detail: d }
+type ReadinessStanding
+  = ReadinessEstablished { look: ReadinessLook }
+  | ReadinessPending
+  | ReadinessRefusedAt { look: ReadinessLook }
+
+// THE ONE-LOOK STANDING, pure. Pending is representable only for readings the policy calls
+// transitional, and not-presented only in the start phase. An unanswered GET (curl ran out of its
+// --max-time, or the controller answered 5xx mid-transition) is one miss, not evidence either way.
+fn readiness_standing(look: ReadinessLook, phase: ReadinessPhase) -> ReadinessStanding {
+  match look.reading {
+    ReadinessStarted { row: _ } => ReadinessEstablished { look: look }
+    ReadinessConnecting { row: _ } => ReadinessPending
+    ReadinessStartedUnbound { row: _ } => ReadinessPending
+    ReadinessUnanswered { detail: _ } => ReadinessPending
+    ReadinessNotPresented { configurations: _ } =>
+      match phase {
+        ReadinessAfterStart => ReadinessPending
+        ReadinessOfPresented => ReadinessRefusedAt { look: look }
+      }
+    _ => ReadinessRefusedAt { look: look }
   }
 }
 
-// THE BOUND IS THE MEASURED SETTLE WITH MARGIN. The manual re-attach of the new census image on
-// 2026-09-27 read status 100 at +6s, then 1 with session_index 0 from +12s, stable to +120s; fifteen
-// looks two seconds apart is 30s.
+type ReadinessVerdict
+  = ReadinessReady { look: ReadinessLook, looks: Int }
+  | ReadinessLookAgain
+  | ReadinessWindowClosed { last: ReadinessLook, deadline: EpochMs, looks: Int }
+  | ReadinessRefusedVerdict { look: ReadinessLook, looks: Int }
+
+// THE WINDOW IS HALF-OPEN AND DECLARED BEFORE THE FIRST LOOK: opened_at <= observed_at < deadline.
+// A Started look at or past the deadline does not establish readiness — it is outside the window
+// the policy was declared over — and a refusal reading refuses whenever it is seen.
+fn readiness_verdict(
+  opened_at: EpochMs,
+  budget: Milliseconds,
+  look: ReadinessLook,
+  phase: ReadinessPhase,
+  looks: Int,
+) -> ReadinessVerdict {
+  let deadline = opened_at + budget
+  match readiness_standing(look: look, phase: phase) {
+    ReadinessRefusedAt { look: l } => ReadinessRefusedVerdict { look: l, looks: looks }
+    ReadinessEstablished { look: l } =>
+      if l.observed_at < deadline { ReadinessReady { look: l, looks: looks } } else { ReadinessWindowClosed { last: l, deadline: deadline, looks: looks } }
+    ReadinessPending =>
+      if look.observed_at < deadline { ReadinessLookAgain } else { ReadinessWindowClosed { last: look, deadline: deadline, looks: looks } }
+  }
+}
+
+data megarac_readiness_budget: Second = second(count: 30)
+
 data megarac_readiness_interval: Second = second(count: 2)
 
-data megarac_readiness_ticks: Int = 15
+fn megarac_readiness_budget_ms() -> Milliseconds {
+  (second_count(s: megarac_readiness_budget) as Int) * 1000
+}
 
-// A failed configurations GET is one pending look, not a verdict: the same controller answers 500
-// on reads mid-transition. Only the last look's failure is reported, as Unconfirmed.
+type ReadinessWait
+  = ReadinessWaitReady { look: ReadinessLook, looks: Int }
+  | ReadinessWaitClosed { last: ReadinessLook, deadline: EpochMs, looks: Int }
+  | ReadinessWaitRefused { look: ReadinessLook, looks: Int }
+  | ReadinessWaitClockUnreadable { detail: String }
+
+// THE WAIT: read at once, and pace only between looks that were pending. The window is judged by the
+// clock read beside each look; each look's GET is bounded by --max-time, so no single call can hold
+// the window open.
 fn megarac_await_readiness(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   csrf_token: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
-  remaining: Int,
-) -> AttachReadiness
+  phase: ReadinessPhase,
+  opened_at: EpochMs,
+  looks: Int,
+) -> ReadinessWait
 {
   let got = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
   )
-  let reading = if got.success { attach_readiness(body: got.body, image_name: image_name, firmware: firmware) } else { ReadinessPending { configurations: got.body } }
-  match reading {
-    ReadinessPending { configurations: c } =>
-      if remaining > 1 {
-        let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_readiness_interval)
-        megarac_await_readiness(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token, image_name: image_name, firmware: firmware, remaining: remaining - 1)
-      } else {
-        ReadinessPending { configurations: c }
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => ReadinessWaitClockUnreadable { detail: d }
+    ClockUnixMillisObserved { millis: now } => {
+      let look = ReadinessLook { observed_at: now, reading: attach_readiness(answered: got.success, body: got.body, image_name: image_name, firmware: firmware) }
+      match readiness_verdict(opened_at: opened_at, budget: megarac_readiness_budget_ms(), look: look, phase: phase, looks: looks + 1) {
+        ReadinessReady { look: l, looks: n } => ReadinessWaitReady { look: l, looks: n }
+        ReadinessWindowClosed { last: l, deadline: d, looks: n } => ReadinessWaitClosed { last: l, deadline: d, looks: n }
+        ReadinessRefusedVerdict { look: l, looks: n } => ReadinessWaitRefused { look: l, looks: n }
+        ReadinessLookAgain => {
+          let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_readiness_interval)
+          megarac_await_readiness(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_token: csrf_token,
+            image_name: image_name,
+            firmware: firmware,
+            phase: phase,
+            opened_at: opened_at,
+            looks: looks + 1,
+          )
+        }
       }
-    other => other
+    }
+  }
+}
+
+fn megarac_readiness_outcome(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  route: MegaRacAttachRoute,
+  phase: ReadinessPhase,
+) -> MegaRacAttachOutcome
+{
+  return match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
+    ClockUnixMillisObserved { millis: opened_at } =>
+      readiness_wait_outcome(
+        wait: megarac_await_readiness(
+          bmc_host: bmc_host,
+          cookie_jar: cookie_jar,
+          csrf_token: csrf_token,
+          image_name: image_name,
+          firmware: firmware,
+          phase: phase,
+          opened_at: opened_at,
+          looks: 0,
+        ),
+        image_name: image_name,
+        firmware: firmware,
+        route: route,
+      )
+  }
+}
+
+// PURE: the wait's answer as the attach outcome. Only a Started look reaches MegaRacPresentationReady,
+// and the evidence is read from that look's row, so the record a boot is gated on is the row that
+// satisfied the policy.
+fn readiness_wait_outcome(
+  wait: ReadinessWait,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  route: MegaRacAttachRoute,
+) -> MegaRacAttachOutcome {
+  match wait {
+    ReadinessWaitClockUnreadable { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
+    ReadinessWaitClosed { last: l, deadline: d, looks: n } => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n }
+    ReadinessWaitRefused { look: l, looks: n } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n }
+    ReadinessWaitReady { look: l, looks: n } =>
+      match l.reading {
+        ReadinessStarted { row: r } =>
+          MegaRacPresentationReady {
+            route: route,
+            evidence: MegaRacPresentationEvidence {
+              firmware: firmware,
+              image_name: image_name,
+              media_index: r.media_index,
+              session_index: r.session_index,
+              redirection_wire: r.redirection_wire,
+              established_at: l.observed_at,
+              looks: n,
+            },
+          }
+        _ => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n }
+      }
   }
 }

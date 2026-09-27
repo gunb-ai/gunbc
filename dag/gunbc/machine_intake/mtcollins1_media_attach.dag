@@ -3,44 +3,29 @@ module gunbc.machine_intake_mtcollins1_media_attach
 import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof, unit_hold_proof_refusal, mtcollins1_unit_hold_key }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject, mtcollins1_boot_medium, mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256,
 }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_chassis_power }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+  MediaAttachAttempted,
+  MediaAttachNotAttempted,
+  MtCollins1MediaAttachRecord,
+  media_attach_outcome_reason,
+  mtcollins1_boot_chassis_power,
+  session_release_text,
+}
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation_text }
 import gunbc.machine_intake_megarac_media_attach {
-  MegaRacAttachOutcome,
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
   MegaRacDetachNotAdmitted,
+  MegaRacPresentationEvidence,
+  MegaRacPresentationReady,
   MegaRacReplacementPolicy,
-  MegaRacRefreshedAndAttached,
-  MegaRacForeignImagePresented,
-  MegaRacSeveralImagesPresented,
-  MegaRacStaleDetachNotAdmitted,
-  MegaRacStaleDetachUnconfirmed,
-  MegaRacRedirectionUncatalogued,
-  MegaRacRefreshClockUnreadable,
-  MegaRacNotEnumeratedAfterRefresh,
-  MegaRacAttachResult,
-  SessionRelease,
-  SessionReleaseNotAttempted,
-  SessionReleaseRefused,
   SessionReleased,
-  MegaRacAttachUnconfirmed,
-  MegaRacAttached,
-  MegaRacAlreadyAttached,
-  MegaRacConfigurationsUnreadable,
-  MegaRacImageListingEmpty,
-  MegaRacImageListingUnparseable,
-  MegaRacImageNotEnumerated,
-  MegaRacImagesUnreadable,
-  MegaRacSessionRefused,
-  MegaRacSessionTokenUnreadable,
   megarac_attach_remote_image,
 }
 
@@ -66,73 +51,6 @@ fn mtcollins1_media_cookie_jar(attempt: NonEmptyStr) -> NonEmptyStr {
 // factory literal "admin". Password remains a caller argument. Absent refuses before any request.
 data mtcollins1_media_username: NonEmptyStr? = mtcollins1_secured_account()
 
-// EACH OUTCOME RENDERS ITS OWN REASON because they have different remedies, and the remedies are
-// what an operator acts on — which is why one of these messages previously had to be retracted
-// rather than reworded. It advised re-asserting mount_cd to fix an "empty" listing. The listing was
-// never stale: the image was simply attached, and attached images leave the available listing. The
-// advice "worked" only by detaching every presented image, which is to say by undoing the state the
-// caller had asked for. See gunbc.machine_intake_megarac_media_attach, which also records how far
-// the danger to a booted host was and was not measured.
-//
-// MegaRacAlreadyAttached IS A SUCCESS AND IS RENDERED AS ONE. Converge is run repeatedly by
-// construction, so the second run finding the desired state already held is the normal case, not an
-// exception to it — and no write is performed on that path.
-//
-// MegaRacAttachUnconfirmed is the one state where waiting is right: start-media was accepted and
-// the configurations listing does not name the image yet. The controller's mount daemon is
-// asynchronous, so this is pending rather than failed — but it is reported rather than slept
-// through, because a caller that polls until something looks successful has no deadline.
-fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
-  match outcome {
-    MegaRacAttached { image_name: _, image_index: _ } => ExitSuccess
-    MegaRacAlreadyAttached { image_name: _ } => ExitSuccess
-    MegaRacConfigurationsUnreadable { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the presented-media listing could not be read, so whether anything is attached is UNKNOWN; refusing rather than attaching over an unknown state: ", d))
-    MegaRacSessionRefused { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: session refused: ", d))
-    MegaRacSessionTokenUnreadable { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: session succeeded but no CSRFToken could be read from its document: ", d))
-    MegaRacImagesUnreadable { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: images listing unreadable: ", d))
-    MegaRacImageListingEmpty =>
-      exit_failure(reason: "mtcollins1 media attach: the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file")
-    MegaRacImageListingUnparseable { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the images listing was not valid JSON, which is a protocol failure rather than the stale-cache case above: ", d))
-    MegaRacImageNotEnumerated { image_name: n } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the image is not presented, and the controller offers other images but not '", n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file"))
-    MegaRacRefreshedAndAttached { image_name: _, image_index: _, detached: _ } => ExitSuccess
-    MegaRacForeignImagePresented { image_name: n } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the controller is presenting '", n, "', which is not a census image of this lane; it is not this workflow's to stop, so nothing was written"))
-    MegaRacSeveralImagesPresented { configurations: c } =>
-      exit_failure(reason: concat("mtcollins1 media attach: more than one census image is presented at once, a state never observed on this single-CD unit; nothing was written: ", c))
-    MegaRacStaleDetachNotAdmitted { stale_image: n, reason: why } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))))
-    MegaRacStaleDetachUnconfirmed { stale_image: n, configurations: c } =>
-      exit_failure(reason: concat("mtcollins1 media attach: stop-media was sent for the stale census image '", concat(n, concat("' but the configurations read-back does not show it gone, so nothing was attached: ", c))))
-    MegaRacRedirectionUncatalogued { image_name: n, wire: w } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the row presenting '", concat(n, concat("' reports redirection_status ", concat(to_string(w), ", which is uncatalogued for this firmware; refusing before any power action (boot run 36330382023 powered on over status 16 and fell to the UEFI shell)")))))
-    MegaRacRefreshClockUnreadable { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the clock could not be read, so the re-enumeration window could not be declared or judged: ", d))
-    MegaRacNotEnumeratedAfterRefresh { image_name: n, standing: _ } =>
-      exit_failure(reason: concat("mtcollins1 media attach: NotEnumeratedAfterRefresh: the stale image was stopped and '", concat(n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file")))
-    MegaRacAttachUnconfirmed { image_name: n, configurations: c } =>
-      exit_failure(reason: concat("mtcollins1 media attach: start-media was accepted but configurations does not yet name '", n as String, "'; the mount daemon is asynchronous so this may be pending: ", c))
-  }
-}
-
-// A LEAKED SESSION IS REPORTED EVEN WHEN THE ATTACH SUCCEEDED, and it does not turn a success into
-// a failure. The controller's session table is finite and this lane exhausted one service's
-// sessions by never closing any; a caller that reads "attached" and ignores an unreleased session
-// will keep attaching until the table fills, which presents as an unrelated 403 much later. The
-// release is therefore surfaced in the reason text rather than folded into the verdict.
-fn mtcollins1_render_release(standing: SessionRelease) -> String {
-  match standing {
-    SessionReleased => ""
-    SessionReleaseNotAttempted => " (session was never opened, so nothing to release)"
-    SessionReleaseRefused { detail: d } => concat(" WARNING: the session was NOT released and remains allocated on the controller: ", d)
-  }
-}
-
 // THE ABSENT-IMAGE CONTROL IS GONE (gunbc#12101, side-chat review 5286225278): it opened a media
 // session on this unit from an operator session with no interlock, and nothing consumed it. The
 // attach below is the one route to this unit's virtual media: it takes the unit-hold proof, whose
@@ -144,30 +62,35 @@ fn mtcollins1_attach_diskless_image(
   subject: MtCollins1BootSubject,
   password_file: String,
   attempt: String,
-) -> ProcessExit
+) -> MtCollins1MediaAttachRecord
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 media attach") {
-    Present { value: why } => return exit_failure(reason: why)
+    Present { value: why } => return MediaAttachNotAttempted { reason: why as NonEmptyStr }
     Absent => {}
   }
   if subject.image_name != mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) {
-    exit_failure(reason: "mtcollins1 media attach: the boot subject names a different image than the medium row; controller untouched")
+    MediaAttachNotAttempted { reason: "the boot subject names a different image than the medium row; controller untouched" }
   } else if subject.image_sha256 != mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium) {
-    exit_failure(reason: "mtcollins1 media attach: the boot subject names a different image digest than the medium row; controller untouched")
+    MediaAttachNotAttempted { reason: "the boot subject names a different image digest than the medium row; controller untouched" }
   } else {
     match mtcollins1_media_username {
       Absent =>
-        exit_failure(reason: "mtcollins1 media attach: BMC is not BmcSecured; refusing before any request")
+        MediaAttachNotAttempted { reason: "BMC is not BmcSecured; refusing before any request" }
       Present { value: username } =>
         if password_file == "" {
-          exit_failure(reason: "mtcollins1 media attach: no controller password file supplied; refusing before any request")
+          MediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
         } else if attempt == "" {
-          exit_failure(reason: "mtcollins1 media attach: no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session")
+          MediaAttachNotAttempted { reason: "no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session" }
         } else {
-          mtcollins1_render_attach_result(
+          let power = mtcollins1_boot_chassis_power(username: username, password_file: password_file as NonEmptyStr)
+          MediaAttachAttempted {
+            attempt: attempt,
+            medium_image_name: subject.image_name,
+            medium_image_sha256: subject.image_sha256,
+            power: power,
             result: megarac_attach_remote_image(
               bmc_host: mtcollins1_endpoint.host,
               username: username,
@@ -177,12 +100,10 @@ fn mtcollins1_attach_diskless_image(
               firmware: mtcollins1_firmware,
               policy: MegaRacReplacementPolicy {
                 replaceable_seeded_stem: mtcollins1_census_image_stem,
-                detach: mtcollins1_detach_admission(
-                  power: mtcollins1_boot_chassis_power(username: username, password_file: password_file as NonEmptyStr),
-                ),
+                detach: mtcollins1_detach_admission(power: power),
               },
-            )
-          )
+            ),
+          }
         }
     }
   }
@@ -210,13 +131,31 @@ fn mtcollins1_detach_admission(power: ChassisPowerObservation) -> MegaRacDetachA
   }
 }
 
-fn mtcollins1_render_attach_result(result: MegaRacAttachResult) -> ProcessExit {
-  match mtcollins1_render_attach(outcome: result.outcome) {
-    ExitSuccess =>
-      match result.session_release {
-        SessionReleased => ExitSuccess
-        _ => exit_failure(reason: concat("mtcollins1 media attach: the image attached, but the session was not released.", mtcollins1_render_release(standing: result.session_release)))
+// THE GATE THE HANDOFF IS BEHIND. Only a ready presentation with its session released opens it,
+// and the evidence it opens with is the Started row the readiness fold accepted. Every other arm
+// withholds, with the one reason the bundle also records (media_attach_outcome_reason), so a
+// pending, timed-out or refused presentation can never become a boot-device write or a power action.
+// A LEAKED SESSION WITHHOLDS TOO: the controller's session table is finite and this lane once
+// exhausted it, so an attach that could not release is not a state to boot from.
+type MtCollins1MediaGate
+  = MediaGateReady { evidence: MegaRacPresentationEvidence }
+  | MediaGateWithheld { reason: NonEmptyStr }
+
+fn mtcollins1_media_gate(record: MtCollins1MediaAttachRecord) -> MtCollins1MediaGate {
+  match record {
+    MediaAttachNotAttempted { reason: r } => MediaGateWithheld { reason: concat("mtcollins1 media attach: ", r as String) as NonEmptyStr }
+    MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, result: res } =>
+      match res.outcome {
+        MegaRacPresentationReady { route: _, evidence: e } =>
+          match res.session_release {
+            SessionReleased => MediaGateReady { evidence: e }
+            other => MediaGateWithheld { reason: concat("mtcollins1 media attach: the presentation is ready but the session was ", session_release_text(standing: other)) as NonEmptyStr }
+          }
+        other =>
+          match media_attach_outcome_reason(outcome: other) {
+            Present { value: why } => MediaGateWithheld { reason: concat("mtcollins1 media attach: ", why) as NonEmptyStr }
+            Absent => MediaGateWithheld { reason: "mtcollins1 media attach: the outcome carries no ready presentation" }
+          }
       }
-    other => other
   }
 }

@@ -14,32 +14,66 @@ import gunbc.machine_intake_mount_establishment {
   mount_standing_as_of,
 }
 import gunbc.machine_intake_megarac_media_attach {
-  ConvergeStepAlreadyAttached,
+  AttachReadiness,
   ConvergeStepAttachFromListing,
+  ConvergeStepAwaitReadiness,
   ConvergeStepDetachStale,
   ConvergeStepRefuse,
   ConvergenceStep,
+  DetachEstablished,
+  DetachNotEstablished,
   EnumerationDecided,
   EnumerationLookAgain,
   ImagesListingLacks,
+  MegaRacAttachResult,
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
+  MegaRacDetachEvidence,
   MegaRacDetachNotAdmitted,
   MegaRacForeignImagePresented,
+  MegaRacPresentationReady,
+  MegaRacReadinessRefused,
+  MegaRacReadinessTimedOut,
+  MegaRacRedirectionUncatalogued,
   MegaRacStaleDetachNotAdmitted,
   NotEnumeratedAfterRefresh,
-  MegaRacRedirectionUncatalogued,
-  ReadinessPending,
+  PresentingRow,
+  ReadinessAfterStart,
+  ReadinessConnecting,
+  ReadinessDuplicate,
+  ReadinessLook,
+  ReadinessLookAgain,
+  ReadinessNotPresented,
+  ReadinessOfPresented,
   ReadinessReady,
+  ReadinessRefusedVerdict,
+  ReadinessStarted,
+  ReadinessStartedUnbound,
   ReadinessUncatalogued,
+  ReadinessWaitClosed,
+  ReadinessWaitReady,
+  ReadinessWaitRefused,
+  ReadinessWindowClosed,
+  ReadinessWrongPresentation,
+  RouteAlreadyPresented,
+  RouteAttached,
+  RedirectionStartedConnectionAccepted,
+  SessionReleased,
+  SessionReleaseRefused,
+  StopCommandAnswer,
   attach_readiness,
+  detach_verdict,
   enumeration_decision,
   megarac_convergence_step,
   presented_convergence,
   presented_media,
+  readiness_verdict,
+  readiness_wait_outcome,
   stop_media_body,
-  PresentingRow,
 }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -94,14 +128,14 @@ test fn stale_census_presented_with_the_host_off_detaches_it() -> Bool {
 }
 
 test fn the_stop_body_names_the_stale_image_and_its_device() -> Bool {
-  stop_media_body(row: PresentingRow { image_name: stale_census as String, media_index: Present { value: "0" }, session_index: Present { value: "0" } }) as String
+  stop_media_body(row: PresentingRow { image_name: stale_census as String, media_index: Present { value: "0" }, session_index: Present { value: "0" }, redirection_wire: 1, redirection: RedirectionStartedConnectionAccepted }) as String
     == concat("{\"image_name\":\"", concat(stale_census as String, "\",\"image_type\":1,\"image_index\":0,\"image_redirection\":1}"))
 }
 
 // CONTROL 2: a presented image outside the stem refuses, host off or not.
 test fn a_foreign_image_presented_refuses() -> Bool {
   match step(configurations: presenting(name: "memtest86-5.31b.iso", status: "1"), detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n } } => n == "memtest86-5.31b.iso"
+    ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: c } } => n == "memtest86-5.31b.iso" && string_contains(s: c, pattern: "memtest86")
     _ => false
   }
 }
@@ -114,10 +148,11 @@ test fn stale_census_presented_with_the_host_on_refuses() -> Bool {
   }
 }
 
-// CONTROL 5: the desired image presented is a no-op, and the admission is not consulted.
-test fn the_desired_image_presented_is_a_no_op_even_with_the_host_on() -> Bool {
+// CONTROL 5: the desired image presented makes no write and consults no admission; it goes to the
+// same readiness fold every other route does (the filename match is not readiness).
+test fn the_desired_image_presented_writes_nothing_and_awaits_readiness() -> Bool {
   match step(configurations: presenting(name: desired_census as String, status: "1"), detach: host_on) {
-    ConvergeStepAlreadyAttached => true
+    ConvergeStepAwaitReadiness => true
     _ => false
   }
 }
@@ -131,39 +166,184 @@ test fn a_stopped_row_is_nothing_presented() -> Bool {
 
 test fn an_uncatalogued_status_on_a_named_row_refuses_keeping_the_wire() -> Bool {
   match step(configurations: presenting(name: desired_census as String, status: "16"), detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, wire: w } } => w == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, wire: w, configurations: _ } } => w == 16
     _ => false
   }
 }
 
-// THE READINESS GATE BEFORE POWER, on boot run 36330382023's own after-state: status 16 with
-// session_index 255 refuses with the wire; started with a bound session is ready; connecting with
-// session 255 is not yet ready and waits rather than powering on.
-test fn status_16_after_start_refuses_before_power_keeping_the_wire() -> Bool {
-  match attach_readiness(body: presenting_in(name: desired_census as String, status: "16", session: "255"), image_name: desired_census, firmware: megarac_firmware_0_32) {
-    ReadinessUncatalogued { image_name: _, wire: w } => w == 16
+// ─── READINESS ───────────────────────────────────────────────────────────────────────────────
+fn look(at: EpochMs, status: String, session: String) -> ReadinessLook {
+  ReadinessLook { observed_at: at, reading: attach_readiness(answered: true, body: presenting_in(name: desired_census as String, status: status, session: session), image_name: desired_census, firmware: megarac_firmware_0_32) }
+}
+
+// Boot run 36330382023's own after-state: status 16, session 255. Refuses with the wire.
+test fn status_16_refuses_keeping_the_wire() -> Bool {
+  match readiness_verdict(opened_at: 1000, budget: 30000, look: look(at: 2000, status: "16", session: "255"), phase: ReadinessAfterStart, looks: 1) {
+    ReadinessRefusedVerdict { look: l, looks: _ } =>
+      match l.reading { ReadinessUncatalogued { image_name: _, wire: w, configurations: c } => w == 16 && string_contains(s: c, pattern: "255") _ => false }
     _ => false
   }
 }
 
 test fn started_with_a_bound_session_is_ready() -> Bool {
-  match attach_readiness(body: presenting_in(name: desired_census as String, status: "1", session: "0"), image_name: desired_census, firmware: megarac_firmware_0_32) {
-    ReadinessReady => true
+  match readiness_verdict(opened_at: 1000, budget: 30000, look: look(at: 13000, status: "1", session: "0"), phase: ReadinessAfterStart, looks: 3) {
+    ReadinessReady { look: _, looks: n } => n == 3
     _ => false
   }
 }
 
-test fn connecting_without_a_bound_session_is_pending() -> Bool {
-  match attach_readiness(body: presenting_in(name: desired_census as String, status: "100", session: "255"), image_name: desired_census, firmware: megarac_firmware_0_32) {
-    ReadinessPending { configurations: _ } => true
+// CONNECTING IS PENDING, not ready — a policy, not a claim about the firmware state.
+test fn connecting_is_pending_inside_the_window() -> Bool {
+  match readiness_verdict(opened_at: 1000, budget: 30000, look: look(at: 7000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 1) {
+    ReadinessLookAgain => true
     _ => false
   }
 }
 
-test fn a_stopped_row_after_start_is_pending() -> Bool {
-  match attach_readiness(body: presenting_in(name: desired_census as String, status: "0", session: "255"), image_name: desired_census, firmware: megarac_firmware_0_32) {
-    ReadinessPending { configurations: _ } => true
+// CONNECTING-ONLY TIMEOUT: still connecting at the deadline closes the window and keeps the last look.
+test fn connecting_only_times_out_keeping_the_last_look() -> Bool {
+  match readiness_verdict(opened_at: 1000, budget: 30000, look: look(at: 31000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 15) {
+    ReadinessWindowClosed { last: l, deadline: d, looks: n } =>
+      d == 31000 && n == 15 && (match l.reading { ReadinessConnecting { row: r } => r.redirection_wire == 100 _ => false })
     _ => false
+  }
+}
+
+// UNKNOWN AFTER CONNECTING: a pending look, then an uncatalogued one, refuses at the second.
+test fn unknown_after_connecting_refuses() -> Bool {
+  (match readiness_verdict(opened_at: 1000, budget: 30000, look: look(at: 5000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 1) { ReadinessLookAgain => true _ => false })
+    && (match readiness_verdict(opened_at: 1000, budget: 30000, look: look(at: 7000, status: "16", session: "255"), phase: ReadinessAfterStart, looks: 2) {
+      ReadinessRefusedVerdict { look: l, looks: n } => n == 2 && (match l.reading { ReadinessUncatalogued { image_name: _, wire: w, configurations: _ } => w == 16 _ => false })
+      _ => false
+    })
+}
+
+test fn started_without_a_bound_session_is_pending() -> Bool {
+  match look(at: 2000, status: "1", session: "255").reading {
+    ReadinessStartedUnbound { row: r } => optional_text_is(v: r.session_index, want: "255")
+    _ => false
+  }
+}
+
+fn optional_text_is(v: String?, want: String) -> Bool {
+  match v { Present { value: x } => x == want  Absent => false }
+}
+
+data duplicate_rows: String = concat("[", concat(
+  "{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, concat("\",\"redirection_status\":1,\"media_index\":0,\"session_index\":0},",
+  concat("{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, "\",\"redirection_status\":1,\"media_index\":1,\"session_index\":1}]")))))))
+
+data wrong_rows: String = concat("[", concat(
+  "{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, concat("\",\"redirection_status\":1,\"media_index\":0,\"session_index\":0},",
+  concat("{\"media_type\":1,\"image_name\":\"", concat(stale_census as String, "\",\"redirection_status\":1,\"media_index\":1,\"session_index\":1}]")))))))
+
+test fn duplicate_rows_for_the_image_refuse_keeping_the_document() -> Bool {
+  match attach_readiness(answered: true, body: duplicate_rows, image_name: desired_census, firmware: megarac_firmware_0_32) {
+    ReadinessDuplicate { configurations: c } => c == duplicate_rows
+    _ => false
+  }
+}
+
+test fn a_second_image_presented_beside_it_refuses_naming_it() -> Bool {
+  match attach_readiness(answered: true, body: wrong_rows, image_name: desired_census, firmware: megarac_firmware_0_32) {
+    ReadinessWrongPresentation { image_name: n, configurations: c } => n == (stale_census as String) && c == wrong_rows
+    _ => false
+  }
+}
+
+// NOT PRESENTED is pending only after this attempt's own start; on the already-presented route it
+// is a withdrawal and refuses.
+test fn not_presented_is_pending_after_start_and_refused_when_it_was_presented() -> Bool {
+  let gone = ReadinessLook { observed_at: 2000, reading: attach_readiness(answered: true, body: "[]", image_name: desired_census, firmware: megarac_firmware_0_32) }
+  (match readiness_verdict(opened_at: 1000, budget: 30000, look: gone, phase: ReadinessAfterStart, looks: 1) { ReadinessLookAgain => true _ => false })
+    && (match readiness_verdict(opened_at: 1000, budget: 30000, look: gone, phase: ReadinessOfPresented, looks: 1) { ReadinessRefusedVerdict { look: _, looks: _ } => true _ => false })
+}
+
+// ALREADY STARTED: no detach, no start, and the evidence carries the Started row's own indices.
+test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
+  match readiness_wait_outcome(
+    wait: ReadinessWaitReady { look: look(at: 1500, status: "1", session: "0"), looks: 1 },
+    image_name: desired_census,
+    firmware: megarac_firmware_0_32,
+    route: RouteAlreadyPresented,
+  ) {
+    MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: e } =>
+      e.redirection_wire == 1 && optional_text_is(v: e.session_index, want: "0") && optional_text_is(v: e.media_index, want: "0") && e.established_at == 1500 && e.looks == 1
+    _ => false
+  }
+}
+
+// ─── DETACH: the command's answer and the read-back are two facts ───────────────────────────────
+fn detach(success: Bool, body: String, readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
+  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: StopCommandAnswer { success: success, body: body }, readback_read: readback_read, readback: readback }
+}
+
+data stop_1411: String = "{\"error\":\"Error stopping the remote media redirection\",\"code\":1411}"
+data cleared_rows: String = "[{\"media_type\":1,\"image_name\":\"\",\"redirection_status\":0,\"media_index\":0,\"session_index\":255}]"
+
+test fn an_error_but_detached_is_established_and_keeps_the_error() -> Bool {
+  let d = detach(success: false, body: stop_1411, readback_read: true, readback: cleared_rows)
+  (match detach_verdict(evidence: d, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+    && string_contains(s: detach_evidence_text(detach: d), pattern: "1411")
+}
+
+test fn a_success_but_still_attached_is_not_established() -> Bool {
+  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: presenting(name: stale_census as String, status: "1")), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+    DetachNotEstablished { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_success_with_an_unread_readback_is_not_established() -> Bool {
+  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: false, readback: "curl: (28)"), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+    DetachNotEstablished { reason: _ } => true
+    _ => false
+  }
+}
+
+// ─── THE GATE THE HANDOFF IS BEHIND ─────────────────────────────────────────────────────────────
+fn attempted(result: MegaRacAttachResult) -> MtCollins1MediaAttachRecord {
+  MediaAttachAttempted { attempt: "36330382023", medium_image_name: desired_census, medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: false }, result: result }
+}
+
+test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> Bool {
+  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult {
+    outcome: MegaRacReadinessTimedOut { image_name: desired_census, route: RouteAttached { image_list_index: "5" }, last: look(at: 31000, status: "100", session: "0"), deadline: 31000, looks: 15 },
+    session_release: SessionReleased,
+  })) {
+    MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "No boot-device or power handoff") && string_contains(s: r as String, pattern: "connecting (status 100)")
+    MediaGateReady { evidence: _ } => false
+  }
+}
+
+test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
+  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult {
+    outcome: MegaRacReadinessRefused { image_name: desired_census, route: RouteAttached { image_list_index: "5" }, look: look(at: 2000, status: "16", session: "255"), looks: 1 },
+    session_release: SessionReleased,
+  })) {
+    MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "redirection_status 16")
+    MediaGateReady { evidence: _ } => false
+  }
+}
+
+fn ready_outcome() -> MegaRacAttachResult {
+  MegaRacAttachResult {
+    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5" }),
+    session_release: SessionReleased,
+  }
+}
+
+test fn a_ready_presentation_opens_the_gate_with_its_evidence() -> Bool {
+  match mtcollins1_media_gate(record: attempted(result: ready_outcome())) {
+    MediaGateReady { evidence: e } => e.looks == 4 && e.established_at == 13000
+    MediaGateWithheld { reason: _ } => false
+  }
+}
+
+test fn a_ready_presentation_with_a_leaked_session_withholds() -> Bool {
+  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: ready_outcome().outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" } })) {
+    MediaGateWithheld { reason: _ } => true
+    MediaGateReady { evidence: _ } => false
   }
 }
 
