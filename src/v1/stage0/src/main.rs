@@ -1226,7 +1226,11 @@ fn run_verb(
 
     let resolve_started = std::time::Instant::now();
     let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
-    report_pre_entry_phases(resolve_started.elapsed());
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
     let (graph, source_indices) = match resolved {
         Ok(resolved) => resolved,
         Err(cause) => {
@@ -1315,7 +1319,11 @@ fn run_verb(
 /// then the inclusive resolve window they sit inside. Printed whether resolve succeeded or
 /// refused, because a refusal after minutes of preparation is exactly the run whose cost
 /// the operator most needs attributed.
-fn report_pre_entry_phases(resolve_inclusive: std::time::Duration) {
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
     use cli_run::pre_entry_phase::{record, take_lines, PhaseScale};
     let st = cli_run::resolve_stage_totals();
     let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
@@ -1338,6 +1346,25 @@ fn report_pre_entry_phases(resolve_inclusive: std::time::Duration) {
     );
     for line in take_lines() {
         eprintln!("{line}");
+    }
+    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
+    // grew or because its work per input changed: the indexed pool (every module under every
+    // --source-root) against the files of the entry's resolved closure.
+    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots);
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec as i64 * 1000 + t.tv_usec as i64 / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            usage.ru_maxrss
+        );
     }
 }
 

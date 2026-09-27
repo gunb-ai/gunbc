@@ -76,3 +76,9 @@ pub fn take_lines() -> Vec<String> {
             .collect()
     })
 }
+
+/// The indexed pool's module count for `source_roots` (the population the `tree` rows scale
+/// with). Reads the process-shared index the resolve already built, so it adds no walk.
+pub fn pool_module_count(source_roots: &[String]) -> usize {
+    super::process_shared_index(source_roots).source_files.len()
+}
