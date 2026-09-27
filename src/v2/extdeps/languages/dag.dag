@@ -63,6 +63,7 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.compilers.body_lowering { declared_signature }
 import v2.std.compilers.lexing {
   AnnotationRule,
   CharClassPattern,
@@ -4002,15 +4003,22 @@ fn dag_type_atom_node(identity: Symbol) -> Node {
   }
 }
 
+// A DECLARED ARROW FOR A FIXTURE, built the way the declared-signature lowering builds one: the
+// domain and its declared order come from one mint (v2.std.compilers.body_lowering
+// declared_signature), so a fixture
+// cannot build a domain and an order that disagree. `domain` is the AUTHORED parameter list, in the
+// order the fixture declares it; it is never a canonicalized node, whose label-sorted sequence is not
+// a declared order. A fixture that tests a malformed order builds its Arrow by hand, and says so.
 fn dag_arrow_with_body_node(
   domain: Node,
   return_type_binding: Symbol,
   body: Node
 ) -> Node {
+  let signature = declared_signature(params: domain.children, source: domain)
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: domain },
+      signature.domain,
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
@@ -4019,6 +4027,7 @@ fn dag_arrow_with_body_node(
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
       },
+      signature.order,
       Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ],
     occurrence_id: OccurrenceSynthetic
