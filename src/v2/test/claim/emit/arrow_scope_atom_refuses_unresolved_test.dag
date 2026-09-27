@@ -256,3 +256,10 @@ test fn loop_body_pick_table_atom_still_projects() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+test fn loop_body_bool_literal_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_token_kw_true))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
