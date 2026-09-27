@@ -7386,13 +7386,28 @@ pub fn emit_algebra_method_call_unified(
             Some(result) => result.clone(),
             std::option::Option::None => {
                 let function_name = bridge_method_name_unified(method_name.clone(), target.clone());
-                let arg_strs = Rc::new({
-                    let mut __result = Vec::new();
-                    for a in args.iter().cloned() {
-                        __result.push(recurse(crate::v1_std_core::arg_value(a.clone())));
-                    }
-                    __result
-                });
+                let arg_strs = match args.clone().first().cloned() {
+                    Some(_) => v1_rt::concat(
+                        Rc::new(vec![first_arg_str.clone()]),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for a in Rc::new(
+                                args.clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            {
+                                __result.push(recurse(crate::v1_std_core::arg_value(a.clone())));
+                            }
+                            __result
+                        }),
+                    ),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
                 let all_args = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
                 v1_rt::concat(
                     v1_rt::concat(
