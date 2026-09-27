@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
-import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance }
+import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
@@ -55,6 +55,7 @@ test fn the_step_timeout_covers_the_boot_phases() -> Bool {
   let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: megarac_convergence_allowance()) as Int)
+    + 3 * (second_count(s: megarac_presentation_look_allowance()) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_in_run_smpro_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)

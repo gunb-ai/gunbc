@@ -1015,6 +1015,12 @@ fn megarac_refresh_enumeration_ticks() -> Int {
   (second_count(s: megarac_refresh_enumeration_budget) as Int) / (second_count(s: megarac_refresh_poll_interval) as Int) + 2
 }
 
+// ONE READ-ONLY LOOK: session open, the general and configurations reads, the close and its two
+// probes -- six bounded calls. A caller that takes looks around its own effects budgets them with this.
+fn megarac_presentation_look_allowance() -> Second {
+  second(count: 6 * (second_count(s: megarac_media_read_max_time) as Int))
+}
+
 // WHAT THE WHOLE CONVERGENCE MAY SPEND, for a caller that budgets its step: both windows, each
 // window's last bounded call past its deadline, and the reads and writes around them.
 fn megarac_convergence_allowance() -> Second {
