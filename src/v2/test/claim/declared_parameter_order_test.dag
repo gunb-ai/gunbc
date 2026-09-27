@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.std.compilers.body_lowering signature_order_edge, walled by v2.std.node
 // arrow_signature_order_conforms, read by v2.std.compilers.body_lowering
 // arrow_declared_parameter_order, and consumed by positional binding in v2.compiler.infer
-// infer_application_formals and v2.compiler.eval eval_param_edges_in_declared_order.
+// infer_application_formals and v2.std.compilers.body_lowering application_binding_plan (which v2.compiler.eval binds through).
 //
 // ROUTE: every specimen is source text assembled through assemble_program_from_ingest, so the
 // lowering, the mint and resolve run for real; the claims then read one interface each over the
@@ -66,7 +66,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `<anonymous-parameter-10>` before `<anonymous-parameter-2>` in label order.
 //
 // MUTATION RECEIPT: infer_application_formals returning the domain's stored formals (the pre-change
-// fold) reds (3) and (4) through their canonical-domain arm; eval_param_edges_in_declared_order
+// fold) reds (3) and (4) through their canonical-domain arm; eval_param_labels_in_declared_order
 // returning domain.children reds (6) the same way; resolve walking the order edge reds (7).
 
 data dpo_artifact: Artifact = Artifact {

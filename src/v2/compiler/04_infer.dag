@@ -55,12 +55,14 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
+import v2.std.node { arrow_signature_order_label, edge_label_of }
 import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
   ArrowParameterOrderMalformed,
   ApplicationBindingRefused,
   ApplicationBound,
+  ApplicationSlot,
   application_actual_edges,
   application_binding_plan,
   arrow_declared_parameter_order,
@@ -628,6 +630,8 @@ fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
   }
 }
 
+// AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE: the ^arrow_signature_order_edge's atoms are labels,
+// not values, so the derived type carries that edge unchanged (see infer_arrow_signature_order_edge).
 fn infer_product_child_evidence_edges(
   children: List<Edge>,
   entries: List<InferredFactsEntry>,
@@ -639,7 +643,7 @@ fn infer_product_child_evidence_edges(
       match acc {
         Absent => acc
         Present { value: evidence_edges } =>
-          if infer_edge_is_signature_order(edge: edge) {
+          if (edge_label_of(e: edge) == arrow_signature_order_label) {
             optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
           } else {
           match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
@@ -662,18 +666,6 @@ fn infer_product_child_evidence_edges(
   )
 }
 
-// AN ARROW'S DECLARED ORDER IS ITS OWN EVIDENCE. The ^arrow_signature_order_edge names the
-// parameters' declared positions (v2.std.compilers.body_lowering signature_order_edge); its atoms are
-// labels, not values, so there is no type to infer for them. The order is part of the Arrow's type
-// (declared parameter order is semantic for positional binding), so the derived type carries the edge
-// unchanged rather than demanding a derivation for a list of labels -- which would leave every
-// declared Arrow NotDerived.
-fn infer_edge_is_signature_order(edge: Edge) -> Bool {
-  match edge.label {
-    Named { name: sym } => sym == ^arrow_signature_order_edge
-    Positional => false
-  }
-}
 
 fn infer_product_facts_from_entries(
   node: Node,
@@ -1674,36 +1666,82 @@ fn infer_application_formals(node: Node) -> InferApplicationFormals {
   }
 }
 
-// Each declared label selects its one formal by identity. The order edge is a permutation of the
-// domain's binders (v2.std.node arrow_signature_order_conforms), so a label with no formal is
-// malformed and refuses rather than shortening the list.
-type InferDeclaredFormalsWalk {
-  ordered: List<InhabitanceFormal>
-  complete: Bool
+// Each declared label selects its one formal by identity, in declared order. Both sides are sorted by
+// label once and matched in one walk, then put back in declared order by position -- O(n log n), not
+// a scan of the formals per label. The order edge is a permutation of the domain's binders
+// (v2.std.node arrow_signature_order_conforms), so a mismatch here is malformed and refuses rather
+// than shortening the list.
+type InferIndexedLabel {
+  label: Symbol
+  position: Int
+}
+
+type InferIndexWalk {
+  index: Int
+  labels: List<InferIndexedLabel>
+}
+
+type InferFormalPairing {
+  indexed: InferIndexedLabel
+  formal: InhabitanceFormal
 }
 
 fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: List<Symbol>) -> InferApplicationFormals {
-  let walk = fold(labels, init: InferDeclaredFormalsWalk { ordered: Empty, complete: true }, f: fn(acc, label) {
-    match infer_formal_named(formals: formals, label: label) {
-      Present { value: formal } =>
-        InferDeclaredFormalsWalk { ordered: list_snoc_item(xs: acc.ordered, item: formal), complete: acc.complete }
-      Absent => InferDeclaredFormalsWalk { ordered: acc.ordered, complete: false }
-    }
-  })
-  if walk.complete && (length(xs: walk.ordered) == length(xs: formals)) {
-    FormalsInDeclaredOrder { formals: walk.ordered }
-  } else {
+  if length(xs: formals) != length(xs: labels) {
     FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+  } else {
+    let indexed = fold(labels, init: InferIndexWalk { index: 0, labels: Empty }, f: fn(acc, l) {
+      InferIndexWalk { index: acc.index + 1, labels: Cons { head: InferIndexedLabel { label: l, position: acc.index }, tail: acc.labels } }
+    }).labels
+    let pairs = infer_pair_by_label(
+      labels: sort_by(indexed, infer_indexed_label_key),
+      formals: sort_by(formals, infer_formal_identity_key)
+    )
+    if infer_pairings_match(pairs: pairs) {
+      FormalsInDeclaredOrder { formals: infer_pairings_in_declared_order(pairs: pairs) }
+    } else {
+      FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
+    }
   }
 }
 
-fn infer_formal_named(formals: List<InhabitanceFormal>, label: Symbol) -> Optional<InhabitanceFormal> {
-  fold(formals, init: optional_absent(), f: fn(acc, f) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if f.parameter_identity == label { optional_present(value: f) } else { acc }
-    }
-  })
+// Sort keys are named top-level functions: an inline lambda's parameter type is not inferred from a
+// generic instantiation (the v2.std.node edge_label_of precedent).
+fn infer_indexed_label_key(x: InferIndexedLabel) -> Symbol {
+  x.label
+}
+
+fn infer_formal_identity_key(f: InhabitanceFormal) -> Symbol {
+  f.parameter_identity
+}
+
+fn infer_pairing_position_key(p: InferFormalPairing) -> Int {
+  p.indexed.position
+}
+
+// Folds over the pairings take them as a TYPED parameter: the emitter types a fold's element from
+// the list's declared type, and a zip_map result reached inline carries none (it emitted an error
+// type and refused the emitted crate).
+fn infer_pair_by_label(labels: List<InferIndexedLabel>, formals: List<InhabitanceFormal>) -> List<InferFormalPairing> {
+  zip_map(a: labels, b: formals, f: fn(il, f) { InferFormalPairing { indexed: il, formal: f } })
+}
+
+fn infer_pairings_match(pairs: List<InferFormalPairing>) -> Bool {
+  fold(pairs, init: true, f: fn(acc, p) { acc && (p.indexed.label == p.formal.parameter_identity) })
+}
+
+fn infer_pairings_in_declared_order(pairs: List<InferFormalPairing>) -> List<InhabitanceFormal> {
+  infer_formal_list_reverse(
+    xs: infer_pairing_formals_reversed(pairs: sort_by(pairs, infer_pairing_position_key))
+  )
+}
+
+fn infer_pairing_formals_reversed(pairs: List<InferFormalPairing>) -> List<InhabitanceFormal> {
+  fold(pairs, init: Empty, f: fn(acc, p) { Cons { head: p.formal, tail: acc } })
+}
+
+fn infer_formal_list_reverse(xs: List<InhabitanceFormal>) -> List<InhabitanceFormal> {
+  fold(xs, init: Empty, f: fn(acc, x) { Cons { head: x, tail: acc } })
 }
 
 // The callee's declared type parameters; empty when the operator is not an Arrow or declares none.
@@ -1922,18 +1960,8 @@ fn infer_application_formal_args(node: Node, formals: List<InhabitanceFormal>) -
             )
           )
         ApplicationBound { slots: slots } =>
-          let pairs = fold(slots, init: Empty, f: fn(acc, slot) {
-            match infer_formal_named(formals: formals, label: slot.label) {
-              Absent => acc
-              Present { value: formal } =>
-                match list_at_optional(xs: actuals, index: slot.actual_index) {
-                  Absent => acc
-                  Present { value: e } => list_snoc_item(xs: acc, item: InhabitanceFormalArg { formal: formal, arg: e.target })
-                }
-            }
-          })
-          if length(xs: pairs) == length(xs: slots) {
-            outcome_accepted(value: pairs)
+          if (length(xs: slots) == length(xs: formals)) && (length(xs: slots) == length(xs: actuals)) {
+            outcome_accepted(value: infer_formal_args_by_plan(formals: formals, slots: slots, actuals: actuals))
           } else {
             outcome_rejected(
               application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
@@ -1943,7 +1971,42 @@ fn infer_application_formal_args(node: Node, formals: List<InhabitanceFormal>) -
   }
 }
 
+// THE PLAN IS A BIJECTION, SO PAIRING IS TWO ZIPS AND A SORT. Formals and plan slots are both in
+// declared order, so they pair one to one; sorting those pairs by the authored index of the actual
+// each slot names puts them in authored order, which pairs one to one with the actuals (surplus and
+// deficit already refused in the plan). O(n log n), with no lookup per slot. Every fold and zip takes
+// a typed parameter, so the emitter types its elements.
+type InferSlotFormal {
+  formal: InhabitanceFormal
+  actual_index: Int
+}
 
+fn infer_slot_formal_index_key(p: InferSlotFormal) -> Int {
+  p.actual_index
+}
+
+fn infer_slot_formal_of(formal: InhabitanceFormal, slot: ApplicationSlot) -> InferSlotFormal {
+  InferSlotFormal { formal: formal, actual_index: slot.actual_index }
+}
+
+fn infer_formal_arg_of(p: InferSlotFormal, e: Edge) -> InhabitanceFormalArg {
+  InhabitanceFormalArg { formal: p.formal, arg: e.target }
+}
+
+fn infer_slot_formals(formals: List<InhabitanceFormal>, slots: List<ApplicationSlot>) -> List<InferSlotFormal> {
+  zip_map(a: formals, b: slots, f: infer_slot_formal_of)
+}
+
+fn infer_formal_args_by_authored_actuals(pairs: List<InferSlotFormal>, actuals: List<Edge>) -> List<InhabitanceFormalArg> {
+  zip_map(a: pairs, b: actuals, f: infer_formal_arg_of)
+}
+
+fn infer_formal_args_by_plan(formals: List<InhabitanceFormal>, slots: List<ApplicationSlot>, actuals: List<Edge>) -> List<InhabitanceFormalArg> {
+  infer_formal_args_by_authored_actuals(
+    pairs: sort_by(infer_slot_formals(formals: formals, slots: slots), infer_slot_formal_index_key),
+    actuals: actuals
+  )
+}
 
 fn infer_transform_binary_infix(
   node: Node,
@@ -2891,6 +2954,20 @@ fn infer_gather_product_row_on_entries(
   }
 }
 
+// AN ARROW'S DECLARED ORDER IS NOT INFERRED. The ^arrow_signature_order_edge's subtree is a list of
+// the domain's binder LABELS (v2.std.compilers.body_lowering signature_order_edge), not values: there
+// is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
+// frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
+// as its own evidence (infer_product_child_evidence_edges), and this step takes nothing from its subtree --
+// the same shape as infer_arrow_empty_domain_edge and the literal payload arm, where the parent's
+// model, not the child's walk, says what the child is.
+fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } => (edge_label_of(e: edge) == arrow_signature_order_label)
+    _ => false
+  }
+}
+
 fn infer_gather_fold_step(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -2900,6 +2977,14 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
+  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) {
+    infer_gather_fold_step_merged(
+      acc: acc,
+      merged_entries: acc.entries,
+      merged_pending: acc.pending,
+      partials: partials,
+      tree: tree
+    )
   } else if child.failed {
     infer_gather_fold_acc_failed(
       node: acc.node,

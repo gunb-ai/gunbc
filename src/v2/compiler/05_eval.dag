@@ -1318,48 +1318,6 @@ fn eval_type_node_atom(
   }
 }
 
-type EvalParamBindAcc {
-  idx: Int
-  acc: Outcome<EvaluationEnvironment>
-}
-
-fn eval_bind_param_edge_step(
-  state: EvalParamBindAcc,
-  param_edge: Edge,
-  args: List<RuntimeValue>,
-  bind: BindInterpreter,
-  node: Node
-) -> EvalParamBindAcc {
-  match state.acc {
-    Rejected { diagnostics: r } =>
-      EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
-    Accepted { value: env, diagnostics: _ } =>
-      match param_edge.label {
-        Named { name: binding_id } =>
-          EvalParamBindAcc {
-            idx: state.idx + 1,
-            acc: bind_outcome(
-              o: eval_witness_outcome(
-                witness: list_nth(
-                  xs: args,
-                  wanted: state.idx,
-                  absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
-                )
-              ),
-              f: fn(value) {
-                bind.bind_value(
-                  environment_binding_key_for_symbol(sym: binding_id),
-                  value,
-                  env
-                )
-              }
-            )
-          }
-        Positional =>
-          EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
-      }
-  }
-}
 
 // BINDING GOES THROUGH THE ONE PLAN. `args` are the application's actuals evaluated in authored
 // order (eval_edge_is_runtime_argument); v2.std.compilers.body_lowering application_binding_plan says,
@@ -1412,6 +1370,8 @@ fn eval_domain_has_named_binder(domain: Node) -> Bool {
   })
 }
 
+// A DOMAIN WITH NO NAMED BINDER BINDS NO NAME: its positional edges carry types, not binders, so the
+// only question is arity -- an actual beyond the domain's zero named slots is excess.
 fn eval_bind_positional_domain(
   domain: Node,
   args: List<RuntimeValue>,
@@ -1419,19 +1379,10 @@ fn eval_bind_positional_domain(
   bind: BindInterpreter,
   node: Node
 ) -> Outcome<EvaluationEnvironment> {
-  match fold_list(
-    xs: domain.children,
-    empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
-    cons: fn(state, param_edge) {
-      eval_bind_param_edge_step(state: state, param_edge: param_edge, args: args, bind: bind, node: node)
-    }
-  ) {
-    EvalParamBindAcc { idx: param_count, acc: bound } =>
-      if eval_actual_present(args: args, wanted: param_count, node: node) {
-        outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node))
-      } else {
-        bound
-      }
+  if eval_actual_present(args: args, wanted: 0, node: node) {
+    outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node))
+  } else {
+    Accepted { value: environment, diagnostics: None }
   }
 }
 
