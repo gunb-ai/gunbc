@@ -453,6 +453,7 @@ data flip_declaration: CorrectnessFlipDeclaration = CorrectnessFlipDeclaration {
   cause: ^fixture_correctness_flip_cause,
   grain: FatalGrain,
   pull_request: 12392,
+  reconciles_tested_tree: "0123456789abcdef0123456789abcdef01234567",
   why: "fixture: a silently wrong acceptance now refuses at the located site"
 }
 
@@ -540,4 +541,26 @@ test fn w_RED_an_owned_flip_does_not_excuse_a_carried_rows_regression() -> Bool 
     ),
     prefix: "REGRESSED"
   )
+}
+
+// THE GRANT ENDS AT THE NEXT MINT (review 71692). The same owned, declared flip, judged against a
+// roster minted from a different tree (a re-mint after the flip landed): the declaration reconciles
+// a mint that is no longer the baseline, so the same growth is a loss again.
+test fn w_RED_a_flip_declared_for_an_earlier_mint_admits_nothing() -> Bool {
+  loses_after_remint(
+    standing: RosterMinted {
+      receipt: NativeFrontierMintReceipt {
+        tested_tree: "fedcba9876543210fedcba9876543210fedcba98",
+        preparation_seed_identity: "seed",
+        emitted_closure_identity: "closure",
+        executable_identity: "executable"
+      },
+      universe: [subject_a], rows: [], dispositions: [], cause_transitions: []
+    }
+  )
+}
+
+fn loses_after_remint(standing: NativeFrontierRosterStanding) -> Bool {
+  let v = judge_under(authority: owned_and_declared(), standing: standing, readings: flip_readings())
+  lost_with(v: v, prefix: "ACCEPT-TO-REFUSE") && lost_with(v: v, prefix: "NEW DEBT") && proposes_nothing(v: v)
 }

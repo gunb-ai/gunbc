@@ -221,6 +221,8 @@ fn native_frontier_row_advanced(
 // cause it refused with has a fatal-grain row in v2.workflow.compile_door_cause_ownership
 // known_frontier_causes AND a known_correctness_flips declaration naming the pull request. The
 // disposition carries both, so the proposal pull request shows the owner and the flip it cites.
+// The declaration also names the mint it reconciles (`reconciles_tested_tree`); it admits nothing
+// against a roster minted from any other tree, so a re-mint ends the grant (review 71692).
 //
 // WHAT IS NEVER ADMITTED THIS WAY. A divergence (it has no cause an owner could declare). A cause
 // with no owning row, or an owning row with no flip declaration: that increase stays NEW DEBT or
@@ -247,6 +249,7 @@ fn native_frontier_flip_authority() -> NativeFrontierFlipAuthority {
 fn native_frontier_owned_flip(
   identity: NativeRouteTestIdentity,
   attained: NativeRouteAttainment,
+  minted_tree: String,
   authority: NativeFrontierFlipAuthority
 ) -> Optional<NativeFrontierOwnedCorrectnessFlip> {
   match attained {
@@ -256,7 +259,11 @@ fn native_frontier_owned_flip(
         owners: authority.owners, flips: authority.flips
       ) {
         Present { value: f } =>
+          if f.reconciles_tested_tree != minted_tree {
+            optional_absent()
+          } else {
           optional_present(value: NativeFrontierOwnedCorrectnessFlip { identity: identity, debt: DebtRefused { stage: s, cause: c }, flip: f })
+          }
         Absent => optional_absent()
       }
     AttainAgreed => optional_absent()
@@ -270,6 +277,7 @@ fn native_frontier_owned_flip(
 fn native_frontier_owned_flips(
   observed_rows: List<NativeProgressObservedRow>,
   baseline_index: Map<String, NativeBaselineAttainment>,
+  minted_tree: String,
   authority: NativeFrontierFlipAuthority
 ) -> List<NativeFrontierOwnedCorrectnessFlip> {
   list_flat_map(xs: observed_rows, f: fn(o) {
@@ -284,7 +292,7 @@ fn native_frontier_owned_flips(
           }
       }
     if added {
-      match native_frontier_owned_flip(identity: o.identity, attained: o.attained, authority: authority) {
+      match native_frontier_owned_flip(identity: o.identity, attained: o.attained, minted_tree: minted_tree, authority: authority) {
         Present { value: f } => [f]
         Absent => []
       }
@@ -513,6 +521,7 @@ fn native_frontier_stale(
 // disposition, per cause transition), from the reading step (malformed readings), and from this
 // module (new debt, net of admitted rename targets).
 fn native_frontier_judge_minted(
+  minted_tree: String,
   universe: List<NativeRouteTestIdentity>,
   rows: List<NativeFrontierDebtRow>,
   dispositions: List<NativeProgressDispositionRow>,
@@ -526,7 +535,7 @@ fn native_frontier_judge_minted(
   let baseline_index = native_progress_baseline_index(rows: baseline_rows)
   let disposition_index = native_progress_disposition_index(dispositions: dispositions)
   let transition_index = native_cause_transition_index(rows: cause_transitions)
-  let owned_flips = native_frontier_owned_flips(observed_rows: observed_rows, baseline_index: baseline_index, authority: authority)
+  let owned_flips = native_frontier_owned_flips(observed_rows: observed_rows, baseline_index: baseline_index, minted_tree: minted_tree, authority: authority)
   let flip_accept_to_refuse = native_accept_to_refuse_index(rows: list_flat_map(xs: owned_flips, f: fn(f) {
     match map_lookup(m: baseline_index, key: native_route_identity_qualified(identity: f.identity)) {
       Present { value: _ } => [native_frontier_flip_accept_to_refuse_row(f: f)]
@@ -622,8 +631,8 @@ fn native_frontier_verdict_over(
     match standing {
       RosterUnminted =>
         FrontierUnminted { proposal: native_frontier_proposal_of(observed: native_progress_observed_rows(readings: readings)) }
-      RosterMinted { receipt: _, universe: u, rows: rows, dispositions: ds, cause_transitions: ts } =>
-        native_frontier_judge_minted(universe: u, rows: rows, dispositions: ds, cause_transitions: ts, readings: readings, authority: authority)
+      RosterMinted { receipt: mr, universe: u, rows: rows, dispositions: ds, cause_transitions: ts } =>
+        native_frontier_judge_minted(minted_tree: mr.tested_tree, universe: u, rows: rows, dispositions: ds, cause_transitions: ts, readings: readings, authority: authority)
     }
   }
 }

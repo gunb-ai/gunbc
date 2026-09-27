@@ -299,12 +299,19 @@ fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<Cau
 // retires it) and the flip (the pull request that made the cause start firing, and why that is a
 // correction) are two facts with different lifetimes: the flip matters only while a roster minted
 // before it is being reconciled, and the ownership outlives it. A declaration counts only when its
-// cause is OWNED at the same grain (cause_correctness_flip_lookup joins the two), so an orphan
+// cause is OWNED at the same grain (cause_correctness_flip_lookup_over joins the two), so an orphan
 // declaration grants nothing and the unowned increase stays a loss.
+//
+// THE LIFETIME IS A FIELD, NOT A PROMISE (review 71692). `reconciles_tested_tree` names the tested
+// tree of the committed roster the flip lands against. A consumer admits growth under the
+// declaration only while the roster it judges against carries that same tree; the first re-mint
+// changes the tree and the grant lapses, so a later refusal under the same cause is a loss again,
+// not a correction relabelled.
 type CorrectnessFlipDeclaration {
   cause: Symbol
   grain: DiagnosticGrain
   pull_request: Int
+  reconciles_tested_tree: String
   why: String
 }
 
@@ -312,6 +319,7 @@ type CorrectnessFlipDeclaration {
 type CauseCorrectnessFlip {
   owner: CauseOwnership
   pull_request: Int
+  reconciles_tested_tree: String
   why: String
 }
 
@@ -334,11 +342,7 @@ fn cause_correctness_flip_lookup_over(
         d.cause == cause && discriminant(v: d.grain) == discriminant(v: grain)
       }) {
         Absent => optional_absent()
-        Present { value: d } => optional_present(value: CauseCorrectnessFlip { owner: owner, pull_request: d.pull_request, why: d.why })
+        Present { value: d } => optional_present(value: CauseCorrectnessFlip { owner: owner, pull_request: d.pull_request, reconciles_tested_tree: d.reconciles_tested_tree, why: d.why })
       }
   }
-}
-
-fn cause_correctness_flip_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<CauseCorrectnessFlip> {
-  cause_correctness_flip_lookup_over(cause: cause, grain: grain, owners: known_frontier_causes, flips: known_correctness_flips)
 }
