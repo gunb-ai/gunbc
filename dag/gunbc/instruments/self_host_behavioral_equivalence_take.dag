@@ -21,7 +21,9 @@ import tools.self_host_module_behavioral_transport_roster {
   compiler_module_behavioral_receipt_evidence,
   BehavioralReceiptHeld,
   BehavioralReceiptRefuted,
+  CompilerModuleReceiptNoVerdict,
   BehavioralTransportConfigAbsent,
+  BehavioralReceiptSetupRefused,
 }
 import gunbc.self_host_behavioral_equivalence_receipt {
   BehavioralRowVerdict,
@@ -49,18 +51,23 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // would read Outstanding -- the printed receipt is the product on both, since a failing receipt is
 // as much a receipt as a passing one.
 
+fn no_verdict_cause(cause: CompilerModuleReceiptNoVerdict) -> String {
+  match cause {
+    BehavioralTransportConfigAbsent { module_path: _ } => "behavioral transport config absent"
+    BehavioralReceiptSetupRefused { module_path: _, step } => concat("setup refused: ", step)
+  }
+}
+
+// A drive that ran decides held or refuted; anything that kept it from running is NoVerdict with
+// its located cause -- a missing witness artifact is never a behavioral FAIL and never a pass.
 fn behavioral_row_of(cfg: ModuleBehavioralTransportConfig) -> BehavioralEquivalenceRow {
   let verdict = match compiler_module_behavioral_receipt_evidence(module_path: cfg.module_path) {
     EvidenceSubjectCompleted { outcome } => match outcome {
       BehavioralReceiptHeld => BehavioralRowHeld
-      BehavioralReceiptRefuted => BehavioralRowRefuted
+      BehavioralReceiptRefuted { observed } => BehavioralRowRefuted { observed: observed }
     }
-    EvidenceInstrumentRefused { cause } => match cause {
-      BehavioralTransportConfigAbsent { module_path: _ } => BehavioralRowNoVerdict { cause: "behavioral transport config absent" }
-    }
-    EvidenceSubjectUnreached { cause } => match cause {
-      BehavioralTransportConfigAbsent { module_path: _ } => BehavioralRowNoVerdict { cause: "subject unreached" }
-    }
+    EvidenceInstrumentRefused { cause } => BehavioralRowNoVerdict { cause: no_verdict_cause(cause: cause) }
+    EvidenceSubjectUnreached { cause } => BehavioralRowNoVerdict { cause: no_verdict_cause(cause: cause) }
   }
   BehavioralEquivalenceRow { module_path: cfg.module_path, verdict: verdict }
 }
@@ -68,7 +75,7 @@ fn behavioral_row_of(cfg: ModuleBehavioralTransportConfig) -> BehavioralEquivale
 fn verdict_source(v: BehavioralRowVerdict) -> String {
   match v {
     BehavioralRowHeld => "BehavioralRowHeld"
-    BehavioralRowRefuted => "BehavioralRowRefuted"
+    BehavioralRowRefuted { observed } => concat(concat("BehavioralRowRefuted { observed: \"", observed), "\" }")
     BehavioralRowNoVerdict { cause } => concat(concat("BehavioralRowNoVerdict { cause: \"", cause), "\" }")
   }
 }

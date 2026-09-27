@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type BehavioralRowVerdict
   = BehavioralRowHeld
-  | BehavioralRowRefuted
+  | BehavioralRowRefuted { observed: String }
   | BehavioralRowNoVerdict { cause: String }
 
 type BehavioralEquivalenceRow {
@@ -60,7 +60,7 @@ type BehavioralEquivalenceStanding
 fn behavioral_row_outstanding(row: BehavioralEquivalenceRow) -> List<String> {
   match row.verdict {
     BehavioralRowHeld => []
-    BehavioralRowRefuted => [concat("behavior diverges from the seed: ", row.module_path)]
+    BehavioralRowRefuted { observed } => [concat(concat(concat("behavior diverges: ", row.module_path), ": "), observed)]
     BehavioralRowNoVerdict { cause } => [concat(concat(concat("no verdict: ", row.module_path), ": "), cause)]
   }
 }

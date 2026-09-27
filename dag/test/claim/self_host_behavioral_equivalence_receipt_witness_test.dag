@@ -3,7 +3,17 @@ module test.claim.self_host_behavioral_equivalence_receipt_witness
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import tools.self_host_module_behavioral_transport_roster { ModuleBehavioralTransportConfig }
+import tools.self_host_module_behavioral_transport_roster { ModuleBehavioralTransportConfig, BehavioralReceiptSetupRefused }
+import tools.self_host_behavioral_equivalence_take { no_verdict_cause }
+import tools.host_prelude { WitnessBinReady, WitnessBinRefused, WitnessBinArtifactAbsent, WitnessBinBuildFailed }
+import tools.self_host_curated_seed_linked_harness {
+  CsslReceiptOutcome,
+  CsslBehaviorHeld,
+  CsslBehaviorDiverged,
+  CsslSetupRefused,
+  cssl_classify_receipt,
+  cssl_readiness_refusal,
+}
 import gunbc.self_host_behavioral_equivalence_receipt {
   BehavioralRowVerdict,
   BehavioralRowHeld,
@@ -59,7 +69,7 @@ fn all_held(sequence: Int) -> BehavioralEquivalenceReceipt {
 }
 
 fn b_refuted(sequence: Int) -> BehavioralEquivalenceReceipt {
-  receipt(sequence: sequence, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowRefuted)])
+  receipt(sequence: sequence, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowRefuted { observed: "fixture divergence" })])
 }
 
 fn outstanding_of(s: BehavioralEquivalenceStanding) -> List<String> {
@@ -155,4 +165,50 @@ fn class_of_series(s: BehavioralEquivalenceStanding) -> String {
 test fn the_milestone_derives_from_the_persisted_series() -> Bool {
   standing_class_label(c: standing_class(s: milestone_status(m: SelfHostBehavioralEquivalenceReestablished)))
     == class_of_series(s: current_behavioral_equivalence_standing())
+}
+
+// ---------------------------------------------------------------------------------------------
+// A ROW WHOSE WITNESS BINARY WAS NEVER BUILT IS NO VERDICT, NEVER A DIVERGENCE (srv1 validation run,
+// 2026-09-27: `WitnessBin.Run ... target/release/witness --inject-fault (exit=127) No such file`).
+// The classifier the wet harness ends in is pure, so the order is pinned here over supplied step
+// results.
+
+fn outcome_word(o: CsslReceiptOutcome) -> String {
+  match o {
+    CsslBehaviorHeld => "held"
+    CsslBehaviorDiverged { observed: _ } => "diverged"
+    CsslSetupRefused { step: _ } => "setup-refused"
+  }
+}
+
+test fn an_absent_witness_artifact_is_a_setup_refusal_not_a_divergence() -> Bool {
+  let refusal = cssl_readiness_refusal(readiness: WitnessBinRefused { bin_name: "witness", path: "/tmp/x/target/release/witness", reason: WitnessBinArtifactAbsent })
+  let o = cssl_classify_receipt(setup_refusal: refusal, pass_ok: false, fault_detected: false, claim_ok: true)
+  outcome_word(o: o) == "setup-refused"
+    && string_contains(s: refusal, pattern: "artifact absent")
+    && string_contains(s: refusal, pattern: "/tmp/x/target/release/witness")
+}
+
+test fn a_failed_build_names_itself_and_outranks_the_failed_drive() -> Bool {
+  let refusal = cssl_readiness_refusal(readiness: WitnessBinRefused { bin_name: "gunbc", path: "/r/target/release/gunbc", reason: WitnessBinBuildFailed })
+  match cssl_classify_receipt(setup_refusal: refusal, pass_ok: false, fault_detected: false, claim_ok: false) {
+    CsslSetupRefused { step } => string_contains(s: step, pattern: "build failed")
+    CsslBehaviorDiverged { observed: _ } => false
+    CsslBehaviorHeld => false
+  }
+}
+
+// The discriminating pair: with setup clean, the same failed drive IS a divergence, and a clean
+// drive holds -- so the setup arm is not simply swallowing every failure.
+test fn with_setup_clean_a_failed_drive_diverges_and_a_clean_one_holds() -> Bool {
+  cssl_readiness_refusal(readiness: WitnessBinReady { path: "/r/w" }) == ""
+    && outcome_word(o: cssl_classify_receipt(setup_refusal: "", pass_ok: false, fault_detected: true, claim_ok: true)) == "diverged"
+    && outcome_word(o: cssl_classify_receipt(setup_refusal: "", pass_ok: true, fault_detected: false, claim_ok: true)) == "diverged"
+    && outcome_word(o: cssl_classify_receipt(setup_refusal: "", pass_ok: true, fault_detected: true, claim_ok: true)) == "held"
+}
+
+// The taker renders the located setup step into the row's NoVerdict cause rather than dropping it.
+test fn the_taker_carries_the_setup_step_into_the_no_verdict_cause() -> Bool {
+  no_verdict_cause(cause: BehavioralReceiptSetupRefused { module_path: "m.dag", step: "binary witness: artifact absent at /p" })
+    == "setup refused: binary witness: artifact absent at /p"
 }
