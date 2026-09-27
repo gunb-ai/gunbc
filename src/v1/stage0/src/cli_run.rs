@@ -20230,6 +20230,7 @@ pub fn handle_serve(
                     400,
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
+                    &[],
                 ),
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
@@ -20303,6 +20304,7 @@ pub fn handle_serve(
                                         500,
                                         "text/plain; charset=utf-8",
                                         "budget refusal did not name the armed contract\n",
+                                        &[],
                                     )
                                 } else {
                                 // Refusal rendering is HOST-SIDE by necessity, not by preference:
@@ -20326,6 +20328,7 @@ pub fn handle_serve(
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
                                         &refusal,
                                     ),
+                                    &[],
                                 )
                                 }
                             }
@@ -20334,14 +20337,16 @@ pub fn handle_serve(
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!("handler error: {}\n", e),
+                                &[],
                             ),
                         },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body)) => serve_write_response(
+                            Some((status, content_type, resp_body, resp_headers)) => serve_write_response(
                                 &mut stream,
                                 status,
                                 &content_type,
                                 &resp_body,
+                                &resp_headers,
                             ),
                             None => serve_write_response(
                                 &mut stream,
@@ -20351,6 +20356,7 @@ pub fn handle_serve(
                                     "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
                                     ctx.format_value(&val)
                                 ),
+                                &[],
                             ),
                         },
                     }
@@ -20514,10 +20520,12 @@ fn serve_write_response(
     status: u16,
     content_type: &str,
     body: &str,
+    headers: &[String],
 ) {
     use std::io::Write;
     let reason = match status {
         200 => "OK",
+        302 => "Found",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -20528,12 +20536,18 @@ fn serve_write_response(
         503 => "Service Unavailable",
         _ => "",
     };
+    let mut extra = String::new();
+    for header in headers {
+        extra.push_str(header);
+        extra.push_str("\r\n");
+    }
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
         status,
         reason,
         content_type,
         body.len(),
+        extra,
         body
     );
     if let Err(e) = stream.write_all(response.as_bytes()) {
@@ -20542,11 +20556,13 @@ fn serve_write_response(
 }
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response).
+/// (surfaced as a typed 500 by the caller, never a fabricated response). The
+/// headers list carries one complete header line per element, in write order —
+/// a handler that sets no headers produces the same wire shape as before.
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String)> {
+) -> Option<(u16, String, String, Vec<String>)> {
     if let v1_interpreter::Value::Record { type_name, fields } = val {
         if !ctx.sym_eq(*type_name, "ServeWireResponse") {
             return None;
@@ -20563,7 +20579,21 @@ fn serve_wire_fields(
             Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
-        return Some((status, content_type, body));
+        let headers = match ctx.field(fields, "headers") {
+            None => Vec::new(),
+            Some(v1_interpreter::Value::List(items)) => {
+                let mut lines = Vec::with_capacity(items.len());
+                for item in items.iter() {
+                    match item {
+                        Value::Str(s) => lines.push(s.to_string()),
+                        _ => return None,
+                    }
+                }
+                lines
+            }
+            _ => return None,
+        };
+        return Some((status, content_type, body, headers));
     }
     None
 }
