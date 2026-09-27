@@ -298,3 +298,24 @@ test fn w_every_expected_type_control_source_is_actually_censused() -> Bool {
     && census_ran(source: coproduct_at_record_parameter_red_source)
     && census_ran(source: coproduct_at_record_parameter_control_source)
 }
+
+// A TWO-ARM GENERIC COPRODUCT, the shape gunbc#12432 hit: about 35 helpers declared
+// `-> Outcome<Node>` returned an Outcome over a record, and one declared `-> Outcome<ResolvedTree>`
+// returned `Outcome<Node>` and failed only at runtime (`no field root on type Node`). Both
+// directions are enrolled because both were admitted. The judgment is
+// v1.compiler.infer_types nominal_coproduct_applied_argument_conflict; class, chain and rung:
+// gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return.
+data two_arm_coproduct_argument_red_source: String = "module probe_two_arm_coproduct_argument\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Beta { b: String }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_beta() -> Result<Beta> { Good { value: Beta { b: \"x\" } } }\nfn probe() -> Result<Alpha> { make_beta() }\n"
+
+data two_arm_coproduct_argument_reverse_red_source: String = "module probe_two_arm_coproduct_argument_rev\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Beta { b: String }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_alpha() -> Result<Alpha> { Good { value: Alpha { a: 1 } } }\nfn probe() -> Result<Beta> { make_alpha() }\n"
+
+data two_arm_coproduct_argument_control_source: String = "module probe_two_arm_coproduct_argument_ok\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_alpha() -> Result<Alpha> { Good { value: Alpha { a: 1 } } }\nfn wrap<T>(v: T) -> Result<T> { Good { value: v } }\nfn probe() -> Result<Alpha> { make_alpha() }\n"
+
+test fn w_a_wrong_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: two_arm_coproduct_argument_red_source) > 0
+    && refusing_count(source: two_arm_coproduct_argument_reverse_red_source) > 0
+}
+
+test fn w_a_matching_or_type_variable_argument_of_a_two_arm_coproduct_is_admitted() -> Bool {
+  refusing_count(source: two_arm_coproduct_argument_control_source) == 0
+}
