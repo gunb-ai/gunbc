@@ -1256,7 +1256,11 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
 
 pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = 1024;
 
-pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+pub fn gunbc_file_write_create_new(
+    file_path: &str,
+    content: &[u8],
+    declared_mode: Option<u32>,
+) -> std::io::Result<()> {
     use std::io::Write;
     static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let mut attempted: u32 = 0;
@@ -1280,6 +1284,25 @@ pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::
             Err(host) => return Err(host),
         }
     };
+    if let Some(declared) = declared_mode {
+        #[cfg(unix)]
+        let applied = {
+            use std::os::unix::fs::PermissionsExt;
+            staged.set_permissions(std::fs::Permissions::from_mode(declared))
+        };
+        #[cfg(not(unix))]
+        let applied: std::io::Result<()> = Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!(
+                "gunbc create-new: declared mode {} is unavailable on this platform",
+                declared
+            ),
+        ));
+        if let Err(mode_err) = applied {
+            let _ = std::fs::remove_file(&staging_path);
+            return Err(mode_err);
+        }
+    }
     if let Err(staging_err) = staged.write_all(content) {
         let _ = std::fs::remove_file(&staging_path);
         return Err(staging_err);
@@ -1378,6 +1401,35 @@ pub fn int_neg(operand: i64) -> i64 {
     match operand.checked_neg() {
         Some(v) => v,
         None => int_overflow("-", 0, operand),
+    }
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveElapsedAtSubject.
+///
+/// The builtin was registered for the INTERPRETER and had no emitted body, so a .dag fold that
+/// read the clock typechecked, ran under `gunbc run`, and PANICKED in the emitted binary --
+/// which is where the native route actually executes. The two capabilities are different and
+/// registering one does not supply the other.
+///
+/// The label is not identity material and is never hashed or keyed on. It exists so two
+/// observations around one subject cannot be collapsed by pure-call memoization into a single
+/// read, which would make every measured span zero.
+///
+/// The epoch is process-local and monotone: callers subtract two readings around the subject
+/// they are measuring, so the absolute value is neither calendar time nor comparable across
+/// processes. A saturating subtraction at the call site is therefore the caller's obligation.
+pub fn observed_monotonic_nanos(_label: String) -> i64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    let epoch = EPOCH.get_or_init(Instant::now);
+    // i64 nanoseconds saturates at ~292 years of uptime; clamping is honest rather than
+    // wrapping into a negative duration that would read as a span running backwards.
+    let nanos = epoch.elapsed().as_nanos();
+    if nanos > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        nanos as i64
     }
 }
 

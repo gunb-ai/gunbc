@@ -155,6 +155,41 @@ fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
   }
 }
 
+// ── THE ENGRAM EMBEDDING STORAGE REQUEST ─────────────────────────────────────────────────────────
+//
+// vLLM's EngramConfig as upstream ships it, read at github.com/vllm-project/vllm revision
+// d2d649e674c75425d2d6975c87eb89fd4d55fff8 (vllm/config/engram.py): three booleans, cpu_offload
+// (pinned host memory read over UVA; its default is the VLLM_PLE_CPU_OFFLOAD environment variable,
+// and an explicit value takes precedence), embedding_across_dp and dp_shared_memory (which requires
+// cpu_offload). vllm/engine/arg_utils.py registers the group as --engram-config, a JSON value.
+//
+// THE WIRE IS THE DOTTED FORM, NOT JSON, AND THAT IS UPSTREAM'S OWN SYNTAX. vllm/utils/argparse_utils.py
+// at the same revision rewrites `--engram-config.cpu_offload true` into the nested dict before
+// argparse sees it, json-decoding each value. A JSON object would need quotes, which a systemd Exec
+// line cannot carry unmodelled; the dotted words are plain.
+//
+// ONLY THE TWO FIELDS A LAUNCH HAS ASKED FOR ARE MODELLED. The file-backed Engram overlay
+// (gunbc.spark.v41_runtime_candidate v41_engram_file_backed_overlay_path) requires cpu_offload true and
+// dp_shared_memory false and refuses at model init otherwise; embedding_across_dp has no consumer and is
+// left to upstream's default by saying nothing. Omitted renders no flag at all.
+type VllmEngramConfigRequest
+  = EngramConfigOmitted
+  | EngramConfigExplicit { cpu_offload: Bool, dp_shared_memory: Bool }
+
+fn vllm_engram_bool_wire(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn vllm_engram_config_argv(r: VllmEngramConfigRequest) -> List<String> {
+  match r {
+    EngramConfigOmitted => []
+    EngramConfigExplicit { cpu_offload: c, dp_shared_memory: d } => [
+      "--engram-config.cpu_offload", vllm_engram_bool_wire(b: c),
+      "--engram-config.dp_shared_memory", vllm_engram_bool_wire(b: d),
+    ]
+  }
+}
+
 // THE KV CACHE DTYPE AS REQUESTED, WHICH IS NOT THE DTYPE AS RESOLVED. Passing `fp8` for a
 // DeepSeek MLA checkpoint resolves to `fp8_ds_mla`, and the engine says so on its own startup line.
 // A realization that records the REQUESTED spelling and calls it the served format has recorded the

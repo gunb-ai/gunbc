@@ -1,0 +1,18 @@
+module gunbc.machine_intake_mtcollins1_topology_goal
+
+import std.measure { HardwareThreadCount }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.machine_intake_host_resource_observation { HostTopologyGoal }
+
+// WHAT mtcollins1 IS MEANT TO PRESENT, as a HEALTH goal and not a boot precondition. The census
+// boot read 160 hardware threads over 2 NUMA nodes of 80 (mtcollins1_nproc, a receipt that stays
+// true about that boot), and that is the configuration the machine is intended to hold. A boot that
+// shows fewer still BOOTS and still publishes what it has; the shortfall is a
+// gunbc.machine_intake_host_resource_observation ThreadsBelowIntent finding that the eligibility
+// policy reads. prior_threads is empty because no other boot's receipt is recorded yet; the census
+// receipt is the intent's own ground, and listing it twice would report one shortfall twice.
+data mtcollins1_topology_goal: HostTopologyGoal = HostTopologyGoal {
+  intended_threads: mtcollins1_nproc,
+  intended_nodes: 2,
+  prior_threads: [],
+}

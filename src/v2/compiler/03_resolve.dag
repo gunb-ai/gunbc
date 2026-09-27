@@ -88,6 +88,9 @@ import v2.std.symbol_index {
   symbol_index_lexical_lookup
 }
 import v2.std.node {
+  named_edges,
+  positional_child_count,
+  positional_edges,
   Arrow,
   Atom,
   Bind,
@@ -109,7 +112,7 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed,
 }
-import v2.std.type_binder { edge_is_type_params, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
@@ -139,8 +142,15 @@ type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
 
+// type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
+// enclosing Arrows' type-parameter frames over the namespace root, and it never carries a value
+// binder (a parameter, a `let`, an arm binder), so a type position cannot bind a value and a value
+// position -- which resolves in `scope` -- cannot bind a type parameter. resolve_arrow_node opens a
+// fn's <T> on it over the WHOLE Arrow, signature and body; only type-role walks consult it
+// (resolve_type_role_target).
 type ResolveContext {
   scope: Scope
+  type_scope: Scope
   namespace: Namespace
   policy: NameResolutionPolicy
   position: QualifiedName
@@ -256,8 +266,8 @@ fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbo
 fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match n.kind {
     ComputationNode { behavior: Bind } =>
-      if count(n.children) == 3 {
-        match first(n.children) {
+      if positional_child_count(children: n.children) == 3 {
+        match first(positional_edges(children: n.children)) {
           Present { value: e0 } =>
             harvest_direct_atom_binding(root: e0.target, acc: acc)
           Absent => acc
@@ -318,6 +328,7 @@ fn resolve_ctx_init(
 ) -> ResolveContext {
   ResolveContext {
     scope: scope_from_namespace(namespace: namespace),
+    type_scope: scope_from_namespace(namespace: namespace),
     namespace: namespace,
     policy: policy,
     position: namespace.module_qn,
@@ -329,6 +340,7 @@ fn resolve_ctx_init(
 fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
   ResolveContext {
     scope: scope,
+    type_scope: ctx.type_scope,
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: ctx.position,
@@ -337,9 +349,30 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
   }
 }
 
+fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root
+  }
+}
+
+// THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target
+// (v2.std.type_binder <cast-target>) or a let's annotation (<type-annotation>) -- resolves here: in the type-role
+// frame, so the enclosing fn's <T> binds it and no value binder can, and an undeclared name refuses
+// located at that name.
+fn resolve_type_role_target(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
+  resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: target)
+}
+
 fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveContext {
   ResolveContext {
     scope: ctx.scope,
+    type_scope: ctx.type_scope,
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
@@ -351,6 +384,7 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
 fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bool) -> ResolveContext {
   ResolveContext {
     scope: ctx.scope,
+    type_scope: ctx.type_scope,
     namespace: ctx.namespace,
     policy: ctx.policy,
     position: ctx.position,
@@ -450,7 +484,30 @@ fn anonymous_parameter_referenced_diagnostic(n: Node) -> Diagnostic {
 // IT DISCRIMINATES THE TWO CAUSES, which is why the third arm exists rather than defaulting: a name
 // no module declares gets NO advisory, because the honest reading there is a typo or a deleted
 // declaration and pointing anywhere would be fabrication.
+// A TYPE PARAMETER NAMED IN A VALUE POSITION is not an unknown name: the type-role frame binds it,
+// and the value scope deliberately does not. It refuses with its own reason, located at the use.
+fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name: Symbol) -> Optional<Diagnostic> {
+  match lookup_chain(s: ctx.type_scope, name: name) {
+    Accepted { value: BoundInFrame { canonical: _ }, diagnostics: _ } =>
+      optional_present(
+        value: Diagnostic {
+          reason: ^resolve_reason_type_parameter_in_value_position,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    _ => optional_absent()
+  }
+}
+
 fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
+  match type_parameter_in_value_position_optional(ctx: ctx, n: n, name: name) {
+    Present { value: d } => NonEmptyDiagnostics { head: d, tail: [] }
+    Absent => unbound_symbol_diagnostics_of_value_name(ctx: ctx, n: n, name: name)
+  }
+}
+
+fn unbound_symbol_diagnostics_of_value_name(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
   let fatal = unbound_symbol_diagnostic(n: n)
   match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
     GlobalBareHit { node: _, path: path } =>
@@ -1190,7 +1247,12 @@ fn resolve_transform_children(
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
-        _ => resolve_node_walk(ctx: ctx, n: e.target)
+        Named { name: _ } =>
+          if edge_is_cast_target(e: e) {
+            resolve_type_role_target(ctx: ctx, target: e.target)
+          } else {
+            resolve_node_walk(ctx: ctx, n: e.target)
+          }
       }
     )
   }))
@@ -1555,7 +1617,7 @@ fn resolve_children_homogeneous_scope(
 //
 // THE BODY IS OUTSIDE IT, AND THAT IS MEASURED, NOT CHOSEN FOR TIDINESS. A frame answers a name
 // without knowing its position, and v2.compiler.body_lowering_fold carries no TYPE position into a
-// body today (a `let` lowers to Bind[binder, value, body], its annotation not carried; lambdas are
+// body then (a `let` lowered to Bind[binder, value, body], its annotation not carried; lambdas are
 // not lowered). So every `T` a body can contain is a VALUE-position use, and a frame over the body
 // admitted exactly one new program: `fn f<T>(x: T) -> T { T }`, a type used as a value, Accepted.
 // Kept off the body, that refuses as it did before. The trigger for widening the frame is the
@@ -1633,6 +1695,16 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 // to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
 // invented by that refusal.
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  resolve_arrow_node_in(
+    outer_ctx: ctx,
+    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope)),
+    n: n
+  )
+}
+
+// The Arrow's own <T> binders are checked from the OUTER context: the frame they open must not
+// answer for them, or every binder would read as shadowing itself.
+fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
   let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type }
@@ -1641,7 +1713,7 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
     match e.label {
       Named { name: _ } =>
         if edge_is_type_params(e: e) {
-          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
+          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
         } else {
           child_walk_step(
             w: acc,
@@ -1677,8 +1749,9 @@ fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
 // ORDINAL 0 IS THE BINDER, AND IT PRODUCES THE INNER SCOPE. Ordinal 1 resolves under the outer
 // scope, which the binder does not touch, so it is observed whatever the binder did. Ordinal 2 and
 // beyond resolve under the scope the binder produced; when the binder was refused that scope would
-// be invented, so those sites are recorded ObservationIncomplete and NOT resolved.
-fn resolve_bind_edges(
+// be invented, so those sites are recorded ObservationIncomplete and NOT resolved. The ordinal is a
+// POSITIONAL slot: resolve_bind_edges hands this walker the positionals only.
+fn resolve_bind_positional_edges(
   ctx: ResolveContext,
   edges: List<Edge>,
   scope_outer: Scope,
@@ -1705,11 +1778,44 @@ fn resolve_bind_edges(
   })
 }
 
+// A BIND'S SLOTS ARE ITS POSITIONAL EDGES, NEVER ITS EDGE ORDINALS. The <type-annotation> edge
+// (v2.std.type_binder) may stand anywhere among a producer's children -- content_hash canonicalizes
+// it last, but resolve walks the tree as produced -- so counting it would shift the value into the
+// binder's inner scope and admit an initializer that names its own binder. The positionals are
+// walked first under their slot rules; the annotation after, in the type-role frame.
+fn resolve_bind_edges(
+  ctx: ResolveContext,
+  edges: List<Edge>,
+  scope_outer: Scope,
+  scope_inner: Scope
+) -> ChildWalk {
+  fold(
+    named_edges(children: edges),
+    init: resolve_bind_positional_edges(
+      ctx: ctx,
+      edges: positional_edges(children: edges),
+      scope_outer: scope_outer,
+      scope_inner: scope_inner
+    ),
+    f: fn(acc, e) {
+      if edge_is_type_annotation(e: e) {
+        child_walk_step(w: acc, e: e, r: resolve_type_role_target(ctx: ctx, target: e.target))
+      } else {
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer), n: e.target)
+        )
+      }
+    }
+  )
+}
+
 fn resolve_bind_node(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  if count(n.children) == 3 {
+  if positional_child_count(children: n.children) == 3 {
     child_walk_node(n: n, w: resolve_bind_edges(
       ctx: ctx,
       edges: n.children,
