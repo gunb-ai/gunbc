@@ -100,3 +100,14 @@ fn probe_parse_len40() -> ProcessExit { p_parse(source: llv_len40_source) }
 fn probe_parse_len80() -> ProcessExit { p_parse(source: llv_len80_source) }
 
 fn probe_parse_noop() -> ProcessExit { p_parse(source: llv_calls_source) }
+
+fn p_normalizes(source: String) -> Bool {
+  match module_roots_from_source_root_ingest(ingest: p_ingest(source: source), lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn trace_len20() -> Bool { p_normalizes(source: llv_len20_source) }
+
+test fn trace_len40() -> Bool { p_normalizes(source: llv_len40_source) }
