@@ -2380,7 +2380,9 @@ mod tests {
 
     #[test]
     fn primitive_runtime_body_phase_executes_the_live_gate() {
-        assert!(run_required_primitive_runtime_body());
+        assert!(finish_required_primitive_runtime_body(
+            spawn_required_primitive_runtime_body()
+        ));
     }
 
     #[test]
