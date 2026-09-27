@@ -61,7 +61,6 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
-import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
@@ -1644,14 +1643,23 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
 // AND THE DARK INSTALL PUTS A TREE THERE, because a unit pointed at an EMPTY directory
 // restart-loops exactly as one pointed at the wrong directory does. Asserting the unit's path
 // alone would not have caught the stage-A failure.
+//
+// AND IT PUTS IT THERE AS THE LOCUS OWNER, NOT AS THE JOB USER. The discriminating RED is the
+// shape fleet-converge run 36347245905 died on: `rsync -a --delete` run by the ci-runner principal
+// into a directory the preceding step had created owned by the service user, which fails chgrp and
+// mkdir (rsync 23). The owner-parameterized `sudo install -o <owner>` per-file mover is the only
+// route that lands bytes there, so reintroducing any rsync, or a copy not owned by the service
+// user, fails this claim.
 test fn the_dark_install_populates_the_broker_tree() -> Bool {
   let script = witness_approval_broker_dark_script_text
   let release_dir = approval_broker_release_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
+  let owner = deployment_spec_srv1().service.service_user as String
   string_contains(s: script, pattern: release_dir)
-    && string_contains(s: script, pattern: "rsync -a --delete")
+    && string_contains(s: script, pattern: join([" -o ", owner, " -g ", owner, " \"$PWD\"/{} ", release_dir, "/{}"], ""))
+    && !string_contains(s: script, pattern: "rsync")
     && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
       root: srv1_gunbc_approval_broker_root as String,
       revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
@@ -1693,7 +1701,8 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: script, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
+  string_contains(s: script, pattern: "target/release/gunbc")
+    && string_contains(s: script, pattern: binary)
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
     && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
