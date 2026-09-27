@@ -7,15 +7,17 @@ import extdeps.games.animal_crossing.message {
   steering_tokens, text_message, vanilla_control_codes,
 }
 import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
-import examples.animal_crossing.acmsg { AcmsgBlock, AcmsgEdit, AcmsgAccepted, AcmsgRefused, parse_acmsg, render_acmsg }
-import extdeps.games.animal_crossing.dialogue_catalog { CatalogEntry, Personality, Cranky, dialogue_catalog, personalities, personality_looks, personality_of_looks }
-import examples.animal_crossing.dialogue { LineFinding, LineFits, LineOverflows, LineMayOverflow, label_blocks, line_width_finding }
+import extdeps.games.animal_crossing.dialogue_catalog { CatalogEntry, Personality, dialogue_catalog, personalities, personality_looks, personality_of_looks }
+import std.octet_read { OctetPatch, OctetRangeCopy }
+import extdeps.formats.gamecube.disc { GcmFile, GcmHeader }
+import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader }
+import extdeps.games.animal_crossing.disc_messages { DiscMessageLayout, MessageReplacement, MessageRewritePlan, plan_message_rewrite }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Messages are supplied as literal octets. The inhabitance run over a real disc image is
-// examples.animal_crossing.dialogue `show`/`build`; the repository does not carry the image.
+// the dialogue workflow built on these models; the repository does not carry the image.
 
 // "Hi", the catchphrase, a line break, a pause of 0x0a, then octet 0x5B -- "ã" in the game's font,
 // where ASCII would say "[".
@@ -124,58 +126,6 @@ test fn a_ragged_message_table_is_refused() -> Bool {
   }
 }
 
-test fn acmsg_blocks_parse_with_labels_and_keep_a_trailing_break() -> Bool {
-  let content = "# comment\n\n=== 12573 cranky: done ===\nline one\nline two\n=== 0x10 ===\nends with a break\n\n"
-  return match parse_acmsg(source: "f.acmsg", content: content) {
-    AcmsgAccepted { value: edits } =>
-      edits == [
-        AcmsgEdit { block: AcmsgBlock { id: 12573, label: "cranky: done", text: "line one\nline two" }, source: "f.acmsg:3" },
-        AcmsgEdit { block: AcmsgBlock { id: 16, label: "", text: "ends with a break\n" }, source: "f.acmsg:6" },
-      ]
-    AcmsgRefused { reason: _ } => false
-  }
-}
-
-test fn acmsg_refuses_text_before_the_first_header() -> Bool {
-  return match parse_acmsg(source: "f.acmsg", content: "stray\n=== 1 ===\nx\n") {
-    AcmsgAccepted { value: _ } => false
-    AcmsgRefused { reason: r } => r == "f.acmsg:1: text before the first '=== id ===' header"
-  }
-}
-
-data render_cases: List<AcmsgBlock> = [
-  AcmsgBlock { id: 12573, label: "cranky: done", text: "line one\nline two\{CONTINUE}" },
-  AcmsgBlock { id: 7, label: "", text: "" },
-  AcmsgBlock { id: 8, label: "ends with a break", text: "x\n" },
-  AcmsgBlock { id: 9, label: "", text: "\n\nblank lines first" },
-]
-
-test fn acmsg_render_then_parse_is_the_identity() -> Bool {
-  return match render_acmsg(comments: ["generated", "second note"], blocks: render_cases) {
-    AcmsgRefused { reason: _ } => false
-    AcmsgAccepted { value: text } =>
-      match parse_acmsg(source: "r", content: text) {
-        AcmsgAccepted { value: edits } => (edits |> map(e => e.block)) == render_cases
-        AcmsgRefused { reason: _ } => false
-      }
-  }
-}
-
-fn render_refused(block: AcmsgBlock) -> Bool {
-  match render_acmsg(comments: [], blocks: [block]) {
-    AcmsgAccepted { value: _ } => false
-    AcmsgRefused { reason: _ } => true
-  }
-}
-
-test fn acmsg_render_refuses_what_would_not_read_back() -> Bool {
-  return render_refused(block: AcmsgBlock { id: 1, label: "", text: "fine\n=== 2 ===\nsmuggled" })
-    && render_refused(block: AcmsgBlock { id: 1, label: " padded", text: "x" })
-    && render_refused(block: AcmsgBlock { id: 1, label: "two\nlines", text: "x" })
-    && render_refused(block: AcmsgBlock { id: -1, label: "", text: "x" })
-    && render_refused(block: AcmsgBlock { id: 1, label: "ok", text: "x" }) == false
-}
-
 fn lines_of(text: String) -> List<TextLine> {
   match text_message(codes: vanilla_control_codes, text: text) {
     MessageRefused { reason: _ } => []
@@ -230,26 +180,51 @@ test fn catalog_topics_are_unique() -> Bool {
   return fold(dialogue_catalog, init: [], f: (seen, e) => if seen |> any(t => t == e.topic) { list_push(seen, "") } else { list_push(seen, e.topic) }) |> all(t => t != "")
 }
 
-test fn dumped_blocks_are_labelled_with_topic_personality_and_position() -> Bool {
-  let blocks = [AcmsgBlock { id: 10, label: "", text: "a" }, AcmsgBlock { id: 11, label: "", text: "b" }]
-  return (label_blocks(blocks: blocks, topic: "chat", p: Cranky) |> map(b => b.label)) == ["chat / cranky 1 of 2", "chat / cranky 2 of 2"]
+fn zero_head(n: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { zero_head(n: n, acc: list_push(acc, 0)) }
 }
 
-fn finding_kind(f: LineFinding) -> String {
-  match f {
-    LineFits => "fits"
-    LineOverflows { reason: _ } => "overflows"
-    LineMayOverflow { reason: _ } => "may overflow"
+// Three messages (ends 3, 5, 9) in an archive at disc offset 1000 whose data section starts 64
+// octets in: message data at data offset 0, the 12-octet table at 32.
+fn tiny_layout() -> DiscMessageLayout {
+  let data = RarcFile { path: "data/message_data.bin", entry_offset: 0, data_offset: 0, size: 9 }
+  let table = RarcFile { path: "data/message_data_table.bin", entry_offset: 20, data_offset: 32, size: 12 }
+  DiscMessageLayout {
+    image_size: 6000,
+    disc: GcmHeader { game_code: [], dol_offset: 5000, fst_offset: 4000, fst_size: 40 },
+    disc_files: [GcmFile { path: "forest_2nd.arc", fst_index: 1, offset: 1000, size: 128 }, GcmFile { path: "other", fst_index: 2, offset: 2000, size: 10 }],
+    archive: GcmFile { path: "forest_2nd.arc", fst_index: 1, offset: 1000, size: 128 },
+    archive_head: zero_head(n: 64, acc: []),
+    archive_header: RarcHeader { archive_size: 128, data_start: 64, data_length: 64, mram_length: 0, aram_length: 64, node_offset: 32, entry_offset: 48, string_offset: 56 },
+    archive_files: [data, table],
+    data_file: data,
+    table_file: table,
+    ends: [3, 5, 9],
   }
 }
 
-fn width_line(min: Int, max: Int) -> TextLine {
-  TextLine { page: 0, line: 0, extent: LineWidthRange { min: min, max: max } }
+// Message 1 grows from 2 to 4 octets: the original's octets before and after it are copied around
+// the new text, and the table is rewritten with every later end shifted by 2.
+test fn a_grown_message_is_spliced_between_copies_of_its_neighbours() -> Bool {
+  return match plan_message_rewrite(layout: tiny_layout(), replacements: [MessageReplacement { id: 1, octets: [7, 7, 7, 7] }]) {
+    MessageRefused { reason: _ } => false
+    MessageAccepted { value: plan } =>
+      plan.archive_offset == 1000
+        && plan.copies == [OctetRangeCopy { source_offset: 1064, target_offset: 1064, length: 3 }, OctetRangeCopy { source_offset: 1069, target_offset: 1071, length: 4 }]
+        && (plan.writes |> any(w => w == OctetPatch { offset: 1067, octets: [7, 7, 7, 7] }))
+        && (plan.writes |> any(w => w == OctetPatch { offset: 1096, octets: [0, 0, 0, 3, 0, 0, 0, 7, 0, 0, 0, 11] }))
+  }
 }
 
-test fn line_widths_are_judged_against_the_window() -> Bool {
-  return finding_kind(f: line_width_finding(line: width_line(min: 245, max: 245), units: 245)) == "fits"
-    && finding_kind(f: line_width_finding(line: width_line(min: 246, max: 246), units: 245)) == "overflows"
-    && finding_kind(f: line_width_finding(line: width_line(min: 100, max: 300), units: 245)) == "may overflow"
-    && finding_kind(f: line_width_finding(line: TextLine { page: 0, line: 0, extent: LineUnbounded { reason: "scaled" } }, units: 245)) == "may overflow"
+fn plan_refused(rs: List<MessageReplacement>) -> Bool {
+  match plan_message_rewrite(layout: tiny_layout(), replacements: rs) {
+    MessageRefused { reason: _ } => true
+    MessageAccepted { value: _ } => false
+  }
+}
+
+test fn replacements_out_of_order_or_outside_the_table_are_refused() -> Bool {
+  return plan_refused(rs: [MessageReplacement { id: 2, octets: [1] }, MessageReplacement { id: 1, octets: [1] }])
+    && plan_refused(rs: [MessageReplacement { id: 3, octets: [1] }])
+    && plan_refused(rs: [MessageReplacement { id: 1, octets: [1] }, MessageReplacement { id: 1, octets: [2] }])
 }

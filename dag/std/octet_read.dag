@@ -19,6 +19,13 @@ type OctetPatch {
   octets: List<Int>
 }
 
+// `length` octets at `source_offset` of one file, placed at `target_offset` of another.
+type OctetRangeCopy {
+  source_offset: Int
+  target_offset: Int
+  length: Int
+}
+
 fn octets_at(bytes: List<Int>, offset: Int, n: Int) -> List<Int>? {
   if offset < 0 || n < 0 || offset + n > count(bytes) { none }
   else { Present { value: octets_at_from(bytes: bytes, offset: offset, n: n, acc: []) } }

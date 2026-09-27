@@ -1,9 +1,9 @@
 module test.claim.gamecube_formats_witness
 
 import std.types { Bool, Int, List, String }
-import std.octet_read { OctetPatch, be_u16_at, be_u32_at, be_u32_octets, hex_octets, octets_hex }
+import std.octet_read { OctetPatch, OctetRangeCopy, be_u16_at, be_u32_at, be_u32_octets, hex_octets, octets_hex }
 import extdeps.tools.xxd { xxd_revert_lines, xxd_revert_patch_text }
-import extdeps.tools.dd { DdRangeCopy, dd_block_size }
+import extdeps.tools.dd { dd_block_size }
 import extdeps.formats.gamecube.disc { GcmDecoded, GcmRejected, GcmFile, GcmHeader, gcm_files, gcm_placement }
 import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader, RarcResize, rarc_repack }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -11,8 +11,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Each claim supplies its octets as literals at one interface. The inhabitance run -- these
-// decoders over a real disc image -- is examples.animal_crossing.dialogue `show`/`build`, which
-// needs an image the repository does not carry.
+// decoders over a real disc image -- is the dialogue workflow built on them outside this repository,
+// which needs an image the repository does not carry.
 
 test fn octet_read_decodes_big_endian_fields() -> Bool {
   let b = [1, 2, 3, 4, 5]
@@ -46,9 +46,9 @@ fn zeros(n: Int) -> List<Int> {
 }
 
 test fn dd_block_size_is_the_largest_shared_power_of_two() -> Bool {
-  return dd_block_size(copy: DdRangeCopy { source_offset: 4096, target_offset: 8192, length: 1024 }) == 1024
-    && dd_block_size(copy: DdRangeCopy { source_offset: 3, target_offset: 8192, length: 1024 }) == 1
-    && dd_block_size(copy: DdRangeCopy { source_offset: 0, target_offset: 0, length: 4194304 }) == 1048576
+  return dd_block_size(copy: OctetRangeCopy { source_offset: 4096, target_offset: 8192, length: 1024 }) == 1024
+    && dd_block_size(copy: OctetRangeCopy { source_offset: 3, target_offset: 8192, length: 1024 }) == 1
+    && dd_block_size(copy: OctetRangeCopy { source_offset: 0, target_offset: 0, length: 4194304 }) == 1048576
 }
 
 // root, directory "d" holding file "a", then top-level file "b"; names "d\0a\0b\0".

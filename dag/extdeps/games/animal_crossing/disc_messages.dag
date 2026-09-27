@@ -1,0 +1,273 @@
+module extdeps.games.animal_crossing.disc_messages
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.octet_read { OctetPatch, OctetRangeCopy }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.formats.gamecube.disc {
+  GcmFile, GcmHeader, gcm_find, gcm_placement, gcm_fst_entry_location_offset, gcm_fst_entry_location_octets,
+}
+import extdeps.formats.jsystem.rarc { RarcFile, RarcHeader, RarcPlacement, RarcRepack, RarcResize, rarc_find, rarc_files, rarc_repack }
+import extdeps.games.animal_crossing.message {
+  MessageAccepted, MessageRefused, MessageOutcome,
+  message_archive_path, message_data_path, message_table_path, message_start, message_end, message_table_octets,
+}
+
+// Where Animal Crossing's dialogue sits on its disc, and how a disc is rewritten when messages
+// change. The message table lives in forest_2nd.arc (a RARC archive on the GCM disc) as
+// data/message_data.bin and data/message_data_table.bin (extdeps.games.animal_crossing.message).
+// Everything here is a pure function of octets already read from the image: decoding locates the
+// table, and planning answers which byte ranges of the original image to copy where and which
+// octets to write, so that the result is the same disc with those messages replaced. Reading the
+// image and carrying out a plan are the caller's.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ACreTeam/ac-decomp/blob/09ca8e8b5b24e6ab44047ee980cf0088ad7ecb4c/src/game/m_msg_main.c_inc"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.games.animal_crossing.disc_messages",
+      decl_name: "DiscMessageLayout",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The message table as it sits in one disc image. `archive_head` is the archive's header region
+// (everything before its data section) and `ends` the decoded table.
+type DiscMessageLayout {
+  image_size: Int
+  disc: GcmHeader
+  disc_files: List<GcmFile>
+  archive: GcmFile
+  archive_head: List<Int>
+  archive_header: RarcHeader
+  archive_files: List<RarcFile>
+  data_file: RarcFile
+  table_file: RarcFile
+  ends: List<Int>
+}
+
+// ---- decoding, in the order an image is read ----
+
+fn message_archive(disc_files: List<GcmFile>) -> MessageOutcome<GcmFile> {
+  match gcm_find(files: disc_files, path: message_archive_path) {
+    Absent => MessageRefused { reason: "no forest_2nd.arc on the disc" }
+    Present { value: a } => MessageAccepted { value: a }
+  }
+}
+
+type MessageMembers {
+  files: List<RarcFile>
+  data_file: RarcFile
+  table_file: RarcFile
+}
+
+fn message_members(archive_head: List<Int>, archive_header: RarcHeader) -> MessageOutcome<MessageMembers> {
+  let files = rarc_files(head: archive_head, header: archive_header)
+  match rarc_find(files: files, path: message_data_path) {
+    Absent => MessageRefused { reason: "no message data in forest_2nd.arc" }
+    Present { value: d } =>
+      match rarc_find(files: files, path: message_table_path) {
+        Absent => MessageRefused { reason: "no message table in forest_2nd.arc" }
+        Present { value: t } => MessageAccepted { value: MessageMembers { files: files, data_file: d, table_file: t } }
+      }
+  }
+}
+
+// Where the table's octets are in the image, to be read and decoded with message_table_ends.
+fn message_table_image_offset(archive: GcmFile, archive_header: RarcHeader, members: MessageMembers) -> Int {
+  archive.offset + archive_header.data_start + members.table_file.data_offset
+}
+
+fn message_layout(
+  image_size: Int,
+  disc: GcmHeader,
+  disc_files: List<GcmFile>,
+  archive: GcmFile,
+  archive_head: List<Int>,
+  archive_header: RarcHeader,
+  members: MessageMembers,
+  ends: List<Int>,
+) -> MessageOutcome<DiscMessageLayout> {
+  if (get(ends, count(ends) - 1) ?? -1) != members.data_file.size { MessageRefused { reason: "message table does not end at the end of the message data" } }
+  else {
+    MessageAccepted {
+      value: DiscMessageLayout {
+        image_size: image_size, disc: disc, disc_files: disc_files, archive: archive,
+        archive_head: archive_head, archive_header: archive_header, archive_files: members.files,
+        data_file: members.data_file, table_file: members.table_file, ends: ends,
+      },
+    }
+  }
+}
+
+fn message_data_image_offset(layout: DiscMessageLayout) -> Int {
+  layout.archive.offset + layout.archive_header.data_start + layout.data_file.data_offset
+}
+
+fn message_count(layout: DiscMessageLayout) -> Int {
+  count(layout.ends)
+}
+
+type ImageRange {
+  offset: Int
+  length: Int
+}
+
+// The image range holding messages first_id .. first_id + n - 1.
+fn message_run_range(layout: DiscMessageLayout, first_id: Int, n: Int) -> ImageRange {
+  let s = message_start(ends: layout.ends, id: first_id)
+  ImageRange { offset: message_data_image_offset(layout: layout) + s, length: message_end(ends: layout.ends, id: first_id + n - 1) - s }
+}
+
+// ---- planning a rewrite ----
+
+type MessageReplacement {
+  id: Int
+  octets: List<Int>
+}
+
+// The output image is a copy of the original with `copies` (ranges of the original, placed at
+// target offsets) and then `writes` applied. Copies read only the original, and no write overlaps a
+// copy.
+type MessageRewritePlan {
+  copies: List<OctetRangeCopy>
+  writes: List<OctetPatch>
+  archive_offset: Int
+  archive_size: Int
+}
+
+fn message_old_size(layout: DiscMessageLayout, id: Int) -> Int {
+  message_end(ends: layout.ends, id: id) - message_start(ends: layout.ends, id: id)
+}
+
+type EndsFold {
+  ends: List<Int>
+  delta: Int
+  next: Int
+  id: Int
+}
+
+fn ends_step(layout: DiscMessageLayout, replacements: List<MessageReplacement>, acc: EndsFold, end: Int) -> EndsFold {
+  match get(replacements, acc.next) {
+    null => EndsFold { ends: list_push(acc.ends, end + acc.delta), delta: acc.delta, next: acc.next, id: acc.id + 1 }
+    other =>
+      if other.id == acc.id {
+        let delta = acc.delta + count(other.octets) - message_old_size(layout: layout, id: other.id)
+        EndsFold { ends: list_push(acc.ends, end + delta), delta: delta, next: acc.next + 1, id: acc.id + 1 }
+      } else {
+        EndsFold { ends: list_push(acc.ends, end + acc.delta), delta: acc.delta, next: acc.next, id: acc.id + 1 }
+      }
+  }
+}
+
+// Replacements are in ascending id order, so one pass shifts every later end by the growth so far.
+fn rewritten_ends(layout: DiscMessageLayout, replacements: List<MessageReplacement>) -> List<Int> {
+  fold(layout.ends, init: EndsFold { ends: [], delta: 0, next: 0, id: 0 }, f: (acc, e) => ends_step(layout: layout, replacements: replacements, acc: acc, end: e)).ends
+}
+
+type SpliceFold {
+  copies: List<OctetRangeCopy>
+  writes: List<OctetPatch>
+  source: Int
+  target: Int
+}
+
+fn splice_step(layout: DiscMessageLayout, acc: SpliceFold, r: MessageReplacement) -> SpliceFold {
+  let gap = message_start(ends: layout.ends, id: r.id) - acc.source
+  let copies = if gap > 0 { list_push(acc.copies, OctetRangeCopy { source_offset: message_data_image_offset(layout: layout) + acc.source, target_offset: acc.target, length: gap }) } else { acc.copies }
+  SpliceFold {
+    copies: copies,
+    writes: list_push(acc.writes, OctetPatch { offset: acc.target + gap, octets: r.octets }),
+    source: message_end(ends: layout.ends, id: r.id),
+    target: acc.target + gap + count(r.octets),
+  }
+}
+
+// The new message data at image offset `target`: the original's own octets between replacements,
+// copied, and each replacement written.
+fn splice_message_data(layout: DiscMessageLayout, replacements: List<MessageReplacement>, target: Int) -> SpliceFold {
+  let r = fold(replacements, init: SpliceFold { copies: [], writes: [], source: 0, target: target }, f: (acc, x) => splice_step(layout: layout, acc: acc, r: x))
+  let rest = layout.data_file.size - r.source
+  if rest > 0 {
+    SpliceFold { copies: list_push(r.copies, OctetRangeCopy { source_offset: message_data_image_offset(layout: layout) + r.source, target_offset: r.target, length: rest }), writes: r.writes, source: layout.data_file.size, target: r.target + rest }
+  } else { r }
+}
+
+fn zero_octets_from(n: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { zero_octets_from(n: n, acc: list_push(acc, 0)) }
+}
+
+fn zero_octets(n: Int) -> List<Int> {
+  zero_octets_from(n: n, acc: [])
+}
+
+fn overwrite(bytes: List<Int>, patch: OctetPatch) -> List<Int> {
+  concat(concat(bytes.take(n: patch.offset), patch.octets), bytes.skip(n: patch.offset + count(patch.octets)))
+}
+
+type MemberFold {
+  copies: List<OctetRangeCopy>
+  writes: List<OctetPatch>
+  cursor: Int
+}
+
+fn member_step(layout: DiscMessageLayout, replacements: List<MessageReplacement>, table: List<Int>, data_at: Int, in_place: Bool, acc: MemberFold, p: RarcPlacement) -> MemberFold {
+  let target = data_at + p.new_offset
+  let gap = p.new_offset - acc.cursor
+  let writes = if gap > 0 { list_push(acc.writes, OctetPatch { offset: data_at + acc.cursor, octets: zero_octets(n: gap) }) } else { acc.writes }
+  let end = p.new_offset + p.new_size
+  if p.file.path == message_table_path {
+    MemberFold { copies: acc.copies, writes: list_push(writes, OctetPatch { offset: target, octets: table }), cursor: end }
+  } else if p.file.path == message_data_path {
+    let s = splice_message_data(layout: layout, replacements: replacements, target: target)
+    MemberFold { copies: concat(acc.copies, s.copies), writes: concat(writes, s.writes), cursor: end }
+  } else if in_place && p.new_offset == p.file.data_offset {
+    MemberFold { copies: acc.copies, writes: writes, cursor: end }
+  } else {
+    let source = layout.archive.offset + layout.archive_header.data_start + p.file.data_offset
+    MemberFold { copies: list_push(acc.copies, OctetRangeCopy { source_offset: source, target_offset: target, length: p.file.size }), writes: writes, cursor: end }
+  }
+}
+
+// Why `replacements` cannot be planned, or "": ids must be in the table, ascending and distinct,
+// because each id names exactly one slot and the plan is one pass over the table.
+fn replacements_unplannable(layout: DiscMessageLayout, replacements: List<MessageReplacement>) -> String {
+  let r = fold(replacements, init: -1, f: (prev, x) => if prev == -2 || x.id <= prev || x.id >= message_count(layout: layout) { -2 } else { x.id })
+  if r == -2 { "replacements must name messages in the table, in ascending order, each once" } else { "" }
+}
+
+fn plan_message_rewrite(layout: DiscMessageLayout, replacements: List<MessageReplacement>) -> MessageOutcome<MessageRewritePlan> {
+  let unplannable = replacements_unplannable(layout: layout, replacements: replacements)
+  if unplannable != "" { MessageRefused { reason: unplannable } }
+  else {
+    let ends = rewritten_ends(layout: layout, replacements: replacements)
+    let table = message_table_octets(ends: ends)
+    let repack = rarc_repack(header: layout.archive_header, files: layout.archive_files, resizes: [
+      RarcResize { path: message_data_path, size: get(ends, count(ends) - 1) ?? 0 },
+      RarcResize { path: message_table_path, size: count(table) },
+    ])
+    let at = gcm_placement(header: layout.disc, files: layout.disc_files, target: layout.archive, new_size: repack.archive_size, image_size: layout.image_size)
+    let in_place = at == layout.archive.offset
+    let members = fold(repack.placements, init: MemberFold { copies: [], writes: [], cursor: 0 }, f: (acc, p) => member_step(layout: layout, replacements: replacements, table: table, data_at: at + layout.archive_header.data_start, in_place: in_place, acc: acc, p: p))
+    let old_end = layout.archive.offset + layout.archive.size
+    let new_end = at + repack.archive_size
+    let tail = if in_place && new_end < old_end { [OctetPatch { offset: new_end, octets: zero_octets(n: old_end - new_end) }] } else { [] }
+    match gcm_fst_entry_location_octets(offset: at, size: repack.archive_size) {
+      Absent => MessageRefused { reason: "archive placement does not fit the file system table's 32-bit fields" }
+      Present { value: fst_octets } => {
+        let head = OctetPatch { offset: at, octets: fold(repack.header_patches, init: layout.archive_head, f: (acc, p) => overwrite(bytes: acc, patch: p)) }
+        let fst = OctetPatch { offset: gcm_fst_entry_location_offset(header: layout.disc, target: layout.archive), octets: fst_octets }
+        MessageAccepted { value: MessageRewritePlan { copies: members.copies, writes: concat(concat([head, fst], members.writes), tail), archive_offset: at, archive_size: repack.archive_size } }
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@ module extdeps.tools.dd
 
 import std.types { Bool, Int, String, Unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.octet_read { OctetRangeCopy }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -19,7 +20,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tools.dd",
-      decl_name: "DdRangeCopy",
+      decl_name: "dd_copy_range",
       field: WholeDeclaration
     }
   },
@@ -42,28 +43,21 @@ service dd.Dd {
   }
 }
 
-// `length` bytes at `source_offset` of one file, written at `target_offset` of another.
-type DdRangeCopy {
-  source_offset: Int
-  target_offset: Int
-  length: Int
-}
-
 // Largest block size cost can buy: every block is one read and one write system call.
 data dd_block_size_ceiling: Int = 1048576
 
 // The largest power of two, up to the ceiling, dividing all three byte quantities.
-fn dd_block_size_from(size: Int, copy: DdRangeCopy) -> Int {
+fn dd_block_size_from(size: Int, copy: OctetRangeCopy) -> Int {
   if size == 1 { 1 }
   else if copy.source_offset % size == 0 && copy.target_offset % size == 0 && copy.length % size == 0 { size }
   else { dd_block_size_from(size: size / 2, copy: copy) }
 }
 
-fn dd_block_size(copy: DdRangeCopy) -> Int {
+fn dd_block_size(copy: OctetRangeCopy) -> Int {
   dd_block_size_from(size: dd_block_size_ceiling, copy: copy)
 }
 
-fn dd_copy_range(source: String, target: String, copy: DdRangeCopy) -> Bool {
+fn dd_copy_range(source: String, target: String, copy: OctetRangeCopy) -> Bool {
   let bs = dd_block_size(copy: copy)
   let r = dd.Dd.CopyBlocks(
     source: source,
