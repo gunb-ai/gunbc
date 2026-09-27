@@ -58,9 +58,23 @@ fn btar_refused_at_authored_q(o: Outcome<Node>) -> Bool {
   }
 }
 
-// (1) A let annotation refuses with the exact reason, located at the authored `Q`.
+// (1) A let annotation naming a type nothing declares refuses, located at the authored `Q`. The
+// annotation is now CARRIED on its Bind (v2.std.type_binder <type-annotation>) and resolved in the
+// type-role frame, so the refusal is resolve's unbound name rather than the lowering's
+// not-carried; before the carrier it was the lowering's, and before that it was Accepted.
 test fn btar_let_annotation_refuses() -> Bool {
-  btar_refused_at_authored_q(o: btar_let_annotated())
+  match btar_let_annotated() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol)
+        && match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } =>
+            btar_atom_in(n: a.at, id: ^Q)
+              && !btar_atom_in(n: a.at, id: ^dag_token_kw_let)
+              && !btar_atom_in(n: a.at, id: ^dag_token_eq)
+          _ => false
+        }
+  }
 }
 
 fn btar_fn_literal_annotated() -> Outcome<Node> {

@@ -16,6 +16,11 @@ pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profi
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
+pub use crate::std_coercion::dag_subtraction_refinement;
+pub use crate::std_coercion::SubtractionRefinement;
+use crate::std_coercion::SubtractionRefinement::{
+    SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
+};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -32,7 +37,8 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
-pub use crate::v1_compiler_infer_env::TypeBinding;
+pub use crate::v1_compiler_infer_env::type_reference_declaration_ref;
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -3303,7 +3309,65 @@ pub struct BinOpInferred {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
+pub fn subtraction_refinement_of(
+    left_type: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Rc<SubtractionRefinement> {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        left_type.clone(),
+        source_indices.clone(),
+        env.clone(),
+    ) {
+        Some(operand) => crate::std_coercion::dag_subtraction_refinement(operand.clone()),
+        std::option::Option::None => {
+            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+        }
+    }
+}
+
 pub fn infer_binop_type_node(
+    op: BinOp,
+    left_type: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Rc<BinOpInferred> {
+    match op.clone() {
+        BinOp::Sub => match (*subtraction_refinement_of(
+            left_type.clone(),
+            source_indices.clone(),
+            env.clone(),
+        ))
+        .clone()
+        {
+            SubtractionRefinement::SubtractionEscapesTo {
+                from_type: from_type,
+                ..
+            } => Rc::new(BinOpInferred {
+                result_type: nominal_type_ref(from_type.clone()),
+                algebra_field: std::option::Option::None,
+            }),
+            SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
+                Rc::new(BinOpInferred {
+                    result_type: error_type(),
+                    algebra_field: std::option::Option::None,
+                })
+            }
+            SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
+                infer_arithmetic_binop_type_node(
+                    op.clone(),
+                    left_type.clone(),
+                    source_indices.clone(),
+                )
+            }
+        },
+        _ => {
+            infer_arithmetic_binop_type_node(op.clone(), left_type.clone(), source_indices.clone())
+        }
+    }
+}
+
+pub fn infer_arithmetic_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

@@ -419,7 +419,6 @@ type ResetPreflightRefusal
   | SubjectHasNoRosterRow { subject: NonEmptyStr }
   | UnitHoldStoreNotOnObserver { subject: NonEmptyStr, observer: NonEmptyStr, store_host: NonEmptyStr }
   | UnitHeldForMaintenance { subject: NonEmptyStr, reason: NonEmptyStr }
-  | StandingRulingUnconfirmed { subject: NonEmptyStr, reason: NonEmptyStr }
 
 fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
   match refusal {
@@ -437,8 +436,6 @@ fn reset_preflight_refusal_wire(refusal: ResetPreflightRefusal) -> String {
       join(["unit-hold-store-not-on-observer subject=", sj as String, " observer=", o as String, " store_host=", h as String], "")
     UnitHeldForMaintenance { subject: sj, reason: r } =>
       join(["unit-held subject=", sj as String, " reason=", r as String], "")
-    StandingRulingUnconfirmed { subject: sj, reason: r } =>
-      join(["standing-ruling-unconfirmed subject=", sj as String, " reason=", r as String], "")
   }
 }
 

@@ -145,7 +145,8 @@ use crate::v1_compiler_emit::FileResultChannel::{
     FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
-    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
+    FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteCreateNewWithMode,
+    FileWriteOwnerOnly,
 };
 use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
 use crate::v1_compiler_emit::ShellResultChannel::{
@@ -187,8 +188,8 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_emit_graph_info, build_params_scope, call_args_by_name, caller_resource_requirements,
     declared_return_type_node, established_resource_binding, expand_type_for_field_access,
-    expr_span, extend_scope, is_where_refinement_type, match_unguarded_absent_arm_index,
-    optional_scrutinee_binding_is_present, resolved_type_name,
+    expr_span, extend_scope, is_lambda_expr, is_where_refinement_type,
+    match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, resolved_type_name,
 };
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
@@ -24399,6 +24400,47 @@ pub fn emit_typed_expr(
                     )
                 }
             }
+            ExprData::ExprListLit => {
+                if rust_list_lit_holds_callables(texpr.clone()) {
+                    {
+                        let element_type = rust_list_lit_callable_element_type(
+                            texpr.clone(),
+                            shared_types.clone(),
+                            scope.clone(),
+                            emit_info.clone(),
+                        );
+                        crate::v1_compiler_emit::emit_list_lit_expr(
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for el in texpr.children.clone().iter().cloned() {
+                                    __result.push(rust_callable_list_element(
+                                        el.clone(),
+                                        element_type.clone(),
+                                        registry.clone(),
+                                        scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                        v1_rt::int_sub(fuel.clone(), 1),
+                                    ));
+                                }
+                                __result
+                            }),
+                            RenderTarget::Rust,
+                        )
+                    }
+                } else {
+                    emit_typed_expr_shared(
+                        texpr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        fuel.clone(),
+                    )
+                }
+            }
             _ => emit_typed_expr_shared(
                 texpr.clone(),
                 registry.clone(),
@@ -24410,6 +24452,96 @@ pub fn emit_typed_expr(
             ),
         }
     })
+}
+
+pub fn rust_list_lit_holds_callables(texpr: Rc<Node>) -> bool {
+    {
+        let mut __found = false;
+        for el in texpr.children.clone().iter().cloned() {
+            if crate::v1_compiler_infer::is_lambda_expr(el.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn rust_list_lit_callable_element_type(
+    texpr: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    match crate::v1_compiler_infer_types::resolved_type(texpr.clone())
+        .children
+        .clone()
+        .first()
+        .cloned()
+    {
+        Some(el) => {
+            let et = crate::v1_compiler_infer_types::child_type_node(el.clone());
+            if (et.connective.clone() == Connective::Arrow) {
+                Some(render_rust_type(
+                    et.clone(),
+                    shared_types.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    emit_info.clone(),
+                ))
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn rust_callable_list_element(
+    el: Rc<Node>,
+    element_type: Option<String>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    fuel: i64,
+) -> String {
+    match (*el.expr_data.clone()).clone() {
+        ExprData::ExprLambda => {
+            let wrapped = rust_callable_field_value_wrap(
+                emit_typed_collection_lambda(
+                    el.clone(),
+                    "_".to_string(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ),
+                Some(el.clone()),
+                scope.clone(),
+            );
+            match element_type.clone() {
+                Some(ty) => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("{ let __callable: ".to_string(), ty.clone()),
+                        v1_rt::concat(" = ".to_string(), wrapped.clone()),
+                    ),
+                    "; __callable }".to_string(),
+                ),
+                std::option::Option::None => wrapped.clone(),
+            }
+        }
+        _ => emit_typed_expr(
+            el.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            fuel.clone(),
+        ),
+    }
 }
 
 pub fn emit_typed_expr_shared(
@@ -29922,7 +30054,7 @@ pub fn emit_typed_match_arm_strs(
                             scrut_type.clone(),
                             match_result_type.clone(),
                             false,
-                            crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                            crate::v1_compiler_infer::optional_match_arm_sees_present_value(
                                 scrut_rt.clone(),
                                 crate::v1_std_core::arm_pattern(pair.1.clone()),
                                 pair.0.clone(),
@@ -30179,13 +30311,6 @@ pub fn emit_typed_match(
                                     crate::v1_compiler_infer::match_unguarded_absent_arm_index(
                                         arms.clone(),
                                     );
-                                let sf_scrut_optional =
-                                    (crate::v1_compiler_infer_types::resolved_type(
-                                        scrutinee.clone(),
-                                    )
-                                    .return_cardinality
-                                    .clone()
-                                        == Cardinality::CardOptional);
                                 let sf_arm_strs = Rc::new({
                                     let mut __result = Vec::new();
                                     for pair in Rc::new(
@@ -30199,7 +30324,7 @@ pub fn emit_typed_match(
                                     .iter()
                                     .cloned()
                                     {
-                                        __result.push(emit_typed_match_arm(pair.1.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), true, (crate::v1_compiler_infer::optional_scrutinee_binding_is_present(crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()), crate::v1_std_core::arm_pattern(pair.1.clone()), pair.0.clone(), sf_absent_arm_index.clone()) || (sf_scrut_optional.clone() && is_string_lit_pattern(crate::v1_std_core::arm_pattern(pair.1.clone()))))));
+                                        __result.push(emit_typed_match_arm(pair.1.clone(), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), true, crate::v1_compiler_infer::optional_match_arm_sees_present_value(crate::v1_compiler_infer_types::resolved_type(scrutinee.clone()), crate::v1_std_core::arm_pattern(pair.1.clone()), pair.0.clone(), sf_absent_arm_index.clone())));
                                     }
                                     __result
                                 });
@@ -30561,15 +30686,26 @@ pub fn emit_typed_let(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let val_str = emit_typed_expr(
-            value.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-            1024,
-        );
+        let val_str = match (*value.expr_data.clone()).clone() {
+            ExprData::ExprLambda => emit_typed_collection_lambda(
+                value.clone(),
+                "_".to_string(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            ),
+            _ => emit_typed_expr(
+                value.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
+        };
         crate::v1_compiler_emit::emit_typed_let_shared(
             name.clone(),
             val_str.clone(),
@@ -34046,7 +34182,7 @@ pub fn emit_rust_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                                 tco_scrut_type.clone(),
-                                crate::v1_compiler_infer::optional_scrutinee_binding_is_present(
+                                crate::v1_compiler_infer::optional_match_arm_sees_present_value(
                                     crate::v1_compiler_infer_types::resolved_type(s.clone()),
                                     crate::v1_std_core::arm_pattern(pair.1.clone()),
                                     pair.0.clone(),
@@ -37508,6 +37644,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
         FileVerb::FileWrite => file_write_expr(),
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
         FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
+        FileVerb::FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr(),
         FileVerb::FileDelete => file_delete_match_expr(),
         FileVerb::FileList => file_list_match_expr(),
     }
@@ -37703,7 +37840,16 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), None) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_create_new_with_mode_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -39576,7 +39722,7 @@ pub fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: Strin
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), emit_host_source_root_read_rs()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = v2_cli_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    let reads = read_ingest(&roots);".to_string()), "\n".to_string()), "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            print!(\"{text}\");".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), emit_host_source_root_read_rs()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = v2_cli_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    let reads = read_ingest(&roots);".to_string()), "\n".to_string()), "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    print!(\"{text}\");".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
 })
     }
 }

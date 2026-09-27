@@ -7,7 +7,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.collection { Absent, List, Present, Optional }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item }
 import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel }
 import v2.std.diagnostic {
   Accepted,
