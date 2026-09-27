@@ -1,5 +1,6 @@
 module test.claim.mtcollins1_census_image
 
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr }
 import std.string_type { String }
@@ -22,7 +23,6 @@ import gunbc.machine_intake_host_capture_envelope {
   host_capture_bound_edac_clean,
   host_capture_bound_nproc_exact,
   host_capture_bound_workload_stable,
-  host_capture_census_stages,
   host_capture_line_close,
   host_capture_run_identity_value,
   host_capture_run_token,
@@ -249,37 +249,37 @@ test fn every_stage_is_bound_to_the_historical_capture() -> Bool {
 test fn a_mutated_bound_stage_fails_the_historical_map() -> Bool {
   roster_matches_bindings(stages: census_stages_with_mutated_command(name: "boot-media", command: "ls")) == false
     && roster_matches_bindings(stages: census_stages_with_mutated_command(name: "nproc", command: "nproc --all")) == false
-    && roster_matches_bindings(stages: host_capture_census_stages)
+    && roster_matches_bindings(stages: mtcollins1_census_stages)
 }
 
 // THE WORKLOAD CANNOT MINT A CLEAN RESULT FROM TWO FAILED PASSES: the body requires both hash passes'
 // statuses and each pass's coverage of every named chunk, not merely that the two lists agree -- two
 // empty lists agree. Executed end to end in the local-wet file; this pins the shape.
 test fn the_workload_requires_pass_status_and_full_coverage() -> Bool {
-  let body = host_capture_workload_command() as String
+  let body = host_capture_workload_command(workload: mtcollins1_one_socket_workload) as String
   string_contains(s: body, pattern: "sa=$?")
     && string_contains(s: body, pattern: "sb=$?")
     && string_contains(s: body, pattern: "[ \"$sa\" = 0 ]")
     && string_contains(s: body, pattern: "[ \"$sb\" = 0 ]")
-    && string_contains(s: body, pattern: concat("[ \"$na\" = ", host_capture_workload_chunk_count() as String, " ]"))
-    && string_contains(s: body, pattern: host_capture_workload_chunk_paths())
+    && string_contains(s: body, pattern: concat("[ \"$na\" = ", host_capture_workload_chunk_count(workload: mtcollins1_one_socket_workload) as String, " ]"))
+    && string_contains(s: body, pattern: host_capture_workload_chunk_paths(workload: mtcollins1_one_socket_workload))
     && string_contains(s: body, pattern: "chunk*") == false
 }
 
 test fn the_census_roster_is_the_brief_order() -> Bool {
-  join(map(host_capture_census_stages, s => s.name as String), ",")
+  join(map(mtcollins1_census_stages, s => s.name as String), ",")
     == "subject-system,subject-baseboard,subject-chassis,boot-id,boot-cmdline,kernel,boot-media,nproc,lscpu,numa,meminfo,dmidecode-type16,dmidecode-type17,edac-mc-name,edac-find,edac-before,workload,edac-after"
 }
 
 fn census_program_index(needle: String) -> Int {
-  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
+  let program = mtcollins1_census_capture_program(stages: mtcollins1_census_stages) as String
   split(s: program, delimiter: needle).first().length()
 }
 
 // HALT ONLY AFTER END. END is echoed after the last section, `sync` after END, and the power-off is
 // the program's last line; nothing the census reads can follow the halt.
 test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Bool {
-  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages) as String
+  let program = mtcollins1_census_capture_program(stages: mtcollins1_census_stages) as String
   let end_at = census_program_index(needle: concat(host_capture_run_token, "$GUNBC_BOOT_ID end"))
   let last_section_at = census_program_index(needle: concat(host_capture_section_open, "edac-after", host_capture_line_close))
   let sync_at = census_program_index(needle: "\nsync\n")
@@ -334,7 +334,7 @@ data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  ver
 
 fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
   mtcollins1_seeded_image_input(
-    stages: host_capture_census_stages,
+    stages: mtcollins1_census_stages,
     image_stem: mtcollins1_census_image_stem,
     volume_id: mtcollins1_census_volume_id,
     user_data_body: census_user_data_fixture,
@@ -386,7 +386,7 @@ fn census_key_varying(
 // is varied too: it is the one rendered input, and the key must move when the document does.
 test fn every_build_input_reaches_the_derivation_key() -> Bool {
   let base = census_input_supplied()
-  let program = mtcollins1_census_capture_program(stages: host_capture_census_stages)
+  let program = mtcollins1_census_capture_program(stages: mtcollins1_census_stages)
   let cmdline = base.grub_kernel_cmdline
   let volid = base.volume_id
   let dates = base.pinned_dates
@@ -400,13 +400,13 @@ test fn every_build_input_reaches_the_derivation_key() -> Bool {
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: dates.volume_uuid, file_date: "2025.08.06.155251" }, builder_revision: revision)
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: "xorriso-replay-pinned-dates/2")
     && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
-      stages: append(host_capture_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }]),
+      stages: append(mtcollins1_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }]),
       image_stem: mtcollins1_census_image_stem,
       volume_id: mtcollins1_census_volume_id,
       user_data_body: census_user_data_fixture,
     ))
     && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
-      stages: host_capture_census_stages,
+      stages: mtcollins1_census_stages,
       image_stem: mtcollins1_census_image_stem,
       volume_id: mtcollins1_census_volume_id,
       user_data_body: concat(census_user_data_fixture as String, "\n") as NonEmptyStr,

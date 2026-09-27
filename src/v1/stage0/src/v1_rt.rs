@@ -1256,7 +1256,11 @@ pub fn hash_combine(a: Hash, b: Hash) -> Hash {
 
 pub const GUNBC_CREATE_STAGING_CANDIDATE_ATTEMPT_LIMIT: u32 = 1024;
 
-pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::Result<()> {
+pub fn gunbc_file_write_create_new(
+    file_path: &str,
+    content: &[u8],
+    declared_mode: Option<u32>,
+) -> std::io::Result<()> {
     use std::io::Write;
     static GUNBC_CREATE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let mut attempted: u32 = 0;
@@ -1280,6 +1284,25 @@ pub fn gunbc_file_write_create_new(file_path: &str, content: &[u8]) -> std::io::
             Err(host) => return Err(host),
         }
     };
+    if let Some(declared) = declared_mode {
+        #[cfg(unix)]
+        let applied = {
+            use std::os::unix::fs::PermissionsExt;
+            staged.set_permissions(std::fs::Permissions::from_mode(declared))
+        };
+        #[cfg(not(unix))]
+        let applied: std::io::Result<()> = Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!(
+                "gunbc create-new: declared mode {} is unavailable on this platform",
+                declared
+            ),
+        ));
+        if let Err(mode_err) = applied {
+            let _ = std::fs::remove_file(&staging_path);
+            return Err(mode_err);
+        }
+    }
     if let Err(staging_err) = staged.write_all(content) {
         let _ = std::fs::remove_file(&staging_path);
         return Err(staging_err);

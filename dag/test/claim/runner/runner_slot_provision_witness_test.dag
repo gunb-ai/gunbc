@@ -482,6 +482,13 @@ fn provenance_witness_reconcile(observed: List<RunnerSlotMember>) -> MembershipP
 // exactly one `rm -rf`. Ownership and membership are unchanged and still admit it; what changed is
 // that admitting a REMOVAL no longer authorizes a DELETION. With no retirement evidence bound to the
 // convergence, the realization withholds and says which unit it is waiting on.
+//
+// THE COUNT IS OF TEARDOWNS FOR THIS UNIT, NOT OF ALL TEARDOWN SCRIPTS. #11762 (a02dd20eee) made a
+// host's committed width derived-or-unresolved, and a host whose width is unresolved -- the fixture
+// host `wfix` is enrolled nowhere -- now also withholds a host-level retirement obligation, a second
+// withheld script that names the host and no unit. That is the fail-closed arm working, not a second
+// deletion, so the row counts the scripts naming wfix-40's unit and still requires EVERY script to be
+// withheld and none to carry -rf, which is the property this row exists for.
 test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
   match actions_runner_binary_artifact_for_arch(
     binary_release: actions_runner_release_2_336_0,
@@ -499,7 +506,7 @@ test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
         observed: [retired],
         retirement_evidence: no_retirement_evidence(),
       )
-      (plan.teardown_scripts |> count) == 1
+      (plan.teardown_scripts |> filter(s => string_contains(s: s, pattern: "unit=actions-runner@wfix-40.service")) |> count) == 1
         && (plan.teardown_scripts |> all(s => string_contains(s: s, pattern: "__GUNBC_CONVERGE_WITHHELD__")))
         && (plan.teardown_scripts |> all(s => !string_contains(s: s, pattern: "-rf")))
     }
