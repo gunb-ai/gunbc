@@ -192,7 +192,7 @@ test fn an_absent_witness_artifact_is_a_setup_refusal_not_a_divergence() -> Bool
 test fn a_failed_build_names_itself_and_outranks_the_failed_drive() -> Bool {
   let refusal = cssl_readiness_refusal(readiness: WitnessBinRefused { bin_name: "gunbc", path: "/r/target/release/gunbc", reason: WitnessBinBuildFailed })
   match cssl_classify_receipt(setup_refusal: refusal, pass_ok: false, fault_detected: false, claim_ok: false) {
-    CsslSetupRefused { step } => string_contains(s: step, pattern: "build failed")
+    CsslSetupRefused { step: refused_step } => string_contains(s: refused_step, pattern: "build failed")
     CsslBehaviorDiverged { observed: _ } => false
     CsslBehaviorHeld => false
   }

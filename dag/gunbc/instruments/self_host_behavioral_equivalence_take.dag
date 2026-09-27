@@ -54,7 +54,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 fn no_verdict_cause(cause: CompilerModuleReceiptNoVerdict) -> String {
   match cause {
     BehavioralTransportConfigAbsent { module_path: _ } => "behavioral transport config absent"
-    BehavioralReceiptSetupRefused { module_path: _, step } => concat("setup refused: ", step)
+    BehavioralReceiptSetupRefused { module_path: _, step: refused_step } => concat("setup refused: ", refused_step)
   }
 }
 

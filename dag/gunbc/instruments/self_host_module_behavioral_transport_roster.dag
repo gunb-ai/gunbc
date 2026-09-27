@@ -245,8 +245,8 @@ fn compiler_module_behavioral_receipt_evidence(
     ) {
       CsslBehaviorHeld => EvidenceSubjectCompleted { outcome: BehavioralReceiptHeld }
       CsslBehaviorDiverged { observed } => EvidenceSubjectCompleted { outcome: BehavioralReceiptRefuted { observed: observed } }
-      CsslSetupRefused { step } => EvidenceSubjectUnreached {
-        cause: BehavioralReceiptSetupRefused { module_path: cfg.module_path, step: step }
+      CsslSetupRefused { step: refused_step } => EvidenceSubjectUnreached {
+        cause: BehavioralReceiptSetupRefused { module_path: cfg.module_path, step: refused_step }
       }
     }
     Absent => EvidenceInstrumentRefused {
