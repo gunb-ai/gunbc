@@ -156,6 +156,7 @@ jobs:
         env:
           GUNBC_HOST_RESET_DISPATCH_MODE: ${{ github.event.inputs.mode }}
           GUNBC_HOST_RESET_OBSERVER: ${{ github.event.inputs.reset_observer }}
+        if: github.event.inputs.mode == 'host_reset_return'
         timeout-minutes: 5
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
