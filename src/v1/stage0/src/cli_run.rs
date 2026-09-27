@@ -26009,6 +26009,14 @@ pub(crate) struct FloorDiffEdits {
     /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
     /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
+    /// `(file, declaration)` for every non-test-fn declaration -- fn, type or data -- whose
+    /// lines the diff edited. An import-region edit seeds nothing here: which reads it rebinds
+    /// is an index question (`namespace_baseline` `import_rebound_declarations`), and seeding
+    /// every declaration of the file planned ~684 seeds for an 11-file diff (gunbc#12353).
+    /// The seeds of `namespace_baseline` `body_reach_from_changed_declarations`: the
+    /// declaration grain `touched_entry_files` collapses to a file. A test fn is not a seed,
+    /// because nothing reads one; an edited test fn is a changed witness in its own right.
+    touched_declarations: HashSet<(String, String)>,
 }
 
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
@@ -43044,6 +43052,12 @@ pub enum RequiredFloorDisposition {
     /// the static compiler-floor gate did not admit the identity; the exact changed-witness
     /// identity set did. It nevertheless executes in the same fold and terminal ledger.
     PlannedAsChangedWitness,
+    /// Outside the static gate, selected because its evaluation reaches a declaration the diff
+    /// changed (`namespace_baseline` `body_reach_from_changed_declarations`) and homed under the
+    /// v2 claim root. It executes in the same fold, and its verdict is DIFFERENTIAL: the head
+    /// standing is joined with the base standing (`v2.workflow.required_floor`
+    /// `claim_differential`), never read as an absolute pass/fail (operator ruling 2026-09-27).
+    PlannedAsReachConsumer,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
@@ -44433,6 +44447,7 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut planned_as_changed_witness = 0usize;
+    let mut planned_as_reach_consumer = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
@@ -44444,6 +44459,7 @@ fn write_required_floor_disposition_tsv(
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::PlannedAsChangedWitness => planned_as_changed_witness += 1,
+            RequiredFloorDisposition::PlannedAsReachConsumer => planned_as_reach_consumer += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
@@ -44462,7 +44478,7 @@ fn write_required_floor_disposition_tsv(
         "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\
-         \tdeclined_changed_witness_outside_discovery={}",
+         \tdeclined_changed_witness_outside_discovery={}\tplanned_as_reach_consumer={}",
         rows.len(),
         planned,
         planned_as_changed_witness,
@@ -44472,7 +44488,8 @@ fn write_required_floor_disposition_tsv(
         declined_gate_closure,
         declined_discovery_excluded,
         declined_cost_debt,
-        declined_changed_witness_outside_discovery
+        declined_changed_witness_outside_discovery,
+        planned_as_reach_consumer
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
