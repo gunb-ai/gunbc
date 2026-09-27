@@ -2346,13 +2346,20 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
   }
 }
 
-// THE SWAP TABLE (the client program's contract): fetch('/auth/session') on load; an
-// authenticated response (s && s.authenticated === true) hides Sign in, unhides the session
-// target, and writes the display name (the wire's OPTIONAL name member preferred, the
+// THE SWAP TABLE (the client program's contract), ONE SESSION READ since the 2026-09-27
+// unification: the program names GET /auth/session exactly ONCE — the shared gunbcSessionRead
+// promise (same-origin credentials, no-store, non-OK standings rejected) — and BOTH consumers
+// ride it: the account swap's .then gates on s && s.authenticated === true and the assignment
+// seeding's .then(assignmentSetSession). An authenticated response hides Sign in, unhides the
+// session target, and writes the display name (the wire's OPTIONAL name member preferred, the
 // principal's short form — viewer split on '/' — when the login projected no name), initials
 // in the avatar (substring 0..1) — the name and avatar ride the SESSION RESPONSE alone;
-// unauthenticated, absent, or a FAILED fetch leaves Sign in (never an identity claim from a
-// failed fetch). THE
+// unauthenticated, absent, or a FAILED read leaves Sign in and disables assignment (each
+// consumer's catch; never an identity claim from a failed fetch). THE SHAPES ARE PINNED, not
+// just the words: exactly one fetch (a second /auth/session fetch is a contract break), the
+// guard reads the bare slot consts (a stray `b.` receiver is a page-breaking ReferenceError),
+// no `=> if (` arrow (a JS syntax error substring-matching cannot see), and the assignment
+// consumption names the shared read. THE
 // PFP BRANCH is the never-blocks law rendered: when the wire's OPTIONAL picture member is
 // present, an <img> (src = s.picture, alt = '' so a broken image renders nothing) appends INSIDE
 // the same avatar chip and the standing flips to data-avatar="resolved" — the initials are
@@ -2360,7 +2367,13 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
 // branch never runs and the initials stand alone.
 test fn witness_header_account_swap_table() -> Bool {
   let js = dispatch_client_js_source()
-  string_contains(s: js, pattern: "fetch('/auth/session')")
+  occurrence_count(s: js, pattern: "fetch('/auth/session'") == 1
+    && string_contains(s: js, pattern: "const gunbcSessionRead = fetch('/auth/session', { credentials: 'same-origin', cache: 'no-store' })")
+    && string_contains(s: js, pattern: "if (!response.ok)")
+    && string_contains(s: js, pattern: "if (gunbcAccountSlot && gunbcAccountSignin)")
+    && string_contains(s: js, pattern: "gunbcSessionRead.then((s) =>")
+    && string_contains(s: js, pattern: "gunbcSessionRead.then(assignmentSetSession)")
+    && !string_contains(s: js, pattern: "=> if (")
     && string_contains(s: js, pattern: "s && s.authenticated && s.authenticated === true")
     && string_contains(s: js, pattern: "gunbcAccountSignin.hidden = true")
     && string_contains(s: js, pattern: "gunbcAccountSlot.hidden = false")

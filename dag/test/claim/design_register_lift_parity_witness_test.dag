@@ -441,6 +441,12 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witnesses for the wire/file picture member, the register censuses unchanged. Derived by
 // execution (roadmap_css_derived_digest on this tree, 82fd3d556e4957a0); this digest only pins
 // bytes.
+// Session-read unification (2026-09-27): the account-area header swap and the tracker bundle's
+// inline assignment now ride ONE shared client-side /auth/session read; the slice moves no CSS —
+// roadmap_css()'s derivation closure (roadmap_style and its imports) never reaches the
+// client-program modules — so the PFP pin above holds by execution
+// (witness_roadmap_css_digest_pinned green in the parity claim-run). No re-pin for this slice;
+// this note dates the verification.
 data roadmap_css_lift_parity_digest: String = "82fd3d556e4957a0"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content

@@ -2,6 +2,7 @@ module gunbc.roadmap_component
 
 import gunbc.roadmap_issue_sort { issue_sort_bind_statements }
 import gunbc.roadmap_inline_assignment_client { inline_assignment_bind_statements }
+import gunbc.roadmap_session_client { session_read_bind_statements }
 
 import std.types { Int, String, Bool, Milliseconds }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -3545,19 +3546,21 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 
 
 // THE ACCOUNT SWAP (owner defect 2026-09-27: the main page body is the belt's pre-rendered
-// static body, so the account area can only personalize CLIENT-SIDE): on load, fetch
-// GET /auth/session; an authenticated response swaps the hidden session target in — the display
+// static body, so the account area can only personalize CLIENT-SIDE): rides THE ONE SESSION
+// READ (gunbcSessionRead from gunbc.roadmap_session_client — never a second fetch of
+// /auth/session); an authenticated response swaps the hidden session target in — the display
 // name and the avatar initials render from the SESSION RESPONSE ALONE (the wire's OPTIONAL
 // name member, the verified token's name claim, preferred; the principal label's short form
-// when the login projected no name) — anything else (401, absent flag, fetch failure) leaves
-// Sign in: never an identity claim from a failed fetch. THE PFP rides the wire's OPTIONAL
+// when the login projected no name) — anything else (rejected standing, absent flag, read
+// failure) leaves Sign in: never an identity claim from a failed fetch, and the empty catch
+// swallows the rejection so the static bytes stand. THE PFP rides the wire's OPTIONAL
 // picture member (shape
 // (a) of the identity doctrine: the verified Google picture URL rendered directly; the
 // /avatar/<principal> proxy is the tailnet-privacy follow-up): when present, an <img> layers
 // over the initials INSIDE the same chip and the standing flips to data-avatar="resolved" —
 // the initials are NEVER removed, so a slow or failed image renders the initials fallback
 // under the never-blocks law (alt="" keeps a broken image invisible). Sign out is the target's
-// native form POSTing /auth/logout; the 303 lands back here, this fetch re-runs against the
+// native form POSTing /auth/logout; the 303 lands back here, the read re-runs against the
 // cleared cookie, and Sign in returns.
 fn account_query_expr(selector: String) -> TsExpr {
   ts_call(
@@ -3571,82 +3574,74 @@ fn account_swap_statements() -> List<TsStmt> {
     ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "gunbcAccountSlot"), op: "&&", right: ts_ident(name: "gunbcAccountSignin")),
-      then: ts_block(stmts: [
-        ts_const(name: "gunbcAccountRequest", value: ts_call(
-          callee: ts_member(
-            object: ts_call(
-              callee: ts_member(
-                object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/auth/session")]),
-                property: "then"),
-              args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
-                ts_return(expr: Present { value: ts_cond(
-                  test: ts_member(object: ts_ident(name: "r"), property: "ok"),
-                  consequent: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []),
-                  alternate: ts_ident(name: "null")) }),
-              ]))]),
-            property: "then"),
-          args: [ts_arrow(params: ["s"], body: ts_block(stmts: [
-            ts_if(
-              cond: ts_binop(
-                left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
-                op: "&&",
-                right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
-              then: ts_block(stmts: [
-            ts_const(name: "gunbcViewer", value: ts_binop(
-              left: ts_binop(
-                left: ts_member(object: ts_ident(name: "s"), property: "name"),
-                op: "||",
-                right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal"))),
-              op: "||",
-              right: ts_lit_str(value: ""))),
-            ts_const(name: "gunbcShort", value: ts_call(
-              callee: ts_member(
-                object: ts_call(
-                  callee: ts_member(object: ts_ident(name: "gunbcViewer"), property: "split"),
-                  args: [ts_lit_str(value: "/")]),
-                property: "pop"),
-              args: [])),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSignin"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]), property: "textContent"),
-              op: "=",
-              right: ts_call(
-                callee: ts_member(object: ts_ident(name: "gunbcShort"), property: "substring"),
-                args: [ts_lit_str(value: "0"), ts_lit_str(value: "1")]))),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-name]")]), property: "textContent"),
-              op: "=",
-              right: ts_ident(name: "gunbcShort"))),
-            ts_if(
-              cond: ts_member(object: ts_ident(name: "s"), property: "picture"),
-              then: ts_block(stmts: [
-                ts_const(name: "gunbcAvatarImg", value: ts_call(
-                  callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-                  args: [ts_lit_str(value: "img")])),
-                ts_expr_stmt(expr: ts_binop(
-                  left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "src"),
-                  op: "=",
-                  right: ts_member(object: ts_ident(name: "s"), property: "picture"))),
-                ts_expr_stmt(expr: ts_binop(
-                  left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "alt"),
-                  op: "=",
-                  right: ts_lit_str(value: ""))),
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_member(
-                    object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
-                    property: "setAttribute"),
-                  args: [ts_lit_str(value: "data-avatar"), ts_lit_str(value: "resolved")])),
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_member(
-                    object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
-                    property: "appendChild"),
-                  args: [ts_ident(name: "gunbcAvatarImg")])),
-              ]), else_stmt: none),
-              ]), else_stmt: none),
-          ]))])),
-        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountRequest"), property: "catch"), args: [ts_arrow(params: ["error"], body: ts_block(stmts: []))])),
-      ]), else_stmt: none),
+      then: ts_expr_stmt(expr: ts_call(
+        callee: ts_member(
+          object: ts_call(
+            callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "then"),
+            args: [ts_arrow(params: ["s"], body: ts_block(stmts: [
+              ts_if(
+                cond: ts_binop(
+                  left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
+                  op: "&&",
+                  right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
+                then: ts_block(stmts: [
+                  ts_const(name: "gunbcViewer", value: ts_binop(
+                    left: ts_binop(
+                      left: ts_member(object: ts_ident(name: "s"), property: "name"),
+                      op: "||",
+                      right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal"))),
+                    op: "||",
+                    right: ts_lit_str(value: ""))),
+                  ts_const(name: "gunbcShort", value: ts_call(
+                    callee: ts_member(
+                      object: ts_call(
+                        callee: ts_member(object: ts_ident(name: "gunbcViewer"), property: "split"),
+                        args: [ts_lit_str(value: "/")]),
+                      property: "pop"),
+                    args: [])),
+                  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSignin"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
+                  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
+                  ts_expr_stmt(expr: ts_binop(
+                    left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]), property: "textContent"),
+                    op: "=",
+                    right: ts_call(
+                      callee: ts_member(object: ts_ident(name: "gunbcShort"), property: "substring"),
+                      args: [ts_lit_str(value: "0"), ts_lit_str(value: "1")]))),
+                  ts_expr_stmt(expr: ts_binop(
+                    left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-name]")]), property: "textContent"),
+                    op: "=",
+                    right: ts_ident(name: "gunbcShort"))),
+                  ts_if(
+                    cond: ts_member(object: ts_ident(name: "s"), property: "picture"),
+                    then: ts_block(stmts: [
+                      ts_const(name: "gunbcAvatarImg", value: ts_call(
+                        callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                        args: [ts_lit_str(value: "img")])),
+                      ts_expr_stmt(expr: ts_binop(
+                        left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "src"),
+                        op: "=",
+                        right: ts_member(object: ts_ident(name: "s"), property: "picture"))),
+                      ts_expr_stmt(expr: ts_binop(
+                        left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "alt"),
+                        op: "=",
+                        right: ts_lit_str(value: ""))),
+                      ts_expr_stmt(expr: ts_call(
+                        callee: ts_member(
+                          object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
+                          property: "setAttribute"),
+                        args: [ts_lit_str(value: "data-avatar"), ts_lit_str(value: "resolved")])),
+                      ts_expr_stmt(expr: ts_call(
+                        callee: ts_member(
+                          object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
+                          property: "appendChild"),
+                        args: [ts_ident(name: "gunbcAvatarImg")])),
+                    ]), else_stmt: none),
+                ]),
+                else_stmt: none),
+            ]))]),
+          property: "catch"),
+        args: [ts_arrow(params: [], body: ts_block(stmts: []))])),
+      else_stmt: none),
   ]
 }
 
@@ -3686,8 +3681,14 @@ fn dispatch_client_program_for(
                         concat(
                           issue_filter_bind_statements(),
                           concat(
-                          account_swap_statements(),
-                          instance_statements)))))))))))))),
+                            session_read_bind_statements(),
+                            concat(
+                              account_swap_statements(),
+                              concat(
+                                issue_sort_bind_statements(),
+                                concat(
+                                  inline_assignment_bind_statements(),
+                                  instance_statements))))))))))))))))),
   }
 }
 

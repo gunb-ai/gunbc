@@ -9,6 +9,10 @@ import extdeps.languages.typescript.program {
 // Both assignment surfaces consume the same session-bound context and existing POST.
 // Cookies and CSRF travel together; recorded-but-refused launch responses stay visible
 // on the affected issue. No automatic retry duplicates a consequential request.
+// THE SESSION STANDING rides THE ONE SESSION READ (gunbc.roadmap_session_client's
+// gunbcSessionRead — the assignment client never fetches /auth/session itself): the shared
+// read's rejection lands in this catch, which disables every assignment control with the
+// session-unavailable title; the CSRF token still comes from the /assignment context alone.
 fn inline_assignment_bind_statements() -> List<TsStmt> {
   [
     ts_const(name: "assignmentButtons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-inline-assign")])])),
@@ -149,12 +153,11 @@ fn inline_assignment_bind_statements() -> List<TsStmt> {
             ]))]))
     ]))),
     ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "assignmentButtons"), property: "length"), op: "||", right: ts_member(object: ts_ident(name: "assignmentForms"), property: "length")), then: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/auth/session"), ts_object(fields: [ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")), ts_field(key: "cache", value: ts_lit_str(value: "no-store"))])]), property: "then"), args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
-                              ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then: ts_block(stmts: [
-                                    ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Session read failed")])]) })
-                                ]), else_stmt: none),
-                              ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "json"), args: []) })
-                    ]))]), property: "then"), args: [ts_ident(name: "assignmentSetSession")]), property: "catch"), args: [ts_arrow(params: [], body: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(callee: ts_member(
+                object: ts_call(
+                  callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "then"),
+                  args: [ts_ident(name: "assignmentSetSession")]),
+                property: "catch"), args: [ts_arrow(params: [], body: ts_block(stmts: [
                       ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "assignmentButtons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
                                   ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
                                   ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "title"), op: "=", right: ts_lit_str(value: "Session unavailable. Reload to check sign-in before assigning.")))
