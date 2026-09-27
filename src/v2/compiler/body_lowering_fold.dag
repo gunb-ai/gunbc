@@ -53,7 +53,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering { declared_signature, lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -3201,20 +3201,15 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                   o: body_lower_wrapper_retained_shell(shell: shell)
                                 )
                                 Present { value: data_name } =>
+                                  let signature = declared_signature(params: [], source: type_expr)
                                   let arrow = node_lowered_from(
                                     source: shell,
                                     kind: TypeNode { connective: Arrow },
                                     children: [
-                                      Edge {
-                                        label: Positional,
-                                        target: node_lowered_from(
-                                          kind: TypeNode { connective: Conj },
-                                          children: [],
-                                          source: type_expr
-                                        )
-                                      },
+                                      signature.domain,
                                       Edge { label: Positional, target: declared_type },
                                       Edge { label: Positional, target: declared_type },
+                                      signature.order,
                                       Edge {
                                         label: Named { name: ^arrow_body_edge },
                                         target: reified_body
