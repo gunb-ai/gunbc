@@ -225,8 +225,9 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     runtime namespace. Replaces the former zero-external-dependency constraint (now with standard
 //     deps for v1_rt.rs, which the emitter includes unconditionally).
 //   - CONTROL (a): test.claim.self_host_logic_behavioral_witness /
-//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile WITH
-//     the seed crate (v1-compiler path dependency), run the comparison driver + --inject-fault.
+//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile it with
+//     the seed's committed stage0 mirror of std_logic as the oracle module (no v1-compiler path
+//     dependency), run the comparison driver + --inject-fault.
 //     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
 //     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
 //     cadence is preserved in the exclusion row reason as evidence of the routing gap.
