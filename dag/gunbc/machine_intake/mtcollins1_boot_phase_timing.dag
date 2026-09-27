@@ -4,6 +4,10 @@ import std.types { List, NonEmptyStr, String }
 import std.measure { Millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { ObservedPowerTransition, PoweredOn, PowerCycled }
+import gunbc.machine_intake_mtcollins1_smpro_observation {
+  SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent, SmproRequestUnencodable,
+}
+import v2.std.algebra { any }
 
 // THE INSTRUMENT FOR THE BOOT STEP'S OWN TIME (operator ruling 2026-09-27: mtcollins1_boot time
 // toward 0, including avoidable delay inside the step). Each wait in the boot path is removed or
@@ -51,6 +55,27 @@ fn mtcollins1_boot_phase_word(phase: MtCollins1BootPhase) -> String {
 type MtCollins1PhaseRunResult
   = PhaseVerified
   | PhaseRefused { cause: String }
+
+// AN SMpro PASS IS VERIFIED ONLY WHEN AT LEAST ONE REGISTER RETURNED A WORD (SmproWordRead): that is
+// the one outcome that observes the socket's state. A controller NAK, a transport failure, a
+// malformed response, a probe not sent and an unencodable request each establish no register
+// value, so a pass made only of them -- or of nothing -- is refused. Taking the reads is not the
+// same as reading them. Each read's own outcome stays in the bundle's smpro section.
+fn mtcollins1_smpro_pass_result(outcomes: List<SmproProbeOutcome>) -> MtCollins1PhaseRunResult {
+  let answered = any(outcomes, o => match o {
+    SmproWordRead { raw: _, word: _ } => true
+    SmproControllerRefused { raw: _, completion: _ } => false
+    SmproTransportFailed { raw: _, timed_out: _ } => false
+    SmproResponseMalformed { raw: _, detail: _ } => false
+    SmproNotSent { socket: _, register: _, reason: _ } => false
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => false
+  })
+  if answered {
+    PhaseVerified
+  } else {
+    PhaseRefused { cause: concat("no SMpro register returned a word (", to_string(count(outcomes)), " reads; each outcome is in the smpro section)") }
+  }
+}
 
 type MtCollins1BootPhaseSpan
   = PhaseRan { phase: MtCollins1BootPhase, result: MtCollins1PhaseRunResult, begin: ProcUptimeRead, end: ProcUptimeRead }

@@ -35,7 +35,7 @@ import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcoll
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1BootPhaseTiming, BootStartUnobserved, mtcollins1_boot_phase_timing_not_taken,
   MtCollins1PhaseRunResult, PhaseVerified, PhaseRefused, MtCollins1BootPhaseReadings, MtCollins1BootPhaseResults,
-  mtcollins1_boot_phase_spans, mtcollins1_boot_phase_timing_sol_refused,
+  mtcollins1_boot_phase_spans, mtcollins1_boot_phase_timing_sol_refused, mtcollins1_smpro_pass_result,
 }
 import extdeps.linux.proc_uptime { proc_uptime_read, ProcUptimeRead, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
@@ -1023,8 +1023,8 @@ fn param5_phase_result(r: BootParam5Reading) -> MtCollins1PhaseRunResult {
   }
 }
 
-// THE POWER-ON SMpro PASS IS VERIFIED WHEN ITS READS WERE TAKEN; each read's own outcome is in the
-// bundle's smpro section, so this does not claim any single register answered.
+// THE POWER-ON SMpro PASS IS VERIFIED ONLY WHEN A REGISTER ANSWERED
+// (gunbc.machine_intake_mtcollins1_boot_phase_timing mtcollins1_smpro_pass_result).
 fn smpro_phase_result(stage: MtCollins1BootActuationStage) -> MtCollins1PhaseRunResult {
   let on = match stage {
     ActuationNotPoweredOn { reason: why } => SmproNotTaken { reason: why }
@@ -1032,7 +1032,7 @@ fn smpro_phase_result(stage: MtCollins1BootActuationStage) -> MtCollins1PhaseRun
     ActuationCensusEnded { selection: _, smpro_power_on: s, smpro_census: _ } => s
   }
   match on {
-    SmproProbed { outcomes: _ } => PhaseVerified
+    SmproProbed { outcomes: os } => mtcollins1_smpro_pass_result(outcomes: os)
     SmproNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
   }
 }

@@ -8,12 +8,15 @@ import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter, skip }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
 import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
+import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
+import extdeps.ampere.smpro_register { smpro_bootstage_reg }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
   PhaseVerified, PhaseRefused, MtCollins1BootPhaseReadings, MtCollins1BootPhaseResults,
   PhaseHandoff,
   mtcollins1_boot_phase_spans, mtcollins1_boot_phase_timing_sol_refused,
   mtcollins1_boot_phase_duration, PhaseElapsed, PhaseClockUnread, PhaseClockSteppedBack,
+  mtcollins1_smpro_pass_result,
   mtcollins1_boot_start_of, mtcollins1_boot_phase_timing_text, mtcollins1_boot_phase_timing_not_taken,
 }
 
@@ -185,4 +188,25 @@ test fn the_real_uptime_clock_reads_and_does_not_go_back() -> Bool {
     UptimeObserved { uptime: x } => match b { UptimeObserved { uptime: y } => match measure_sub(a: y, b: x) { MeasureDifference { value: _ } => true  MeasureSubtrahendExceedsMinuend => false }  UptimeRefused { detail: _ } => false }
     UptimeRefused { detail: _ } => false
   }
+}
+
+// AN SMpro PASS WHOSE READS WERE ALL TAKEN AND NONE ANSWERED IS REFUSED. Supplied raw probe results
+// go through the real per-read decision (smpro_probe_outcome): a completion-code NAK and a
+// transport timeout with no completion code. Returning PhaseVerified for a pass that merely ran
+// turns this red; one word read among refusals makes it verified; an empty pass is refused.
+fn smpro_raw(socket: Int, exit_code: Int, stdout: String, stderr: String) -> SmproProbeRaw {
+  SmproProbeRaw { sequence: 0, socket: socket, register: smpro_bootstage_reg.name, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-27T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+test fn an_smpro_pass_is_verified_only_when_a_register_answered() -> Bool {
+  let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
+  let timeout = smpro_probe_outcome(raw: smpro_raw(socket: 1, exit_code: 124, stdout: "", stderr: ""))
+  let word = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 0, stdout: "09 02", stderr: ""))
+  let all_refused = mtcollins1_smpro_pass_result(outcomes: [nak, timeout])
+  (match all_refused {
+    PhaseRefused { cause: c } => contains(c, "no SMpro register returned a word (2 reads")
+    PhaseVerified => false
+  })
+    && (match mtcollins1_smpro_pass_result(outcomes: [nak, word, timeout]) { PhaseVerified => true  PhaseRefused { cause: _ } => false })
+    && (match mtcollins1_smpro_pass_result(outcomes: []) { PhaseRefused { cause: c } => contains(c, "(0 reads")  PhaseVerified => false })
 }
