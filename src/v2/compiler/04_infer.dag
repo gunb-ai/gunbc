@@ -977,14 +977,18 @@ fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -
 // (v2.compiler.namespace_graft namespace_graft_fold_spine). A resolved reference to it carries that
 // path (v2.std.qualified_name declaration_reference_path_optional), so the declaration is reached by
 // walking the path's own segments down the spine, never by searching the tree for a matching shape.
-// ONE READER, TWO CONSUMERS: v2.std.coercion's declared-carrier widening projects .carrier, and the
-// literal-into-refinement cast projects .where_clause into resolve's predicate bindings. Absent when
+// CONSUMERS. .carrier is consumed in this change: refinement_declared_carrier hands it to
+// v2.std.coercion coercion_cast_crossing, the declared-carrier widening. .where_clause is a DECLARED
+// FRONTIER, not yet consumed: its consumer is the literal-into-refinement cast arm of work item
+// adhoc-032c89dc-138 (deep-bee-18), which projects it into resolve's where-predicate bindings. That arm
+// lands with the next-rung trigger of gunbc.recurring_failure_mode as_cast_has_no_lowered_form
+// (v2.std.coercion deciding a refinement's predicate on the cast operand), and it reads the clause
+// here rather than finding the declaration a second time. Absent when
 // the reference is not a declaration reference, the path does not reach a declaration, or the
 // declaration carries no where clause (it is then not a refinement, and has no carrier to widen to).
 // When the symbol index reaches infer's carriers, the spine walk becomes a lookup in it
 // (v2.std.symbol_index symbol_index_entry_at) and this reader keeps its signature.
 type RefinementDeclaration {
-  path: QualifiedName
   carrier: Node
   where_clause: Node
 }
@@ -1024,7 +1028,6 @@ fn refinement_declaration(tree: Node, reference: Node) -> Optional<RefinementDec
                 Accepted { value: head, diagnostics: _ } =>
                   Present {
                     value: RefinementDeclaration {
-                      path: path,
                       carrier: head,
                       where_clause: clause
                     }
