@@ -26,8 +26,12 @@ import gunbc.native_frontier_debt {
   NativeFrontierDebtRow, DebtRefused, NativeFrontierRosterStanding, RosterUnminted, RosterMinted,
   NativeFrontierMintReceipt
 }
+import v2.workflow.compile_door_cause_ownership {
+  CauseOwnership, CorrectnessFlipDeclaration, FatalGrain, HeadGrain, MigrationOwned
+}
 import gunbc.native_frontier_ratchet {
-  NativeFrontierVerdict, FrontierHeld, FrontierAdvanced, FrontierLost, FrontierUnminted, FrontierNotAMeasurement,
+  NativeFrontierVerdict, FrontierHeld, FrontierAdvanced, FrontierGrewByOwnedCorrectnessFlip,
+  NativeFrontierFlipAuthority, FrontierLost, FrontierUnminted, FrontierNotAMeasurement,
   native_frontier_verdict_over, native_frontier_verdict_word, native_frontier_reading,
   native_frontier_integrity_refusals, native_frontier_row_line, native_frontier_report_lines, native_frontier_proposal
 }
@@ -83,14 +87,21 @@ fn debt_row(identity: NativeRouteTestIdentity, stage: NativeTestStage, cause: Na
   NativeFrontierDebtRow { identity: identity, debt: DebtRefused { stage: stage, cause: cause } }
 }
 
+// No owned flips: every claim that does not name the flip authority judges under the empty one,
+// so the growth arm cannot be what makes it pass.
 fn judge(standing: NativeFrontierRosterStanding, readings: List<NativeProgressObservedReading>) -> NativeFrontierVerdict {
-  native_frontier_verdict_over(standing: standing, readings: readings, admission: NativeRouteAdmitted, pattern: whole_pattern())
+  judge_under(authority: NativeFrontierFlipAuthority { owners: [], flips: [] }, standing: standing, readings: readings)
+}
+
+fn judge_under(authority: NativeFrontierFlipAuthority, standing: NativeFrontierRosterStanding, readings: List<NativeProgressObservedReading>) -> NativeFrontierVerdict {
+  native_frontier_verdict_over(standing: standing, readings: readings, admission: NativeRouteAdmitted, pattern: whole_pattern(), authority: authority)
 }
 
 fn is_lost(v: NativeFrontierVerdict) -> Bool {
   match v {
     FrontierLost { findings: _ } => true
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -101,6 +112,7 @@ fn lost_with(v: NativeFrontierVerdict, prefix: String) -> Bool {
   match v {
     FrontierLost { findings: fs } => any(xs: fs, predicate: fn(f) { starts_with(s: f, prefix: prefix) })
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -115,6 +127,7 @@ test fn equality_holds() -> Bool {
     readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause), agreed(identity: subject_b)]
   ) {
     FrontierHeld => native_frontier_verdict_word(v: FrontierHeld) == "held"
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -135,6 +148,7 @@ test fn a_cleared_row_advances_and_the_proposal_drops_it() -> Bool {
           starts_with(s: l, prefix: "1 roster change(s) the run supports, NOT YET APPLIED")
         })
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -150,6 +164,7 @@ test fn a_later_stage_refusal_advances_and_keeps_the_row() -> Bool {
   ) {
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.rows) == 1
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -168,6 +183,7 @@ test fn a_deleted_subject_with_its_disposition_advances() -> Bool {
     readings: [agreed(identity: subject_b)]
   ) {
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.universe) == 1 && is_empty(xs: p.rows)
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -231,6 +247,7 @@ test fn w_RED_an_unminted_roster_proposes_and_does_not_pass() -> Bool {
   match v {
     FrontierUnminted { proposal: p } => length(xs: p.rows) == 1 && length(xs: p.universe) == 2 && native_frontier_verdict_word(v: v) == "unminted"
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -242,10 +259,12 @@ test fn w_RED_a_narrower_pattern_is_not_a_measurement() -> Bool {
     standing: minted(universe: [], rows: [], dispositions: []),
     readings: [agreed(identity: subject_a)],
     admission: NativeRouteAdmitted,
-    pattern: narrow_pattern()
+    pattern: narrow_pattern(),
+    authority: NativeFrontierFlipAuthority { owners: [], flips: [] }
   ) {
     FrontierNotAMeasurement { reasons: _ } => true
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -257,10 +276,12 @@ test fn w_RED_an_integrity_clause_makes_the_run_not_a_measurement() -> Bool {
     standing: minted(universe: [], rows: [], dispositions: []),
     readings: [agreed(identity: subject_a)],
     admission: NativeRouteRefused { causes: [PopulationOmissionsPresent] },
-    pattern: whole_pattern()
+    pattern: whole_pattern(),
+    authority: NativeFrontierFlipAuthority { owners: [], flips: [] }
   ) {
     FrontierNotAMeasurement { reasons: rs } => length(xs: rs) == 1
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierAdvanced { advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
@@ -305,6 +326,7 @@ test fn a_rename_target_holding_the_bar_is_not_new_debt() -> Bool {
   ) {
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.rows) == 1 && length(xs: p.universe) == 1
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -329,6 +351,7 @@ test fn a_new_agreeing_subject_enrols_rather_than_holding() -> Bool {
   match judge(standing: minted(universe: [subject_a], rows: [], dispositions: []), readings: [agreed(identity: subject_a), agreed(identity: subject_b)]) {
     FrontierAdvanced { advanced: _, proposal: p } => length(xs: p.universe) == 2 && is_empty(xs: p.rows)
     FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
     FrontierLost { findings: _ } => false
     FrontierUnminted { proposal: _ } => false
     FrontierNotAMeasurement { reasons: _ } => false
@@ -409,4 +432,112 @@ test fn a_lost_run_names_every_finding() -> Bool {
     standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
     readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause), refused(identity: subject_b, stage: NativeTestStagePrepare, cause: entry_cause)]
   ))) == 2
+}
+
+// ═══ debt that grows from an owned correctness flip ═══
+//
+// The fixture flip is shaped like the caret flip (gunbc#12392): a cause that makes a silently wrong
+// acceptance refuse at a located site. The fixture uses its own symbol so these claims do not
+// depend on that row landing in v2.workflow.compile_door_cause_ownership.
+
+data flip_cause: NativeRouteExclusionCause = CompilerFrontierAttributed { reason: ^fixture_correctness_flip_cause }
+
+data flip_owner: CauseOwnership = CauseOwnership {
+  cause: ^fixture_correctness_flip_cause,
+  grain: FatalGrain,
+  lane: MigrationOwned,
+  flip_trigger: "fixture: retires when the fixture slice lowers the construct"
+}
+
+data flip_declaration: CorrectnessFlipDeclaration = CorrectnessFlipDeclaration {
+  cause: ^fixture_correctness_flip_cause,
+  grain: FatalGrain,
+  pull_request: 12392,
+  why: "fixture: a silently wrong acceptance now refuses at the located site"
+}
+
+fn owned_and_declared() -> NativeFrontierFlipAuthority {
+  NativeFrontierFlipAuthority { owners: [flip_owner], flips: [flip_declaration] }
+}
+
+// A: agreed at the mint and refusing now. B: new to the universe and refusing. Both under the flip.
+fn flip_standing() -> NativeFrontierRosterStanding {
+  minted(universe: [subject_a], rows: [], dispositions: [])
+}
+
+fn flip_readings() -> List<NativeProgressObservedReading> {
+  [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: flip_cause), refused(identity: subject_b, stage: NativeTestStagePrepare, cause: flip_cause)]
+}
+
+// ADMITTED: both added identities are owed debt under an owned, declared flip, so the run does not
+// lose. It is not equality either: it proposes the roster with both rows, each carrying its owner
+// and pull request, under a word the instrument reads as holding.
+test fn an_owned_correctness_flip_increase_is_admitted() -> Bool {
+  let v = judge_under(authority: owned_and_declared(), standing: flip_standing(), readings: flip_readings())
+  match v {
+    FrontierGrewByOwnedCorrectnessFlip { flips: fl, advanced: _, proposal: p } =>
+      length(xs: fl) == 2
+        && any(xs: fl, predicate: fn(f) { (f.flip.pull_request == 12392 && f.flip.owner.cause == ^fixture_correctness_flip_cause) == false }) == false
+        && length(xs: p.rows) == 2 && length(xs: p.universe) == 2
+        && native_frontier_verdict_word(v: v) == "grew-by-owned-correctness-flip"
+        && (proposes_nothing(v: v) == false)
+    FrontierHeld => false
+    FrontierAdvanced { advanced: _, proposal: _ } => false
+    FrontierLost { findings: _ } => false
+    FrontierUnminted { proposal: _ } => false
+    FrontierNotAMeasurement { reasons: _ } => false
+  }
+}
+
+// THE SAME INCREASE, UNOWNED, IS A LOSS. Three ways to lack the authority, each the same run: no
+// declaration, a declaration whose cause has no owning row, and an owning row at the wrong grain.
+// Each loses on both identities, under the guard's accept-to-refuse finding and this module's new
+// debt, and proposes nothing.
+fn loses_both(authority: NativeFrontierFlipAuthority) -> Bool {
+  let v = judge_under(authority: authority, standing: flip_standing(), readings: flip_readings())
+  lost_with(v: v, prefix: "ACCEPT-TO-REFUSE") && lost_with(v: v, prefix: "NEW DEBT") && proposes_nothing(v: v)
+}
+
+test fn w_RED_the_same_increase_with_an_unowned_cause_is_lost() -> Bool {
+  loses_both(authority: NativeFrontierFlipAuthority { owners: [flip_owner], flips: [] })
+    && loses_both(authority: NativeFrontierFlipAuthority { owners: [], flips: [flip_declaration] })
+    && loses_both(authority: NativeFrontierFlipAuthority {
+      owners: [CauseOwnership { cause: ^fixture_correctness_flip_cause, grain: HeadGrain, lane: MigrationOwned, flip_trigger: "fixture" }],
+      flips: [flip_declaration]
+    })
+}
+
+// A MIXED SET REFUSES EXACTLY ITS UNOWNED PART. A falls under the owned flip; B lands refusing with
+// a cause nobody declared. The run is lost, a finding names B, and no finding names A: the owned
+// identity is not collateral, and the unowned one is not carried in on its neighbour's authority.
+test fn w_RED_a_mixed_set_refuses_the_unowned_part() -> Bool {
+  let v = judge_under(
+    authority: owned_and_declared(),
+    standing: flip_standing(),
+    readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: flip_cause), refused(identity: subject_b, stage: NativeTestStagePrepare, cause: other_cause)]
+  )
+  match v {
+    FrontierLost { findings: fs } =>
+      any(xs: fs, predicate: fn(f) { starts_with(s: f, prefix: "NEW DEBT") && ends_with(s: f, suffix: "v2.test.beta.holds") })
+        && any(xs: fs, predicate: fn(f) { ends_with(s: f, suffix: "v2.test.alpha.holds") }) == false
+        && proposes_nothing(v: v)
+    FrontierHeld => false
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
+    FrontierAdvanced { advanced: _, proposal: _ } => false
+    FrontierUnminted { proposal: _ } => false
+    FrontierNotAMeasurement { reasons: _ } => false
+  }
+}
+
+// AN EXISTING DEBT ROW IS NOT AN ADDED IDENTITY. A carried debt at eval and now refuses at prepare
+// under the owned flip: that is a regression of debt already carried, and the flip does not excuse it.
+test fn w_RED_an_owned_flip_does_not_excuse_a_carried_rows_regression() -> Bool {
+  lost_with(
+    v: judge_under(
+      authority: owned_and_declared(),
+      standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStageEval, cause: entry_cause)], dispositions: []),
+      readings: [refused(identity: subject_a, stage: NativeTestStagePrepare, cause: flip_cause)]
+    ),
+    prefix: "REGRESSED"
+  )
 }
