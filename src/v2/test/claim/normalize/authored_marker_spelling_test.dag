@@ -9,7 +9,7 @@ import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node { Edge, Named, Node, Positional, Symbol, node_subtree_nodes }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
@@ -43,6 +43,7 @@ data top_level_item_spelling_source: String = "module chunk\n\nfn dag_surface_to
 
 type MarkerSpellingVerdict {
   outcome: Symbol
+  // the authored spelling survives: as an atom (a value) or as a declaration's member name
   carries_authored_atom: Bool
 }
 
@@ -54,6 +55,25 @@ fn ams_carries(nodes: List<Node>, identity: Symbol) -> Bool {
         Present { value: id } => (id == identity) || ams_carries(nodes: rest, identity: identity)
         Absent => ams_carries(nodes: rest, identity: identity)
       }
+  }
+}
+
+fn ams_edges_name(edges: List<Edge>, name: Symbol) -> Bool {
+  match edges {
+    Empty => false
+    Cons { head: e, tail: rest } =>
+      match e.label {
+        Named { name: n } => (n == name) || ams_edges_name(edges: rest, name: name)
+        Positional => ams_edges_name(edges: rest, name: name)
+      }
+  }
+}
+
+// After the graft a declaration's NAME is the label of its member edge, not an atom.
+fn ams_names_member(nodes: List<Node>, name: Symbol) -> Bool {
+  match nodes {
+    Empty => false
+    Cons { head: n, tail: rest } => ams_edges_name(edges: n.children, name: name) || ams_names_member(nodes: rest, name: name)
   }
 }
 
@@ -72,6 +92,7 @@ fn ams_verdict(src: String, authored: Symbol) -> MarkerSpellingVerdict {
               MarkerSpellingVerdict {
                 outcome: ^ams_accepted,
                 carries_authored_atom: ams_carries(nodes: node_subtree_nodes(root: normalized.root), identity: authored)
+                  || ams_names_member(nodes: node_subtree_nodes(root: normalized.root), name: authored)
               }
           }
       }
