@@ -2403,15 +2403,19 @@ fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {
   }
 }
 
+// THE FOLD'S ANSWER IS CARRIED, NOT RE-DEMANDED. The reducers leave a lowered node behind
+// pass-through shells (body_lower_lowered_behind_shells_optional), so testing only the ROOT for core
+// substrate discarded a fold that had already lowered the node; every later strategy in
+// body_lower_try_body_lowered then re-read the RAW node, and the call-argument reader
+// (body_lower_value_lowered) folded each argument a second time -- body_lower_fold demanded exactly
+// twice per input, once under body_lower_fold_children here and once from the value reader
+// (DESIGN section 2: the least common ancestor computes once and carries the value). The peel is
+// the value reader's own, so both readers answer one fold the same way.
 fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_fold(node: node) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: fd } =>
-      if body_lower_is_core_substrate(node: folded) {
-        outcome_with_diagnostics(value: optional_present(value: folded), diagnostics: fd)
-      } else {
-        outcome_with_diagnostics(value: optional_absent(), diagnostics: fd)
-      }
+      outcome_with_diagnostics(value: body_lower_lowered_behind_shells_optional(node: folded), diagnostics: fd)
   }
 }
 
