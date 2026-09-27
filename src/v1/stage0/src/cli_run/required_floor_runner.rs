@@ -13587,6 +13587,12 @@ fn open(b: Box) -> Int {\n  match b {\n    Wrap { inner: u } => u\n    Empty => 
     const FLATU_LABEL: &str = "module flatu.l\n\nfn take(u: Int) -> Int {\n  u\n}\n\n\
 fn call() -> Int {\n  take(u: 1)\n}\n";
     const FLATU_READ: &str = "module flatu.r\n\nfn read() -> Int {\n  u()\n}\n";
+    /// A BARE POSITIONAL FUNCTION VALUE: the argument node carries no label (empty name), and
+    /// `u` is its child, whose parent is the argument node rather than the call -- a genuine read
+    /// the label skip must NOT drop.
+    const FLATU_POSITIONAL: &str =
+        "module flatu.v\n\nfn host(g: fn() -> Int) -> Int {\n  g()\n}\n\n\
+fn pass() -> Int {\n  host(u)\n}\n";
     /// A RECORD-LITERAL FIELD LABEL: `u` names a field of `Holder`, not the changed fn.
     const FLATU_RECORD: &str = "module flatu.f\n\ntype Holder { u: Int }\n\n\
 fn make() -> Holder {\n  Holder { u: 1 }\n}\n";
@@ -13606,6 +13612,7 @@ fn nested() -> Int {\n  id(x: u())\n}\n";
                 ("r.dag", FLATU_READ),
                 ("n.dag", FLATU_NESTED),
                 ("f.dag", FLATU_RECORD),
+                ("v.dag", FLATU_POSITIONAL),
             ],
             &[
                 ("a.dag", FLATU_A_HEAD),
@@ -13614,12 +13621,13 @@ fn nested() -> Int {\n  id(x: u())\n}\n";
                 ("r.dag", FLATU_READ),
                 ("n.dag", FLATU_NESTED),
                 ("f.dag", FLATU_RECORD),
+                ("v.dag", FLATU_POSITIONAL),
             ],
         );
         let _ = std::fs::remove_dir_all(&head_fx);
         assert_eq!(
             consumers_of(&selection),
-            vec!["flatu.n", "flatu.r"],
+            vec!["flatu.n", "flatu.r", "flatu.v"],
             "{:?}",
             selection.consumers
         );
