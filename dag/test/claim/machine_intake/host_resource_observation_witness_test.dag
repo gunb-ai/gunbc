@@ -12,7 +12,7 @@ import product.fabric.work { Shape, HardRequirements }
 import product.fabric.supply { ThreadsNotCovered }
 import gunbc.machine_intake_mtcollins1_topology_goal { mtcollins1_topology_goal }
 import gunbc.machine_intake_host_resource_observation {
-  HostResourceObservation, HostWorkloadEligibility, SectionUnparsed, SectionAbsent, ReserveExceedsAvailable,
+  HostResourceObservation, HostWorkloadEligibility, SectionUnparsed, SectionInconsistent, SectionAbsent, ReserveExceedsAvailable,
   ThreadsBelowIntent, PopulatedNodesBelowIntent,
   WorkloadEligible, WorkloadNotCovered, WorkloadCapacityUnknown, WorkloadHealthWithheld,
   host_resource_observation, host_topology_assessment, topology_health_admission,
@@ -28,8 +28,11 @@ fn numa_socket0_of_eighty() -> List<String> {
   ["0-1", "available: 2 nodes (0-1)", concat("node 0 cpus: ", eighty_cpus), "node 1 cpus:"]
 }
 
+data second_eighty_cpus: String = "80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159"
+
+// Two sockets, DISJOINT CPU ids: 0-79 on node 0, 80-159 on node 1.
 fn numa_both_of_eighty() -> List<String> {
-  ["0-1", "available: 2 nodes (0-1)", concat("node 0 cpus: ", eighty_cpus), concat("node 1 cpus: ", eighty_cpus)]
+  ["0-1", "available: 2 nodes (0-1)", concat("node 0 cpus: ", eighty_cpus), concat("node 1 cpus: ", second_eighty_cpus)]
 }
 
 fn meminfo_of(total_kb: Int, avail_kb: Int) -> List<String> {
@@ -37,11 +40,11 @@ fn meminfo_of(total_kb: Int, avail_kb: Int) -> List<String> {
 }
 
 fn observed(nproc: String, numa: List<String>) -> HostResourceObservation {
-  host_resource_observation(
-    nproc: Present { value: [nproc] },
-    numa: Present { value: numa },
-    meminfo: Present { value: meminfo_of(total_kb: 263000000, avail_kb: 250000000) },
-  )
+  observed_with(nproc: [nproc], numa: numa, meminfo: meminfo_of(total_kb: 263000000, avail_kb: 250000000))
+}
+
+fn observed_with(nproc: List<String>, numa: List<String>, meminfo: List<String>) -> HostResourceObservation {
+  host_resource_observation(nproc: Present { value: nproc }, numa: Present { value: numa }, meminfo: Present { value: meminfo })
 }
 
 fn work(threads: Nat, gib: Nat) -> Shape {
@@ -62,7 +65,7 @@ fn eligibility(o: HostResourceObservation, needed: Shape) -> HostWorkloadEligibi
 // THE CASE THE REDESIGN EXISTS FOR: 80 CPUs, all on socket 0. It is observed as 80 (not refused),
 // the shortfall against the 160 intent is a FINDING, and work that fits 80 threads is eligible
 // with that finding attached.
-test fn an_eighty_cpu_boot_publishes_eighty_and_carries_the_shortfall_as_a_finding() -> Bool {
+test fn an_eighty_cpu_boot_offers_eighty_and_carries_the_shortfall_as_a_finding() -> Bool {
   let o = observed(nproc: "80", numa: numa_socket0_of_eighty())
   let threads_read = match o.threads { ObservationEstablished { observed: t } => hardware_thread_count_value(t: t) == 80  _ => false }
   let finding = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) {
@@ -124,5 +127,54 @@ test fn a_reserve_beyond_available_memory_refuses_rather_than_offering_nothing()
 
 test fn an_unread_topology_withholds_fitting_work_on_health_not_on_capacity() -> Bool {
   let o = observed(nproc: "80", numa: ["0-1", "available: 2 nodes (0-1)"])
-  match eligibility(o: o, needed: work(threads: 8, gib: 1)) { WorkloadHealthWithheld { unknowns: us } => count(us) == 1  _ => false }
+  match eligibility(o: o, needed: work(threads: 8, gib: 1)) {
+    WorkloadHealthWithheld { known: ks, unknowns: us } =>
+      count(us) == 1
+      && any(ks, d => match d { ThreadsBelowIntent { intended: i, observed: s } => hardware_thread_count_value(t: i) == 160 && hardware_thread_count_value(t: s) == 80  _ => false })
+    _ => false
+  }
+}
+
+fn numa_refused_inconsistent(o: HostResourceObservation) -> Bool {
+  match o.numa { ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true  _ => false }
+}
+
+// THE REVIEWER'S COUNTEREXAMPLE (review 5328289461): 160 threads over "two" rows that are both node
+// 0. Counting rows would read two nodes and reach GoalSatisfied; the duplicate node refuses, so the
+// assessment is indeterminate and never satisfied.
+test fn a_node_listed_twice_is_inconsistent_and_never_satisfies_the_goal() -> Bool {
+  let o = observed(nproc: "160", numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), concat("node 0 cpus: ", second_eighty_cpus)])
+  let never_satisfied = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
+  numa_refused_inconsistent(o: o) && never_satisfied
+}
+
+test fn a_cpu_on_two_nodes_is_inconsistent() -> Bool {
+  numa_refused_inconsistent(o: observed(nproc: "160", numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), concat("node 1 cpus: ", eighty_cpus)]))
+}
+
+test fn a_node_line_with_a_non_integer_cpu_is_unparsed_not_counted() -> Bool {
+  match observed(nproc: "80", numa: ["node 0 cpus: 0 1 two 3"]).numa { ObservationRefused { cause: SectionUnparsed { section: _, detail: _ } } => true  _ => false }
+}
+
+test fn two_nproc_lines_are_inconsistent_with_no_first_or_last_pick() -> Bool {
+  match observed_with(nproc: ["80", "160"], numa: numa_both_of_eighty(), meminfo: meminfo_of(total_kb: 263000000, avail_kb: 250000000)).threads {
+    ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_repeated_meminfo_field_is_inconsistent() -> Bool {
+  match observed_with(nproc: ["160"], numa: numa_both_of_eighty(), meminfo: concat(meminfo_of(total_kb: 263000000, avail_kb: 250000000), ["MemTotal:  1 kB"])).memory {
+    ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true
+    _ => false
+  }
+}
+
+// MemAvailable above MemTotal is a contradiction: the memory reading refuses, so no offer is built
+// from it (no clamp to total, no zero).
+test fn more_available_than_total_memory_refuses_the_reading_and_the_offer() -> Bool {
+  let o = observed_with(nproc: ["160"], numa: numa_both_of_eighty(), meminfo: meminfo_of(total_kb: 100, avail_kb: 200))
+  let refused = match o.memory { ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true  _ => false }
+  let no_offer = match host_offered_shape(observed: o, reserve: kibibyte(count: 0), architecture: none) { ObservationRefused { cause: _ } => true  _ => false }
+  refused && no_offer
 }

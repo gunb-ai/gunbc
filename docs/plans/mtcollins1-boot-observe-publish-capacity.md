@@ -85,7 +85,7 @@ without the out-of-band epoch claim.
   `gunbc.machine_intake_host_resource_observation` (observation → `host_topology_assessment` →
   `topology_health_admission` → `host_offered_shape` → `host_workload_eligibility` over
   `product.fabric.supply` `unmet_shape_axes`), and `gunbc.machine_intake_mtcollins1_topology_goal`.
-  The numa parser is imported from the milestone module, not copied. It moves at the cut.
+  The numa reading has its own strict parser (node and CPU ids, duplicates refused). The milestone module's count-only parser is frozen and deleted at the cut.
 - **PR 2 (the cut), after the #12362 boot has run.** Delete the milestone module and the
   nproc/numa verdict arms. Retire the rung drop. `mtcollins1_boot_run` feeds its envelope's
   sections into `host_resource_observation`, so the boot run becomes the production consumer.
