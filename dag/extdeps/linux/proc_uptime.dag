@@ -1,0 +1,74 @@
+module extdeps.linux.proc_uptime
+
+import std.types { Int, String }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.linux.procfs
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc_uptime.5.html"
+  }
+}
+
+// /proc/uptime's SHAPE. proc_uptime(5): two numbers in seconds, the system's uptime (including time
+// spent in suspend) and the time spent idle. The kernel prints each as `%lu.%02lu`
+// (fs/proc/uptime.c), so the resolution is one centisecond and the fraction is always two digits.
+// The first value comes from the kernel's boot-based clock, which a wall-clock step (NTP, settimeofday)
+// does not move. That is why a duration between two readings of it is an elapsed interval, while two
+// `date` readings are not. This module owns the file's shape; the read is extdeps.linux.procfs
+// ReadUptime, one transport of N (DESIGN §3).
+type ProcUptimeRead
+  = UptimeObserved { centiseconds: Int }
+  | UptimeRefused { detail: String }
+
+// ANYTHING BUT `digits.two-digits` REFUSES with the text it read; no field is defaulted.
+fn proc_uptime_parse(text: String) -> ProcUptimeRead {
+  let words = filter(split(s: trim(s: text), delimiter: " "), w => w != "")
+  match get(xs: words, index: 0) {
+    Absent => UptimeRefused { detail: concat("/proc/uptime is empty: '", text, "'") }
+    Present { value: first } => {
+      let parts = split(s: first, delimiter: ".")
+      if count(parts) != 2 {
+        UptimeRefused { detail: concat("/proc/uptime first field is not seconds.centiseconds: '", first, "'") }
+      } else {
+        match get(xs: parts, index: 0) {
+          Absent => UptimeRefused { detail: concat("/proc/uptime first field unreadable: '", first, "'") }
+          Present { value: whole } =>
+            match get(xs: parts, index: 1) {
+              Absent => UptimeRefused { detail: concat("/proc/uptime first field unreadable: '", first, "'") }
+              Present { value: frac } =>
+                if length(frac) != 2 {
+                  UptimeRefused { detail: concat("/proc/uptime fraction is not two digits: '", first, "'") }
+                } else {
+                  match parse_int(s: whole) {
+                    Absent => UptimeRefused { detail: concat("/proc/uptime seconds not an integer: '", first, "'") }
+                    Present { value: s } =>
+                      match parse_int(s: frac) {
+                        Absent => UptimeRefused { detail: concat("/proc/uptime centiseconds not an integer: '", first, "'") }
+                        Present { value: c } =>
+                          if s < 0 || c < 0 {
+                            UptimeRefused { detail: concat("/proc/uptime is negative: '", first, "'") }
+                          } else {
+                            UptimeObserved { centiseconds: s * 100 + c }
+                          }
+                      }
+                  }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+
+// ONE READING THROUGH THE procfs TRANSPORT. A failed read is its own refusal, never a parse of the
+// empty text it left behind.
+fn proc_uptime_read() -> ProcUptimeRead {
+  let r = linux.Procfs.ReadUptime()
+  if r.success { proc_uptime_parse(text: r.value) } else { UptimeRefused { detail: concat("/proc/uptime read failed: '", r.value, "'") } }
+}

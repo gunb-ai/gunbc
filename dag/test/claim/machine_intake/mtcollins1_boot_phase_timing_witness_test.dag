@@ -1,47 +1,151 @@
 module test.claim.machine_intake.mtcollins1_boot_phase_timing_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
-import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Present, Absent }
+import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
 import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
-  MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, BootStartCold,
-  PhaseSolAcquire, PhaseHandoff, PhaseTerminalWatch,
+  MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
+  PhaseVerified, PhaseRefused, MtCollins1BootPhaseReadings, MtCollins1BootPhaseResults,
+  PhaseHandoff,
+  mtcollins1_boot_phase_spans, mtcollins1_boot_phase_timing_sol_refused,
   mtcollins1_boot_start_of, mtcollins1_boot_phase_timing_text, mtcollins1_boot_phase_timing_not_taken,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUPPLIED READINGS, not a boot: the subject is the rendering of offsets from the hold, so the clock
-// values are constructed at this boundary. The real producer is mtcollins1_boot_actuate, whose
-// readings reach this renderer through the diagnostic bundle of a dispatched boot.
-fn timing() -> MtCollins1BootPhaseTiming {
-  MtCollins1BootPhaseTiming {
-    hold_acquired: ClockUnixMillisObserved { millis: 1000 },
-    start: BootStartCold,
-    spans: [
-      MtCollins1BootPhaseSpan { phase: PhaseSolAcquire, begin: ClockUnixMillisObserved { millis: 1000 }, end: ClockUnixMillisObserved { millis: 3400 } },
-      MtCollins1BootPhaseSpan { phase: PhaseHandoff, begin: ClockUnixMillisObserved { millis: 9000 }, end: ClockUnixMillisObserved { millis: 21000 } },
-      MtCollins1BootPhaseSpan { phase: PhaseTerminalWatch, begin: ClockUnixMillisObserved { millis: 21000 }, end: ClockUnixMillisRefused { detail: "date command failed" } },
-    ],
+// SUPPLIED READINGS AND VERDICTS, not a boot: the subject is the phase record's assembly and
+// rendering, so the readings are constructed at this boundary (#12423 comment 5858637192: a
+// controlled refused route, not a wait for a live refusal). The production caller is
+// mtcollins1_boot_actuate, which reaches mtcollins1_boot_phase_spans with the readings it took;
+// the real clock route is the_real_uptime_clock_reads_and_does_not_go_back below.
+fn at(cs: Int) -> ProcUptimeRead {
+  UptimeObserved { centiseconds: cs }
+}
+
+fn readings() -> MtCollins1BootPhaseReadings {
+  MtCollins1BootPhaseReadings {
+    hold_acquired: at(cs: 100),
+    sol_held: at(cs: 340),
+    param5_before_read: at(cs: 400),
+    attach_verified: at(cs: 900),
+    power_verified: at(cs: 2100),
+    smpro_power_on_read: at(cs: 2300),
+    terminal_observed: at(cs: 50000),
+    param5_after_read: at(cs: 50100),
+    power_after_read: at(cs: 50600),
+    released: at(cs: 50700),
   }
 }
 
-test fn each_phase_reports_offset_from_hold_and_span_to_verified() -> Bool {
-  let t = mtcollins1_boot_phase_timing_text(t: timing())
+fn all_verified() -> MtCollins1BootPhaseResults {
+  MtCollins1BootPhaseResults {
+    param5_before: PhaseVerified, media_attach: PhaseVerified, handoff: PhaseVerified, smpro_power_on: PhaseVerified,
+    terminal_watch: PhaseVerified, param5_after: PhaseVerified, power_after: PhaseVerified, sol_release: PhaseVerified,
+  }
+}
+
+fn attach_refused() -> MtCollins1BootPhaseResults {
+  MtCollins1BootPhaseResults {
+    param5_before: PhaseVerified, media_attach: PhaseRefused { cause: "fixture: virtual media readback did not match" }, handoff: PhaseVerified,
+    smpro_power_on: PhaseVerified, terminal_watch: PhaseVerified, param5_after: PhaseVerified, power_after: PhaseVerified, sol_release: PhaseVerified,
+  }
+}
+
+fn text_of(v: MtCollins1BootPhaseResults) -> String {
+  mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming { hold_acquired: at(cs: 100), start: BootStartCold, spans: mtcollins1_boot_phase_spans(r: readings(), v: v) })
+}
+
+test fn a_completed_route_reports_offset_and_span_per_phase() -> Bool {
+  let t = text_of(v: all_verified())
   contains(t, "phase sol_acquire: first_action=+0ms verified_after=2400ms")
     && contains(t, "phase handoff: first_action=+8000ms verified_after=12000ms")
+    && contains(t, "phase smpro_power_on: first_action=+20000ms verified_after=2000ms")
+    && contains(t, "phase terminal_watch: first_action=+22000ms verified_after=477000ms")
+    && contains(t, "phase sol_release: first_action=+505000ms verified_after=1000ms")
+}
+
+// THE REFUSED ROUTE: an attach that did not verify. The attach prints REFUSED with its cause, never
+// "verified"; the handoff, the power-on SMpro pass and the terminal watch print not reached with no
+// number; the after-reads, final power and SOL release -- which run on every arm that held the SOL --
+// still carry their times. Deleting the reachability arms of mtcollins1_boot_phase_spans turns this red.
+test fn a_refused_attach_marks_later_phases_not_reached_and_keeps_cleanup_times() -> Bool {
+  let t = text_of(v: attach_refused())
+  contains(t, "phase media_attach: first_action=+3000ms REFUSED_after=5000ms (fixture: virtual media readback did not match)")
+    && !contains(t, "phase media_attach: first_action=+3000ms verified_after")
+    && contains(t, "phase handoff: not reached (the media attach did not verify)")
+    && contains(t, "phase smpro_power_on: not reached (power on was never verified)")
+    && contains(t, "phase terminal_watch: not reached (power on was never verified)")
+    && contains(t, "phase param5_after: first_action=+499000ms verified_after=1000ms")
+    && contains(t, "phase sol_release: first_action=+505000ms verified_after=1000ms")
+}
+
+// THE PHASES THAT RAN PARTITION THE ACTUATION: every ran phase begins at the reading that ended the
+// ran phase before it, so no interval is inside two phases and the spans cover hold to release.
+fn begin_of(s: MtCollins1BootPhaseSpan) -> Int {
+  match s {
+    PhaseRan { phase: _, result: _, begin: b, end: _ } => match b { UptimeObserved { centiseconds: c } => c  UptimeRefused { detail: _ } => -1 }
+    PhaseNotRan { phase: _, reason: _ } => -1
+  }
+}
+
+fn end_of(s: MtCollins1BootPhaseSpan) -> Int {
+  match s {
+    PhaseRan { phase: _, result: _, begin: _, end: e } => match e { UptimeObserved { centiseconds: c } => c  UptimeRefused { detail: _ } => -1 }
+    PhaseNotRan { phase: _, reason: _ } => -1
+  }
+}
+
+fn span_at(xs: List<MtCollins1BootPhaseSpan>, index: Int) -> MtCollins1BootPhaseSpan {
+  match get(xs: xs, index: index) {
+    Present { value: s } => s
+    Absent => PhaseNotRan { phase: PhaseHandoff, reason: "index out of range" }
+  }
+}
+
+fn partitions(spans: List<MtCollins1BootPhaseSpan>) -> Bool {
+  let r = filter(spans, s => match s { PhaseRan { phase: _, result: _, begin: _, end: _ } => true  PhaseNotRan { phase: _, reason: _ } => false })
+  let n = count(r)
+  n > 0
+    && begin_of(s: span_at(xs: r, index: 0)) == 100
+    && end_of(s: span_at(xs: r, index: n - 1)) == 50700
+    && all(range(1, n), i => begin_of(s: span_at(xs: r, index: i)) == end_of(s: span_at(xs: r, index: i - 1)))
+}
+
+test fn the_phases_that_ran_partition_hold_to_release_on_both_routes() -> Bool {
+  partitions(spans: mtcollins1_boot_phase_spans(r: readings(), v: all_verified()))
+    && partitions(spans: mtcollins1_boot_phase_spans(r: readings(), v: attach_refused()))
+}
+
+test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> Bool {
+  let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
+    hold_acquired: at(cs: 500),
+    start: BootStartCold,
+    spans: [PhaseRan { phase: PhaseHandoff, result: PhaseVerified, begin: at(cs: 500), end: at(cs: 400) }],
+  })
+  contains(t, "verified_after=REFUSED: clock went back from 500 to 400 cs") && !contains(t, "-1000ms")
 }
 
 test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
-  let t = mtcollins1_boot_phase_timing_text(t: timing())
-  contains(t, "phase terminal_watch: first_action=+20000ms verified_after=unread (date command failed)")
+  let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
+    hold_acquired: at(cs: 500),
+    start: BootStartCold,
+    spans: [PhaseRan { phase: PhaseHandoff, result: PhaseVerified, begin: at(cs: 500), end: UptimeRefused { detail: "fixture: /proc/uptime read failed" } }],
+  })
+  contains(t, "verified_after=unread (fixture: /proc/uptime read failed)")
+}
+
+test fn a_refused_sol_acquire_holds_nothing_after_it() -> Bool {
+  let t = mtcollins1_boot_phase_timing_text(t: mtcollins1_boot_phase_timing_sol_refused(hold_acquired: at(cs: 100), refused_at: at(cs: 350), cause: "fixture: activate refused"))
+  contains(t, "phase sol_acquire: first_action=+0ms REFUSED_after=2500ms (fixture: activate refused)")
+    && contains(t, "phase media_attach: not reached (the SOL lease was not acquired, so nothing was written)")
+    && contains(t, "phase sol_release: not reached")
 }
 
 test fn power_up_is_cold_and_power_cycle_is_warm() -> Bool {
-  let cold = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming { hold_acquired: ClockUnixMillisObserved { millis: 0 }, start: mtcollins1_boot_start_of(transition: PoweredOn), spans: [] })
-  let warm = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming { hold_acquired: ClockUnixMillisObserved { millis: 0 }, start: mtcollins1_boot_start_of(transition: PowerCycled), spans: [] })
-  contains(cold, "boot_start=cold") && contains(warm, "boot_start=warm")
+  (match mtcollins1_boot_start_of(transition: PoweredOn) { BootStartCold => true  _ => false })
+    && (match mtcollins1_boot_start_of(transition: PowerCycled) { BootStartWarm => true  _ => false })
 }
 
 test fn an_attempt_that_never_held_says_so() -> Bool {
@@ -49,13 +153,22 @@ test fn an_attempt_that_never_held_says_so() -> Bool {
   contains(t, "boot_start=unobserved (the unit hold was refused)") && contains(t, "phases: none reached")
 }
 
-// DISCRIMINATING RED for the wall-clock step: an end reading below its begin must refuse, never
-// print a negative figure. Removing the step arm from mtcollins1_boot_phase_duration turns this red.
-test fn a_clock_stepped_back_refuses_rather_than_printing_negative_time() -> Bool {
-  let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
-    hold_acquired: ClockUnixMillisObserved { millis: 5000 },
-    start: BootStartCold,
-    spans: [MtCollins1BootPhaseSpan { phase: PhaseHandoff, begin: ClockUnixMillisObserved { millis: 5000 }, end: ClockUnixMillisObserved { millis: 4000 } }],
-  })
-  contains(t, "verified_after=REFUSED: wall clock stepped back from 5000 to 4000 ms") && !contains(t, "-1000ms")
+// /proc/uptime's SHAPE: `%lu.%02lu %lu.%02lu` (fs/proc/uptime.c). Anything else refuses.
+test fn proc_uptime_parses_centiseconds_and_refuses_malformed_text() -> Bool {
+  (match proc_uptime_parse(text: "350735.47 234388.90\n") { UptimeObserved { centiseconds: c } => c == 35073547  UptimeRefused { detail: _ } => false })
+    && (match proc_uptime_parse(text: "") { UptimeRefused { detail: _ } => true  UptimeObserved { centiseconds: _ } => false })
+    && (match proc_uptime_parse(text: "350735 234388.90") { UptimeRefused { detail: _ } => true  UptimeObserved { centiseconds: _ } => false })
+    && (match proc_uptime_parse(text: "350735.4 234388.90") { UptimeRefused { detail: _ } => true  UptimeObserved { centiseconds: _ } => false })
+    && (match proc_uptime_parse(text: "-1.00 0.00") { UptimeRefused { detail: _ } => true  UptimeObserved { centiseconds: _ } => false })
+}
+
+// THE REAL CLOCK ROUTE: two readings of this machine's /proc/uptime through the procfs transport
+// the actuation uses. Both are observations and the second is not below the first.
+test fn the_real_uptime_clock_reads_and_does_not_go_back() -> Bool {
+  let a = proc_uptime_read()
+  let b = proc_uptime_read()
+  match a {
+    UptimeObserved { centiseconds: x } => match b { UptimeObserved { centiseconds: y } => y >= x  UptimeRefused { detail: _ } => false }
+    UptimeRefused { detail: _ } => false
+  }
 }

@@ -8,6 +8,7 @@ import std.temporal_effect {
   LeaseAbsent,
   LeaseRunningExpected,
   LeaseRunningStale,
+  LeasePortForeign,
   LeaseInaccessible,
   held_lease_observed_verdict,
 }
@@ -32,10 +33,11 @@ import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
-  MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, BootStartUnobserved, mtcollins1_boot_phase_timing_not_taken,
-  PhaseSolAcquire, PhaseParam5Before, PhaseMediaAttach, PhaseHandoff, PhaseTerminalWatch, PhaseParam5After, PhasePowerAfter, PhaseSolRelease,
+  MtCollins1BootPhaseTiming, BootStartUnobserved, mtcollins1_boot_phase_timing_not_taken,
+  MtCollins1PhaseRunResult, PhaseVerified, PhaseRefused, MtCollins1BootPhaseReadings, MtCollins1BootPhaseResults,
+  mtcollins1_boot_phase_spans, mtcollins1_boot_phase_timing_sol_refused,
 }
-import extdeps.clock { clock_unix_millis_read }
+import extdeps.linux.proc_uptime { proc_uptime_read, ProcUptimeRead, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_milestone {
   MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
@@ -75,8 +77,8 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
-  SmproReading, BootParam5Reading, BootParam5NotTaken, MtCollins1BootRunRecord, run_record_not_taken, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
-  PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
+  SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
+  PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOffWithoutCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -1004,10 +1006,62 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
   }
 }
 
+// EACH PHASE'S VERDICT FOR THE PHASE CLOCK, from the phase's own typed result: a read that did not
+// establish its observation is a refusal with its cause, never a verified phase.
+fn exit_phase_result(outcome: ProcessExit) -> MtCollins1PhaseRunResult {
+  match outcome {
+    ExitSuccess => PhaseVerified
+    ExitFailure { code: _, reason: r } => PhaseRefused { cause: r }
+  }
+}
+
+fn param5_phase_result(r: BootParam5Reading) -> MtCollins1PhaseRunResult {
+  match r {
+    BootParam5Read { readback: _, at: _ } => PhaseVerified
+    BootParam5Unread { cause: _ } => PhaseRefused { cause: "boot parameter 5 unread (cause in the run record)" }
+    BootParam5NotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+  }
+}
+
+// THE POWER-ON SMpro PASS IS VERIFIED WHEN ITS READS WERE TAKEN; each read's own outcome is in the
+// bundle's smpro section, so this does not claim any single register answered.
+fn smpro_phase_result(stage: MtCollins1BootActuationStage) -> MtCollins1PhaseRunResult {
+  let on = match stage {
+    ActuationNotPoweredOn { reason: why } => SmproNotTaken { reason: why }
+    ActuationPoweredOn { selection: _, smpro_power_on: s, smpro_census: _ } => s
+    ActuationCensusEnded { selection: _, smpro_power_on: s, smpro_census: _ } => s
+  }
+  match on {
+    SmproProbed { outcomes: _ } => PhaseVerified
+    SmproNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+  }
+}
+
+fn power_after_phase_result(p: PowerAfterAttempt) -> MtCollins1PhaseRunResult {
+  match p {
+    PowerAfterUnobserved { observation: _ } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
+    PowerAfterNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+    PoweredOffAfterCensusEnd => PhaseVerified
+    PoweredOffWithoutCensusEnd => PhaseVerified
+    PoweredOnAfterAttempt => PhaseVerified
+  }
+}
+
+fn sol_release_phase_result(t: HeldLeaseObservedState) -> MtCollins1PhaseRunResult {
+  match t {
+    LeaseAbsent => PhaseVerified
+    LeaseRunningExpected => PhaseRefused { cause: "SOL collector still held after deactivate" }
+    LeaseRunningStale => PhaseRefused { cause: "SOL pid file stale after deactivate" }
+    LeasePortForeign => PhaseRefused { cause: "SOL observed foreign after deactivate" }
+    LeaseInaccessible => PhaseRefused { cause: "SOL state inaccessible after deactivate" }
+  }
+}
+
 // WHAT THE WATCH ENDED WITH, before the after-read and the releases complete the actuation record.
 type ActuationWatch {
   outcome: ProcessExit
   stage: MtCollins1BootActuationStage
+  smpro_power_on_read: ProcUptimeRead
 }
 
 fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
@@ -1068,8 +1122,8 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
 // device and the power cycle -- which is what dissolves the pre-approval SOL mutation: there is no
 // approval stage left for the SOL to precede, and the gate it must follow is the hold.
 //
-// THE PHASE CLOCK (gunbc.machine_intake_mtcollins1_boot_phase_timing): each reading is a local `date`
-// exec taken between two BMC calls; it changes no order and writes nothing.
+// THE PHASE CLOCK (gunbc.machine_intake_mtcollins1_boot_phase_timing): each reading is a local read
+// of /proc/uptime taken between two BMC calls; it changes no order and writes nothing.
 fn mtcollins1_boot_actuate(
   proof: UnitHoldProof,
   subject: MtCollins1BootSubject,
@@ -1082,18 +1136,29 @@ fn mtcollins1_boot_actuate(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
-  let hold_acquired = clock_unix_millis_read()
+  let hold_acquired = proc_uptime_read()
   match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
-    ExitFailure { code: c, reason: r } => actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
+    ExitFailure { code: c, reason: r } => {
+      let refused_at = proc_uptime_read()
+      let refused = actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
+      MtCollins1BootActuation {
+        outcome: refused.outcome,
+        stage: refused.stage,
+        override_before: refused.override_before,
+        override_after: refused.override_after,
+        power_after: refused.power_after,
+        timing: mtcollins1_boot_phase_timing_sol_refused(hold_acquired: hold_acquired, refused_at: refused_at, cause: r),
+      }
+    }
     ExitSuccess => {
-      let sol_held = clock_unix_millis_read()
+      let sol_held = proc_uptime_read()
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
-      let p5_before_read = clock_unix_millis_read()
+      let p5_before_read = proc_uptime_read()
       let attached = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
         Present { value: why } => exit_failure(reason: why)
         Absent => mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt)
       }
-      let attach_verified = clock_unix_millis_read()
+      let attach_verified = proc_uptime_read()
       let handoff = match attached {
         ExitSuccess =>
           mtcollins1_drive_handoff(
@@ -1105,10 +1170,11 @@ fn mtcollins1_boot_actuate(
           )
         other => MtCollins1HandoffResult { outcome: other, start: BootStartUnobserved { reason: "the attach refused, so no handoff was issued" } }
       }
-      let power_verified = clock_unix_millis_read()
+      let power_verified = proc_uptime_read()
       let observed = match handoff.outcome {
         ExitSuccess => {
           let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
+          let smpro_read = proc_uptime_read()
           let watch = mtcollins1_boot_await_capture_terminal(
             remaining: mtcollins1_boot_terminal_tick_budget(),
             capture_path: sol_capture_path,
@@ -1117,6 +1183,7 @@ fn mtcollins1_boot_actuate(
             smpro_census: SmproNotTaken { reason: "no poll saw the census envelope open: it never began, or began and ended between polls" },
           )
           ActuationWatch {
+            smpro_power_on_read: smpro_read,
             outcome: watch.outcome,
             stage: if watch.census_ended {
               ActuationCensusEnded { selection: subject.selection, smpro_power_on: at_power_on, smpro_census: watch.smpro_census }
@@ -1125,21 +1192,19 @@ fn mtcollins1_boot_actuate(
             },
           }
         }
-        other => ActuationWatch { outcome: other, stage: ActuationNotPoweredOn { reason: "the attach or the handoff refused, so power on was never observed" } }
+        other => ActuationWatch { outcome: other, stage: ActuationNotPoweredOn { reason: "the attach or the handoff refused, so power on was never observed" }, smpro_power_on_read: UptimeRefused { detail: "power on was never verified, so no SMpro pass was taken" } }
       }
-      let terminal_observed = clock_unix_millis_read()
+      let terminal_observed = proc_uptime_read()
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
-      let p5_after_read = clock_unix_millis_read()
+      let p5_after_read = proc_uptime_read()
       let power_after = mtcollins1_boot_power_after_poll(
         password_file: password_file,
         census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
         remaining: mtcollins1_boot_power_after_samples,
       )
-      let power_after_read = clock_unix_millis_read()
+      let power_after_read = proc_uptime_read()
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
-      let released = clock_unix_millis_read()
-      let reached_power = match attached { ExitSuccess => true _ => false }
-      let reached_watch = match handoff.outcome { ExitSuccess => true _ => false }
+      let released = proc_uptime_read()
       MtCollins1BootActuation {
         override_before: p5_before,
         override_after: p5_after,
@@ -1159,23 +1224,29 @@ fn mtcollins1_boot_actuate(
         timing: MtCollins1BootPhaseTiming {
           hold_acquired: hold_acquired,
           start: handoff.start,
-          spans: concat(
-            [
-              MtCollins1BootPhaseSpan { phase: PhaseSolAcquire, begin: hold_acquired, end: sol_held },
-              MtCollins1BootPhaseSpan { phase: PhaseParam5Before, begin: sol_held, end: p5_before_read },
-              MtCollins1BootPhaseSpan { phase: PhaseMediaAttach, begin: p5_before_read, end: attach_verified },
-            ],
-            concat(
-              if reached_power { [MtCollins1BootPhaseSpan { phase: PhaseHandoff, begin: attach_verified, end: power_verified }] } else { [] },
-              concat(
-                if reached_watch { [MtCollins1BootPhaseSpan { phase: PhaseTerminalWatch, begin: power_verified, end: terminal_observed }] } else { [] },
-                [
-                  MtCollins1BootPhaseSpan { phase: PhaseParam5After, begin: terminal_observed, end: p5_after_read },
-                  MtCollins1BootPhaseSpan { phase: PhasePowerAfter, begin: p5_after_read, end: power_after_read },
-                  MtCollins1BootPhaseSpan { phase: PhaseSolRelease, begin: power_after_read, end: released },
-                ],
-              ),
-            ),
+          spans: mtcollins1_boot_phase_spans(
+            r: MtCollins1BootPhaseReadings {
+              hold_acquired: hold_acquired,
+              sol_held: sol_held,
+              param5_before_read: p5_before_read,
+              attach_verified: attach_verified,
+              power_verified: power_verified,
+              smpro_power_on_read: observed.smpro_power_on_read,
+              terminal_observed: terminal_observed,
+              param5_after_read: p5_after_read,
+              power_after_read: power_after_read,
+              released: released,
+            },
+            v: MtCollins1BootPhaseResults {
+              param5_before: param5_phase_result(r: p5_before),
+              media_attach: exit_phase_result(outcome: attached),
+              handoff: exit_phase_result(outcome: handoff.outcome),
+              smpro_power_on: smpro_phase_result(stage: observed.stage),
+              terminal_watch: exit_phase_result(outcome: observed.outcome),
+              param5_after: param5_phase_result(r: p5_after),
+              power_after: power_after_phase_result(p: power_after),
+              sol_release: sol_release_phase_result(t: teardown),
+            },
           ),
         },
       }
