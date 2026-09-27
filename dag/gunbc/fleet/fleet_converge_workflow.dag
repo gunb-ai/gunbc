@@ -60,7 +60,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_fleet_converge_plan_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
   gunbc_ci_mtcollins1_census_image_step_timeout_minutes,
-  gunbc_ci_runner_host_file_step_timeout_minutes,
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_spark_runtime_image_build_step_timeout_minutes,
   gunbc_ci_spark_runtime_image_distribute_step_timeout_minutes,
@@ -1503,7 +1503,7 @@ fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
@@ -1562,7 +1562,7 @@ fn fleet_converge_host_credential_custody_converge_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_host_credential_custody_converge_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
@@ -2310,7 +2310,7 @@ fn fleet_converge_pair_serving_d0_admit_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_pair_serving_d0_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
