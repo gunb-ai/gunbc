@@ -548,7 +548,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
-        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // PHASE 1 — the .dag parse sweep, over the authored roots in DAG_PARSE_SWEEP_ROOTS.
         // Independent of everything below it. The roster is
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
         // local check and this phase cover the same files.
@@ -1640,10 +1640,9 @@ fn run_required_primitive_runtime_body() -> bool {
         command.args(["--source-root", root]);
     }
     // The producer spans v1 and v2. Keep it outside both default floor roots and
-    // the v1-only stage0 regeneration sweep; enroll its root only in this phase.
+    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
+    // parse/declaration universe above so the carrier citation is also checked.
     command.args([
-        "--source-root",
-        "test/primitive_runtime_body",
         "--entry",
         "test/primitive_runtime_body/producer.dag",
         "--function",

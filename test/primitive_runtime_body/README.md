@@ -7,8 +7,9 @@ No workflow job or CLI flag was added.
 
 `gunbc.witness_floor_workflow.witness_floor_triggers` runs that lane on pull
 requests targeting main (opened, synchronize, reopened), `merge_group`, and
-`workflow_dispatch`. The runtime phase uses the parse sweep's three-root universe
-plus its explicit producer root in an isolated child of the required dispatcher, using its already-built sibling
+`workflow_dispatch`. The runtime phase uses the parse sweep's universe, including
+the producer root for declaration integrity, in an isolated child of the required
+dispatcher, using its already-built sibling
 `gunbc`. The child exits before `floor`, releasing the additional preparation
 caches rather than retaining another corpus pool in the floor process. It does not widen the ordinary floor subject,
 whose exclusion of src/v1 protects it from the documented name collisions.
@@ -84,5 +85,5 @@ checks the live producer and its permanent negative control.
 
 The merge-group build lane also qualifies this placement: putting the producer under
 `src/v1` made stage0 regeneration import its v2 scanner dependencies into a v1-only
-source sweep. The explicit phase root preserves runtime enforcement without
+source sweep. The parse/declaration and runtime phase enrollment preserves enforcement without
 widening that separate compilation subject.
