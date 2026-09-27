@@ -1,5 +1,6 @@
 module v2.test.manual.cross_language_add_python_to_typescript
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.test.manual.python_grammar_claim {
   python_grammar_parse_fixture
 }
@@ -15,7 +16,6 @@ import v2.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 
-import v2.compiler.infer { infer }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.compiler.emit { emit }
 import v2.extdeps.languages.python {
@@ -90,7 +90,7 @@ test fn parse_tree_to_target_model_bridge_realized() -> Bool {
 }
 
 test fn cross_language_emit_inhabitant_neutralization_fails_closed() -> Bool {
-  match infer(tree: python_emitted_add_fn_node()) {
+  match infer_and_discharge(tree: python_emitted_add_fn_node()) {
     Accepted { value: inferred, diagnostics: _ } =>
       match emit(tree: inferred, target: ts_target_model()) {
         Rejected { diagnostics: _ } => true
@@ -115,7 +115,7 @@ test fn cross_language_emit_inhabitant_neutralization_round_trip_holds() -> Bool
     target: ts_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
+      match infer_and_discharge(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: ts_target_model()) {
             Accepted { value: source, diagnostics: _ } =>

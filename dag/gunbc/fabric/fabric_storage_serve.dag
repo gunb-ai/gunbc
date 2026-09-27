@@ -8,11 +8,11 @@ import std.fabric_storage {
   FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
 }
 import gunbc.fabric_storage_file_store {
-  FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
+  FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
 import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
 import extdeps.tailscale.identity { tailnet_identity_of }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix }
+import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
 // `gunbc serve` process on the placed host, compiled once, answers each request by running the
@@ -170,6 +170,10 @@ fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, method: String,
 fn fabric_storage_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
   match fabric_storage_placement() {
     FabricStorageUnplaced => text_response(status: 503, body: "fabric_storage/1 the fabric DB is unplaced\n")
-    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } => fabric_storage_serve_handle_over(root: fabric_storage_file_root(root: r), method: method, path: path, body: body, tailscale_identity: tailscale_identity)
+    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } =>
+      match fabric_storage_placed_file_root(store_root: r) {
+        FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: join(["fabric_storage/1 the store's entry mode is refused: ", detail as String, "\n"], ""))
+        FabricStoragePlacedRootReady { root } => fabric_storage_serve_handle_over(root: root, method: method, path: path, body: body, tailscale_identity: tailscale_identity)
+      }
   }
 }

@@ -437,23 +437,52 @@ fn bcn_refused_with_mismatch(o: Outcome<Bool>) -> Bool {
   }
 }
 
-// (15) THE CAST OUT OF A REFINEMENT IS ADMITTED BY THE JUDGED ROUTE, NOT THE FRONTIER. The ROUTE is
-// asserted by its partner: the same `x: Pos` operand cast to Bool refuses with coercion's mismatch,
-// which it can only do if x's type is derived -- so `x as Int` was judged by coercion_cast_crossing
-// (carrier to carrier), not passed over as GroundingNotDerived (review 71406).
-test fn bcn_cast_out_of_a_refinement_admits() -> Bool {
-  bcn_refused_with_mismatch(o: bcn_refinement_param_as_bool_inferred())
-    && match bcn_out_of_refinement_inferred() {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
+// (15) THE CAST OUT OF A REFINEMENT REFUSES, STATED. A parameter is now bound by its ENCLOSING
+// Arrow (v2.compiler.infer infer_parameter_type_in_scope), so `x` in `fn f(x: Pos)` grounds as the
+// Pos declaration-reference, and Pos is not structurally Int: coercion_cast_crossing refuses with
+// its typed mismatch. RED BEFORE: on main at 21f4d0c this row ADMITTED, by the wrong route -- the
+// unscoped parameter walk bound f's `x` to the unrelated `fn positive(x: Int)`, and the crossing was
+// Int to Int. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2.std.coercion admitting a cast from a
+// refinement to its DECLARED carrier as Widened, decided from the type declaration; the existing
+// coercion_fold_refinement_widening cannot carry it because its predicate needs per-domain integer
+// value sets (v2.std.refinement_widening_predicate refinement_widening_value_sets_hold). When that
+// lands this row flips to an accepting control asserting the Widened quality. The partner `x as Bool`
+// refuses under both groundings.
+fn bcn_refused_with_mismatch_at_operand(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      bcn_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+        && (bcn_operand_mismatch(x: d.head) || fold(d.tail, init: false, f: fn(acc, x) { acc || bcn_operand_mismatch(x: x) }))
+  }
+}
+
+fn bcn_operand_mismatch(x: Diagnostic) -> Bool {
+  (x.reason == discriminant(v: NoTargetCandidate))
+    && match x.at {
+      NodeLocus { anchor: a } => bcn_atom_in(n: a.at, id: ^x) && !bcn_atom_in(n: a.at, id: ^dag_token_kw_as)
+      _ => false
     }
 }
 
-// (16) THE STATED RESIDUE'S SHARPEST FORM: even the identity cast into a refinement, `x as Pos` from
-// `x: Pos`, refuses -- infer grounds x as the carrier, and no carrier is structurally the refinement.
-// Flips with the follow-up that decides refinement crossings in v2.std.coercion.
-test fn bcn_identity_cast_into_a_refinement_refuses_at_infer() -> Bool {
-  bcn_refused_with_mismatch(o: bcn_refinement_identity_cast_inferred())
+test fn bcn_cast_out_of_a_refinement_refuses_until_carrier_widening() -> Bool {
+  bcn_refused_with_mismatch(o: bcn_refinement_param_as_bool_inferred())
+    && bcn_refused_with_mismatch_at_operand(o: bcn_out_of_refinement_inferred())
+}
+
+// (16) THE IDENTITY CAST INTO A REFINEMENT IS ADMITTED BY THE EXACT RULE. `x as Pos` from `x: Pos`:
+// infer grounds x as the Pos declaration-reference from f's own domain, and coercion_cast_crossing
+// finds the target structurally equal. The RED beside it: the same operand cast to Bool refuses
+// (row 15's partner), so this is a judged crossing, not the frontier passing it over. RED BEFORE
+// (main at 21f4d0c): refused NoTargetCandidate, because the unscoped walk bound x to
+// `positive(x: Int)`; renaming f's parameter to `y` alone made it admit, which located the defect at
+// the parameter lookup's scope, not at coercion.
+test fn bcn_identity_cast_into_a_refinement_admits() -> Bool {
+  bcn_refused_with_mismatch(o: bcn_refinement_param_as_bool_inferred())
+    && match bcn_refinement_identity_cast_inferred() {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
 }
 
 // (17) THE CAST-MARKER LABEL RULE COEXISTS WITH EVERY BEHAVIOR'S OWN NAMED EDGES. v2.std.type_binder

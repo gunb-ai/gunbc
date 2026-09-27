@@ -10,7 +10,8 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port }
+import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
@@ -112,6 +113,7 @@ import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
   ensure_managed_directory_command,
+  managed_directory_entry_repair_commands,
   approval_broker_tree_receipt_path_for,
   approval_broker_release_dir,
   approval_broker_release_binary_path,
@@ -1320,6 +1322,41 @@ test fn the_fabric_storage_areas_are_ensured_writable_by_the_claim_principal() -
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
   string_contains(s: objects, pattern: "2770") && string_contains(s: objects, pattern: "briansrls") && string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
     && string_contains(s: heads, pattern: "2770") && string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+}
+
+// THE SAME ENSURE REPAIRS THE AREAS' EXISTING ENTRIES, read off the command the srv1 spec lowers:
+// the CI job principal publishes from `umask 077` steps, so every entry it wrote before the store
+// declared its entry mode is 0600 and the service principal cannot read it (srv1 2026-09-26). The
+// ensure adds the derived read bits to the entries the applying principal owns, unprivileged. Red
+// if the areas stop managing their entries, or the derivation refuses.
+fn srv1_fabric_area_repair(path: String) -> String {
+  fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
+    Dependency { step: dep } => match dep.subject {
+      EnsuredManagedHostDirectory { admission } =>
+        if (ensured_subject_identity(subject: dep.subject) as String) == path { join(managed_directory_entry_repair_commands(admission: admission), "\n") } else { acc }
+      _ => acc
+    }
+    ArtifactStep { step: _ } => acc
+  })
+}
+
+test fn the_fabric_storage_area_ensure_repairs_the_ci_principals_entries() -> Bool {
+  let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
+  let objects = srv1_fabric_area_repair(path: files.objects as String)
+  let heads = srv1_fabric_area_repair(path: files.heads as String)
+  string_contains(s: objects, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: objects, pattern: "REFUSED")
+    && string_contains(s: heads, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: heads, pattern: "REFUSED")
+}
+
+// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0444, the other-read being
+// the service principal's only route to an entry the CI principal created. The per-rule cases, and
+// the refusal when a directory grants o+x, are witnessed on synthetic principals in
+// test.claim.managed_directory_witness.
+test fn the_placed_fabric_store_derives_entry_mode_0444() -> Bool {
+  match fabric_storage_entry_mode() {
+    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0444"
+    FabricStorageEntryModeRefused { detail: _ } => false
+  }
 }
 
 // THE LOG IS NOT DEPLOYMENT STATE: no retract may remove the store. Moving this root back into the
