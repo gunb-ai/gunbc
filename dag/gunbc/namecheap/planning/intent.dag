@@ -1,0 +1,55 @@
+module gunbc.namecheap.planning.intent
+
+import std.types { String, Bool, List }
+import extdeps.acme.dns01 { acme_dns01_txt_value_valid }
+import gunbc.namecheap.account { namecheap_account_report }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonArray }
+import extdeps.network.ipv4 { Ipv4Address, parse_ipv4_address, Ipv4Parsed }
+import gunbc.namecheap.planning.observation { dns_string, dns_field, dns_elements, dns_unique_object, dns_string_object }
+
+type DevDnsService = TrackerDev | ApprovalsDev
+fn dev_dns_label(s: DevDnsService) -> String { match s { TrackerDev => "tracker-dev" ApprovalsDev => "approvals-dev" } }
+fn dev_dns_origin(s: DevDnsService) -> String { join(["https://", dev_dns_label(s: s), ".", namecheap_account_report.domain], "") }
+fn dev_dns_service_id(s: DevDnsService) -> String { concat("svc:", dev_dns_label(s: s)) }
+fn dev_dns_challenge_name(s: DevDnsService) -> String { concat("_acme-challenge.", dev_dns_label(s: s)) }
+type DevServiceAddress { service: DevDnsService, ipv4: Ipv4Address, observation_ref: String }
+type Dns01Action = PublishChallenge | RetireChallenge
+type Dns01Change { service: DevDnsService, action: Dns01Action, value: String, ownership_ref: String }
+type DevDnsIntent { services: List<DevServiceAddress>, challenges: List<Dns01Change>, source: JsonValue }
+type DevDnsIntentRead = DevDnsIntentReadOk { intent: DevDnsIntent } | DevDnsIntentReadRefused { reason: String }
+
+fn dns_keys_exact(v: JsonValue, keys: List<String>) -> Bool {
+  dns_unique_object(v: v) && match v { JsonObject { members } => count(members) == count(keys) && all(members, m => keys.any(k => k == m.key)) _ => false }
+}
+fn dns_known_service(s: String) -> Bool { s == dev_dns_service_id(s: TrackerDev) || s == dev_dns_service_id(s: ApprovalsDev) }
+// Only called after dns_known_service admission.
+fn dns_service(s: String) -> DevDnsService { if s == dev_dns_service_id(s: TrackerDev) { TrackerDev } else { ApprovalsDev } }
+fn dns_tailnet_ipv4(s: String) -> Bool {
+  match parse_ipv4_address(text: s) { Ipv4Parsed { address: a } => a.octet1 == 100 && a.octet2 >= 64 && a.octet2 <= 127 _ => false }
+}
+fn dns_intent_read(v: JsonValue) -> DevDnsIntentRead {
+  let services = dns_field(v: v, key: "services")
+  let challenges = dns_field(v: v, key: "challenges")
+  let ss = dns_elements(v: services)
+  let cs = dns_elements(v: challenges)
+  if !dns_keys_exact(v: v, keys: ["schema", "services", "challenges"]) || dns_string(v: v, key: "schema") != "gunbc-dev-dns-intent/v1"
+    || !(match services { JsonArray { elements: _ } => true _ => false }) || !(match challenges { JsonArray { elements: _ } => true _ => false })
+    || count(ss) + count(cs) == 0
+    || !all(ss, s => dns_string_object(v: s) && dns_keys_exact(v: s, keys: ["service", "ipv4", "observation_ref"])
+      && dns_known_service(s: dns_string(v: s, key: "service")) && dns_tailnet_ipv4(s: dns_string(v: s, key: "ipv4")) && dns_string(v: s, key: "observation_ref") != ""
+      && count(ss.filter(other => dns_string(v: other, key: "service") == dns_string(v: s, key: "service"))) == 1)
+    || !all(cs, c => dns_string_object(v: c) && dns_keys_exact(v: c, keys: ["service", "action", "value", "ownership_ref"])
+      && dns_known_service(s: dns_string(v: c, key: "service")) && (dns_string(v: c, key: "action") == "publish" || dns_string(v: c, key: "action") == "retire")
+      && acme_dns01_txt_value_valid(s: dns_string(v: c, key: "value")) && dns_string(v: c, key: "ownership_ref") != ""
+      && count(cs.filter(other => dns_string(v: other, key: "service") == dns_string(v: c, key: "service") && dns_string(v: other, key: "value") == dns_string(v: c, key: "value"))) == 1) {
+    DevDnsIntentReadRefused { reason: "Intent has missing/unknown fields, an unsupported service/address, duplicate changes, or an invalid DNS-01 value/evidence reference" }
+  } else {
+    let addresses = flat_map(ss, s => match parse_ipv4_address(text: dns_string(v: s, key: "ipv4")) {
+      Ipv4Parsed { address: a } => [DevServiceAddress { service: dns_service(s: dns_string(v: s, key: "service")), ipv4: a, observation_ref: dns_string(v: s, key: "observation_ref") }]
+      _ => []
+    })
+    DevDnsIntentReadOk { intent: DevDnsIntent { services: addresses, challenges: map(cs, c => Dns01Change {
+      service: dns_service(s: dns_string(v: c, key: "service")), action: if dns_string(v: c, key: "action") == "publish" { PublishChallenge } else { RetireChallenge },
+      value: dns_string(v: c, key: "value"), ownership_ref: dns_string(v: c, key: "ownership_ref") }), source: v } }
+  }
+}

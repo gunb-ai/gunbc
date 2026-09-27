@@ -1,0 +1,94 @@
+module gunbc.namecheap.planning.observation
+
+import std.types { String, Bool, List, Int }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonArray, JsonNull }
+import extdeps.languages.json.parse { json_field, FieldRead, json_field_string }
+import extdeps.languages.xml.read { XmlAttribute, XmlElement }
+import extdeps.namecheap.read_hosts { NamecheapObservedHost, nc_host_valid }
+import gunbc.namecheap.account { namecheap_account_report }
+import gunbc.namecheap.credential { namecheap_api_key_secret_ref }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import extdeps.cloud.gcp.secret_ref { resolve_returned_version, SecretRefVersionResolvedAlias, SecretRefVersionResolvedExact }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.decimal { decimal_digits_only }
+import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
+
+type DnsObservation {
+  receipt: JsonValue
+  run_id: String
+  attempt: String
+  revision: String
+  started_at: String
+  credential_version: String
+  result_fields: List<XmlAttribute>
+  hosts: List<NamecheapObservedHost>
+}
+type DnsObservationRead = DnsObservationReadOk { observation: DnsObservation } | DnsObservationReadRefused { reason: String }
+
+// These projections are consumed only after the caller validates the wire shape.
+fn dns_string(v: JsonValue, key: String) -> String {
+  match json_field_string(obj: v, key: key) { FieldRead { value: s } => s _ => "" }
+}
+fn dns_field(v: JsonValue, key: String) -> JsonValue {
+  match json_field(obj: v, key: key) { FieldRead { value: x } => x _ => JsonNull }
+}
+fn dns_elements(v: JsonValue) -> List<JsonValue> { match v { JsonArray { elements } => elements _ => [] } }
+fn dns_string_object(v: JsonValue) -> Bool {
+  match v {
+    JsonObject { members } => all(members, f => f.key != "" && count(members.filter(other => other.key == f.key)) == 1 && match f.value { JsonString { value: _ } => true _ => false })
+    _ => false
+  }
+}
+fn dns_unique_object(v: JsonValue) -> Bool {
+  match v { JsonObject { members } => all(members, f => count(members.filter(other => other.key == f.key)) == 1) _ => false }
+}
+fn dns_attrs(v: JsonValue) -> List<XmlAttribute> {
+  match v { JsonObject { members } => map(members, f => XmlAttribute { name: f.key, value: dns_string(v: v, key: f.key) }) _ => [] }
+}
+fn dns_attr(fields: List<XmlAttribute>, name: String) -> String {
+  match fields.filter(f => f.name == name).first() { Present { value: f } => f.value Absent => "" }
+}
+fn dns_hex_revision(s: String) -> Bool {
+  string_length(s: s) == 40 && all(s.chars(), c => base16_is_lower_digit_code_point(cp: c))
+}
+fn dns_exact_credential(s: String) -> Bool {
+  match resolve_returned_version(returned: s as SmResolvedVersionIdentity, ref: namecheap_api_key_secret_ref, project_number: fleet_secrets_project_number as String) {
+    SecretRefVersionResolvedAlias { alias: _, version: _ } => true
+    SecretRefVersionResolvedExact { version: _ } => true
+    _ => false
+  }
+}
+fn dns_observation_read(v: JsonValue, expected_run: String, expected_attempt: String, expected_revision: String) -> DnsObservationRead {
+  let rows = dns_field(v: v, key: "hosts")
+  let result = dns_field(v: v, key: "result_fields")
+  let hosts = dns_elements(v: rows)
+  if !dns_unique_object(v: v) || dns_string(v: v, key: "schema") != "gunbc-namecheap-observation/v1"
+    || dns_string(v: v, key: "standing") != "getHosts-observed"
+    || dns_string(v: v, key: "write_authority") != "withheld" || dns_string(v: v, key: "mail_mode") != "unobserved"
+    || expected_run == "" || expected_attempt == "" || !decimal_digits_only(s: expected_run) || !decimal_digits_only(s: expected_attempt) || !dns_hex_revision(s: expected_revision)
+    || dns_string(v: v, key: "run_id") != expected_run || dns_string(v: v, key: "run_attempt") != expected_attempt || dns_string(v: v, key: "revision") != expected_revision
+    || dns_string(v: v, key: "public_egress_ipv4") != namecheap_account_report.api_allowlist_ipv4
+    || dns_string(v: v, key: "account") != namecheap_account_report.username || dns_string(v: v, key: "domain") != namecheap_account_report.domain
+    || !utc_instant_is_canonical(t: dns_string(v: v, key: "started_at")) || !dns_exact_credential(s: dns_string(v: v, key: "exact_credential_version")) {
+    DnsObservationReadRefused { reason: "Observation envelope, expected run identity, domain or exact credential version is invalid" }
+  } else if !dns_string_object(v: result) || dns_string(v: result, key: "Domain") != namecheap_account_report.domain || dns_string(v: result, key: "IsUsingOurDNS") != "true"
+    || !(match rows { JsonArray { elements: _ } => true _ => false })
+    || !all(hosts, h => dns_string_object(v: h) && nc_host_valid(e: XmlElement { name: "Host", attributes: dns_attrs(v: h), children: [], text: "" })
+      && count(hosts.filter(other => dns_string(v: other, key: "HostId") == dns_string(v: h, key: "HostId"))) == 1) {
+    DnsObservationReadRefused { reason: "Observation provider fields or host records are incomplete or ambiguous" }
+  } else {
+    DnsObservationReadOk { observation: DnsObservation { receipt: v, run_id: expected_run, attempt: expected_attempt, revision: expected_revision,
+      started_at: dns_string(v: v, key: "started_at"), credential_version: dns_string(v: v, key: "exact_credential_version"),
+      result_fields: dns_attrs(v: result), hosts: map(hosts, h => NamecheapObservedHost { fields: dns_attrs(v: h) }) } }
+  }
+}
+// Review may include cold compilation and artifact retrieval. This 30-minute
+// planning policy is not freshness admission for an eventual write under a lease.
+data dns_planning_window_seconds: Int = 1800
+
+fn dns_observation_fresh(o: DnsObservation, now: String) -> Bool {
+  utc_instant_is_canonical(t: now) && utc_instant_is_canonical(t: o.started_at)
+    && utc_instant_seconds_after(later: now, earlier: o.started_at) >= 0
+    && utc_instant_seconds_after(later: now, earlier: o.started_at) <= dns_planning_window_seconds
+}

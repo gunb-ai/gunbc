@@ -1,0 +1,135 @@
+module test.claim.namecheap_dns_plan_witness_test
+
+import std.types { String, Bool }
+import gunbc.namecheap.planning.run { dns_review_text_at }
+import gunbc.namecheap.planning.plan { DnsPlanning, DnsReviewReady, DnsPlanningRefused, dns_plan_changed, dns_plan_preimage, dns_review_still_matches, dns_zone_writer_key }
+import gunbc.namecheap.planning.observation { dns_attr }
+
+data dns_test_revision: String = "1111111111111111111111111111111111111111"
+data dns_test_credential: String = "projects/582015116396/secrets/namecheap-api-key/versions/1"
+data dns_test_token: String = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+data dns_test_other_token: String = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA"
+
+fn dns_test_receipt(rows: String, credential: String, extra_result: String) -> String {
+  join(["{\"schema\":\"gunbc-namecheap-observation/v1\",\"standing\":\"getHosts-observed\",\"run_id\":\"123\",\"run_attempt\":\"1\",\"revision\":\"", dns_test_revision,
+    "\",\"started_at\":\"2026-09-27T16:00:00Z\",\"exact_credential_version\":\"", credential,
+    "\",\"account\":\"briansrls\",\"public_egress_ipv4\":\"96.224.201.7\",\"domain\":\"gunb.ai\",\"result_fields\":{\"Domain\":\"gunb.ai\",\"IsUsingOurDNS\":\"true\"", extra_result,
+    "},\"hosts\":[", rows, "],\"mail_mode\":\"unobserved\",\"write_authority\":\"withheld\"}"], "")
+}
+fn dns_test_row(id: String, name: String, kind: String, address: String) -> String {
+  join(["{\"HostId\":\"", id, "\",\"Name\":\"", name, "\",\"Type\":\"", kind, "\",\"Address\":\"", address, "\",\"TTL\":\"1800\",\"Future\":\"preserve-me\"}"], "")
+}
+fn dns_test_intent(services: String, challenges: String) -> String {
+  join(["{\"schema\":\"gunbc-dev-dns-intent/v1\",\"services\":[", services, "],\"challenges\":[", challenges, "]}"], "")
+}
+fn dns_test_service(ip: String) -> String {
+  join(["{\"service\":\"svc:tracker-dev\",\"ipv4\":\"", ip, "\",\"observation_ref\":\"fixture-service-observation\"}"], "")
+}
+fn dns_test_challenge(action: String, value: String) -> String {
+  join(["{\"service\":\"svc:tracker-dev\",\"action\":\"", action, "\",\"value\":\"", value, "\",\"ownership_ref\":\"fixture-acme-order\"}"], "")
+}
+fn dns_test_plan(rows: String, services: String, challenges: String, now: String) -> DnsPlanning {
+  dns_review_text_at(observation: dns_test_receipt(rows: rows, credential: dns_test_credential, extra_result: ",\"FutureResult\":\"preserved\""), intent: dns_test_intent(services: services, challenges: challenges),
+    expected_run: "123", expected_attempt: "1", expected_revision: dns_test_revision, now: now)
+}
+fn dns_test_refused(p: DnsPlanning) -> Bool { match p { DnsPlanningRefused { reason: _ } => true _ => false } }
+test fn dns_preserves_unrelated_rows_and_unknown_fields() -> Bool {
+  let rows = join([dns_test_row(id: "1", name: "@", kind: "A", address: "185.199.108.153"), dns_test_row(id: "2", name: "@", kind: "TXT", address: "v=DMARC1; p=none"), dns_test_row(id: "3", name: "@", kind: "MX", address: "SMTP.GOOGLE.COM.")], ",")
+  match dns_test_plan(rows: rows, services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:01:00Z") {
+    DnsReviewReady { plan: p } => count(p.proposed) == 4 && all(p.observation.hosts, h => p.proposed.any(r => r == h.fields))
+      && dns_attr(fields: p.observation.result_fields, name: "FutureResult") == "preserved"
+    _ => false
+  }
+}
+test fn dns_existing_address_noop_retains_provider_metadata() -> Bool {
+  match dns_test_plan(rows: dns_test_row(id: "1", name: "tracker-dev", kind: "A", address: "100.100.1.1"), services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => !dns_plan_changed(p: p) _ => false
+  }
+}
+test fn dns_address_change_preserves_unknown_fields_and_ttl() -> Bool {
+  match dns_test_plan(rows: dns_test_row(id: "1", name: "tracker-dev", kind: "A", address: "100.100.1.2"), services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => dns_plan_changed(p: p) && count(p.proposed) == 1 && all(p.proposed, r => dns_attr(fields: r, name: "Future") == "preserve-me" && dns_attr(fields: r, name: "TTL") == "1800" && dns_attr(fields: r, name: "Address") == "100.100.1.1") _ => false
+  }
+}
+test fn dns_case_folded_fqdn_cname_conflict_refuses() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: dns_test_row(id: "1", name: "TRACKER-DEV.GUNB.AI.", kind: "CNAME", address: "elsewhere."), services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_existing_ipv6_requires_explicit_reconciliation() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: dns_test_row(id: "1", name: "tracker-dev", kind: "AAAA", address: "2001:db8::1"), services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_multi_address_rrset_is_not_silently_replaced() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: join([dns_test_row(id: "1", name: "tracker-dev", kind: "A", address: "100.100.1.1"), dns_test_row(id: "2", name: "tracker-dev", kind: "A", address: "100.100.1.2")], ","), services: dns_test_service(ip: "100.100.1.3"), challenges: "", now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_public_address_refuses() -> Bool { dns_test_refused(p: dns_test_plan(rows: "", services: dns_test_service(ip: "8.8.8.8"), challenges: "", now: "2026-09-27T16:00:00Z")) }
+test fn dns_stale_observation_refuses() -> Bool { dns_test_refused(p: dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:30:01Z")) }
+test fn dns_future_observation_refuses() -> Bool { dns_test_refused(p: dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T15:59:59Z")) }
+test fn dns_freshness_boundary_is_inclusive() -> Bool {
+  match dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:30:00Z") { DnsReviewReady { plan: _ } => true _ => false }
+}
+test fn dns_unresolved_credential_alias_refuses() -> Bool {
+  dns_test_refused(p: dns_review_text_at(observation: dns_test_receipt(rows: "", credential: "projects/582015116396/secrets/namecheap-api-key/versions/latest", extra_result: ""), intent: dns_test_intent(services: dns_test_service(ip: "100.100.1.1"), challenges: ""), expected_run: "123", expected_attempt: "1", expected_revision: dns_test_revision, now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_wrong_run_identity_refuses() -> Bool {
+  dns_test_refused(p: dns_review_text_at(observation: dns_test_receipt(rows: "", credential: dns_test_credential, extra_result: ""), intent: dns_test_intent(services: dns_test_service(ip: "100.100.1.1"), challenges: ""), expected_run: "999", expected_attempt: "1", expected_revision: dns_test_revision, now: "2026-09-27T16:00:00Z"))
+}
+test fn dns01_publish_preserves_other_tokens() -> Bool {
+  let existing = dns_test_row(id: "1", name: "_acme-challenge.tracker-dev", kind: "TXT", address: dns_test_other_token)
+  match dns_test_plan(rows: existing, services: "", challenges: dns_test_challenge(action: "publish", value: dns_test_token), now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => count(p.proposed) == 2 && all(p.observation.hosts, h => p.proposed.any(r => r == h.fields)) _ => false
+  }
+}
+test fn dns01_retire_removes_only_the_named_token() -> Bool {
+  let rows = join([dns_test_row(id: "1", name: "_acme-challenge.tracker-dev", kind: "TXT", address: dns_test_token), dns_test_row(id: "2", name: "_acme-challenge.tracker-dev", kind: "TXT", address: dns_test_other_token)], ",")
+  match dns_test_plan(rows: rows, services: "", challenges: dns_test_challenge(action: "retire", value: dns_test_token), now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => count(p.proposed) == 1 && all(p.proposed, r => dns_attr(fields: r, name: "Address") == dns_test_other_token && dns_attr(fields: r, name: "Future") == "preserve-me") _ => false
+  }
+}
+test fn dns_service_and_challenge_share_one_zone_plan() -> Bool {
+  match dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: dns_test_challenge(action: "publish", value: dns_test_token), now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => count(p.proposed) == 2 && dns_zone_writer_key() == "namecheap/zone/gunb.ai" _ => false
+  }
+}
+test fn dns_recheck_refuses_new_intent_and_stale_baseline() -> Bool {
+  match dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => match dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.2"), challenges: "", now: "2026-09-27T16:00:00Z") {
+      DnsReviewReady { plan: q } => dns_review_still_matches(p: p, current: p.observation, intent: p.intent, now: "2026-09-27T16:00:01Z")
+        && !dns_review_still_matches(p: p, current: q.observation, intent: q.intent, now: "2026-09-27T16:00:01Z")
+        && !dns_review_still_matches(p: p, current: p.observation, intent: p.intent, now: "2026-09-27T16:30:01Z")
+        && dns_plan_preimage(p: p) != dns_plan_preimage(p: q)
+      _ => false
+    } _ => false
+  }
+}
+
+test fn dns_duplicate_or_contradictory_challenge_intent_refuses() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: "", services: "", challenges: join([dns_test_challenge(action: "publish", value: dns_test_token), dns_test_challenge(action: "retire", value: dns_test_token)], ","), now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_delegated_challenge_owner_refuses() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: dns_test_row(id: "1", name: "_acme-challenge.tracker-dev", kind: "CNAME", address: "validation.other."), services: "", challenges: dns_test_challenge(action: "publish", value: dns_test_token), now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_backend_host_is_not_an_ingress_identity() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: "", services: "{\"service\":\"svc:tracker-dev\",\"ipv4\":\"100.100.1.1\",\"observation_ref\":\"fixture\",\"host\":\"srv2\"}", challenges: "", now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_duplicate_json_field_refuses() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: "", services: "{\"service\":\"svc:tracker-dev\",\"ipv4\":\"100.100.1.1\",\"ipv4\":\"8.8.8.8\",\"observation_ref\":\"fixture\"}", challenges: "", now: "2026-09-27T16:00:00Z"))
+}
+test fn dns_review_binds_exact_credential_generation() -> Bool {
+  match dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => match dns_review_text_at(observation: dns_test_receipt(rows: "", credential: "projects/582015116396/secrets/namecheap-api-key/versions/2", extra_result: ",\"FutureResult\":\"preserved\""), intent: dns_test_intent(services: dns_test_service(ip: "100.100.1.1"), challenges: ""), expected_run: "123", expected_attempt: "1", expected_revision: dns_test_revision, now: "2026-09-27T16:00:00Z") {
+      DnsReviewReady { plan: q } => dns_plan_preimage(p: p) != dns_plan_preimage(p: q) && !dns_review_still_matches(p: p, current: q.observation, intent: p.intent, now: "2026-09-27T16:00:01Z")
+      _ => false
+    } _ => false
+  }
+}
+test fn dns_review_binds_unknown_provider_fields() -> Bool {
+  match dns_test_plan(rows: "", services: dns_test_service(ip: "100.100.1.1"), challenges: "", now: "2026-09-27T16:00:00Z") {
+    DnsReviewReady { plan: p } => match dns_review_text_at(observation: dns_test_receipt(rows: "", credential: dns_test_credential, extra_result: ",\"FutureResult\":\"changed\""), intent: dns_test_intent(services: dns_test_service(ip: "100.100.1.1"), challenges: ""), expected_run: "123", expected_attempt: "1", expected_revision: dns_test_revision, now: "2026-09-27T16:00:00Z") {
+      DnsReviewReady { plan: q } => dns_plan_preimage(p: p) != dns_plan_preimage(p: q) && !dns_review_still_matches(p: p, current: q.observation, intent: p.intent, now: "2026-09-27T16:00:01Z")
+      _ => false
+    } _ => false
+  }
+}
+
+test fn dns01_invalid_digest_padding_bits_refuse() -> Bool {
+  dns_test_refused(p: dns_test_plan(rows: "", services: "", challenges: dns_test_challenge(action: "publish", value: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"), now: "2026-09-27T16:00:00Z"))
+}

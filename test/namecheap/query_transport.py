@@ -2,8 +2,6 @@
 import http.server
 import json
 import pathlib
-import re
-import shutil
 import tempfile
 import subprocess
 import sys
@@ -16,29 +14,7 @@ fixture = 'fixture-only-not-a-key&value'
 observed = {}
 
 
-def stage_import_closure(entry, destination):
-    index = {}
-    for tree in ('dag', 'src/v2'):
-        for source in (root / tree).rglob('*.dag'):
-            content = source.read_text()
-            module = re.search(r'^module\s+([\w.]+)', content, re.M)
-            if module:
-                index[module[1]] = (source, content)
-    pending, seen = [entry], set()
-    while pending:
-        source = pending.pop()
-        if source in seen:
-            continue
-        seen.add(source)
-        for module in re.findall(r'^import\s+([\w.]+)', source.read_text(), re.M):
-            if module not in index:
-                raise RuntimeError('Unresolved fixture import: ' + module)
-            pending.append(index[module][0])
-    for source in seen:
-        copied = destination / source.relative_to(root)
-        copied.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, copied)
-    return destination / entry.relative_to(root)
+from support import stage_import_closure
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
