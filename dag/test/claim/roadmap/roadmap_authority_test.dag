@@ -1145,11 +1145,14 @@ test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> 
       if count(unfiltered) == 0 {
         false
       } else {
-        let victim = first(unfiltered)
-        !(startable_nodes_missing_closing_contract_for_accepted(
-          accepted: accepted,
-          withheld: [victim.node],
-        ) |> any(x => x.node == victim.node))
+        match first(unfiltered) {
+          Absent => false
+          Present { value: victim } =>
+            !(startable_nodes_missing_closing_contract_for_accepted(
+              accepted: accepted,
+              withheld: [victim.node],
+            ) |> any(x => x.node == victim.node))
+        }
       }
   }
 }
