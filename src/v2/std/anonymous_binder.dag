@@ -70,12 +70,6 @@ fn fresh_return_type_variable(path: List<Int>) -> Symbol {
   fresh_type_variable(path: path, label: symbol_intern_lexeme(lexeme: "<return>"))
 }
 
-// A fresh type variable the producer minted and no declaration has positioned yet (an empty path).
-fn is_unpositioned_fresh_type_variable(sym: Symbol) -> Bool {
-  starts_with(s: symbol_lexeme(sym: sym), prefix: fresh_type_variable_prefix() + ":")
-}
-
-
 // THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission
 // (v2.std.compilers.target_model bound_spelling_from_map) renders it `_`, and
 // v2.compiler.reference_conservation credits it -- asks this, and never compares a label to `_`.
