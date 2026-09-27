@@ -20,6 +20,10 @@ import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  NodeFold,
+  arrow_signature_order_label,
+  edge_label_of,
+  fold_node,
   Arrow,
   Atom,
   Conj,
@@ -89,9 +93,24 @@ fn product_introduction_census_step(
   }
 }
 
+// THE CENSUS COUNTS THE PRODUCTS INFER IS ASKED TO DERIVE. An Arrow's declared-order edge
+// (v2.std.node arrow_signature_order_label) carries a list of parameter LABELS whose head is a
+// qualified-name spine of Conj cells; infer declines that subtree by design (v2.compiler.infer
+// infer_arrow_signature_order_edge) and carries the order as the Arrow's own evidence, so its spine
+// cells are not products and are not counted. Every other node is.
+fn product_introduction_census_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { [self] },
+      step: fn(acc, edge, sub) { if edge_label_of(e: edge) == arrow_signature_order_label { acc } else { concat(acc, sub) } }
+    }
+  )
+}
+
 fn product_introduction_census(inferred: InferredTree) -> ProductIntroductionCensus {
   fold_list(
-    xs: node_subtree_nodes(root: inferred.root),
+    xs: product_introduction_census_nodes(root: inferred.root),
     empty: ProductIntroductionCensus {
       conjs: 0,
       conjs_derived: 0,
