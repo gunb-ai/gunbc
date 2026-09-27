@@ -1,0 +1,50 @@
+module test.claim.machine_intake.mtcollins1_boot_phase_timing_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
+import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
+import gunbc.machine_intake_mtcollins1_boot_phase_timing {
+  MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, BootStartCold,
+  PhaseSolAcquire, PhaseHandoff, PhaseTerminalWatch,
+  mtcollins1_boot_start_of, mtcollins1_boot_phase_timing_text, mtcollins1_boot_phase_timing_not_taken,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED READINGS, not a boot: the subject is the rendering of offsets from the hold, so the clock
+// values are constructed at this boundary. The real producer is mtcollins1_boot_actuate, whose
+// readings reach this renderer through the diagnostic bundle of a dispatched boot.
+fn timing() -> MtCollins1BootPhaseTiming {
+  MtCollins1BootPhaseTiming {
+    hold_acquired: ClockUnixMillisObserved { millis: 1000 },
+    start: BootStartCold,
+    spans: [
+      MtCollins1BootPhaseSpan { phase: PhaseSolAcquire, begin: ClockUnixMillisObserved { millis: 1000 }, end: ClockUnixMillisObserved { millis: 3400 } },
+      MtCollins1BootPhaseSpan { phase: PhaseHandoff, begin: ClockUnixMillisObserved { millis: 9000 }, end: ClockUnixMillisObserved { millis: 21000 } },
+      MtCollins1BootPhaseSpan { phase: PhaseTerminalWatch, begin: ClockUnixMillisObserved { millis: 21000 }, end: ClockUnixMillisRefused { detail: "date command failed" } },
+    ],
+  }
+}
+
+test fn each_phase_reports_offset_from_hold_and_span_to_verified() -> Bool {
+  let t = mtcollins1_boot_phase_timing_text(t: timing())
+  contains(t, "phase sol_acquire: first_action=+0ms verified_after=2400ms")
+    && contains(t, "phase handoff: first_action=+8000ms verified_after=12000ms")
+}
+
+test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
+  let t = mtcollins1_boot_phase_timing_text(t: timing())
+  contains(t, "phase terminal_watch: first_action=+20000ms verified_after=unread (date command failed)")
+}
+
+test fn power_up_is_cold_and_power_cycle_is_warm() -> Bool {
+  let cold = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming { hold_acquired: ClockUnixMillisObserved { millis: 0 }, start: mtcollins1_boot_start_of(transition: PoweredOn), spans: [] })
+  let warm = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming { hold_acquired: ClockUnixMillisObserved { millis: 0 }, start: mtcollins1_boot_start_of(transition: PowerCycled), spans: [] })
+  contains(cold, "boot_start=cold") && contains(warm, "boot_start=warm")
+}
+
+test fn an_attempt_that_never_held_says_so() -> Bool {
+  let t = mtcollins1_boot_phase_timing_text(t: mtcollins1_boot_phase_timing_not_taken(reason: "the unit hold was refused"))
+  contains(t, "boot_start=unobserved (the unit hold was refused)") && contains(t, "phases: none reached")
+}

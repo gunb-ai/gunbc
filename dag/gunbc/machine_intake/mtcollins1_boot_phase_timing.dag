@@ -1,0 +1,107 @@
+module gunbc.machine_intake_mtcollins1_boot_phase_timing
+
+import std.types { Int, List, NonEmptyStr, String }
+import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import gunbc.machine_intake_oob_boot_handoff { ObservedPowerTransition, PoweredOn, PowerCycled }
+
+// THE INSTRUMENT FOR THE BOOT STEP'S OWN TIME (operator ruling 2026-09-27: mtcollins1_boot time
+// toward 0, including avoidable delay inside the step). Each wait in the boot path is removed or
+// kept by a before/after reading from THIS record, never from a transcribed figure (DESIGN §6: name
+// the instrument). It is produced by a real boot -- mtcollins1_boot_actuate reads the clock at each
+// phase boundary under the unit hold -- and rendered into the diagnostic bundle's run section, so
+// the instrument's name is this module and its invocation is a dispatched boot.
+//
+// TWO NUMBERS PER PHASE, both from the hold's acquisition: when the phase's first hardware action
+// was issued (every phase opens with its BMC call, so its begin reading IS that instant), and how
+// long the phase took to reach its verified observation. A wait that sits BETWEEN phases shows as a
+// gap between one phase's end and the next one's begin; a wait INSIDE a phase shows in its span.
+type MtCollins1BootPhase
+  = PhaseSolAcquire
+  | PhaseParam5Before
+  | PhaseMediaAttach
+  | PhaseHandoff
+  | PhaseTerminalWatch
+  | PhaseParam5After
+  | PhasePowerAfter
+  | PhaseSolRelease
+
+fn mtcollins1_boot_phase_word(phase: MtCollins1BootPhase) -> String {
+  match phase {
+    PhaseSolAcquire => "sol_acquire"
+    PhaseParam5Before => "param5_before"
+    PhaseMediaAttach => "media_attach"
+    PhaseHandoff => "handoff"
+    PhaseTerminalWatch => "terminal_watch"
+    PhaseParam5After => "param5_after"
+    PhasePowerAfter => "power_after"
+    PhaseSolRelease => "sol_release"
+  }
+}
+
+type MtCollins1BootPhaseSpan {
+  phase: MtCollins1BootPhase
+  begin: ClockUnixMillisRead
+  end: ClockUnixMillisRead
+}
+
+// COLD OR WARM IS WHAT THE HANDOFF OBSERVED, not a guess: the handoff reads chassis power, selects
+// power-up for an OFF unit (the firmware trains memory from cold) or a cycle for an ON one, and
+// returns the transition its read-back saw. A handoff that did not issue has no start to classify.
+type MtCollins1BootStart
+  = BootStartCold
+  | BootStartWarm
+  | BootStartUnobserved { reason: NonEmptyStr }
+
+fn mtcollins1_boot_start_of(transition: ObservedPowerTransition) -> MtCollins1BootStart {
+  match transition {
+    PoweredOn => BootStartCold
+    PowerCycled => BootStartWarm
+  }
+}
+
+type MtCollins1BootPhaseTiming {
+  hold_acquired: ClockUnixMillisRead
+  start: MtCollins1BootStart
+  spans: List<MtCollins1BootPhaseSpan>
+}
+
+fn mtcollins1_boot_phase_timing_not_taken(reason: NonEmptyStr) -> MtCollins1BootPhaseTiming {
+  MtCollins1BootPhaseTiming {
+    hold_acquired: ClockUnixMillisRefused { detail: reason as String },
+    start: BootStartUnobserved { reason: reason },
+    spans: [],
+  }
+}
+
+fn mtcollins1_boot_start_word(start: MtCollins1BootStart) -> String {
+  match start {
+    BootStartCold => "cold"
+    BootStartWarm => "warm"
+    BootStartUnobserved { reason: r } => concat("unobserved (", r as String, ")")
+  }
+}
+
+// AN UNREADABLE CLOCK IS PRINTED AS ITS CAUSE, never as 0 (std.observation observation_measured_note).
+fn mtcollins1_boot_millis_between(from: ClockUnixMillisRead, to: ClockUnixMillisRead) -> String {
+  match from {
+    ClockUnixMillisRefused { detail: d } => concat("unread (", d, ")")
+    ClockUnixMillisObserved { millis: a } =>
+      match to {
+        ClockUnixMillisRefused { detail: d } => concat("unread (", d, ")")
+        ClockUnixMillisObserved { millis: b } => concat(to_string((b as Int) - (a as Int)), "ms")
+      }
+  }
+}
+
+fn mtcollins1_boot_phase_span_text(hold: ClockUnixMillisRead, span: MtCollins1BootPhaseSpan) -> String {
+  concat("phase ", mtcollins1_boot_phase_word(phase: span.phase),
+    ": first_action=+", mtcollins1_boot_millis_between(from: hold, to: span.begin),
+    " verified_after=", mtcollins1_boot_millis_between(from: span.begin, to: span.end))
+}
+
+fn mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming) -> String {
+  join(concat(
+    [concat("boot_start=", mtcollins1_boot_start_word(start: t.start))],
+    if count(t.spans) == 0 { ["phases: none reached"] } else { map(t.spans, s => mtcollins1_boot_phase_span_text(hold: t.hold_acquired, span: s)) },
+  ), "\n")
+}

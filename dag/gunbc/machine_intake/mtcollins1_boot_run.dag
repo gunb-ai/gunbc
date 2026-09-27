@@ -30,7 +30,12 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
 }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult }
+import gunbc.machine_intake_mtcollins1_boot_phase_timing {
+  MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, BootStartUnobserved, mtcollins1_boot_phase_timing_not_taken,
+  PhaseSolAcquire, PhaseParam5Before, PhaseMediaAttach, PhaseHandoff, PhaseTerminalWatch, PhaseParam5After, PhasePowerAfter, PhaseSolRelease,
+}
+import extdeps.clock { clock_unix_millis_read }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_milestone {
   MtCollins1BootTopologyExpectation, mtcollins1_boot_topology_expectation,
@@ -985,6 +990,7 @@ type MtCollins1BootActuation {
   override_before: BootParam5Reading
   override_after: BootParam5Reading
   power_after: PowerAfterAttempt
+  timing: MtCollins1BootPhaseTiming
 }
 
 fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtCollins1BootActuation {
@@ -994,6 +1000,7 @@ fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtColl
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
     power_after: PowerAfterNotTaken { reason: reason },
+    timing: mtcollins1_boot_phase_timing_not_taken(reason: reason),
   }
 }
 
@@ -1072,26 +1079,33 @@ fn mtcollins1_boot_actuate(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
+  // THE PHASE CLOCK (gunbc.machine_intake_mtcollins1_boot_phase_timing). Each reading is a local
+  // `date` exec taken between two BMC calls; it changes no order and writes nothing.
+  let hold_acquired = clock_unix_millis_read()
   match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
     ExitFailure { code: c, reason: r } => actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
     ExitSuccess => {
+      let sol_held = clock_unix_millis_read()
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
-      let issued = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+      let p5_before_read = clock_unix_millis_read()
+      let attached = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
         Present { value: why } => exit_failure(reason: why)
-        Absent =>
-          match mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt) {
-            ExitSuccess =>
-              mtcollins1_drive_handoff(
-                proof: proof,
-                label: "mtcollins1 cdrom handoff",
-                password_file_raw: password_file,
-                capability_row: mtcollins1_capability_row,
-                selection: subject.selection,
-              )
-            other => other
-          }
+        Absent => mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt)
       }
-      let observed = match issued {
+      let attach_verified = clock_unix_millis_read()
+      let handoff = match attached {
+        ExitSuccess =>
+          mtcollins1_drive_handoff(
+            proof: proof,
+            label: "mtcollins1 cdrom handoff",
+            password_file_raw: password_file,
+            capability_row: mtcollins1_capability_row,
+            selection: subject.selection,
+          )
+        other => MtCollins1HandoffResult { outcome: other, start: BootStartUnobserved { reason: "the attach refused, so no handoff was issued" } }
+      }
+      let power_verified = clock_unix_millis_read()
+      let observed = match handoff.outcome {
         ExitSuccess => {
           let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
           let watch = mtcollins1_boot_await_capture_terminal(
@@ -1112,13 +1126,19 @@ fn mtcollins1_boot_actuate(
         }
         other => ActuationWatch { outcome: other, stage: ActuationNotPoweredOn { reason: "the attach or the handoff refused, so power on was never observed" } }
       }
+      let terminal_observed = clock_unix_millis_read()
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
+      let p5_after_read = clock_unix_millis_read()
       let power_after = mtcollins1_boot_power_after_poll(
         password_file: password_file,
         census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
         remaining: mtcollins1_boot_power_after_samples,
       )
+      let power_after_read = clock_unix_millis_read()
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
+      let released = clock_unix_millis_read()
+      let reached_power = match attached { ExitSuccess => true _ => false }
+      let reached_watch = match handoff.outcome { ExitSuccess => true _ => false }
       MtCollins1BootActuation {
         override_before: p5_before,
         override_after: p5_after,
@@ -1135,6 +1155,28 @@ fn mtcollins1_boot_actuate(
           other => other
         },
         stage: observed.stage,
+        timing: MtCollins1BootPhaseTiming {
+          hold_acquired: hold_acquired,
+          start: handoff.start,
+          spans: concat(
+            [
+              MtCollins1BootPhaseSpan { phase: PhaseSolAcquire, begin: hold_acquired, end: sol_held },
+              MtCollins1BootPhaseSpan { phase: PhaseParam5Before, begin: sol_held, end: p5_before_read },
+              MtCollins1BootPhaseSpan { phase: PhaseMediaAttach, begin: p5_before_read, end: attach_verified },
+            ],
+            concat(
+              if reached_power { [MtCollins1BootPhaseSpan { phase: PhaseHandoff, begin: attach_verified, end: power_verified }] } else { [] },
+              concat(
+                if reached_watch { [MtCollins1BootPhaseSpan { phase: PhaseTerminalWatch, begin: power_verified, end: terminal_observed }] } else { [] },
+                [
+                  MtCollins1BootPhaseSpan { phase: PhaseParam5After, begin: terminal_observed, end: p5_after_read },
+                  MtCollins1BootPhaseSpan { phase: PhasePowerAfter, begin: p5_after_read, end: power_after_read },
+                  MtCollins1BootPhaseSpan { phase: PhaseSolRelease, begin: power_after_read, end: released },
+                ],
+              ),
+            ),
+          ),
+        },
       }
     }
   }
@@ -1166,7 +1208,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         sol_pid_path: sol_pid_path,
         sol_capture_path: sol_capture_path,
       )
-      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after }
+      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing }
     }
   }
 }
@@ -1193,6 +1235,7 @@ type MtCollins1BootAttempt {
   override_before: BootParam5Reading
   override_after: BootParam5Reading
   power_after: PowerAfterAttempt
+  timing: MtCollins1BootPhaseTiming
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -1210,6 +1253,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
     override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
     override_after: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
     power_after: PowerAfterNotTaken { reason: "the attempt ended before the unit hold" },
+    timing: mtcollins1_boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
   }
 }
 
@@ -1245,13 +1289,13 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
-        run: mtcollins1_boot_run_record(stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after),
+        run: mtcollins1_boot_run_record(stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing),
       }
     }
   }
 }
 
-fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt) -> MtCollins1BootRunRecord {
+fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt, timing: MtCollins1BootPhaseTiming) -> MtCollins1BootRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MtCollins1BootRunRecord {
@@ -1261,6 +1305,7 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
         override_after: after,
         override: OverrideNotHandedOff { reason: why },
         power_after: power_after,
+        timing: timing,
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
@@ -1270,6 +1315,7 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
         override_after: after,
         override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: false),
         power_after: power_after,
+        timing: timing,
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
@@ -1279,6 +1325,7 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
         override_after: after,
         override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: true),
         power_after: power_after,
+        timing: timing,
       }
   }
 }
@@ -1386,6 +1433,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
         override_before: act.override_before,
         override_after: act.override_after,
         power_after: act.power_after,
+        timing: act.timing,
       }
     }
     Present { value: user } => {
@@ -1399,6 +1447,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
         override_before: act.override_before,
         override_after: act.override_after,
         power_after: act.power_after,
+        timing: act.timing,
       }
     }
   }
