@@ -917,7 +917,7 @@ fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String
 
 // A MINTED ANONYMOUS SLOT IS SPELLED AS ITS AUTHORED SOURCE, `_`, never as its marker text: the
 // marker is not an identifier in any target. That is the inverse of the one mint
-// (v2.std.anonymous_binder anonymous_binder_mint_domain). A target that admits only one `_` per
+// (v2.std.anonymous_binder anonymous_binder_mint_parameter_list). A target that admits only one `_` per
 // signature receives two and its own compiler refuses them; no target row carries a per-target
 // anonymous-parameter spelling yet.
 fn bound_spelling_from_map(
@@ -3910,28 +3910,27 @@ fn target_bodied_arrow_compose_statement_tokens(
   )
 }
 
+// The fold-list's items in order, walked with an accumulator so the walk is a tail call: a long
+// token list is not a stack as deep as the list.
 fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List<Node>> {
+  concrete_syntax_token_node_targets_into(node: node, acc: Empty)
+}
+
+fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   match node.kind {
     TypeNode { connective: Conj } =>
       if is_empty(xs: node.children) {
-        outcome_accepted(Empty)
+        outcome_accepted(acc)
       } else {
-        bind_outcome(
-          o: find_named_child(root: node, name: ^fold_list_node_head),
-          f: fn(head) {
-            bind_outcome(
-              o: find_named_child(root: node, name: ^fold_list_node_tail),
-              f: fn(tail) {
-                bind_outcome(
-                  o: concrete_syntax_token_node_targets_from_list_node(node: tail),
-                  f: fn(rest) {
-                    outcome_accepted(Cons { head: head, tail: rest })
-                  }
-                )
-              }
-            )
-          }
-        )
+        match find_named_child(root: node, name: ^fold_list_node_head) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: head, diagnostics: _ } =>
+            match find_named_child(root: node, name: ^fold_list_node_tail) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: tail, diagnostics: _ } =>
+                concrete_syntax_token_node_targets_into(node: tail, acc: list_snoc_item(xs: acc, item: head))
+            }
+        }
       }
     _ =>
       outcome_rejected(
@@ -14199,7 +14198,16 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
     optional_present(value: ^dag_binding_pick_lit_two)
   } else if id == ^dag_rec_lit_nine {
     optional_present(value: ^dag_binding_rec_lit_nine)
-  } else if id == ^dag_binding_param_r {
+  } else {
+    optional_absent()
+  }
+}
+
+// CANONICAL PARAMETER NAMES are not literals: they are names, so they resolve through arrow scope or
+// not at all. Only the historical no-literal arm (target_value_expr_mint_unscoped_atom) reads this
+// table; the arrow-scope caller refuses them when they miss scope.
+fn target_value_expr_binding_ref_for_canonical_param_atom(id: Symbol) -> Optional<Symbol> {
+  if id == ^dag_binding_param_r {
     optional_present(value: ^dag_binding_param_r)
   } else if id == ^dag_binding_param_x {
     optional_present(value: ^dag_binding_param_x)
@@ -14216,9 +14224,31 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
   }
 }
 
+fn target_value_expr_mint_unscoped_atom(id: Symbol) -> Outcome<TargetValueExpression> {
+  match target_value_expr_binding_ref_for_canonical_param_atom(id: id) {
+    Present { value: binding } => outcome_accepted(target_value_expression_binding_ref(binding: binding))
+    Absent => outcome_accepted(target_value_expression_symbol_identity(identity: id))
+  }
+}
+
 fn target_value_expr_project_pick_literal_atom(
   id: Symbol,
   source_bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
+  target_value_expr_project_pick_literal_atom_or(
+    id: id,
+    source_bool_form: source_bool_form,
+    on_no_literal: fn(sym) { target_value_expr_mint_unscoped_atom(id: sym) }
+  )
+}
+
+// THE ONE LITERAL LADDER. `on_no_literal` is what an atom that spells no literal becomes: the
+// historical callers mint it as a symbol_identity; the arrow-scope caller, for which such an atom is
+// a name that missed scope, refuses (target_value_expr_project_atom_in_arrow_scope).
+fn target_value_expr_project_pick_literal_atom_or(
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape,
+  on_no_literal: fn(Symbol) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: id,
@@ -14232,10 +14262,7 @@ fn target_value_expr_project_pick_literal_atom(
           outcome_accepted(
             target_value_expression_binding_ref(binding: binding)
           )
-        Absent =>
-          outcome_accepted(
-            target_value_expression_symbol_identity(identity: id)
-          )
+        Absent => on_no_literal(id)
       }
   }
 }
@@ -14262,9 +14289,17 @@ fn target_value_expr_project_atom_in_arrow_scope(
                 target_value_expression_binding_ref(binding: scoped)
               )
             Rejected { diagnostics: _ } =>
-              target_value_expr_project_atom_literal(
+              target_value_expr_project_atom_literal_or(
                 node: node,
-                source_bool_form: source_bool_form
+                source_bool_form: source_bool_form,
+                on_no_literal: fn(_) {
+                  outcome_rejected(
+                    target_value_expr_diagnostic(
+                      reason: ^target_value_expr_reason_body_scope_binding_invalid,
+                      node: node
+                    )
+                  )
+                }
               )
           }
         _ =>
@@ -14283,15 +14318,28 @@ fn target_value_expr_project_atom_literal(
   node: Node,
   source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
+  target_value_expr_project_atom_literal_or(
+    node: node,
+    source_bool_form: source_bool_form,
+    on_no_literal: fn(sym) { target_value_expr_mint_unscoped_atom(id: sym) }
+  )
+}
+
+fn target_value_expr_project_atom_literal_or(
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape,
+  on_no_literal: fn(Symbol) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_value_expression_symbol_identity_atom {
         bind_outcome(
           o: target_value_expression_symbol_identity_from_wire(wire: node),
           f: fn(inner_id) {
-            target_value_expr_project_pick_literal_atom(
+            target_value_expr_project_pick_literal_atom_or(
               id: inner_id,
-              source_bool_form: source_bool_form
+              source_bool_form: source_bool_form,
+              on_no_literal: on_no_literal
             )
           }
         )
@@ -14302,9 +14350,10 @@ fn target_value_expr_project_atom_literal(
           Present { value: b } =>
             outcome_accepted(target_value_expression_bool_literal(value: b))
           Absent =>
-            target_value_expr_project_pick_literal_atom(
+            target_value_expr_project_pick_literal_atom_or(
               id: id,
-              source_bool_form: source_bool_form
+              source_bool_form: source_bool_form,
+              on_no_literal: on_no_literal
             )
         }
       }

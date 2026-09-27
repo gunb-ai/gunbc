@@ -753,6 +753,23 @@ fn required_gate_prefixes() -> List<String> {
 // class the red has to execute where merges are decided, so the six leave the cost-debt roster in
 // the same change. All six claims read parse-and-normalize subjects that are WARM in
 // `v2.workflow.floor_pure_producer_share`. The module declares SubstrateInputsOnly.
+//
+// THE SEVENTH ROW IS THE HOST ALLOCATION CONSERVATION WALL (adhoc-063da1b9-c42; parent ruling
+// msg_c48f6766 from proud-deer-538, following operator option A of 2026-09-26). srv1's runner width
+// envelope ignored the served deployment's slice charge while the placement verdict counted it, and
+// the verdict charged the microVM shakedown slot as one fleet slot while the width charged its real
+// size (both repaired by gunbc#12339). srv1 committed 14 slots on a host that conserved 11 and its
+// placement plan refused, and no lane saw it: `committed_width_fits_on_every_host_with_an_established_charge`
+// was FALSE on main while this module dispositioned DeclinedOutsideRequiredGate, and
+// `saturation_refuses_rather_than_reporting_the_ceiling` sat red with no reader. An over-commit is a
+// silent capacity lie until the kernel OOM-kills something, so its wall has to run where merges are
+// decided. Every claim in the module was measured under the new-witness step ceiling with a local
+// claim_batch run over the module (its [witness] eval_steps lines re-derive the figures, which are
+// not transcribed here). Preparation growth is gunbc.fleet_host_budget, gunbc.ci_runner_placement and
+// gunbc.live_deploy.served_slice_charge beyond what the runner-capacity rows already carry. The module
+// declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
+// its identity-grained disposition.
+//
 // THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
@@ -775,6 +792,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.stage0_emitted_edge_admission_witness",
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
+    "test.claim.host_allocation_conservation",
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.manual.cross_language_add_python_to_typescript",
   ]
