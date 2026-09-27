@@ -17373,7 +17373,6 @@ fn reconcile_with_typed_cache(
                                             (symbol_index.clone(), closure_variant_base.clone())
                                         }
                                     };
-                                eprintln!("[dbg] typecheck {mod_name}");
                                 let module_tc_started = std::time::Instant::now();
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
