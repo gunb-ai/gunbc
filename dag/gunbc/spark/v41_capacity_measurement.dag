@@ -25,6 +25,7 @@ import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat }
 import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, render_oci_content_digest_wire }
 import gunbc.floor_memory_demand { CgroupMemoryEvents }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_arm_a_produced_image, v41_production_produced_image }
 import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyUnread, ClientBenchLatencyReported }
 
 // ══ V4.1 CAPACITY MEASUREMENT ═══════════════════════════════════════════════════════════════════
@@ -124,10 +125,11 @@ data v41_probe_cells: List<V41ProbeCell> = [
 // and a switch to keep it is the escape hatch #12304 refused. The arm is read off the image by a
 // binding keyed on the image's CONFIG DIGEST, the same digest every rank's startup receipt carries,
 // and an image no binding names (or two bindings name) has no arm and refuses. The build run that
-// produced the image is carried beside the digest as its provenance.
+// produced the image is carried beside the digest as its provenance: a binding names the image's
+// receipt row (gunbc.spark.v41_runtime_image_converge V41ProducedImageHeld), never a copy of its digest.
 type V41EngramStartupArm = EngramUpstreamPinned | EngramFileBackedReleased
 
-type V41EngramArmBinding { arm: V41EngramStartupArm, image_config: OciContentDigest, build_run: NonEmptyStr }
+type V41EngramArmBinding { arm: V41EngramStartupArm, image: V41ProducedImageHeld }
 
 // Arm B: fleet-converge run 36327364664 (tag gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e), the production
 // V4.1 image built on srv8 with the design-B cutover's patch set (#12359), so it serves Engram
@@ -136,21 +138,13 @@ type V41EngramArmBinding { arm: V41EngramStartupArm, image_config: OciContentDig
 // gunbc-vllm-dsv41-gb10:d73e307009a5d716), reported by proud-deer-538 2026-09-26. Built before the
 // _allocate_weights cutover, so it serves upstream pinned storage.
 data v41_engram_arm_bindings: List<V41EngramArmBinding> = [
-  V41EngramArmBinding {
-    arm: EngramUpstreamPinned,
-    image_config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
-    build_run: "36207135528" as NonEmptyStr,
-  },
-  V41EngramArmBinding {
-    arm: EngramFileBackedReleased,
-    image_config: OciSha256Digest(Sha256Digest { hex: "5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" as Sha256DigestHex }),
-    build_run: "36327364664" as NonEmptyStr,
-  },
+  V41EngramArmBinding { arm: EngramUpstreamPinned, image: v41_arm_a_produced_image },
+  V41EngramArmBinding { arm: EngramFileBackedReleased, image: v41_production_produced_image },
 ]
 
 fn v41_engram_arm_of(image: V41OciImageDigest, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
   let wire = render_oci_content_digest_wire(d: image.config)
-  let matching = filter(bindings, b => render_oci_content_digest_wire(d: b.image_config) == wire)
+  let matching = filter(bindings, b => render_oci_content_digest_wire(d: b.image.config) == wire)
   if length(matching) != 1 {
     none
   } else {
@@ -959,8 +953,8 @@ fn v41_serving_admission(realization: V41ServingRealization, report: V41Capacity
 // The plan the wet runner will execute, rendered without touching a host: the startup receipt from
 // every rank, the residency timeline for each bound image arm, the probe cells, the staircase, and
 // the standing of every precondition that is not met yet. The wet runner is a fleet mode that lands
-// after the srv8 runtime image exists (v41_wet_runner_frontier), and it consumes this same plan.
-data v41_wet_runner_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the srv8 V4.1 runtime image exists (after #12294) and a Group A fleet mode (a gunbc.ci.ci_spec GunbcRunStepTarget) brings up the measurement serve and reads the startup log lines, cgroup files, PSI, diskstats, mincore residency, torch memory, and vLLM metrics on every rank, producing the readings this module admits. SUFFICIENT FOR: v41_capacity_report is computed from readings taken on srv5-8 under one run id." as NonEmptyStr)
+// by the Group A fleet mode (v41_wet_runner_frontier), and it consumes this same plan.
+data v41_wet_runner_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: a Group A fleet mode (a gunbc.ci.ci_spec GunbcRunStepTarget) brings up the measurement serve and reads the startup log lines, cgroup files, PSI, diskstats, mincore residency, torch memory, and vLLM metrics on every rank, producing the readings this module admits, and reads each rank's Engram arm off the config digest its startup receipt carries through v41_engram_arm_of over v41_engram_arm_bindings. SUFFICIENT FOR: v41_capacity_report is computed from readings taken on srv5-8 under one run id, with each rank's arm read from its own image rather than asserted." as NonEmptyStr)
 
 fn v41_capacity_measurement_plan_text() -> String {
   let arms = if length(v41_engram_arm_bindings) == 0 {
