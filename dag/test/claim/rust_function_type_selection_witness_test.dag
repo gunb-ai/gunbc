@@ -1,0 +1,139 @@
+module test.claim.rust_function_type_selection_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.pareto { ParetoEntry }
+import std.decision {
+  CandidateFieldEstablished,
+  DecisionScope,
+  RealizationSelectionResult,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionReceipt,
+  receipts_eq,
+}
+import extdeps.languages.rust.function_type_forms { RustFnBoundReturn, RustFnItemReturn, RustFunctionTypePosition }
+import gunbc.rust_function_type_selection {
+  ax_admitted_at_position,
+  ax_dynamic_dispatch_per_call,
+  ax_heap_allocations_per_value,
+  ax_type_nameable,
+  rust_fn_type_boxed_trait_object,
+  rust_fn_type_constraints_authority,
+  rust_fn_type_evidence_snapshot,
+  rust_fn_type_field_identity,
+  rust_fn_type_impl_trait,
+  rust_fn_type_policy_identity,
+  rust_fn_type_subject_identity,
+  select_rust_function_type,
+  select_rust_function_type_with_withheld_nameability,
+}
+import v2.extdeps.languages.rust { rust_function_type_realization_rows }
+import v2.std.compilers.target_model {
+  FunctionTypeAtFnBoundReturn,
+  FunctionTypeAtItemReturn,
+  FunctionTypePosition,
+  FunctionTypeRealizationRow,
+}
+
+// THE RUST TARGET MODEL'S FUNCTION-TYPE ROWS ARE PINNED TO AN EXECUTED SELECTION. Each claim runs
+// std.decision select_realization for one position (gunbc.rust_function_type_selection) and
+// compares the WHOLE SelectionReceipt -- subject, candidate field and its standing, constraint
+// authority, funded axes, evidence snapshot, Pareto survivors, policy, selected identity -- to the
+// scope this position's decision is about, and then requires the row the emitter reads at that
+// position to name the selected candidate. A row edited to the other form, a selection whose
+// facts, axes, constraint or policy move, or a receipt minted for a different question, each reds
+// here; none of it is a copied winner.
+
+fn scope_for(position: RustFunctionTypePosition) -> DecisionScope {
+  DecisionScope {
+    decision_subject: rust_fn_type_subject_identity(position: position),
+    candidate_field_identity: rust_fn_type_field_identity(position: position),
+    candidate_field_standing: CandidateFieldEstablished { identities: [rust_fn_type_impl_trait, rust_fn_type_boxed_trait_object] },
+    constraint_authority: rust_fn_type_constraints_authority,
+    funded_axes: [ax_admitted_at_position, ax_heap_allocations_per_value, ax_dynamic_dispatch_per_call, ax_type_nameable],
+    evidence_snapshot: rust_fn_type_evidence_snapshot,
+  }
+}
+
+fn row_realization_at(position: FunctionTypePosition) -> String? {
+  fold(rust_function_type_realization_rows, init: Absent, f: (acc, row) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match position {
+          FunctionTypeAtItemReturn =>
+            match row.position {
+              FunctionTypeAtItemReturn => Present { value: row.realization as String }
+              FunctionTypeAtFnBoundReturn => Absent
+            }
+          FunctionTypeAtFnBoundReturn =>
+            match row.position {
+              FunctionTypeAtItemReturn => Absent
+              FunctionTypeAtFnBoundReturn => Present { value: row.realization as String }
+            }
+        }
+    }
+  )
+}
+
+fn row_names(position: FunctionTypePosition, selected: DeclarationRef) -> Bool {
+  match row_realization_at(position: position) {
+    Present { value: r } => r == (selected.decl_name as String)
+    Absent => false
+  }
+}
+
+fn pinned(
+  result: RealizationSelectionResult<ParetoEntry>,
+  expected: SelectionReceipt,
+  row_position: FunctionTypePosition,
+) -> Bool {
+  match result {
+    SelectedWithin { candidate: c, receipt: r } =>
+      receipts_eq(a: r, b: expected)
+        && declaration_ref_eq(a: c.identity, b: r.selected_identity)
+        && row_names(position: row_position, selected: r.selected_identity)
+    _ => false
+  }
+}
+
+// At a function item's return both forms are admitted and neither dominates (impl: no allocation,
+// static dispatch; Box: nameable), so the front is BOTH and the stated policy chooses impl.
+test fn rust_item_return_row_is_the_selected_impl_trait() -> Bool {
+  pinned(
+    result: select_rust_function_type(position: RustFnItemReturn),
+    expected: SelectionReceipt {
+      scope: scope_for(position: RustFnItemReturn),
+      pareto_survivors: [rust_fn_type_impl_trait, rust_fn_type_boxed_trait_object],
+      policy_authority: rust_fn_type_policy_identity(position: RustFnItemReturn),
+      selected_identity: rust_fn_type_impl_trait,
+    },
+    row_position: FunctionTypeAtItemReturn,
+  )
+}
+
+// At an Fn bound's return E0562 excludes impl BEFORE Pareto: impl would dominate Box on allocation
+// and dispatch, yet the survivors are Box alone, so the exclusion is the hard constraint and not a
+// ranking. Box is selected by construction under a unique-survivor policy.
+test fn rust_fn_bound_return_row_is_box_because_e0562_excludes_impl() -> Bool {
+  pinned(
+    result: select_rust_function_type(position: RustFnBoundReturn),
+    expected: SelectionReceipt {
+      scope: scope_for(position: RustFnBoundReturn),
+      pareto_survivors: [rust_fn_type_boxed_trait_object],
+      policy_authority: rust_fn_type_policy_identity(position: RustFnBoundReturn),
+      selected_identity: rust_fn_type_boxed_trait_object,
+    },
+    row_position: FunctionTypeAtFnBoundReturn,
+  )
+}
+
+// A missing fact is answered as missing: with impl's nameability withheld the item-return decision
+// is SelectionNeedsEvidence, not a guess in either direction.
+test fn rust_fn_type_selection_with_a_withheld_fact_needs_evidence() -> Bool {
+  match select_rust_function_type_with_withheld_nameability(position: RustFnItemReturn) {
+    SelectionNeedsEvidence { needs: _ } => true
+    _ => false
+  }
+}
