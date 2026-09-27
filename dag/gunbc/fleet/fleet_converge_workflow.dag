@@ -28,7 +28,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability }
-import gunbc.fleet_release_bins_key { release_bins_key_job_output, release_bins_key_expression }
+import gunbc.fleet_release_bins_key { release_bins_key_job_output, release_bins_key_expression, release_bins_scripts_admitted }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
   WorkflowToolchainHomesAdmitted,
@@ -50,6 +50,10 @@ import gunbc.fleet_workflow_steps {
   ci_release_bins_pack_step,
   ci_release_bins_key_step,
   ci_release_bins_lookup_step,
+  release_bins_key_step_name,
+  release_bins_lookup_step_name,
+  release_bins_cache_step_name,
+  release_bins_outcome_step_name,
   ci_release_bins_cache_step,
   ci_release_bins_outcome_step,
   ci_cache_cargo_step,
@@ -833,12 +837,12 @@ fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
     ci_prelude_annotations(),
     [
       CapabilityAnnotatedStep {
-        step_name: "Derive release-bins key",
+        step_name: release_bins_key_step_name,
         role: consumes_only(capabilities: [RustcCapability, CargoCapability]),
       },
-      CapabilityAnnotatedStep { step_name: "Look up release-bins", role: capability_neutral },
-      CapabilityAnnotatedStep { step_name: "Restore release-bins into staging", role: capability_neutral },
-      CapabilityAnnotatedStep { step_name: "Decide release-bins outcome", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: release_bins_lookup_step_name, role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: release_bins_cache_step_name, role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: release_bins_outcome_step_name, role: capability_neutral },
       CapabilityAnnotatedStep { step_name: "Cache Cargo", role: capability_neutral },
       CapabilityAnnotatedStep {
         step_name: "Build release binaries",
@@ -3788,6 +3792,10 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
       if list_length(ps) == 0 {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
+        }
+      } else if !release_bins_scripts_admitted() {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused a release-bins runner (gunbc.fleet_release_bins_key), so no workflow is emitted rather than a step with no script",
         }
       } else {
         fleet_converge_yml_after_reset_assignment()

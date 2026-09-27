@@ -126,43 +126,61 @@ jobs:
       - name: Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)
         id: release_bins_key
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then { echo "::error title=release-bins::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key"; exit 1; }; fi
-          EXPECTED="$RUNNER_TEMP/release-bins.preimage.expected"
-          {
-          printf 'kind=%s\n' 'gunbc.fleet_release_bins'
-          printf 'address=sha256 scope=cross_run\n'
-          printf 'producer_compiler=%s\n' "$("$CARGO_BIN" -V)"
-          printf 'source_closure=%s\n' "tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')"
-          printf 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$(rustc -vV | sed -n 's/^host: //p')" "$(cc --version 2>&1 | head -n 1)" "$(ld --version 2>&1 | head -n 1)" "$(ldd --version 2>&1 | head -n 1)"
-          printf 'toolchain=%s\n' "$(rustc -vV | tr '\n' ';')"
-          printf 'build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin discover_source_root_ingest --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "${RUSTFLAGS-}" "${CARGO_ENCODED_RUSTFLAGS-}" "${CC-}" "${CFLAGS-}" "${LDFLAGS-}" 'claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'
-          printf 'required_lens_contract=none (a seed cargo build admits no lens contract)\n'
-          } > "$EXPECTED"
-          KEY='release-bins-'"$(sha256sum "$EXPECTED" | cut -d ' ' -f 1)"
-          rm -rf "$ROOT/.release-bins-staging"
-          mkdir -p "$ROOT/.release-bins-staging"
-          echo "release-bins request key $KEY over preimage:"
-          cat "$EXPECTED"
-          echo "key=$KEY" >> "$GITHUB_OUTPUT"
-          echo "GUNBC_MATERIALIZED_TREE_IDENTITY=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
+          '[' '-z' "$DIRTY" ']' || ('echo' '::error title=release-bins SourceTreeDirty::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          AXIS_PRODUCER=$("$CARGO_BIN" '-V')
+          '[' '-n' "$AXIS_PRODUCER" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_PRODUCER read back empty, so the key would not name the build; refusing to key'; exit 1)
+          AXIS_HOST=$('rustc' '-vV' | 'sed' '-n' 's/^host: //p')
+          AXIS_CC=$('cc' '--version' 2>&1 | 'head' '-n' '1')
+          AXIS_LD=$('ld' '--version' 2>&1 | 'head' '-n' '1')
+          AXIS_LIBC=$('ldd' '--version' 2>&1 | 'head' '-n' '1')
+          '[' '-n' "$AXIS_HOST" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_HOST read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_CC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_CC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LD" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LD read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LIBC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LIBC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          AXIS_TOOLCHAIN=$('rustc' '-vV' | 'tr' '
+          ' ';')
+          '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
+          ('printf' 'kind=%s\n' 'gunbc.fleet_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin discover_source_root_ingest --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "$SOURCE_CLOSURE" "$RUSTFLAGS" "$CARGO_ENCODED_RUSTFLAGS" "$CC" "$CFLAGS" "$LDFLAGS" 'claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
+          PREIMAGE_DIGEST=$('sha256sum' "$EXPECTED" | 'cut' '-d' ' ' '-f' '1')
+          KEY='release-bins-'"$PREIMAGE_DIGEST"
+          'rm' '-rf' "$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$ROOT"'/.release-bins-staging'
+          'echo' 'release-bins request key '"$KEY"' over preimage:'
+          'cat' "$EXPECTED"
+          'echo' 'key='"$KEY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'GUNBC_MATERIALIZED_TREE_IDENTITY='"$SOURCE_CLOSURE" | 'tee' '-a' "$GITHUB_ENV" > '/dev/null'
         timeout-minutes: 5
       - name: Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)
         id: release_bins_lookup
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          BODY="$RUNNER_TEMP/release-bins-lookup.json"
-          if ! curl -sSf -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=$RELEASE_BINS_KEY" -o "$BODY"; then { echo "::error title=release-bins::release-bins lookup FAILED (cache API unreachable or refused); this is not absence, so neither reuse nor rebuild is decided"; exit 1; }; fi
-          ANSWER="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); k=sys.argv[2]; r=sys.argv[3:]; c=d["actions_caches"]; m=[e for e in c if e["key"]==k and e["ref"] in r]; print("incomplete" if d["total_count"]!=len(c) else ("absent" if not m else "present id=%s ref=%s created=%s size=%s" % (m[0]["id"], m[0]["ref"], m[0]["created_at"], m[0]["size_in_bytes"])))' "$BODY" "$RELEASE_BINS_KEY" 'refs/heads/main' "$GITHUB_REF")" || { echo "::error title=release-bins::release-bins lookup answer unreadable; not treated as absence"; exit 1; }
-          case "$ANSWER" in
-            absent) echo "standing=absent" >> "$GITHUB_OUTPUT"; echo "::notice title=release-bins::no entry under $RELEASE_BINS_KEY on refs/heads/main or $GITHUB_REF (never published, or evicted); this dispatch builds" ;;
-            present*) echo "standing=present" >> "$GITHUB_OUTPUT"; echo "entry=$ANSWER" >> "$GITHUB_OUTPUT"; echo "release-bins entry: $ANSWER" ;;
-            *) { echo "::error title=release-bins::release-bins lookup answered incompletely ($ANSWER); not treated as absence"; exit 1; } ;;
-          esac
+          set -e
+          BODY="$RUNNER_TEMP"'/release-bins-lookup.json'
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY" '-o' "$BODY" || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          'python3' '-c' 'import os,sys,json
+          d=json.load(open(sys.argv[1]))
+          k=sys.argv[2]
+          refs=sys.argv[3:]
+          c=d["actions_caches"]
+          assert d["total_count"]==len(c), "incomplete answer"
+          m=[e for e in c if e["key"]==k and e["ref"] in refs]
+          o=open(os.environ["GITHUB_OUTPUT"],"a")
+          if m:
+            e=m[0]
+            o.write("standing=present\nentry=id=%s ref=%s created=%s size=%s\n" % (e["id"], e["ref"], e["created_at"], e["size_in_bytes"]))
+            print("release-bins entry: id=%s ref=%s created=%s size=%s" % (e["id"], e["ref"], e["created_at"], e["size_in_bytes"]))
+          else:
+            o.write("standing=absent\n")
+            print("::notice title=release-bins::no admitted entry for this key (never published, or evicted); this dispatch builds")
+          ' "$BODY" "$RELEASE_BINS_KEY" 'refs/heads/main' "$GITHUB_REF" || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
           GH_TOKEN: ${{ github.token }}
@@ -180,24 +198,18 @@ jobs:
       - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs
         id: release_bins_outcome
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          STAGE="$ROOT/.release-bins-staging"
-          EXPECTED="$RUNNER_TEMP/release-bins.preimage.expected"
-          case "$LOOKUP_STANDING/$CACHE_HIT" in
-            absent/true) { echo "::error title=release-bins::the cache API holds no exact entry under $RELEASE_BINS_KEY but the transport reported an exact hit; the store and its transport disagree"; exit 1; } ;;
-            absent/*) rm -rf "$STAGE"; mkdir -p "$STAGE"; echo "outcome=build" >> "$GITHUB_OUTPUT"; exit 0 ;;
-            present/true) ;;
-            present/*) { echo "::error title=release-bins::the cache API holds an exact entry under $RELEASE_BINS_KEY but the transport did not restore it exactly; refusing rather than rebuilding over a present entry"; exit 1; } ;;
-            *) { echo "::error title=release-bins::release-bins outcome inputs missing (lookup=$LOOKUP_STANDING hit=$CACHE_HIT)"; exit 1; } ;;
-          esac
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$STAGE/$f" ] || { echo "::error title=release-bins::stored release-bins entry is incomplete: $f is missing"; exit 1; }
-          done
-          cmp -s "$EXPECTED" "$STAGE/release-bins.preimage" || { diff "$EXPECTED" "$STAGE/release-bins.preimage" || true; { echo "::error title=release-bins::stored preimage differs from this run's independently derived preimage under $RELEASE_BINS_KEY"; exit 1; }; }
-          [ 'release-bins-'"$(sha256sum "$STAGE/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::stored preimage does not hash to the probed key $RELEASE_BINS_KEY"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          if '[' "$LOOKUP_STANDING" '=' 'present' ']' && '[' "$CACHE_HIT" '=' 'true' ']'; then ':' 'no-op'; else if '[' "$LOOKUP_STANDING" '=' 'present' ']' && '[' "$CACHE_HIT" '!=' 'true' ']'; then ('echo' '::error title=release-bins StoreTransportDisagreePresentMiss::the cache API holds an exact admitted entry for this key but the transport did not restore it exactly; refusing rather than rebuilding over a present entry'; exit 1); else if '[' "$LOOKUP_STANDING" '=' 'absent' ']' && '[' "$CACHE_HIT" '=' 'true' ']'; then ('echo' '::error title=release-bins StoreTransportDisagreeAbsentHit::the cache API holds no exact admitted entry for this key but the transport reported an exact hit; the store and its transport disagree'; exit 1); else if '[' "$LOOKUP_STANDING" '=' 'absent' ']' && '[' "$CACHE_HIT" '!=' 'true' ']'; then 'rm' '-rf' "$STAGE"; 'mkdir' '-p' "$STAGE"; 'echo' 'outcome=build' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; else ('echo' '::error title=release-bins OutcomeInputsMissing::the lookup standing or the transport exactness is missing, so no outcome can be decided'; exit 1); fi; fi; fi; fi
+          '[' '-f' "$STAGE"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.preimage is missing'; exit 1)
+          '[' '-f' "$STAGE"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.manifest is missing'; exit 1)
+          '[' '-f' "$STAGE"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.tgz is missing'; exit 1)
+          'cmp' '-s' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ('diff' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ':' 'no-op'; ('echo' '::error title=release-bins StoredPreimageDiffers::the stored preimage differs from this run'\''s independently derived preimage'; exit 1))
+          STORED_DIGEST=$('sha256sum' "$STAGE"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$STORED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins StoredPreimageKeyMismatch::the stored preimage does not hash to the probed key'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -213,17 +225,21 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$STAGE/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::stored manifest does not name exactly the gunbc.ci_release_bins roster in order"; exit 1; }
-          rm -rf "$STAGE/unpacked"; mkdir -p "$STAGE/unpacked"
-          tar -xzf "$STAGE/release-bins.tgz" -C "$STAGE/unpacked"
-          [ "$(ls -A "$STAGE/unpacked" | sort)" = "$(sort "$RUNNER_TEMP/release-bins.roster")" ] || { echo "::error title=release-bins::stored pack members are not exactly the roster"; exit 1; }
-          (cd "$STAGE/unpacked" && sha256sum --quiet -c "$STAGE/release-bins.manifest") || { echo "::error title=release-bins::a stored member's sha256 differs from the manifest; refusing before any restored binary runs"; exit 1; }
-          mkdir -p "$ROOT/target/release"
-          cp -p "$STAGE"/unpacked/* "$ROOT/target/release/"
-          rm -rf "$STAGE/unpacked"
-          echo "ReleaseBinsReuseReceipt: request=$RELEASE_BINS_KEY output=sha256:$(sha256sum "$STAGE/release-bins.manifest" | cut -d ' ' -f 1) dispatch=$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT producer=[$LOOKUP_ENTRY] built=no"
-          echo "outcome=reuse" >> "$GITHUB_OUTPUT"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$STAGE"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins StoredManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          'rm' '-rf' "$STAGE"'/unpacked'
+          'mkdir' '-p' "$STAGE"'/unpacked'
+          'tar' '-xzf' "$STAGE"'/release-bins.tgz' '-C' "$STAGE"'/unpacked'
+          MEMBERS=$('ls' '-A' "$STAGE"'/unpacked' | 'sort')
+          ROSTER_SORTED=$('sort' "$RUNNER_TEMP"'/release-bins.roster')
+          '[' "$MEMBERS" '=' "$ROSTER_SORTED" ']' || ('echo' '::error title=release-bins StoredPackMembersNotRoster::the stored pack'\''s members are not exactly the roster'; exit 1)
+          ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins StoredMemberDigestMismatch::a stored member'\''s sha256 differs from the manifest; refusing before any restored binary runs'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'cp' '-pR' "$STAGE"'/unpacked/.' "$ROOT"'/target/release/'
+          'rm' '-rf' "$STAGE"'/unpacked'
+          OUTPUT_DIGEST=$('sha256sum' "$STAGE"'/release-bins.manifest' | 'cut' '-d' ' ' '-f' '1')
+          'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
+          'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
           LOOKUP_STANDING: ${{ steps.release_bins_lookup.outputs.standing }}
@@ -273,18 +289,17 @@ jobs:
         timeout-minutes: 5
       - name: Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          STAGE="$ROOT/.release-bins-staging"
-          mkdir -p "$STAGE"
-          (cd "$ROOT/target/release" && sha256sum claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session) > "$STAGE/release-bins.manifest"
-          tar -czf "$STAGE/release-bins.tgz" -C "$ROOT/target/release" claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session
-          cp "$RUNNER_TEMP/release-bins.preimage.expected" "$STAGE/release-bins.preimage"
-          echo "ReleaseBinsBuildReceipt: request=$RELEASE_BINS_KEY output=sha256:$(sha256sum "$STAGE/release-bins.manifest" | cut -d ' ' -f 1) dispatch=$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT outcome=$RELEASE_BINS_OUTCOME publish=requested-not-yet-persisted scope=$GITHUB_REF"
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$STAGE"
+          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$STAGE"'/release-bins.manifest'
+          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session'
+          'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
+          OUTPUT_DIGEST=$('sha256sum' "$STAGE"'/release-bins.manifest' | 'cut' '-d' ' ' '-f' '1')
+          'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
-          RELEASE_BINS_OUTCOME: ${{ steps.release_bins_outcome.outputs.outcome }}
         if: steps.release_bins_outcome.outputs.outcome != 'reuse'
         timeout-minutes: 5
       - name: Upload release-bins artifact
@@ -325,16 +340,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -350,12 +370,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -1587,16 +1609,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -1612,12 +1639,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -1736,16 +1765,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -1761,12 +1795,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -1818,16 +1854,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -1843,12 +1884,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -1921,16 +1964,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -1946,12 +1994,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -1989,16 +2039,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -2014,12 +2069,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -2061,16 +2118,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -2086,12 +2148,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
@@ -2220,16 +2284,21 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
-          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
-          set -eu
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
-          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
-            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
-          done
-          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
-          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
-          printf '%s' 'claim_executor
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          DOWNLOADED_DIGEST=$('sha256sum' "$ROOT"'/release-bins.preimage' | 'cut' '-d' ' ' '-f' '1')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
           claim_batch
@@ -2245,12 +2314,14 @@ jobs:
           cssl_assemble
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
-          ' > "$RUNNER_TEMP/release-bins.roster"
-          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
-          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
-          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
-          rm -rf "$CHECK"
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' | 'cmp' '-s' '-' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
+          CHECK="$RUNNER_TEMP"'/release-bins-check'
+          'rm' '-rf' "$CHECK"
+          'mkdir' '-p' "$CHECK"
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
+          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
+          'rm' '-rf' "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"

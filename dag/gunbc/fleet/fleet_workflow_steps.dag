@@ -311,9 +311,15 @@ fn ci_release_build_step() -> Step {
   }
 }
 
+// Step names bound once: the step and its capability annotation read the same row.
+data release_bins_key_step_name: String = "Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)"
+data release_bins_lookup_step_name: String = "Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)"
+data release_bins_cache_step_name: String = "Restore release-bins into isolated staging (transport only; publishes on a verified build)"
+data release_bins_outcome_step_name: String = "Decide release-bins outcome; verify a stored pack completely before any restored binary runs"
+
 fn ci_release_bins_key_step() -> Step {
   RunStep {
-    name: Present { value: "Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)" },
+    name: Present { value: release_bins_key_step_name },
     id: Present { value: release_bins_key_step_id },
     run: release_bins_key_script(),
     shell: none,
@@ -332,13 +338,9 @@ fn release_bins_staging_paths() -> String {
   )
 }
 
-fn release_bins_outcome_output_expression() -> String {
-  join(["$", "{{ steps.", release_bins_outcome_step_id, ".outputs.outcome }}"], "")
-}
-
 fn ci_release_bins_lookup_step() -> Step {
   RunStep {
-    name: Present { value: "Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)" },
+    name: Present { value: release_bins_lookup_step_name },
     id: Present { value: release_bins_lookup_step_id },
     run: release_bins_lookup_script(),
     shell: none,
@@ -361,7 +363,7 @@ fn ci_release_bins_lookup_step() -> Step {
 // succeeded; the cache service's reservation makes a concurrent second publisher's save refuse.
 fn ci_release_bins_cache_step() -> Step {
   UsesStep {
-    name: Present { value: "Restore release-bins into isolated staging (transport only; publishes on a verified build)" },
+    name: Present { value: release_bins_cache_step_name },
     id: Present { value: release_bins_cache_step_id },
     uses: cache_action,
     with: Present {
@@ -379,7 +381,7 @@ fn ci_release_bins_cache_step() -> Step {
 
 fn ci_release_bins_outcome_step() -> Step {
   RunStep {
-    name: Present { value: "Decide release-bins outcome; verify a stored pack completely before any restored binary runs" },
+    name: Present { value: release_bins_outcome_step_name },
     id: Present { value: release_bins_outcome_step_id },
     run: release_bins_outcome_script(),
     shell: none,
@@ -405,10 +407,7 @@ fn ci_release_bins_pack_step() -> Step {
     run: release_bins_pack_manifest_script(),
     shell: none,
     env: Present {
-      value: [
-        kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
-        kv(key: "RELEASE_BINS_OUTCOME", value: yaml_string(s: release_bins_outcome_output_expression())),
-      ]
+      value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression()))]
     },
     working_directory: none,
     if_condition: Present { value: release_bins_build_condition() },
