@@ -1,0 +1,694 @@
+[workspace-root] discovered /home/briansrls/nb16-clone14
+✓ typecheck v2.std.compilers.target_model done in 22 seconds
+✓ typecheck v2.compiler.translate done in 5 seconds
+◐ started rustc.Identity.VersionVerbose
+✓ rustc.Identity.VersionVerbose done in 44ms
+◐ started cargo.Identity.Version
+✓ cargo.Identity.Version done in 38ms
+◐ started git.Inspect.Toplevel
+✓ git.Inspect.Toplevel done in 3ms
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 1ms
+◐ started shell.Test.IsExecutable
+✓ shell.Test.IsExecutable done in 1ms
+◐ started shell.Test.IsFile
+✓ shell.Test.IsFile done in 1ms
+◐ started shell.Test.IsExecutable
+✓ shell.Test.IsExecutable done in 1ms
+◐ started shell.Test.IsNonEmpty
+✓ shell.Test.IsNonEmpty done in 1ms
+◐ started shell.Test.IsExecutable
+✓ shell.Test.IsExecutable done in 1ms
+◐ started shell.Test.IsFile
+✓ shell.Test.IsFile done in 1ms
+◐ started shell.Test.IsExecutable
+✓ shell.Test.IsExecutable done in 1ms
+◐ started shell.Test.IsNonEmpty
+✓ shell.Test.IsNonEmpty done in 1ms
+◐ started git.Inspect.HeadCommit
+✓ git.Inspect.HeadCommit done in 3ms
+◐ started git.Inspect.Toplevel
+✓ git.Inspect.Toplevel done in 3ms
+◐ started git.Inspect.WorkingTreeStatus
+✓ git.Inspect.WorkingTreeStatus done in 29ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 29ms
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 5ms
+◐ started gunbc.WitnessBin.Run
+✓ gunbc.WitnessBin.Run done in 14 minutes
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started gunbc.WitnessBin.Run
+✓ gunbc.WitnessBin.Run done in 4ms
+[file] write /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/Cargo.toml (458 bytes)
+[file] read /home/briansrls/nb16-clone14/rust-toolchain.toml
+[file] write /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/rust-toolchain.toml (308 bytes)
+◐ started shell.Find.FilesByNameSorted
+✓ shell.Find.FilesByNameSorted done in 14ms
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/Cargo.toml
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/dry_run.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/emitted_population.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_bazel_bazel.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_bazel_label.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_bazel_target_pattern.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_cache_catalog_io.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_cache_catalog_placement.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_cache_materialization.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_cache_types.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_communication_fidelity_carriers.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_communication_medium.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_currency_currency.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_external_authority.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_filesystem_filesystem_io.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_ietf_http_semantics.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_languages_json_emit.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_languages_json_grammar.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_languages_rust_capabilities.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_languages_rust_emit.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_languages_rust_syntax.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_numeric_base16.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_process_gnu_bash_exit.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_process_posix_exit.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_realization_compile_stage_memo.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_realization_parse_table_memo.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_units_dimensionless.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_units_iec_80000_13.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_units_iso_80000_3.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_units_iso8601.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_uri_path.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/extdeps_uri.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_native_frontier_debt.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_native_frontier_ratchet.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_native_frontier_roster.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_native_route_progress_guard.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_repo_self_warning_policy.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_rust_item_identity.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_rust_item_scan.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_source_root_read.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_v1_interpreter_primitive_surface.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/gunbc_witness_v2_native_route.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/lib.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/main.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_algebra.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_bit.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_bytes.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_cache_identity.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_cache_interface.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_checked_arithmetic.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_compiler_entry.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_computation.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_constructors.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_content_hash.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_decimal.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_decl_ref.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_determinism.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_disposition.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_dissolution.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_effects.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_emit_model.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_error_primitives.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_execution_mode.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_induction.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_integer.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_interval.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_keyed_roster.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_keyed_row.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_kind.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_layout.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_logic.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_machine_constraints.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_magnitude.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_materialization_ladder.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_measure.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_nat.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_occurrence_identity.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_pareto.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_perturbation.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_primitive_identity.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_primitive_projection.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_primitives.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_process.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_process_termination.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_realization_measurement.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_realization.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_realization_schedule.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_realization_width.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_render_repeat_string_bootstrap.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_roster_frontier.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_source_annotation.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_syntax.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_termination.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_trait_derive_shape.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_types.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_unicode_types.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/std_witness_admission.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v1_rt.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_body_lowering_fold.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_body_producer_forward.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_compile.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_emit.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_eval.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_fold_lowering.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_inferred_tree.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_infer.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_materialization_carriers.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_name_resolve.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_namespace_graft.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_native_test_vocabulary.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_normalized_tree.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_normalize.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_parse_diagnostic.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_parse.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_program_assembly.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_refinement_discharge.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_resolve.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_source_authority.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_symbol_index_fill.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_target_carriers.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_test_marker_capture.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_tokenize.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_translate.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_compiler_wrap_decision.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_languages_dag.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_languages_fidelity.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_languages_llvm_ir.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_languages_python.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_languages_typescript.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_runtimes_v2_effect_io_pure.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_extdeps_runtimes_v2_evaluator.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_common_construction_justification.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_complexity_accumulator_copy_analyze.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_complexity_accumulator_copy_compile_gate.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_complexity_accumulator_copy.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_cost_copied_port_citations.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_cost_copied_port_derivation.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_cost.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_determinism.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_fact_density.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_lifecycle_carrier.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_machine_shape.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_mandatory_tag.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_undecidable_verdict_collapse.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_lens_unit_modeling.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_algebra.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_anonymous_binder.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_anti_unification.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_artifact.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_bounded_lattice_completeness.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_cardinality.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_coercion.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_collection.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_compilers_body_lowering.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_compilers_lexing.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_compilers_sugar.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_compilers_target_model.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_constraint_satisfaction_predicate.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_constraints.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_cross_tree_import_model.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_cross_tree_resolution.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_declaration_marker.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_determinism.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_diagnostic.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_exact_structural_equality_zip_fold_predicate.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_find_witness.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_fn_index.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_fold_assembly.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_grammar_choice_ambiguity.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_grammar.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_grounding.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_host_run.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_host_transport.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_inhabitance.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_integer.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_integer_value_set.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_language_model.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_layer.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_lens_verdict.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_live_tree.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_logic.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_machine.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_model_core.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_namespace_alias.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_nat.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_node_query.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_node.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_node_shape.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_occurrence_id.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_optional.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_passing_candidate_fold.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_project_to_core_predicate.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_provenance.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_qualified_name.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_refinement.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_refinement_widening_predicate.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_resolution_policy.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_runtime.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_staging.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_subject_evidence.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_symbol_index.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_test_claim_falsification.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_text.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_type_binder.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_verdict.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_verification.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_std_witness.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_workflow_compile_door_cause_ownership.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_workflow_floor_discovery_row.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_workflow_floor_discovery_source_authority.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_workflow_floor_expected_red.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_workflow_floor_naming_hygiene.rs
+[file] read /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/src/v2_workflow_floor_route_gap.rs
+[file] write /home/briansrls/nb16-tmp/tcp/tmp.Y2tbQozuxd/.gunbc-emitted-artifact-bytes (5281325 bytes)
+◐ started sha256sum.Sha256.DigestFile
+✓ sha256sum.Sha256.DigestFile done in 8ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 47ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 47ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 47ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 68ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 65ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 200ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 67ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 69ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 69ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 65ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 73ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 79ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 102ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 75ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 2 minutes
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 65ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 91ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 46ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 47ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 72ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 81ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 65ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 70ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 86ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 82ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 59ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 66ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 69ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 64ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 472ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 111ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 107ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 59ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 138ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 71ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 74ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 63ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 149ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 91ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 101ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 90ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 255ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 155ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 65ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 73ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 111ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 59ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 60ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 83ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 56ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 69ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 62ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 60ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 69ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 56ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 56ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 63ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 80ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 56ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 63ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 729ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 63ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 62ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 151ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 55ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 89ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 49ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 70ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 114ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 87ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 54ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 53ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 62ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 48ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 66ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 50ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 57ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 61ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 52ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 51ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 70ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 1 minutes
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 58ms
+◐ started rustfmt.Parse.Files
+✓ rustfmt.Parse.Files done in 1 minutes
+◐ started rustc.Identity.VersionVerbose
+✓ rustc.Identity.VersionVerbose done in 47ms
+◐ started cargo.Build.CheckManifestMessages
+✓ cargo.Build.CheckManifestMessages done in 2 minutes
+[file] write /home/briansrls/nb16-tmp/cp_live_frontier.tsv (1096051 bytes)
+check: the live compile-phase frontier was not measured — the live observation is not in the latest receipt's comparison epoch, so no count between them is meaningful: the live rustc identity is not the latest receipt's: live=rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host aarch64-unknown-linux-gnu; LLVM 21.1.8 receipt=rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8
