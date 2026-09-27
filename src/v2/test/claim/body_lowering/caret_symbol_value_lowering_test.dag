@@ -4,8 +4,9 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, dag_symbol_literal_name_optional }
-import v2.std.algebra { fold_list, length, list_snoc_item }
-import v2.std.collection { list_at_optional }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
+import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
@@ -105,24 +106,61 @@ fn csv_is_bare_caret(n: Node) -> Bool {
   }
 }
 
+// Every reader below is plain recursion over the preorder node list, with no `fn` argument: this
+// witness is about carets, and a lambda call argument is a separate native-lowering frontier.
+fn csv_payloads(nodes: List<Node>) -> List<Symbol> {
+  match nodes {
+    Empty => Empty
+    Cons { head: n, tail: rest } =>
+      if csv_is_symbol_literal(n: n) {
+        Cons { head: csv_node_tag(n: n), tail: csv_payloads(nodes: rest) }
+      } else {
+        csv_payloads(nodes: rest)
+      }
+  }
+}
+
+fn csv_bare_caret_count(nodes: List<Node>) -> Int {
+  match nodes {
+    Empty => 0
+    Cons { head: n, tail: rest } =>
+      if csv_is_bare_caret(n: n) { 1 + csv_bare_caret_count(nodes: rest) } else { csv_bare_caret_count(nodes: rest) }
+  }
+}
+
+fn csv_any_symbol_literal(operands: List<Node>) -> Bool {
+  match operands {
+    Empty => false
+    Cons { head: o, tail: rest } => csv_is_symbol_literal(n: o) || csv_any_symbol_literal(operands: rest)
+  }
+}
+
+fn csv_tags(operands: List<Node>) -> List<Symbol> {
+  match operands {
+    Empty => Empty
+    Cons { head: o, tail: rest } => Cons { head: csv_node_tag(n: o), tail: csv_tags(operands: rest) }
+  }
+}
+
+fn csv_operand_rows(nodes: List<Node>) -> List<List<Symbol>> {
+  match nodes {
+    Empty => Empty
+    Cons { head: n, tail: rest } =>
+      if csv_any_symbol_literal(operands: node_positional_child_targets(node: n)) {
+        Cons { head: csv_tags(operands: node_positional_child_targets(node: n)), tail: csv_operand_rows(nodes: rest) }
+      } else {
+        csv_operand_rows(nodes: rest)
+      }
+  }
+}
+
 fn csv_lowered_verdict(tree: Node) -> CaretLoweringVerdict {
   let nodes = node_subtree_nodes(root: tree)
   CaretLoweringVerdict {
     outcome: ^csv_accepted,
-    payloads: fold_list(xs: nodes, empty: [], cons: fn(acc, n) {
-      if csv_is_symbol_literal(n: n) { list_snoc_item(xs: acc, item: csv_node_tag(n: n)) } else { acc }
-    }),
-    bare_carets: fold_list(xs: nodes, empty: 0, cons: fn(acc, n) {
-      if csv_is_bare_caret(n: n) { acc + 1 } else { acc }
-    }),
-    operand_rows: fold_list(xs: nodes, empty: [], cons: fn(acc, n) {
-      let operands = node_positional_child_targets(node: n)
-      if fold_list(xs: operands, empty: false, cons: fn(held, o) { held || csv_is_symbol_literal(n: o) }) {
-        list_snoc_item(xs: acc, item: fold_list(xs: operands, empty: [], cons: fn(row, o) { list_snoc_item(xs: row, item: csv_node_tag(n: o)) }))
-      } else {
-        acc
-      }
-    })
+    payloads: csv_payloads(nodes: nodes),
+    bare_carets: csv_bare_caret_count(nodes: nodes),
+    operand_rows: csv_operand_rows(nodes: nodes)
   }
 }
 
@@ -190,17 +228,26 @@ fn lowers_to(v: CaretLoweringVerdict, payloads: List<Symbol>) -> Bool {
 }
 
 // Some operand row ends with `left` then the symbol literal `sym`.
+fn row_ends_with_pair(row: List<Symbol>, left: Symbol, sym: Symbol) -> Bool {
+  match list_at_optional(xs: row, index: length(xs: row) - 2) {
+    Present { value: l } =>
+      (l == left) && match list_at_optional(xs: row, index: length(xs: row) - 1) {
+        Present { value: r } => r == sym
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn rows_hold_pair(rows: List<List<Symbol>>, left: Symbol, sym: Symbol) -> Bool {
+  match rows {
+    Empty => false
+    Cons { head: row, tail: rest } => row_ends_with_pair(row: row, left: left, sym: sym) || rows_hold_pair(rows: rest, left: left, sym: sym)
+  }
+}
+
 fn has_operand_pair(v: CaretLoweringVerdict, left: Symbol, sym: Symbol) -> Bool {
-  fold_list(xs: v.operand_rows, empty: false, cons: fn(held, row) {
-    held || match list_at_optional(xs: row, index: length(xs: row) - 2) {
-      Present { value: l } =>
-        (l == left) && match list_at_optional(xs: row, index: length(xs: row) - 1) {
-          Present { value: r } => r == sym
-          Absent => false
-        }
-      Absent => false
-    }
-  })
+  rows_hold_pair(rows: v.operand_rows, left: left, sym: sym)
 }
 
 test fn a_caret_symbol_if_condition_pair_lowers_to_two_different_payloads() -> Bool {
