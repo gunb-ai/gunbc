@@ -27,6 +27,9 @@ import v2.std.compilers.target_model {
   target_model_emit_transforms_empty,
   target_operator_realizations_catalog_node,
   target_project_arrow_body_to_value_expression,
+  target_project_loop,
+  target_value_expression_binding_ref,
+  target_value_expression_loop,
   value_expr_projection_bundle_node
 }
 import v2.std.compilers.lexing { ModeledLexRules }
@@ -197,6 +200,36 @@ test fn loop_body_unresolved_atom_refuses_located() -> Bool {
 
 test fn loop_body_literal_atom_still_projects() -> Bool {
   match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_pick_lit_one))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A FOUND BINDING IS ACCEPTED WHATEVER THE BODY SHAPE. The closure declares `acc`, so `loop acc` in its
+// body projects as a loop over a binding reference to `acc`. Scope acceptance
+// (target_value_expr_arrow_body_scope_binding) used to also require the arrow to match the add
+// signature or have a Transform/Match body, so a found parameter in a Loop-bodied closure refused
+// body_scope_binding_invalid. The body-shape gate decided scope; it no longer does.
+data probe_bound_loop: Node = probe_loop(body: probe_atom(id: ^fold_call_closure_acc))
+
+test fn loop_body_bound_param_projects_as_its_binding_ref() -> Bool {
+  match target_project_loop(
+    arrow: probe_closure(body: probe_bound_loop),
+    body: probe_bound_loop,
+    target: probe_target_model(),
+    source_bool_form: dag_value_expression_projection().bool_literal_form,
+    handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+  ) {
+    Accepted { value: expr, diagnostics: _ } =>
+      expr.node == target_value_expression_loop(
+        body: target_value_expression_binding_ref(binding: ^fold_call_closure_acc)
+      ).node
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_body_bound_param_projects_through_the_call_route() -> Bool {
+  match probe_project(closure_body: probe_bound_loop) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
