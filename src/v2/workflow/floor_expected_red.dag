@@ -1086,6 +1086,14 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // partial one this split exists to expose. Class and receipt:
 // gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return.
 //
+// A THIRD ROW IS ADDED, AND IT IS THE REPAIR'S OWN DECLARED LIMIT. The arm treats a produced Unit
+// argument as unestablished, because the seed's call-site generic solve answers Unit for a
+// parameter it did not solve. So a GENUINE Result<Unit> returned where Result<Alpha> is declared is
+// admitted too. w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused
+// holds that as a known red. DISSOLVE-ON for that row alone: call-site generic solving answers an
+// unsolved type parameter as UNSOLVED rather than as Unit, sufficient for the arm to delete its Unit
+// exit.
+//
 // DISSOLVE-ON: the declared-return expected-type comparison rejecting every STILL-ENROLLED mismatch
 // -- the same-head same-arity applications at argument positions zero, one and two plus the enrolled
 // nested argument-one case, together with the distinct-head pair. The plain-record pair is no longer
@@ -1097,7 +1105,8 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // DESIGN 4b(4) -- it flips to a regression control rather than retiring.
 fn floor_expected_red_chunk_24() -> List<String> {
   Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } }
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused", tail: Empty {} } } }
 }
 
 // The disjoint-chain floor hole, enrolled red because the defect is LIVE rather than new.
