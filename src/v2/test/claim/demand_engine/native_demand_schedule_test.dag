@@ -34,6 +34,7 @@ import v2.compiler.compile {
   native_demand_cost_class,
   native_demand_observation_rollup,
   native_demand_observation_complete,
+  native_demand_observation_progressed,
   NativeDemandRun,
   native_demand_eval_samples,
   NativeDemandTransition,
@@ -349,4 +350,88 @@ test fn an_invalid_elapsed_reading_makes_the_observation_incomplete_holds() -> B
     && (r.unclassified == 0)
     && (r.prepare_nanos == 0)
     && !native_demand_observation_complete(run: run)
+}
+
+// A DEAD CLOCK PASSES COMPLETENESS, AND THAT IS WHAT THIS PAIR DISCRIMINATES. A realization whose
+// body returns a constant zero produces finish == start at every reading, which elapsed_observation
+// admits as ElapsedObserved { nanos: 0 }: the kind is contracted, the reading is valid, so
+// unclassified is 0, invalid_elapsed is 0, classified equals the transition count, and
+// native_demand_observation_complete answers TRUE over totals that are entirely zero. The
+// emitted-body membership phase cannot see it either, because it establishes that a bridge HAS a body
+// and never that the body measures anything. So this is the red that neither existing check can go.
+//
+// THE READINGS ARE SUPPLIED, NOT CLOCKED. The subject is the observation fold, so a claim that read
+// the real clock would be asserting something about the host's timer instead -- and could not author
+// the constant-zero case at all, since a working clock refuses to produce it. Supplying the readings
+// is also what keeps the control from hanging: there is no timer to wait on.
+test fn a_run_whose_clock_never_advanced_is_not_progressed_holds() -> Bool {
+  let run = NativeDemandRun {
+    engine: g_one_module_plan().engine,
+    transitions: [
+      NativeDemandTransition {
+        identity: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
+        elapsed: ElapsedObserved { nanos: 0 }
+      },
+      NativeDemandTransition {
+        identity: native_demand_infer_identity(module: "p.a", compiler: g_compiler()),
+        elapsed: ElapsedObserved { nanos: 0 }
+      }
+    ],
+    rows: []
+  }
+  let r = native_demand_observation_rollup(run: run)
+  (r.classified == 2)
+    && (r.unclassified == 0)
+    && (r.invalid_elapsed == 0)
+    && native_demand_observation_complete(run: run)
+    && !native_demand_observation_progressed(run: run)
+}
+
+// THE POSITIVE CONTROL, so the predicate is not merely always-false. One advancing reading is enough
+// to progress the run: progress is asked at the RUN and not per transition, because a single fast
+// transition may honestly observe a zero span on a coarse clock and refusing that would refuse real
+// work.
+test fn a_run_with_one_advancing_reading_is_progressed_holds() -> Bool {
+  let run = NativeDemandRun {
+    engine: g_one_module_plan().engine,
+    transitions: [
+      NativeDemandTransition {
+        identity: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
+        elapsed: ElapsedObserved { nanos: 0 }
+      },
+      NativeDemandTransition {
+        identity: native_demand_infer_identity(module: "p.a", compiler: g_compiler()),
+        elapsed: ElapsedObserved { nanos: 41 }
+      }
+    ],
+    rows: []
+  }
+  native_demand_observation_progressed(run: run)
+    && native_demand_observation_complete(run: run)
+}
+
+// AN EMPTY RUN IS VACUOUSLY PROGRESSED. Nothing executed, so there is no span to observe, and
+// reporting a defect here would be reporting one where there was simply no work.
+test fn a_run_with_no_transitions_is_vacuously_progressed_holds() -> Bool {
+  let run = NativeDemandRun { engine: g_one_module_plan().engine, transitions: [], rows: [] }
+  native_demand_observation_progressed(run: run)
+}
+
+// PROGRESS AND VALIDITY STAY SEPARATE FACTS. A reversed reading is invalid rather than zero, so it
+// contributes no span and leaves the run unprogressed AND incomplete -- two independent failures that
+// must not collapse into one counter, which is why progress is not folded into completeness.
+test fn an_invalid_reading_is_neither_progressed_nor_complete_holds() -> Bool {
+  let run = NativeDemandRun {
+    engine: g_one_module_plan().engine,
+    transitions: [
+      NativeDemandTransition {
+        identity: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()),
+        elapsed: ElapsedObservationInvalid { start: 900, finish: 100 }
+      }
+    ],
+    rows: []
+  }
+  !native_demand_observation_progressed(run: run)
+    && !native_demand_observation_complete(run: run)
+    && (native_demand_observation_rollup(run: run).invalid_elapsed == 1)
 }

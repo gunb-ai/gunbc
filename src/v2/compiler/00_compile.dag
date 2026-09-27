@@ -4399,6 +4399,34 @@ fn native_demand_observation_complete(run: NativeDemandRun) -> Bool {
     && (r.classified == length(xs: run.transitions))
 }
 
+
+// A CLOCK THAT NEVER ADVANCES PASSES EVERY CHECK ABOVE, WHICH IS WHY PROGRESS IS ITS OWN FACT.
+// elapsed_observation admits finish == start as ElapsedObserved { nanos: 0 }, so a realization whose
+// body returns a constant zero yields a run in which every transition is CLASSIFIED and VALIDLY
+// OBSERVED: unclassified is 0, invalid_elapsed is 0, classified equals the transition count, and
+// native_demand_observation_complete answers true over totals that are all zero. The emitted-body
+// membership check has the same blind spot by construction -- it establishes that a bridge HAS a
+// body, never that the body measures anything -- so neither predicate discriminates a dead clock.
+//
+// PROGRESS IS ASKED AT THE RUN AND NOT PER TRANSITION, deliberately. One fast transition may
+// legitimately observe a zero span on a coarse clock, so a per-transition rule would refuse honest
+// work; a whole run that executed transitions and accumulated no span at all is a clock that is not
+// running. A run with no transitions has no span to observe and is vacuously progressed, which keeps
+// the predicate from reporting a defect when there was simply nothing to do.
+//
+// THIS IS DELIBERATELY NOT FOLDED INTO native_demand_observation_complete. Completeness answers
+// whether every admitted transition reached a cost class; progress answers whether the realization
+// underneath produced a measurement. Fusing them would make one counter answer two questions, and
+// would silently change what every existing consumer of `complete` is asserting.
+fn native_demand_observation_progressed(run: NativeDemandRun) -> Bool {
+  if length(xs: run.transitions) == 0 {
+    true
+  } else {
+    let r = native_demand_observation_rollup(run: run)
+    (r.prepare_nanos + r.eval_nanos) > 0
+  }
+}
+
 fn native_demand_prepare_nanos(run: NativeDemandRun) -> Int {
   native_demand_observation_rollup(run: run).prepare_nanos
 }
