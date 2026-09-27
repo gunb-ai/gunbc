@@ -1067,6 +1067,9 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
 // SOL deactivate/activate is a BMC write too, so it sits after the hold like the attach, the boot
 // device and the power cycle -- which is what dissolves the pre-approval SOL mutation: there is no
 // approval stage left for the SOL to precede, and the gate it must follow is the hold.
+//
+// THE PHASE CLOCK (gunbc.machine_intake_mtcollins1_boot_phase_timing): each reading is a local `date`
+// exec taken between two BMC calls; it changes no order and writes nothing.
 fn mtcollins1_boot_actuate(
   proof: UnitHoldProof,
   subject: MtCollins1BootSubject,
@@ -1079,8 +1082,6 @@ fn mtcollins1_boot_actuate(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
-  // THE PHASE CLOCK (gunbc.machine_intake_mtcollins1_boot_phase_timing). Each reading is a local
-  // `date` exec taken between two BMC calls; it changes no order and writes nothing.
   let hold_acquired = clock_unix_millis_read()
   match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
     ExitFailure { code: c, reason: r } => actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
