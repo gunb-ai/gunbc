@@ -14,7 +14,8 @@ import v2.lens.common.algebraic_composition {
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
-import v2.std.algebra { bag_eq, list_snoc_item }
+import v2.std.algebra { bag_eq }
+import std.algebra { list_snoc_item }
 import v2.std.collection {
   List,
   optional_present_witness

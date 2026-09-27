@@ -2,7 +2,7 @@ module v1.compiler.infer_types
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.compiler.infer_env { TypeBinding }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -19,6 +19,8 @@ import std.algebra {
 }
 
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
+
+import std.coercion { SubtractionRefinement, SubtractionStaysInOperandAlgebra, SubtractionEscapesTo, SubtractionRefinementAmbiguous, dag_subtraction_refinement }
 
 import v1.std.core { Unmarked,
   Node, make_param_node, param_node_type_expr,
@@ -1318,7 +1320,29 @@ type BinOpInferred {
   algebra_field: AlgebraFieldKind?
 }
 
-fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>) -> BinOpInferred {
+// The one reading of std.coercion's subtraction rows for an operand type: its resolved declaration,
+// then the three-valued answer. infer_binop_type_node types from it and the binop arm of infer
+// refuses on its Ambiguous arm, so the type and the diagnostic cannot disagree.
+fn subtraction_refinement_of(left_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> SubtractionRefinement {
+  match type_reference_declaration_ref(n: left_type, source_indices: source_indices, env: env) {
+    Present { value: operand } => dag_subtraction_refinement(operand: operand)
+    Absent => SubtractionStaysInOperandAlgebra
+  }
+}
+
+fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> BinOpInferred {
+  match op {
+    Sub =>
+      match subtraction_refinement_of(left_type: left_type, source_indices: source_indices, env: env) {
+        SubtractionEscapesTo { from_type: from_type } => BinOpInferred { result_type: nominal_type_ref(name: from_type), algebra_field: none }
+        SubtractionRefinementAmbiguous { from_types: _ } => BinOpInferred { result_type: error_type, algebra_field: none }
+        SubtractionStaysInOperandAlgebra => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+      }
+    _ => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+  }
+}
+
+fn infer_arithmetic_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>) -> BinOpInferred {
   match op {
     Eq => BinOpInferred { result_type: bool_type, algebra_field: none }
     Ne => BinOpInferred { result_type: bool_type, algebra_field: none }
