@@ -2676,8 +2676,32 @@ impl ReferenceSelectionTier {
             return hit.clone();
         }
         let started = std::time::Instant::now();
-        eprintln!("[dbg] produce_one {file_rel}");
         let targets = self.produce_one(file_rel);
+        {
+            let mut per: Vec<String> = targets.clone();
+            per.sort();
+            let import_t: HashSet<String> = self
+                .import_edges
+                .iter()
+                .filter(|e| workspace_relative_repo_path(&e.path) == file_rel)
+                .filter_map(|e| self.module_to_path.get(&e.import_module).cloned())
+                .collect();
+            let mut sel = self.import_edges.clone();
+            sel.extend(reference_edges_as_import_facts(
+                &reference_resolution_facts(&self.roots, &self.roots, REFERENCE_SELECTION_EXCLUDE),
+                true,
+            ));
+            let whole = build_import_adjacency(&sel, &self.nodes)
+                .get(file_rel)
+                .cloned()
+                .unwrap_or_default();
+            let mut w: Vec<String> = whole.into_iter().filter(|p| !import_t.contains(p)).collect();
+            w.sort();
+            per.retain(|p| !import_t.contains(p));
+            if per != w {
+                eprintln!("[dbg] DIFF {file_rel}\n  per={per:?}\n  whole={w:?}");
+            }
+        }
         super::pre_entry_phase::record(
             "selection_tier_closure_files",
             super::pre_entry_phase::PhaseScale::Closure,
