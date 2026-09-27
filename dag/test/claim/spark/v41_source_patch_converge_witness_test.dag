@@ -370,24 +370,23 @@ fn w_member_digest_is(m: V41KnownPatchMember, hex: String) -> Bool {
 }
 
 test fn red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history() -> Bool {
-  match v41_storage_backed_patch_population() {
-    V41PatchesObserved { patches: ps, partition: _ } =>
-      match get(xs: filter(v41_known_patch_sets(patches: ps), k => k.revision == w_arm_a_revision), index: 0) {
-        Absent => false
-        Present { value: k } =>
-          length(k.members) == 2
-            && match get(xs: k.members, index: 0) {
-              Absent => false
-              Present { value: overlay } => w_member_digest_is(m: overlay, hex: "7e18f751cde9fd03feada25f6720822463d4ab4e7125621e5f94c4da3c9a9151")
-            }
-            && match get(xs: k.members, index: 1) {
-              Absent => false
-              Present { value: hook } =>
-                hook.bytes.ends_with(suffix: "(__name__)\n \n \n")
-                  && w_member_digest_is(m: hook, hex: "4a526ba9874b4045c73a43a8775c3cec54de2bcef4b6591543528af7f87da22b")
-            }
-      }
-    V41PatchesAbsentByObservation => false
-    V41PatchesUnestablished { obligation: _ } => false
+  let ps = concat(
+    w_patch(path: "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch", c: "a"),
+    w_patch(path: "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch", c: "b"),
+  )
+  match get(xs: filter(v41_known_patch_sets(patches: ps), k => k.revision == w_arm_a_revision), index: 0) {
+    Absent => false
+    Present { value: k } =>
+      length(k.members) == 2
+        && match get(xs: k.members, index: 0) {
+          Absent => false
+          Present { value: overlay } => w_member_digest_is(m: overlay, hex: "7e18f751cde9fd03feada25f6720822463d4ab4e7125621e5f94c4da3c9a9151")
+        }
+        && match get(xs: k.members, index: 1) {
+          Absent => false
+          Present { value: hook } =>
+            hook.bytes.ends_with(suffix: "(__name__)\n \n \n")
+              && w_member_digest_is(m: hook, hex: "4a526ba9874b4045c73a43a8775c3cec54de2bcef4b6591543528af7f87da22b")
+        }
   }
 }
