@@ -50,15 +50,34 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // INVARIANT (review-pinned 2026-07-10): a miss means the call was NOT served, so it evaluated — a
 // cap-refused store attempt is still a miss; overflow is a subset of misses, and hits + misses
 // equals the keyed Ok-resulting calls through the memo path, including under overflow (misses is
-// NOT entries-stored). Default ON in every binary; GUNBC_EVAL_MEMO=0 is a diagnostic realization
-// switch (recompute instead of serve, semantics identical) and the receipt discloses
-// memo_hits/memo_misses so a disabled or ineffective memo is visible, never assumed working. The
-// switch is PER-CTX (read at InterpContext construction; set_eval_call_memo_enabled), because a
-// covering provider at an outer frame legitimately quiets an inner provider's hit counters: an
-// inner door's by-execution receipt suite (the parse-table MemoTier amortization tests) pins this
-// provider off on its own ctxs so pass-2 demands re-execute and the door's counters keep
-// discriminating — provider-attribution receipts select their realization explicitly, never racing
-// a process latch. MEASURED (2026-07-10, artifact-regen workload): single-site duplicated keys 7285
+// NOT entries-stored).
+//
+// ADMISSION IS BY DERIVED REUSE OBLIGATION, NEVER A DEFAULT (DESIGN section 2, ruling of
+// 2026-09-27 on the 02_parse list-literal cost). A call is keyed only when its RESOLVED fn node is
+// admitted on its ctx (v1_interpreter.rs install_eval_call_memo_admission), and admission may be
+// installed only from a modeled obligation that std.materialization_ladder discharges to this
+// provider -- never a hand-typed list of fn names. No modeled obligation discharges here today
+// (per-declaration demand identity is the keys-row frontier, docs/plans/demand-engine-program.md),
+// so the admitted population is EMPTY and every call recomputes; a call whose cost needs reuse is
+// named with its missing obligation, not re-admitted wholesale. The GUNBC_EVAL_MEMO switch is
+// deleted with the default it toggled: a switch whose only effect is to restore default admission
+// is the escape hatch of DESIGN section 5. WHY THE DEFAULT WAS REMOVED: keying is a recursive
+// content hash of the arguments, allocation-memoized only at the root, so a threaded accumulator
+// rebuilt per step -- 02_parse's ParseTable, whose memo map is a new allocation after every insert
+// -- was rehashed whole on every call: O(n) per call, O(n^2) per parse, under a key that could
+// never recur (the table's per-call counters), with every table version kept alive. Measured on
+// the llv probe (probe/calm-pike-745-llv) the list-literal parse went quadratic -> linear;
+// v2.test.parse.list_literal_parse_cost lpc_long_list_literal_parses is the enrolled control
+// (default admission puts it several times over the per-claim budget). The receipt still discloses
+// memo_hits/memo_misses, so an empty admission shows as memo_hits=0, never assumed working.
+//
+// SCAFFOLD STANDING: this NARROWS the scaffold toward its dissolution. The seed handler stays (its
+// verified-serve arm is the provider a derived admission will bind), but it no longer answers for
+// any demand the ladder has not discharged to it; it dissolves into RealizationDispatch when the
+// ladder's discharge is what installs admission. HISTORY: the 2026-07-10 measurement below was
+// taken under the retired default admission, and so were the hit counts it cites; the per-ctx
+// switch that attribution tests used to pin the provider off is subsumed by the empty default.
+// MEASURED under the retired default admission (2026-07-10, artifact-regen workload): single-site duplicated keys 7285
 // -> 505 (93.1 percent discharged), wasted_ms 586 -> 57, misses == distinct keys (every distinct
 // computation evaluated exactly once), regenerated artifacts byte-identical with the memo on and
 // off — the purity oracle by execution.

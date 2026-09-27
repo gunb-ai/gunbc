@@ -4248,16 +4248,21 @@ pub fn refresh_eval_recompute_trace_enabled_cache_for_tests() {
 // wrong value. Eviction is ScopeExit at the WITNESS frame: batch surfaces share one ctx across
 // an entry's witnesses and call eval_call_memo_frame_exit after each claim fn (ctx-lifetime
 // retention of argument+result values is byte-unbounded — the 2026-07-10 20GiB-class
-// regression). Admission stops at the entry cap with the refusal COUNTED (overflow). Default
-// ON everywhere; GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
-// serve, semantics identical), and the receipt discloses hits/misses so a disabled memo shows
-// as memo_hits=0, never assumed working.
+// regression). Admission stops at the entry cap with the refusal COUNTED (overflow).
+//
+// ADMISSION IS BY DERIVED REUSE OBLIGATION, NEVER A DEFAULT (DESIGN section 2,
+// std.materialization_ladder). A call is keyed only when its RESOLVED fn node is in `admitted`,
+// installed from a modeled obligation that discharges to this provider. The former default-ON
+// admission keyed every pure named call by recursive content hash, so a threaded accumulator
+// rebuilt per step (02_parse's ParseTable, whose memo map is a new allocation per insert) was
+// rehashed whole on every call -- O(n) per call, O(n^2) per parse -- under a key that could never
+// recur (the table's per-call counters). Unadmitted calls recompute; the receipt still discloses
+// hits/misses, so an empty admission shows as memo_hits=0.
 struct EvalCallMemo {
-    // Per-ctx realization switch (GUNBC_EVAL_MEMO read at ctx construction, not a
-    // process-wide latch): provider-attribution tests pin the outer eval-frame provider off on
-    // their own ctx so an inner provider's hit counters stay discriminating; semantics are
-    // identical either way.
-    enabled: bool,
+    // Resolved fn-node identities this ctx admits; `admitted_nodes` keeps them alive for the
+    // ctx lifetime (frame exit clears served entries, never admission).
+    admitted: std::collections::HashSet<usize>,
+    admitted_nodes: Vec<Rc<Node>>,
     map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as EvalRecomputeTrace.keepalive_fns).
@@ -4270,7 +4275,8 @@ struct EvalCallMemo {
 impl Default for EvalCallMemo {
     fn default() -> Self {
         EvalCallMemo {
-            enabled: eval_call_memo_env_default(),
+            admitted: std::collections::HashSet::new(),
+            admitted_nodes: Vec::new(),
             map: std::collections::HashMap::new(),
             keepalive_fns: Vec::new(),
             hits: 0,
@@ -4282,18 +4288,27 @@ impl Default for EvalCallMemo {
 
 const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
 
-fn eval_call_memo_env_default() -> bool {
-    std::env::var("GUNBC_EVAL_MEMO")
-        .map(|v| v != "0")
-        .unwrap_or(true)
+/// Install the eval-frame memo's admission as RESOLVED fn nodes, each one a declaration a modeled
+/// reuse obligation discharges to this provider. Replaces any previous admission; the nodes are
+/// kept alive for the ctx lifetime so their pointer identities stay valid.
+pub fn install_eval_call_memo_admission<I: IntoIterator<Item = Rc<Node>>>(
+    ctx: &InterpContext,
+    nodes: I,
+) {
+    let mut m = ctx.eval_call_memo.borrow_mut();
+    m.admitted.clear();
+    m.admitted_nodes.clear();
+    for node in nodes {
+        m.admitted.insert(Rc::as_ptr(&node) as usize);
+        m.admitted_nodes.push(node);
+    }
 }
 
-/// Realization switch, per ctx: an inner provider's by-execution receipt suite (e.g. the
-/// parse-table MemoTier's amortization tests) pins the eval-frame provider off so pass-2
-/// demands re-execute and the inner door's hit counters keep discriminating. Values are
-/// identical either way.
-pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
-    ctx.eval_call_memo.borrow_mut().enabled = enabled;
+fn eval_call_memo_admits(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
+    ctx.eval_call_memo
+        .borrow()
+        .admitted
+        .contains(&(Rc::as_ptr(fn_node) as usize))
 }
 
 /// Frame exit for the eval-call memo: eviction scope is the WITNESS frame, not the ctx. Batch
@@ -8580,7 +8595,7 @@ fn eval_pure_named_call(
         None
     };
     let trace_on = eval_recompute_trace_enabled();
-    let memo_on = ctx.eval_call_memo.borrow().enabled;
+    let memo_on = eval_call_memo_admits(ctx, fn_node);
     if !trace_on && !memo_on {
         let effects_before = ctx.effect_dispatch_count.get();
         let result = call_function(ctx, fn_node, args, env);

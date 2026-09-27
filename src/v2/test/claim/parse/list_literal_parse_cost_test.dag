@@ -1,0 +1,121 @@
+module v2.test.parse.list_literal_parse_cost
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the cost of the prepared-grammar parse over a list literal, as a function of its
+// length. The specimen is `fn f(x: Int) -> Int { g(xs: [x, x, ..., x]) }`, generated for any N,
+// so one generator serves the small fidelity specimen and the long cost specimen alike.
+//
+// WHY A LONG SPECIMEN IS A DISCRIMINATING CONTROL. The seed's eval-frame memo
+// (extdeps.realization.eval_memo) once admitted every pure call by default and keyed it by a
+// recursive content hash of its arguments. The parse threads one ParseTable through every call,
+// and that table's memo map is a new allocation after each insert, so every call re-hashed the
+// whole table: O(n) per call, O(n^2) per parse, under a key that could never recur. Measured on
+// the llv probe (probe/calm-pike-745-llv) at len80: ~75s of parse with that admission, ~1s
+// without. Admission is now by derived reuse obligation only. If default admission returns, the
+// claim below goes from a fraction of a second to tens of seconds and is refused on the per-claim budget: that
+// refusal is its red. The subject is ADMISSION, not a timing threshold, so the claim asserts only
+// that the parse is accepted and leaves cost to the budget that already binds every claim.
+//
+// THE PAIRING OBLIGATION (DESIGN section 3): the generator is a hypothesis about what tokenize
+// emits; lpc_fidelity_small runs the real tokenizer over the same generator's text and compares
+// canonically. The generator's shape does not depend on N beyond the element offset 41 + 3i, so
+// the small specimen checks the formula every long specimen uses.
+
+fn lpc_tok(class: Symbol, lexeme: String, start: Int, end: Int) -> Token {
+  Token { class: class, lexeme: lexeme, file: ^list_literal_parse_cost_probe, start: start, end: end }
+}
+
+// Tokens from the element at index i to the end of the specimen, for a list of n elements.
+fn lpc_tail_from(i: Int, n: Int) -> List<Token> {
+  if i >= n - 1 {
+    Cons {
+      head: lpc_tok(class: ^dag_token_ident, lexeme: "x", start: 41 + (3 * i), end: 42 + (3 * i)),
+      tail: [
+        lpc_tok(class: ^dag_token_rbracket, lexeme: "]", start: 39 + (3 * n), end: 40 + (3 * n)),
+        lpc_tok(class: ^dag_token_rparen, lexeme: ")", start: 40 + (3 * n), end: 41 + (3 * n)),
+        lpc_tok(class: ^dag_token_rbrace, lexeme: "}", start: 42 + (3 * n), end: 43 + (3 * n))
+      ]
+    }
+  } else {
+    Cons {
+      head: lpc_tok(class: ^dag_token_ident, lexeme: "x", start: 41 + (3 * i), end: 42 + (3 * i)),
+      tail: Cons {
+        head: lpc_tok(class: ^dag_token_comma, lexeme: ",", start: 42 + (3 * i), end: 43 + (3 * i)),
+        tail: lpc_tail_from(i: i + 1, n: n)
+      }
+    }
+  }
+}
+
+fn lpc_stream(n: Int) -> TokenStream {
+  token_stream_new(all: list_append(left: [
+    lpc_tok(class: ^dag_token_kw_module, lexeme: "module", start: 0, end: 6),
+    lpc_tok(class: ^dag_token_ident, lexeme: "m", start: 7, end: 8),
+    lpc_tok(class: ^dag_token_dot, lexeme: ".", start: 8, end: 9),
+    lpc_tok(class: ^dag_token_ident, lexeme: "l", start: 9, end: 10),
+    lpc_tok(class: ^dag_token_kw_fn, lexeme: "fn", start: 12, end: 14),
+    lpc_tok(class: ^dag_token_ident, lexeme: "f", start: 15, end: 16),
+    lpc_tok(class: ^dag_token_lparen, lexeme: "(", start: 16, end: 17),
+    lpc_tok(class: ^dag_token_ident, lexeme: "x", start: 17, end: 18),
+    lpc_tok(class: ^dag_token_colon, lexeme: ":", start: 18, end: 19),
+    lpc_tok(class: ^dag_token_ident, lexeme: "Int", start: 20, end: 23),
+    lpc_tok(class: ^dag_token_rparen, lexeme: ")", start: 23, end: 24),
+    lpc_tok(class: ^dag_token_arrow, lexeme: "->", start: 25, end: 27),
+    lpc_tok(class: ^dag_token_ident, lexeme: "Int", start: 28, end: 31),
+    lpc_tok(class: ^dag_token_lbrace, lexeme: "{", start: 32, end: 33),
+    lpc_tok(class: ^dag_token_ident, lexeme: "g", start: 34, end: 35),
+    lpc_tok(class: ^dag_token_lparen, lexeme: "(", start: 35, end: 36),
+    lpc_tok(class: ^dag_token_ident, lexeme: "xs", start: 36, end: 38),
+    lpc_tok(class: ^dag_token_colon, lexeme: ":", start: 38, end: 39),
+    lpc_tok(class: ^dag_token_lbracket, lexeme: "[", start: 40, end: 41)
+  ], right: lpc_tail_from(i: 0, n: n)))
+}
+
+fn lpc_elements_text(i: Int, n: Int) -> String {
+  if i >= n - 1 {
+    "x"
+  } else {
+    concat("x, ", lpc_elements_text(i: i + 1, n: n))
+  }
+}
+
+fn lpc_text(n: Int) -> String {
+  concat(
+    concat("module m.l\n\nfn f(x: Int) -> Int { g(xs: [", lpc_elements_text(i: 0, n: n)),
+    "]) }\n"
+  )
+}
+
+fn lpc_parses(n: Int) -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: residue } =>
+      match parse_module_prepared(tokens: lpc_stream(n: n), prepared: prepared, validation_residue: residue) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn lpc_fidelity_small() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: lpc_text(n: 3),
+    file: ^list_literal_parse_cost_probe,
+    supplied: lpc_stream(n: 3)
+  )
+}
+
+test fn lpc_long_list_literal_parses() -> Bool {
+  lpc_parses(n: 30)
+}
