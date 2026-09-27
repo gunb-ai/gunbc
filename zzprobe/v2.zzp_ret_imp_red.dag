@@ -1,4 +1,0 @@
-module v2.zzp_ret_imp_red
-import v2.compiler.inferred_tree { InferredTree, InferredFacts }
-fn h(t: InferredFacts) -> InferredTree { t }
-

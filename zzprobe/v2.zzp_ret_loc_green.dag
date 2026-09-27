@@ -1,5 +1,0 @@
-module v2.zzp_ret_loc_green
-type A { x: Int }
-type B { y: Int }
-fn h(t: B) -> B { t }
-
