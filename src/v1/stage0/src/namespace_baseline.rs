@@ -591,6 +591,81 @@ pub(crate) struct BodyReachSelection {
     pub reached: Vec<ReachedDeclaration>,
 }
 
+/// The declarations whose reads an IMPORT edit rebinds: in every module present on both sides
+/// whose import claims differ, a declaration is seeded when one of its reads spells a member
+/// that entered or left a member list, or resolves (on either side) through a whole-surface
+/// import that was added or removed. An import edit that rebinds nothing seeds nothing.
+///
+/// MEASURED (gunbc#12353 as the unrelated-diff control): seeding every declaration of a file
+/// whose import region was edited turned ~10 edited declarations into 684 seeds, because two of
+/// its files carry 244 and 213 declarations. The edit changed which names resolve where; that is
+/// a per-read fact the two indexes carry, so it is read there rather than widened to the file.
+pub(crate) fn import_rebound_declarations(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> BTreeSet<(String, String)> {
+    let claims = |record: &ModuleDeclarationRecord| -> BTreeSet<(String, Option<String>)> {
+        let mut out = BTreeSet::new();
+        for claim in &record.imports {
+            if claim.members.is_empty() {
+                out.insert((claim.target.clone(), None));
+            }
+            for (member, _) in &claim.members {
+                out.insert((claim.target.clone(), Some(member.clone())));
+            }
+        }
+        out
+    };
+    let mut seeds = BTreeSet::new();
+    for head_record in index_records(head) {
+        let Some(base_record) = index_get(base, &head_record.module_path) else {
+            continue;
+        };
+        let (b, h) = (claims(base_record), claims(head_record));
+        if b == h {
+            continue;
+        }
+        let mut members: BTreeSet<String> = BTreeSet::new();
+        let mut whole_targets: BTreeSet<String> = BTreeSet::new();
+        for (target, member) in b.symmetric_difference(&h) {
+            match member {
+                Some(m) => {
+                    members.insert(m.clone());
+                }
+                None => {
+                    whole_targets.insert(target.clone());
+                }
+            }
+        }
+        let reads = head_record
+            .referenced
+            .iter()
+            .chain(head_record.authored_type_references.iter())
+            .chain(head_record.called_occurrences.iter())
+            .chain(head_record.value_occurrences.iter())
+            .chain(head_record.matched_arms.iter());
+        for (in_declaration, spelling) in reads {
+            let rebound = members.contains(&qualified_last_segment(spelling.clone()))
+                || (!whole_targets.is_empty() && {
+                    let mut candidates = declaring_candidates(head, head_record, spelling);
+                    candidates.extend(declaring_candidates(base, base_record, spelling));
+                    whole_targets.iter().any(|t| {
+                        candidates.contains(t)
+                            || candidates.contains(&declarer_of(
+                                head,
+                                t,
+                                &qualified_last_segment(spelling.clone()),
+                            ))
+                    })
+                });
+            if rebound {
+                seeds.insert((head_record.module_path.clone(), in_declaration.clone()));
+            }
+        }
+    }
+    seeds
+}
+
 /// THE RELATION `interface_changed_consumers` DELIBERATELY STOPS SHORT OF, asked for a
 /// different consumer.
 ///
@@ -650,6 +725,25 @@ pub(crate) fn body_reach_from_changed_declarations(
                 ));
         }
     }
+    // THE FLAT CHANNEL, AT THE COMPILER'S OWN GRAIN. The global-bare lookup resolves a BARE name
+    // to a UNIQUE top-level declaration after local and import lookup miss. Two spellings the
+    // shared `read_binding` also calls flat are therefore not reads of the changed declaration
+    // here: a DOTTED spelling with no module prefix (`cfg.root` is a field or method access on a
+    // value, and its empty candidate set says nothing about top-level `root`), and a bare
+    // spelling whose leaf more than one module declares (the lookup is ambiguous, so it cannot
+    // name this declarer). MEASURED: admitting both made an unrelated diff (gunbc#12353) reach
+    // 13147 witnesses, fanned out through test-local helpers named `root`, `subject`,
+    // `observed`, `standing` -- the same order as #12361's replay, so the control discriminated
+    // nothing. The compile walk propagates rarely enough to hide this; this walk cannot.
+    let mut declarers_by_leaf: BTreeMap<&str, usize> = BTreeMap::new();
+    for record in index_records(head) {
+        for name in record.declared.iter().chain(record.variants.iter()) {
+            *declarers_by_leaf.entry(name.as_str()).or_default() += 1;
+        }
+    }
+    let flat_admissible = |spelling: &str, declaration: &str| {
+        !spelling.contains('.') && declarers_by_leaf.get(declaration).copied().unwrap_or(0) <= 1
+    };
     let mut seen: BTreeSet<(String, String)> = changed.clone();
     let mut frontier: Vec<(String, String)> = changed.iter().cloned().collect();
     let mut reached: Vec<ReachedDeclaration> = Vec::new();
@@ -680,7 +774,7 @@ pub(crate) fn body_reach_from_changed_declarations(
                         continue;
                     };
                     if bound == InterfaceConsumerBinding::BoundThroughFlatBareChannel
-                        && !flat_admitted
+                        && !(*flat_admitted && flat_admissible(spelling, leaf))
                     {
                         continue;
                     }

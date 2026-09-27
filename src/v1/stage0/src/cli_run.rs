@@ -26010,8 +26010,9 @@ pub(crate) struct FloorDiffEdits {
     /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
     /// `(file, declaration)` for every non-test-fn declaration -- fn, type or data -- whose
-    /// lines the diff edited, plus EVERY declaration of a file whose pre-declaration region
-    /// (its imports) was edited, since an import edit can rebind any name the module reads.
+    /// lines the diff edited. An import-region edit seeds nothing here: which reads it rebinds
+    /// is an index question (`namespace_baseline` `import_rebound_declarations`), and seeding
+    /// every declaration of the file planned ~684 seeds for an 11-file diff (gunbc#12353).
     /// The seeds of `namespace_baseline` `body_reach_from_changed_declarations`: the
     /// declaration grain `touched_entry_files` collapses to a file. A test fn is not a seed,
     /// because nothing reads one; an edited test fn is a changed witness in its own right.

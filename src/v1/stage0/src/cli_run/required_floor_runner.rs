@@ -1164,11 +1164,6 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
         let has_post_decl = changed.iter().any(|&l| l >= first_decl_line);
         if has_pre_decl {
             touched_entry_files.insert(file_norm.clone());
-            for (_, name, _) in &decls {
-                if !test_fn_names.contains(name) {
-                    touched_declarations.insert((file_norm.clone(), name.clone()));
-                }
-            }
             if !has_post_decl {
                 continue;
             }
@@ -1516,6 +1511,12 @@ fn interface_consumer_planning(
             // An interface change is a behaviour change too, and it is the only seed a
             // REMOVED declaration has (its file-side attribution is empty by construction).
             let mut seeds = touched_declarations.clone();
+            seeds.extend(
+                crate::cli_run::namespace_baseline::import_rebound_declarations(
+                    &base_index,
+                    head_index,
+                ),
+            );
             seeds.extend(
                 selection
                     .changes
@@ -6757,10 +6758,13 @@ pub fn run_required_floor(
                         reached_witness_identities
                             .push(format!("{}.{}", r.module_path, r.declaration));
                         eprintln!(
-                            "[floor-plan] BodyReachWitness identity={}.{} through={}.{}",
-                            r.module_path, r.declaration, r.through.0, r.through.1
+                            "[floor-plan] BodyReachWitness identity={}.{} through={}.{} binding={:?}",
+                            r.module_path, r.declaration, r.through.0, r.through.1, r.binding
                         );
                     }
+                }
+                for (module_path, declaration) in &body_reach.changed {
+                    eprintln!("[floor-plan] BodyReachSeed declaration={module_path}.{declaration}");
                 }
                 eprintln!(
                     "[floor-phase] phase=body-reach-selection observe_only=true \
@@ -13506,6 +13510,42 @@ test fn one_is_one() -> Bool {\n  1 == 1\n}\n";
                 .reached
                 .iter()
                 .any(|r| r.module_path == "iface.fi" || r.module_path == "iface.unrelated_test"),
+            "{:?}",
+            reach.reached
+        );
+    }
+
+    const FLATR_A_BASE: &str = "module flatr.a\n\nfn root() -> Int {\n  1\n}\n";
+    const FLATR_A_HEAD: &str = "module flatr.a\n\nfn root() -> Int {\n  2\n}\n";
+    const FLATR_OTHER: &str = "module flatr.other\n\nfn root() -> Int {\n  3\n}\n";
+    const FLATR_FIELD_TEST: &str = "module flatr.field_test\n\ntype Cfg { root: Int }\n\n\
+fn field_of(cfg: Cfg) -> Int {\n  cfg.root\n}\n\ntest fn field_is_one() -> Bool {\n  field_of(cfg: Cfg { root: 1 }) == 1\n}\n";
+    const FLATR_BARE_TEST: &str = "module flatr.bare_test\n\n\
+test fn bare_root_is_one() -> Bool {\n  root() == 1\n}\n";
+    const FLATR_IMPORTED_TEST: &str = "module flatr.imported_test\n\nimport flatr.a { root }\n\n\
+test fn imported_root_is_one() -> Bool {\n  root() == 1\n}\n";
+
+    /// THE RED FOR THE MEASURED FAN-OUT (gunbc#12353 control: 13147 witnesses). `root` is
+    /// declared by two modules, so a bare `root()` with no import is an ambiguous global-bare
+    /// lookup and names neither; `cfg.root` is a field access, not a read of top-level `root`.
+    /// Neither witness is reached. The POSITIVE CONTROL is the witness that imports `root` from
+    /// the changed module: it is reached, so the exclusion narrowed the flat channel and not the
+    /// resolved one.
+    #[test]
+    fn a_field_access_and_an_ambiguous_bare_name_do_not_reach_but_an_import_does() {
+        let base = [
+            ("a.dag", FLATR_A_BASE),
+            ("other.dag", FLATR_OTHER),
+            ("field_test.dag", FLATR_FIELD_TEST),
+            ("bare_test.dag", FLATR_BARE_TEST),
+            ("imported_test.dag", FLATR_IMPORTED_TEST),
+        ];
+        let mut head = base;
+        head[0] = ("a.dag", FLATR_A_HEAD);
+        let (_, reach) = reach_of("reach_flat", &base, &head, &[("flatr.a", "root")]);
+        assert_eq!(
+            reached_witnesses(&reach),
+            vec!["flatr.imported_test.imported_root_is_one".to_string()],
             "{:?}",
             reach.reached
         );
