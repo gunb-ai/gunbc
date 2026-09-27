@@ -1,11 +1,11 @@
 module extdeps.namecheap.client
 
-import std.types { String, NonEmptyStr, Secret }
+import std.types { String, NonEmptyStr, Secret, Bool }
 import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.http.client
-import extdeps.namecheap.read_hosts { NamecheapHostsRead, NamecheapHostsRefused, namecheap_read_hosts }
+import extdeps.namecheap.read_hosts { NamecheapHostsRead, NamecheapHostsObserved, NamecheapHostsRefused, namecheap_read_hosts }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "www.namecheap.com/support/api/methods/domains-dns/get-hosts/" } }
 
@@ -35,15 +35,38 @@ fn namecheap_get_hosts(account: NonEmptyStr, credential: Secret, client_ipv4: No
                       let n = string_length(s: got.body)
                       if !got.success || n < 4 || substring(s: got.body, start: n - 4, end: n) != "\n200" {
                         NamecheapHostsRefused { reason: "Namecheap getHosts transport did not return HTTP 200" }
-                      } else if (credential as String) == "" || string_contains(s: got.body, pattern: credential as String) || string_contains(s: got.body, pattern: key_wire as String) {
-                        NamecheapHostsRefused { reason: "Namecheap response contains credential material; refusing to publish it" }
                       } else {
-                        namecheap_read_hosts(body: substring(s: got.body, start: 0, end: n - 4), domain: join([sld as String, ".", tld as String], ""))
+                        namecheap_read_hosts_for_publication(body: substring(s: got.body, start: 0, end: n - 4),
+                          domain: join([sld as String, ".", tld as String], ""), credential: credential, key_wire: key_wire as String)
                       }
                     }
                   }
               }
           }
       }
+  }
+}
+
+fn namecheap_contains_credential(value: String, credential: Secret, key_wire: String) -> Bool {
+  string_contains(s: value, pattern: credential as String) || string_contains(s: value, pattern: key_wire)
+}
+
+// Raw exclusion and decoded exclusion protect different representations. Refuse
+// the whole observation; never redact a field and call the snapshot complete.
+fn namecheap_read_hosts_for_publication(body: String, domain: String, credential: Secret, key_wire: String) -> NamecheapHostsRead {
+  if (credential as String) == "" || key_wire == "" || namecheap_contains_credential(value: body, credential: credential, key_wire: key_wire) {
+    NamecheapHostsRefused { reason: "Namecheap response contains credential material; refusing to publish it" }
+  } else {
+    match namecheap_read_hosts(body: body, domain: domain) {
+      NamecheapHostsRefused { reason } => NamecheapHostsRefused { reason: reason }
+      NamecheapHostsObserved { domain: observed_domain, hosts, result_fields } =>
+        if namecheap_contains_credential(value: observed_domain, credential: credential, key_wire: key_wire)
+          || result_fields.any(f => namecheap_contains_credential(value: f.name, credential: credential, key_wire: key_wire) || namecheap_contains_credential(value: f.value, credential: credential, key_wire: key_wire))
+          || hosts.any(h => h.fields.any(f => namecheap_contains_credential(value: f.name, credential: credential, key_wire: key_wire) || namecheap_contains_credential(value: f.value, credential: credential, key_wire: key_wire))) {
+          NamecheapHostsRefused { reason: "Namecheap decoded response contains credential material; refusing to publish it" }
+        } else {
+          NamecheapHostsObserved { domain: observed_domain, hosts: hosts, result_fields: result_fields }
+        }
+    }
   }
 }

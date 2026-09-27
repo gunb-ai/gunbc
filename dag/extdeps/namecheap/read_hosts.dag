@@ -13,7 +13,7 @@ type NamecheapObservedHost { fields: List<XmlAttribute> }
 type NamecheapHostsRead = NamecheapHostsObserved { domain: String, hosts: List<NamecheapObservedHost>, result_fields: List<XmlAttribute> } | NamecheapHostsRefused { reason: String }
 
 fn nc_namespace_inherited(e: XmlElement) -> Bool {
-  !any(e.attributes, a => a.name == "xmlns" || string_contains(s: a.name, pattern: ":"))
+  !e.attributes.any(a => a.name == "xmlns" || string_contains(s: a.name, pattern: ":"))
     && all(e.children, c => nc_namespace_inherited(e: c))
 }
 fn nc_host_valid(e: XmlElement) -> Bool {
@@ -27,7 +27,7 @@ fn nc_host_valid(e: XmlElement) -> Bool {
 fn nc_result(e: XmlElement, domain: String) -> NamecheapHostsRead {
   if xml_attribute(e: e, name: "Domain") != domain || xml_attribute(e: e, name: "IsUsingOurDNS") != "true" || trim(s: e.text) != "" {
     NamecheapHostsRefused { reason: "Namecheap result does not confirm the requested domain on its DNS" }
-  } else if !all(e.children, h => nc_host_valid(e: h) && count(filter(e.children, other => xml_attribute(e: other, name: "HostId") == xml_attribute(e: h, name: "HostId"))) == 1) {
+  } else if !all(e.children, h => nc_host_valid(e: h) && count(e.children.filter(other => xml_attribute(e: other, name: "HostId") == xml_attribute(e: h, name: "HostId"))) == 1) {
     NamecheapHostsRefused { reason: "Namecheap host records are incomplete or contain unsupported result elements" }
   } else {
     NamecheapHostsObserved { domain: domain, hosts: map(e.children, h => NamecheapObservedHost { fields: h.attributes }), result_fields: e.attributes }

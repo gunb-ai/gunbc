@@ -10,10 +10,11 @@ for `96.224.201.7`. These are typed operator reports in
 `gunbc.namecheap.account`, not evidence of an authenticated API call or a
 permanent DNS-controller placement.
 
-`gunbc.namecheap.credential` binds the container once. Its `latest` reference is
-for the container-scoped IAM binding only. Execution requires an observed
-numeric version, so an approval over one DNS plan cannot silently switch to a
-new key through an alias. `gunbc.namecheap.credential_read` uses the existing
+`gunbc.namecheap.credential` binds the container once. Its `latest` reference identifies the
+container for IAM and is resolved once by the discovery observer, which records
+the returned numeric version. The numeric selector controls apply to future
+reviewed mutation consumers, not this discovery path: an approval over a DNS
+mutation must not silently switch credential generations through an alias. `gunbc.namecheap.credential_read` uses the existing
 `fetch_secret_ref_credential` with `WorkloadIdentityToken`; the shared reader
 checks the response resource against the requested project, secret and version.
 It does not print or persist the payload.
@@ -71,7 +72,8 @@ one Secret Manager version through the shared checked reader, and issues only
 not argv or a persistent credential file. There is no setter or configurable
 command in this provider interface. Every read has a timeout. Transport and
 provider refusals omit raw response bodies, and a response that contains the
-credential is withheld before decoding or writing the receipt.
+credential is withheld before decoding; the decoded retained result and host
+attributes are checked again before the observation can reach the receipt.
 
 The XML subset reader refuses unsupported syntax and ambiguous envelopes rather
 than guessing: DTDs and external entities, duplicate attributes, extra documents,
@@ -104,3 +106,30 @@ branch cannot impersonate the dedicated main-pinned identity. A read-only query
 of the latest 100 fleet workflow dispatches found no `gcp_iam_converge` run. That
 is limited history, not proof that bootstrap never happened. The bootstrap
 reach and independent readback are still unverified.
+
+## Review 5331195485 corrections
+
+The writer, generated console display and artifact uploader now consume
+`gunbc.namecheap.observation_artifact.namecheap_observation_receipt_path`. The
+workflow shell control reproduces the original unmatched receipt read on the old
+generated YAML, then exercises the regenerated success path with only the
+declared JSON output. Its planted unmatched read must fail.
+
+The production client keeps the raw response exclusion and also checks all
+decoded retained result and host attribute names and values, including unknown
+fields, before returning an observation. Six publication controls cover raw,
+URI-encoded, and XML-entity-encoded echoes plus ordinary entity preservation.
+Disabling the decoded guard in an isolated test copy makes the three XML echo
+controls fail while raw/URI and ordinary-value controls still pass. Refusals
+contain no offending value and never claim a partially redacted snapshot.
+
+The previous head's CI floor identified bare algebra-provider references and an
+ambiguous shorthand `domain` binder. List operations now use their native method
+forms, and the observer uses an explicit binder. Uppercase `Host` remains unchanged.
+
+Correction validation: the combined full-root run passed 51 controls and
+regenerated the workflow. After the CI-reference corrections, all 15 parser and
+six publication controls passed again. The regenerated emitted shell passed the
+clean-root success control, left the exact upload artifact, and rejected the
+planted unmatched receipt read. `git diff --check` passed. Exact-head CI is the
+remaining repository-wide check; no live provider or IAM actuation was used.

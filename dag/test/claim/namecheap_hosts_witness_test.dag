@@ -11,7 +11,7 @@ fn result(domain: String, rows: String) -> String {
 }
 test fn valid_host_preserves_unknown_provider_fields() -> Bool {
   match namecheap_read_hosts(body: response(result: result(domain: "gunb.ai", rows: "<Host HostId='1' Name='@' Type='TXT' Address='a&amp;b' TTL='1800' Future='preserved'/>")), domain: "gunb.ai") {
-    NamecheapHostsObserved { domain, hosts, result_fields: _ } => domain == "gunb.ai" && count(hosts) == 1 && all(hosts, h => any(h.fields, f => f.name == "Future" && f.value == "preserved") && any(h.fields, f => f.name == "Address" && f.value == "a&b"))
+    NamecheapHostsObserved { domain: observed_domain, hosts, result_fields: _ } => observed_domain == "gunb.ai" && count(hosts) == 1 && all(hosts, h => h.fields.any(f => f.name == "Future" && f.value == "preserved") && h.fields.any(f => f.name == "Address" && f.value == "a&b"))
     _ => false
   }
 }
@@ -60,7 +60,7 @@ test fn duplicate_provider_ids_refuse() -> Bool {
 
 test fn provider_result_fields_are_not_discarded() -> Bool {
   match namecheap_read_hosts(body: response(result: "<DomainDNSGetHostsResult Domain='gunb.ai' IsUsingOurDNS='true' EmailType='MX'/>"), domain: "gunb.ai") {
-    NamecheapHostsObserved { domain: _, hosts: _, result_fields } => any(result_fields, f => f.name == "EmailType" && f.value == "MX")
+    NamecheapHostsObserved { domain: _, hosts: _, result_fields } => result_fields.any(f => f.name == "EmailType" && f.value == "MX")
     _ => false
   }
 }

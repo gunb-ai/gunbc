@@ -1,4 +1,6 @@
 module gunbc.ci_spec
+
+import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
@@ -3341,6 +3343,6 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     entry: gunbc_ci_namecheap_observe_target.entry,
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
-    receipt_rel: "target/namecheap-observe-execution.txt"
+    receipt_rel: namecheap_observation_receipt_path
   )
 }

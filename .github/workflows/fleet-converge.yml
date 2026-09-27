@@ -1962,7 +1962,7 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/namecheap/observe.dag --function namecheap_observe_ci_wet
-          cat "$ROOT/target/namecheap-observe-execution.txt"
+          cat "$ROOT/target/namecheap-observation.json"
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5

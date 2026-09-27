@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_workflow
 
+import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
+
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
 import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke }
 
@@ -3819,7 +3821,7 @@ fn fleet_converge_namecheap_observe_job() -> Job {
       },
       fleet_converge_receipt_upload_step(
         id: "namecheap_secret_receipt", name: "Upload Namecheap read-only DNS observation",
-        artifact: "namecheap-observation", path: "target/namecheap-observation.json",
+        artifact: "namecheap-observation", path: namecheap_observation_receipt_path,
         if_condition: "success()",
       ),
     ],

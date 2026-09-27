@@ -74,7 +74,7 @@ fn xml_attributes(s: String, i: Int, attrs: List<XmlAttribute>, remaining: Int) 
     let eq = xml_skip(s: s, i: end)
     let q = xml_skip(s: s, i: eq + 1)
     let quote = xml_at(s: s, i: q)
-    if any(attrs, a => a.name == name) || xml_at(s: s, i: eq) != "=" || (quote != "\"" && quote != "'") { XmlStartRefused }
+    if attrs.any(a => a.name == name) || xml_at(s: s, i: eq) != "=" || (quote != "\"" && quote != "'") { XmlStartRefused }
     else {
       match xml_text_until(s: s, i: q + 1, stop: quote, acc: "", remaining: 16384) {
         XmlTextRefused => XmlStartRefused
@@ -147,7 +147,7 @@ fn read_xml_subset(s: String) -> XmlRead {
   }
 }
 fn xml_attribute(e: XmlElement, name: String) -> String {
-  match filter(e.attributes, a => a.name == name).first() { Present { value: a } => a.value Absent => "" }
+  match e.attributes.filter(a => a.name == name).first() { Present { value: a } => a.value Absent => "" }
 }
-fn xml_children(e: XmlElement, name: String) -> List<XmlElement> { filter(e.children, c => c.name == name) }
+fn xml_children(e: XmlElement, name: String) -> List<XmlElement> { e.children.filter(c => c.name == name) }
 fn xml_leaf(e: XmlElement) -> Bool { count(e.children) == 0 }
