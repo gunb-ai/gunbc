@@ -1423,7 +1423,7 @@ pub(crate) enum InterfaceConsumerPlanning {
         /// The EXECUTION-grain peer over the same two indexes: every declaration whose
         /// evaluation transitively reads a changed one. Observed and printed; no claim is
         /// planned from it until the enabling switch lands (neat-boar-16 ruling, operator
-        /// sign-off pending, adhoc-be476b8f-943).
+        /// ruled 2026-09-27; the enabling step is adhoc-6969b422-bec).
         body_reach: crate::cli_run::namespace_baseline::BodyReachSelection,
     },
 }

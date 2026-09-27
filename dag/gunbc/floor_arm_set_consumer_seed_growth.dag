@@ -65,8 +65,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // peer of the dependents walk under the same purpose: body_reach_from_changed_declarations closes
 // the changed declarations under EVERY read over the same index and the same read_binding rule,
 // so a body-only edit reaches the claims whose verdict it can move. It is OBSERVE-ONLY here: the
-// floor prints the reached witnesses and plans none of them until the operator signs off on
-// making them differentially merge-blocking. Its seeds are the declaration grain of the floor's
+// floor prints the reached witnesses and plans none of them; making them differentially
+// merge-blocking (operator ruling 2026-09-27) is the enabling step, adhoc-6969b422-bec. Its seeds are the declaration grain of the floor's
 // own line attribution (FloorDiffEdits `touched_declarations`, ExistingSeedItemModified with
 // floor_diff_edits_from_line_ranges, InterfaceConsumerPlanning and interface_consumer_planning);
 // the propagation rule it realizes is modeled as v2.workflow.floor_subject_seed reach_propagates.
