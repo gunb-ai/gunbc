@@ -10,6 +10,8 @@ import v2.std.language_model { LanguageModel }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, node_subtree_nodes }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
@@ -80,6 +82,35 @@ test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
 // caret_referenced_ident_publishes_the_lexeme_holds: the caret tree and the data-decl tree now both
 // carry the word, so reverting the caret site to a class stamp turns it red.
 
+// ONE PARSE FOR THE CARET FIXTURE. The three caret-site claims ask membership questions of the same
+// parsed tree, so its atom identities are produced once here (enrolled warm in
+// v2.workflow.floor_pure_producer_share) and each claim reads the list rather than re-parsing.
+fn caret_tree_atom_identities() -> List<Symbol> {
+  let lm = probe_cached_lm
+  match tokenize(text: modifier_spelling_as_caret_source, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: _ } => [^caret_probe_tokenize_refused]
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => [^caret_probe_parse_refused]
+        Accepted { value: art, diagnostics: _ } =>
+          fold_list(
+            xs: node_subtree_nodes(root: art.tree),
+            empty: [],
+            cons: fn(acc, n) {
+              match node_atom_identity_optional(node: n) {
+                Present { value: id } => list_snoc_item(xs: acc, item: id)
+                Absent => acc
+              }
+            }
+          )
+      }
+  }
+}
+
+fn caret_tree_carries(identity: Symbol) -> Bool {
+  fold_list(xs: caret_tree_atom_identities(), empty: false, cons: fn(acc, id) { acc || id == identity })
+}
+
 fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   let lm = probe_cached_lm
   match tokenize(text: src, file: ^probe, rules: lm.lex) {
@@ -103,10 +134,7 @@ fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
 }
 
 test fn caret_referenced_ident_publishes_the_lexeme_holds() -> Bool {
-  parsed_tree_carries_atom(
-    src: modifier_spelling_as_caret_source,
-    identity: ^sole_constructor
-  )
+  caret_tree_carries(identity: ^sole_constructor)
 }
 
 test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
@@ -127,17 +155,11 @@ test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
 // caret_referenced_ident_does_not_publish_the_generic_ident_class_holds.
 
 test fn caret_referenced_ident_does_not_publish_the_generic_ident_class_holds() -> Bool {
-  parsed_tree_carries_atom(
-    src: modifier_spelling_as_caret_source,
-    identity: ^dag_token_ident
-  ) == false
+  caret_tree_carries(identity: ^dag_token_ident) == false
 }
 
 test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool {
-  parsed_tree_carries_atom(
-    src: modifier_spelling_as_caret_source,
-    identity: ^dag_token_kw_sole_constructor
-  ) == false
+  caret_tree_carries(identity: ^dag_token_kw_sole_constructor) == false
 }
 
 test fn generic_param_publishes_the_generic_ident_class_holds() -> Bool {
