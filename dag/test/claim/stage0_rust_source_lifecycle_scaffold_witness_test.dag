@@ -492,11 +492,15 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
 // (seed retention frontier, evaluation budget consequence, file transport, release-locus
 // constants) moved into the family -- a measurement of the current tree is not an oracle
 // (DESIGN §5). The equality is still a list equality, so order is asserted as well.
-test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_the_wet_actuator_family() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == list_map(
+fn wet_actuator_generated_stage0_repo_paths() -> List<String> {
+  list_map(
     xs: wet_actuator_generated_stage0_files(),
     f: fn(filename) { stage0_src_repo_path(filename: filename) }
   )
+}
+
+test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_the_wet_actuator_family() -> Bool {
+  generated_artifact_layout_overlap_repo_paths() == wet_actuator_generated_stage0_repo_paths()
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {
