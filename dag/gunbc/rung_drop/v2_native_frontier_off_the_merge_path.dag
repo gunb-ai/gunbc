@@ -13,8 +13,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // RESTATED 2026-09-27: THE NIGHTLY IS DELETED, AND THIS ROW NO LONGER NAMES IT. The operator ruled
 // that a nightly nobody checks is deleted rather than repaired. This one never produced a
 // measurement. Both of its scheduled runs (2026-09-26 on srv4, 2026-09-27 on srv3) stopped in about
-// eleven seconds at the preflight, UserManagerUnreachable: the runner user has no lingering systemd
-// user manager. So the mitigation this row originally described never executed. Deleting the job
+// eleven seconds at the preflight, UserManagerUnreachable. The log reads "Failed to connect to bus:
+// No medium found": the job environment carried no user-bus address. Whether the host had a
+// lingering manager was never observed. So the mitigation this row originally described never executed. Deleting the job
 // lowers nothing that was established (DESIGN section 4b(1)). What the row now describes is the
 // state since 2026-09-23 in fact: the ratchet runs when a person invokes the instrument. That is the
 // same operator-invoked standing gunbc.rung_drop v2_native_route_off_the_merge_path records for the
