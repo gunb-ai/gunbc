@@ -1,11 +1,13 @@
 module test.claim.fabric_cell_converge
 
 import std.logic { Bool }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
 import std.types { list_length, String, NonEmptyStr, Int }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, fabric_execution_slot_identities, identity_is_fabric_execution_member }
 import extdeps.systemd { parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity }
 import v2.std.optional { Present, Absent }
 import std.measure { byte_size_count }
@@ -94,15 +96,33 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // what it cannot do is present the result as something the planner accepts. Every row below that
 // once asked "does this population refuse" now asks the kernel directly, which is where the fact it
 // was measuring always lived.
+//
+// THE EXPECTED ROSTER IS SUPPLIED AT THE KERNEL'S INTERFACE, NOT READ FROM THE LIVE FABRIC ROSTER
+// (DESIGN §3, a witness discriminates at one interface). These rows are about how the kernel treats
+// a readback against a roster; which slots the fleet declares is gunbc.runner_slot_allocation's
+// fact. Reading it here made every row a claim about the live fleet as well: when #11625 gave srv3 a
+// second fabric slot (srv3-07), the unread srv3-07 made every srv3 readback refuse, so the one row
+// asserting a clean readback does NOT refuse went red, and every row asserting a refusal kept
+// passing by a route it was not written to exercise. The real roster reaches this kernel through
+// fabric_cell_expected_slots, whose inhabitance row is
+// witness_fabric_cell_desired_population_is_host_exact below.
+fn fixture_expected_slots() -> List<RunnerSlotIdentity> {
+  [srv3_fabric_slot()]
+}
+
+fn classification_against(expected: List<RunnerSlotIdentity>, readback: FabricCellHostReadback) -> FabricCellHostClassification {
+  classify_fabric_cell_host(expected_slots: expected, readback: readback)
+}
+
 fn classification_of(readback: FabricCellHostReadback) -> FabricCellHostClassification {
-  classify_fabric_cell_host(
-    expected_slots: fabric_cell_expected_slots(host: readback.host),
-    readback: readback,
-  )
+  classification_against(expected: fixture_expected_slots(), readback: readback)
 }
 
 fn classification_refuses(readback: FabricCellHostReadback) -> Bool {
-  let c = classification_of(readback: readback)
+  classification_is_refused(c: classification_of(readback: readback))
+}
+
+fn classification_is_refused(c: FabricCellHostClassification) -> Bool {
   fold(c.standings, init: false, f: (acc, st) => acc || standing_is_blocked(st: st))
     || list_length(items: c.unexpected) > 0
     || list_length(items: c.host_mismatched) > 0
@@ -172,14 +192,27 @@ fn membership_refuses_uncommitted(m: FabricCellFamilyMembership) -> Bool {
   }
 }
 
-// THE EXACT FABRIC MEMBER IS THE FAMILY, AND ITS NEIGHBOURS ARE NOT -- BOTH DIRECTIONS, because only
-// one of them is the safety claim and only the other proves the gate is not vacuous. srv3-05 is the
-// same host one index down; srv4-06 is the same index on the other host of the same committed width.
-// A gate that answered "family member" for everything would satisfy the first row alone.
+// THE DECLARED FABRIC MEMBERS ARE THE FAMILY, AND THEIR NEIGHBOURS ARE NOT -- BOTH DIRECTIONS,
+// because only one of them is the safety claim and only the other proves the gate is not vacuous.
+// The members are read from the authority rather than transcribed: this row used to name srv4-06 as
+// the non-member on the other host, and #11625 made srv4-06 a member, so the row went red with the
+// gate working exactly as declared. srv3-05 and srv4-05 are the index below the first fabric slot on
+// each fabric host, committed Actions slots on both; the row asserts they are outside the roster
+// before asserting the gate refuses them, so a roster that later admits one reddens here by name.
+// A gate that answered "family member" for everything would satisfy the first conjunct alone.
+fn slot_on(host: HostIdentity, slot_index: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: host, slot_index: slot_index }
+}
+
+fn neighbour_is_refused(slot: RunnerSlotIdentity) -> Bool {
+  !identity_is_fabric_execution_member(identity: slot)
+    && membership_refuses_wrong_family(m: fabric_cell_family_membership(host: slot.host, slot_index: slot.slot_index))
+}
+
 test fn witness_fabric_cell_family_is_exactly_the_declared_member() -> Bool {
-  membership_is_family_member(m: fabric_cell_family_membership(host: operator_host_srv3, slot_index: 6))
-    && membership_refuses_wrong_family(m: fabric_cell_family_membership(host: operator_host_srv3, slot_index: 5))
-    && membership_refuses_wrong_family(m: fabric_cell_family_membership(host: operator_host_srv4, slot_index: 6))
+  (fabric_execution_slot_identities() |> all(s => membership_is_family_member(m: fabric_cell_family_membership(host: s.host, slot_index: s.slot_index))))
+    && neighbour_is_refused(slot: slot_on(host: operator_host_srv3, slot_index: 5))
+    && neighbour_is_refused(slot: slot_on(host: operator_host_srv4, slot_index: 5))
 }
 
 // MEMBERSHIP IS ASKED BEFORE PURPOSE: an index the host was never admitted to carry is refused as an
@@ -193,16 +226,35 @@ test fn witness_fabric_cell_id_is_the_slot_instance_name() -> Bool {
   (fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String) == "srv3-06"
     && (fabric_cell_id_for_slot(slot: srv3_fabric_slot()) as String)
         == runner_slot_instance_name(slot: srv3_fabric_slot())
-    && list_length(items: fabric_cell_ids()) == 1
+    && list_length(items: fabric_cell_ids()) == list_length(items: fabric_execution_slot_identities())
 }
 
-// THE DESIRED POPULATION IS THREE RESOURCE-ADDRESSED MEMBERS ON THE ONE FABRIC HOST, AND NONE ON A
-// HOST THAT CARRIES NO FABRIC MEMBER. The second half is what stops the family proposing cells fleet
-// wide the moment it is threaded into converge.
+// THE DESIRED POPULATION IS ONE RESOURCE-ADDRESSED MEMBER PER ADDRESS PER DECLARED FABRIC SLOT ON
+// THE HOST, AND NONE ON A HOST THAT CARRIES NO FABRIC MEMBER. The last conjunct is what stops the
+// family proposing cells fleet wide the moment it is threaded into converge. This row used to say
+// "3 on srv3, 0 on srv4" -- one slot's worth on the one fabric host -- and #11625 gave srv3 a second
+// slot and srv4 two, so it was false from that landing. The per-host slot count is counted here from
+// the roster independently of the fold's own host filter, and srv2 is the host with none: its width
+// is a typed refusal (#11762), so it cannot carry a fabric slot by any route. This is also the
+// inhabitance row for the real roster reaching the classification kernel the readback rows supply.
+fn roster_slots_on(host: HostIdentity) -> Int {
+  fold(fabric_execution_slot_identities(), init: 0, f: (n, s) => if (s.host as String) == (host as String) { n + 1 } else { n })
+}
+
+fn desired_is_host_exact(host: HostIdentity) -> Bool {
+  list_length(items: fabric_cell_desired_members(host: host))
+    == roster_slots_on(host: host) * list_length(items: fabric_cell_resource_addresses())
+    && list_length(items: fabric_cell_expected_slots(host: host)) == roster_slots_on(host: host)
+}
+
 test fn witness_fabric_cell_desired_population_is_host_exact() -> Bool {
-  list_length(items: fabric_cell_desired_members(host: operator_host_srv3)) == 3
-    && list_length(items: fabric_cell_desired_members(host: operator_host_srv4)) == 0
-    && list_length(items: fabric_cell_resource_addresses()) == 3
+  list_length(items: fabric_cell_resource_addresses()) == 3
+    && roster_slots_on(host: operator_host_srv3) > 0
+    && desired_is_host_exact(host: operator_host_srv1)
+    && desired_is_host_exact(host: operator_host_srv3)
+    && desired_is_host_exact(host: operator_host_srv4)
+    && roster_slots_on(host: operator_host_srv2) == 0
+    && list_length(items: fabric_cell_desired_members(host: operator_host_srv2)) == 0
 }
 
 // MEMBER KEYS ARE DISTINCT PER ADDRESS. If two addresses collided the reconcile would see a
@@ -419,11 +471,9 @@ test fn witness_fabric_cell_agreeing_duplicate_observations_are_present() -> Boo
 // exact failure the host-grain cut exists to close, and it is authorable today precisely because
 // the supplied slot need not be a declared one.
 //
-// WHAT THIS ROW DOES NOT COVER, said rather than left implied: the two-declared-cells case, where
-// one cell is read and the other is not. `fabric_execution_slot_identities` declares exactly one
-// fabric slot today, so that input cannot be authored without adding a second slot to the
-// authority. The guard is reachable and currently unoccupied -- a quiet guard, not a dead one --
-// and this row exercises the same mechanism through the one input the authority does admit.
+// The two-declared-cells case, where one cell is read and the other is not, is the next row: the
+// expected roster is supplied at the kernel's interface, so it no longer waits on the live authority
+// declaring a second slot on one host.
 test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_foreign_readback() -> Bool {
   let foreign_slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
   let foreign_readback = FabricCellReadback {
@@ -445,6 +495,16 @@ test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_fore
   })
 }
 
+// TWO EXPECTED CELLS, ONE READ: the unread one blocks, and the same readback against a one-cell
+// roster does not -- so the refusal is the unread expected cell and nothing else in the readback.
+test fn witness_fabric_cell_one_of_two_expected_cells_unread_refuses() -> Bool {
+  let second = slot_on(host: operator_host_srv3, slot_index: 7)
+  let expected = [srv3_fabric_slot(), second]
+  let c = classification_against(expected: expected, readback: host_readback_of(entries: [converged_readback()]))
+  let clean = classification_of(readback: host_readback_of(entries: [converged_readback()]))
+  classification_is_refused(c: c) && !classification_is_refused(c: clean)
+}
+
 fn decision_is_not_applicable(p: FabricCellObservationDecision) -> Bool {
   match fabric_cell_observation_outcome(decision: p) {
     FabricCellObservationNotApplicable { host: _ } => true
@@ -464,6 +524,8 @@ fn decision_denial_reasons(p: FabricCellObservationDecision) -> List<String> {
 
 
 // A HOST THAT EXPECTS NO FABRIC CELLS IS NOT APPLICABLE, AND ONE THAT DOES IS DENIED BY NAME. The
+// host with none is srv2 (its width is a typed refusal); this row named srv4 until #11625 gave srv4
+// two fabric slots, and the row asserts the roster fact before relying on it. The
 // constructor this replaces answered both with an OBSERVED population -- srv4 got observed-empty,
 // which reads downstream as "this host was read and holds nothing", a claim nobody made, and srv3
 // got a refusal assembled from placeholder dispositions, which reads as three specific resources
@@ -475,7 +537,8 @@ fn decision_denial_reasons(p: FabricCellObservationDecision) -> List<String> {
 // "we looked and three addresses would not read", which are different states with different
 // remedies and were previously the same value.
 test fn witness_fabric_cell_unobserved_names_not_applicable_and_unavailable_separately() -> Bool {
-  decision_is_not_applicable(p: fabric_cell_observation_unobserved(host: operator_host_srv4))
+  roster_slots_on(host: operator_host_srv2) == 0
+    && decision_is_not_applicable(p: fabric_cell_observation_unobserved(host: operator_host_srv2))
     && decision_denial_reasons(p: fabric_cell_observation_unobserved(host: operator_host_srv3))
       == ["observer-unavailable|srv3"]
 }

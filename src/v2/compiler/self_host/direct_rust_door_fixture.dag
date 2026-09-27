@@ -1,8 +1,9 @@
 module v2.compiler.self_host.direct_rust_door_fixture
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_module { emit_module_decl_separator }
-import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer }
+import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust {
@@ -118,7 +119,7 @@ fn direct_rust_door_specimen_resolved() -> Outcome<Node> {
 fn direct_rust_door_specimen_inferred() -> Outcome<InferredTree> {
   match direct_rust_door_specimen_resolved() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+    Accepted { value: resolved, diagnostics: _ } => infer_and_discharge(tree: resolved)
   }
 }
 

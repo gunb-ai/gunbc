@@ -1,6 +1,9 @@
 module test.claim.fabric.fabric_storage_file_store_wet_witness
 
 import extdeps.shell
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
+import extdeps.tools.coreutils_stat { coreutils_stat_path_mode, PathModeObserved, PathModeUnobservable }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, NonEmptyStr, String }
 import std.durable_compare_and_set { cas_generation_count }
@@ -19,7 +22,7 @@ import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import gunbc.fabric_storage_wire { fabric_storage_unwire_advance }
 import gunbc.fabric_storage_client { served_reply_from, ServedAnswered, ServedFault }
 import gunbc.fabric_storage_file_store {
-  FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused,
+  FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused,
   fabric_storage_file_put, fabric_storage_file_get, fabric_storage_file_head, fabric_storage_file_advance, fabric_storage_file_closure, fabric_storage_object_path,
 }
 
@@ -188,4 +191,45 @@ test fn the_identity_route_echoes_the_presented_login_and_touches_no_head_by_rea
   }
   let untouched = match fabric_storage_file_head(root: s, name: "p") { FabricHeadObserved { reading: r } => match r { FabricHeadAbsent => true  FabricHeadAt { object: _, generation: _ } => false }  FabricHeadReadRefused { fault: _ } => false }
   echoed && absent && untouched
+}
+
+// THE DECLARED ENTRY MODE REACHES BOTH PUBLICATIONS. A store rooted with a declared mode publishes
+// its object (Filesystem.WriteCreateNewWithMode) and its head generation (the CAS's
+// DeclaredModeCreateOnly) at exactly that mode, read back with stat from the files themselves. 0444
+// is the placement's derived mode (test.claim.live_deploy.emit the_placed_fabric_store_derives_entry_mode_0444)
+// and differs from what any umask can produce from create-new's 0666, so a realization that dropped
+// the declared bits and fell back to the umask is red here whatever umask the runner has. The
+// umask-077 case that failed on srv1 is exercised directly in the seed's
+// a_declared_mode_is_published_regardless_of_the_umask. The control inside the claim runs the SAME
+// operations on a store with no declared mode and requires that it does not publish 0444.
+fn read_only_by_all() -> FileMode {
+  FileMode {
+    owner: PermissionBits { read: true, write: false, execute: false },
+    group: PermissionBits { read: true, write: false, execute: false },
+    other: PermissionBits { read: true, write: false, execute: false },
+    setuid: false, setgid: false, sticky: false,
+  }
+}
+
+fn observed_mode_octal(path: String) -> String {
+  match coreutils_stat_path_mode(path: path as NonEmptyStr) {
+    PathModeObserved { path: _, mode } => file_mode_octal(mode: mode)
+    PathModeUnobservable { path: _, reason } => join(["unobservable: ", reason], "")
+  }
+}
+
+test fn a_declared_entry_mode_is_the_published_mode_of_objects_and_heads() -> Bool {
+  let base = fresh_store()
+  let s = fabric_storage_file_root_with(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_storage_mode.XXXXXX").path as NonEmptyStr, entry_mode: Present { value: read_only_by_all() })
+  let ready = match fabric_storage_file_root_ensure(root: s) { FabricStorageRootReady => true  FabricStorageRootRefused { area: _, detail: _ } => false }
+  let a = event(body: "a", parent: none)
+  let put = match fabric_storage_file_put(root: s, object: a) { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false }
+  let object_mode = observed_mode_octal(path: fabric_storage_object_path(root: s, object: fabric_object_ref_of(object: a)))
+  let head_mode = match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: a)) {
+    FabricHeadAdvanced { object: _, generation: g } => observed_mode_octal(path: cas_file_slot_path(root: s.heads, key: "p", generation: g))
+    _ => "not advanced"
+  }
+  let _b = fabric_storage_file_put(root: base, object: a)
+  let undeclared_mode = observed_mode_octal(path: fabric_storage_object_path(root: base, object: fabric_object_ref_of(object: a)))
+  ready && put && object_mode == "0444" && head_mode == "0444" && undeclared_mode != "0444"
 }
