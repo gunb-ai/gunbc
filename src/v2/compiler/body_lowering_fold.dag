@@ -685,7 +685,7 @@ fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<Suga
 // A WHERE CLAUSE LOWERS TO ITS PREDICATES, EVERY ONE, EACH A CALL-SHAPED NODE RESOLVE BINDS.
 // `where range(min: 0, max: 5), brand("X")` carries two predicates, and each keeps its authored
 // name atom -- the ident's own occurrence -- as a Transform's operator, so v2 resolve binds that
-// atom to the predicate's declaration by ordinary name lookup (std.integer range, std.types brand)
+// atom to the predicate's declaration by ordinary name lookup (std.types range, std.types brand)
 // and refuses a spelling nothing declares (resolve_reason_where_predicate_unbound). The value being
 // refined is the declaration's first parameter and is never written in the clause. Labelled
 // arguments bind to the declaration's parameters BY LABEL, so they are carried as ONE record whose
