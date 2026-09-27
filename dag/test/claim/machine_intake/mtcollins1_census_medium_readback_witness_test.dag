@@ -168,7 +168,7 @@ test fn only_an_agreed_readback_lets_the_boot_proceed() -> Bool {
   let disagrees = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: ok(stdout: concat(other, "\n")), measure: measure_ok())
   let unreadable = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: refused(reason: "ssh: connect refused"), measure: measure_ok())
   (match mtcollins1_census_readback_refusal(readback: agreed) { Absent => true  Present { value: _ } => false })
-    && (match mtcollins1_census_readback_refusal(readback: diverged) { Present { value: w } => !string_contains(s: w, pattern: "untouched") && string_contains(s: w, pattern: "6455b3b9")  Absent => false })
+    && (match mtcollins1_census_readback_refusal(readback: diverged) { Present { value: w } => !string_contains(s: w, pattern: "untouched") && string_contains(s: w, pattern: recorded as String) && string_contains(s: w, pattern: other as String)  Absent => false })
     && (match mtcollins1_census_readback_refusal_before_filing(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "controller untouched") && !string_contains(s: w, pattern: "SOL")  Absent => false })
     && (match mtcollins1_census_readback_refusal_before_attach(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "after grant, before attach") && string_contains(s: w, pattern: "media attach, boot selection and power untouched") && string_contains(s: w, pattern: "SOL session had been acquired") && !string_contains(s: w, pattern: "controller untouched")  Absent => false })
     && (match mtcollins1_census_readback_refusal_before_attach(readback: agreed) { Absent => true  Present { value: _ } => false })
