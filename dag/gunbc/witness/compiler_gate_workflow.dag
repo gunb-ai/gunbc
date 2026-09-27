@@ -213,9 +213,10 @@ data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
 data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
 data compiler_gate_unit_test_memory_max_bytes: Int = 12884901888
-// The shared 45-minute cap cancelled the first run mid-population; 120 lets it complete once so the
-// wall can be read. It is re-derived from that measurement when the step turns required.
-data compiler_gate_clippy_timeout_minutes: Int = 120
+// The shared 45-minute cap cancelled the first run mid-population. The complete run measured a
+// 38m25s job (lint 1m17s, unit-test step 36m53s; head 7f06993e, PR #12450), so 60 is that wall
+// with margin. It is re-derived when the step turns required or the live-tree tests are reshaped.
+data compiler_gate_clippy_timeout_minutes: Int = 60
 
 fn compiler_gate_unit_test_command() -> String {
   join(
