@@ -97,8 +97,8 @@ fn refinement_obligation_undischargeable_diagnostic(site: Node) -> Diagnostic {
 }
 
 // THE PIPELINE COMPOSITION: infer, then discharge. A caller that hands infer's result on to emit,
-// eval or a lens gate takes this route; a caller that only reads pre-discharge facts reads the
-// obligated form through v2.compiler.inferred_tree's accessors and never holds an InferredTree.
+// eval or a lens gate takes this route; a caller that only reads infer's own verdict or facts calls
+// infer and reads the obligated form's fields, never holding an InferredTree.
 fn infer_and_discharge(tree: ResolvedTree) -> Outcome<InferredTree> {
   bind_outcome(o: infer(tree: tree), f: fn(obligated) { discharge_refinement_obligations(t: obligated) })
 }

@@ -66,15 +66,3 @@ type ObligatedInferredTree {
   facts: PartialFunction<Node, InferredFacts>
   obligations: List<RefinementObligation>
 }
-
-fn obligated_inferred_root(t: ObligatedInferredTree) -> Node {
-  t.root
-}
-
-fn obligated_inferred_facts(t: ObligatedInferredTree) -> PartialFunction<Node, InferredFacts> {
-  t.facts
-}
-
-fn obligated_inferred_obligations(t: ObligatedInferredTree) -> List<RefinementObligation> {
-  t.obligations
-}
