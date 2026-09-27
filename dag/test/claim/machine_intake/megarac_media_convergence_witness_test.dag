@@ -306,7 +306,7 @@ test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
     firmware: megarac_firmware_0_32,
     route: RouteAlreadyPresented,
     cd_before: cd_clean,
-    general_at_end: raw_clean,
+    general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported),
   ) {
     MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: e } =>
       e.redirection_wire == 1 && optional_text_is(v: e.session_index, want: "0") && optional_text_is(v: e.media_index, want: "0") && e.established_at == 1500 && e.looks == 1
@@ -316,7 +316,7 @@ test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
 
 // ─── DETACH: the command's answer and the read-back are two facts ───────────────────────────────
 fn detach(success: Bool, body: String, readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
-  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: megarac_write_answer(success: success, body: body, stderr: ""), readback_read: readback_read, readback: readback, cd_after_stop: cd_clean, general_after_stop: raw_clean }
+  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: megarac_write_answer(success: success, body: body, stderr: ""), readback_read: readback_read, readback: readback, cd_after_stop: cd_clean, general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported) }
 }
 
 data stop_1411: String = "{\"error\":\"Error stopping the remote media redirection\",\"code\":1411}"
@@ -371,7 +371,7 @@ test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
 
 fn ready_outcome() -> MegaRacAttachResult {
   MegaRacAttachResult {
-    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_clean, general_at_end: raw_clean),
+    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_clean, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)),
     session_release: SessionReleased,
     baseline: none,
   }
@@ -488,15 +488,16 @@ test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
 // gate opens; the same code beside an unhealthy presentation rides that presentation's refusal.
 data cd_clean: CdErrorReading = CdErrorRead { code: CdErrorNone }
 data cd_16: CdErrorReading = cd_error_reading(body: mtcollins1_media_general_2026_09_27)
-data raw_16: MegaRacRawRead = MegaRacRawRead { answered: true, body: mtcollins1_media_general_2026_09_27, observed_at: Present { value: 13100 } }
-data raw_clean: MegaRacRawRead = MegaRacRawRead { answered: true, body: mtcollins1_media_general_2026_09_27_morning_as_reported, observed_at: Present { value: 13100 } }
+fn raw_at(body: String) -> MegaRacRawRead {
+  MegaRacRawRead { answered: true, body: body, observed_at: Present { value: 13100 } }
+}
 
 // OPTION A (operator decision on #12425): a nonzero or unread code withholds as a knowledge refusal.
 test fn a_nonzero_code_beside_a_started_presentation_withholds_as_unestablished() -> Bool {
-  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_16) {
+  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)) {
     MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: n, cd_before_any_write: _, cd_at_ready: CdErrorRead { code: CdErrorUncatalogued { wire: w } }, general_at_ready: _ } =>
       n == 4 && w == 16
-        && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_16), session_release: SessionReleased, baseline: none })) {
+        && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27)), session_release: SessionReleased, baseline: none })) {
           MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "knowledge refusal")
           MediaGateReady { evidence: _ } => false
         })
@@ -512,7 +513,7 @@ test fn an_unread_code_at_readiness_withholds_as_unestablished() -> Bool {
 }
 
 test fn a_clean_code_at_readiness_is_ready() -> Bool {
-  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_16, general_at_end: raw_clean) {
+  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_16, general_at_end: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported)) {
     MegaRacPresentationReady { route: _, evidence: e } => (match e.cd_before_any_write { CdErrorRead { code: CdErrorUncatalogued { wire: w } } => w == 16 _ => false })
     _ => false
   }
@@ -758,12 +759,14 @@ fn listing_with(first: String, second: String) -> String {
 fn desired_offer() -> String {
   concat("{\"image_name\":\"", concat(desired_census as String, "\",\"image_index\":5}"))
 }
-data dup_name_offer: String = "{\"image_name\":\"a.iso\",\"image_name\":\"b.iso\",\"image_index\":3}"
+fn dup_name_offer() -> String {
+  "{\"image_name\":\"a.iso\",\"image_name\":\"b.iso\",\"image_index\":3}"
+}
 
 test fn an_unreadable_offered_row_beside_the_desired_one_refuses_before_start_media() -> Bool {
   (match images_listing_reading(body: listing_with(first: "{}", second: desired_offer()), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
     && (match images_listing_reading(body: listing_with(first: desired_offer(), second: "{}"), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
-    && (match images_listing_reading(body: listing_with(first: dup_name_offer, second: desired_offer()), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
+    && (match images_listing_reading(body: listing_with(first: dup_name_offer(), second: desired_offer()), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
     && (match images_listing_reading(body: listing_with(first: desired_offer(), second: "{\"image_name\":7}"), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
 }
 
@@ -792,7 +795,7 @@ test fn a_stop_never_sent_is_not_issued() -> Bool {
 // The end look is owed by an attempted media attach, handed off or not; an unconfirmed handoff is
 // reported as attempted, not as a handoff that happened.
 test fn the_end_look_is_owed_by_any_attempted_attach() -> Bool {
-  end_media_is_owed(media: attempted(result: MegaRacAttachResult { outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_16 }, session_release: SessionReleased, baseline: none }))
+  end_media_is_owed(media: attempted(result: MegaRacAttachResult { outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) }, session_release: SessionReleased, baseline: none }))
     && !end_media_is_owed(media: MediaAttachNotAttempted { reason: "BMC is not BmcSecured" })
 }
 
@@ -804,7 +807,7 @@ test fn an_unconfirmed_handoff_is_reported_as_attempted() -> Bool {
 // The raw, timed settings read reaches the rendered artifact.
 test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Bool {
   let rendered = media_attach_text(record: attempted(result: MegaRacAttachResult {
-    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_16 },
+    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
     session_release: SessionReleased,
     baseline: none,
   }))
