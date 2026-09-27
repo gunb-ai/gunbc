@@ -609,7 +609,7 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
         AcceptInstallationPermissions => false
         ApplyAppPermissionChange => false
       }
-        && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai"
+        && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot"
         && match postcondition {
              AppHasRegisteredSigningKey { app: a } => a.app_id.value == 3909950
              _ => false
