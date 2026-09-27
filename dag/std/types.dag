@@ -250,7 +250,13 @@ type SemVer       = String
 type NonEmptyStr     = String where string_non_empty
 
 // THE WHERE-PREDICATE `string_non_empty` IS THIS DECLARATION. The where atom binds to it by ordinary
-// name lookup in v2 resolve, so the predicate's meaning has one authority. The spelling is not
+// name lookup in v2 resolve. It is NOT yet the only statement of the predicate's meaning: the v1
+// seed still enforces literal sites from its own table (v1.compiler.infer
+// decidable_where_string_predicate_holds), which cannot consult a declaration until compile-time
+// evaluation lands (feature:where-refinement-predicate-declaration-authority); until then
+// test.claim.where_refinement_predicate_vocabulary_witness_test executes this body on the table's
+// probe values so the two cannot drift silently. The same holds for gt_zero, range and
+// std.content_hash lower_hex_*. The spelling is not
 // `non_empty`: that name is v2.std.algebra non_empty<T> (a free monoid's non-emptiness, a different
 // domain) and a builtin collection-method name, so a std free fn spelled `non_empty` would be a
 // second meaning for one name (DESIGN section 3) and would break the method table.

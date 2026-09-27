@@ -1512,9 +1512,11 @@ fn resolve_node_walk(
 // (v2.compiler.body_lowering_fold body_lower_kept_where_clause) carries the clause as a production
 // Conj whose captured child holds one call-shaped Transform per predicate, the predicate's own name
 // atom as operator. The operator resolves by ORDINARY name lookup -- the same resolve_atom every
-// reference takes, so a predicate's meaning has the declaration as its one authority (std.types
-// string_non_empty / gt_zero / range, std.content_hash lower_hex_*) and there is no second
-// predicate namespace. A spelling nothing declares refuses as resolve_reason_where_predicate_unbound,
+// reference takes, so the NAME has one authority, the declaration (std.types string_non_empty /
+// gt_zero / range, std.content_hash lower_hex_*), and there is no second predicate namespace. The
+// predicate's MEANING is still stated twice until v1's enforcement tables can consult the
+// declaration (feature:where-refinement-predicate-declaration-authority, the next change); the drift
+// between them is held by test.claim.where_refinement_predicate_vocabulary_witness_test. A spelling nothing declares refuses as resolve_reason_where_predicate_unbound,
 // located at the predicate's own atom: an unbound predicate is not an unbound value reference, and
 // the author looking for it needs to know a where clause named it. `brand` binds to its declared
 // nominal marker (std.types brand -> WherePredicateMarker), so it too is bound and never silent.
