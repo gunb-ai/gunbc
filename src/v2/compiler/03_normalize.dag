@@ -32,7 +32,6 @@ import v2.std.node {
 import v2.std.compilers.sugar {
   ProductionIdentityKey,
   SugarKey,
-  SurfaceAtomKey,
   apply_sugar,
   sugar_rule_for_key
 }
@@ -192,8 +191,6 @@ fn normalize_sugar_tree_finish(n: Node, t: BodyLoweredTree, cd: Diagnostics) -> 
 
 fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
   match folded.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      optional_present(value: SurfaceAtomKey { atom: id })
     TypeNode { connective: _ } =>
       match parse_production_emitted_identity_optional(node: folded) {
         Present { value: id } =>
