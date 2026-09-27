@@ -49,3 +49,11 @@ data gunbc_private_repository: Repository = Repository {
   private: true,
   default_branch: "main",
 }
+
+// gunbc-private's numeric identity, OBSERVED 2026-09-27 from the repos/gunb-ai/gunbc-private
+// endpoint (id 1318893922, owner.id 244123794). The private heal publisher's federation pins these
+// for the reason the public row gives: a name can be re-registered, an id cannot.
+data gunbc_private_repository_numeric_identity: RepositoryNumericIdentity = RepositoryNumericIdentity {
+  repository_id: 1318893922,
+  owner_id: 244123794,
+}

@@ -106,8 +106,9 @@ import gunbc.commit_workflow {
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
-  heal_publisher_installation_token_request_body,
-  heal_publisher_key_unreadable_message,
+  HealPublisherFederation, public_heal_publisher_federation,
+  heal_publisher_federation_installation_token_request_body,
+  heal_publisher_federation_key_unreadable_message,
   heal_publisher_token_refused_message
 }
 import extdeps.github.app { GitHubAppInstallationId }
@@ -3283,7 +3284,7 @@ fn gunbc_ci_heal_publication_admit_invoke() -> String {
   )
 }
 
-fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> AppInstallationTokenMint {
+fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId, f: HealPublisherFederation) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "heal-publisher",
     key_secret: gunbai_bot_app_pem_secret,
@@ -3291,7 +3292,7 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
     app_slug: app.slug as String,
     installation_id: installation.value,
     export_env_names: FreeSemigroup { head: "GITHUB_TOKEN", tail: [] },
-    key_unreadable_message: heal_publisher_key_unreadable_message(http_status: "$SM_CODE"),
+    key_unreadable_message: heal_publisher_federation_key_unreadable_message(f: f, http_status: "$SM_CODE"),
     token_refused_message: heal_publisher_token_refused_message(
       status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
     ),
@@ -3302,9 +3303,28 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
       to_string(installation.value),
       " (one hour, contents:write on this repository only; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: Present { value: heal_publisher_installation_token_request_body() },
+    request_body: Present { value: heal_publisher_federation_installation_token_request_body(f: f) },
     observation_record: none
   }
+}
+
+// THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
+// publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
+// the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
+// repository by its own federation record, as one rendered fragment ahead of its own invocation.
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: concat(
+        heal_publisher_cgroup_prelude(),
+        github_app_installation_token_prelude(
+          spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: f)
+        )
+      ),
+      on_failure: FailFast
+    }),
+    "\n"
+  )
 }
 
 // THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
@@ -3317,7 +3337,7 @@ fn gunbc_ci_heal_publication_publish_invoke() -> String {
     prelude: concat(
       heal_publisher_cgroup_prelude(),
       github_app_installation_token_prelude(
-        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: public_heal_publisher_federation())
       )
     ),
     source_roots: witness_layer_roots,

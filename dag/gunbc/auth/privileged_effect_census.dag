@@ -632,6 +632,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "private_heal_publisher_federation_provision_with_supplied_token"),
+    effect: PrivilegedEffect {
+      subject: "create gunbc-private's heal publisher pool, provider and service account, then bind its one accessor cell" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"),
     effect: PrivilegedEffect {
       subject: "create the two approval MAC key secrets, add their first versions, bind their accessor cells" as NonEmptyStr,
