@@ -282,7 +282,7 @@ fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<Resolved
   )
 }
 
-fn pick_ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
+fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
   bind_outcome(
     o: pick_ingested_resolved_module_from_source(source: source),
     f: fn(resolved) {
@@ -409,7 +409,7 @@ test fn pick_ingested_pick_true_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow.root,
+          callee: arrow,
           expected_lexeme: "1"
         )
       )
@@ -422,7 +422,7 @@ test fn pick_ingested_pick_false_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow.root,
+          callee: arrow,
           expected_lexeme: "2"
         )
       )
@@ -435,7 +435,7 @@ test fn pick_ingested_swapped_arms_red_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow.root,
+          callee: arrow,
           expected_lexeme: "1"
         )
       ) == false
@@ -466,7 +466,7 @@ test fn pick2_ingested_pick_true_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow.root,
+          callee: arrow,
           expected_lexeme: "3"
         )
       )
@@ -479,7 +479,7 @@ test fn pick2_ingested_pick_false_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow.root,
+          callee: arrow,
           expected_lexeme: "4"
         )
       )
@@ -492,7 +492,7 @@ test fn pick2_ingested_swapped_arms_red_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow.root,
+          callee: arrow,
           expected_lexeme: "3"
         )
       ) == false
