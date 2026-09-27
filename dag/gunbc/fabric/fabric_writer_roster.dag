@@ -88,7 +88,3 @@ fn fabric_served_writer_admission_over(roster: List<NonEmptyStr>, identity: Tail
       else { FabricServedWriterRefused { principal: join([l as String, " is not a rostered fabric writer"], "") as NonEmptyStr } }
   }
 }
-
-fn fabric_served_writer_admission(identity: TailnetIdentity) -> FabricServedWriterAdmission {
-  fabric_served_writer_admission_over(roster: fabric_served_writer_roster(), identity: identity)
-}
