@@ -66,6 +66,10 @@ import gunbc.machine_intake_megarac_media_attach {
   RouteAlreadyPresented,
   RouteAttached,
   RouteReplaced,
+  MegaRacWriteAnswer,
+  WriteAccepted,
+  WriteAnsweredFailure,
+  WriteEffectUncertain,
   SessionRelease,
   SessionReleased,
   SessionReleaseNotAttempted,
@@ -425,18 +429,29 @@ fn optional_text(v: String?) -> String {
   }
 }
 
+fn write_answer_text(a: MegaRacWriteAnswer) -> String {
+  match a {
+    WriteAccepted { body: b } => concat("accepted: ", b)
+    WriteAnsweredFailure { body: b, stderr: e } => concat("answered FAILURE: ", concat(b, concat(" / ", e)))
+    WriteEffectUncertain { stderr: e } => concat("EFFECT UNCERTAIN (no HTTP answer): ", e)
+  }
+}
+
+// THE ROUTE IS RENDERED ON EVERY ARM THAT CARRIES ONE, so an executed stop (with its 1411) and the
+// StartMedia answer reach the published artifact whatever refused afterwards (side-chat review
+// 5331991982).
 fn attach_route_text(route: MegaRacAttachRoute) -> String {
   match route {
     RouteAlreadyPresented => "already presented (no listing consulted, no write)"
-    RouteAttached { image_list_index: i } => concat("attached at image-list index ", i)
-    RouteReplaced { image_list_index: i, detach: d } => concat("replaced (", concat(detach_evidence_text(detach: d), concat(") then attached at image-list index ", i)))
+    RouteAttached { image_list_index: i, start: st } => join(["attached at image-list index ", i, "; start-media ", write_answer_text(a: st)], "")
+    RouteReplaced { image_list_index: i, detach: d, start: st } => join(["replaced (", detach_evidence_text(detach: d), ") then attached at image-list index ", i, "; start-media ", write_answer_text(a: st)], "")
   }
 }
 
 fn detach_evidence_text(detach: MegaRacDetachEvidence) -> String {
   join([
     "stopped '", detach.stale_image, "' on media index ", detach.media_index,
-    "; stop-media answered ", if detach.command.success { "success" } else { "FAILURE" }, ": ", detach.command.body,
+    "; stop-media ", write_answer_text(a: detach.command),
     "; configurations read-back ", if detach.readback_read { "read" } else { "UNREAD" }, ": ", detach.readback,
     "; cd_error_code after the stop: ", cd_reading_text(r: detach.cd_after_stop),
   ], "")
@@ -481,8 +496,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the presentation of '", n as String, "' did not reach Started with a bound session before ", to_string(d), " (", to_string(k), " looks, route: ", attach_route_text(route: r), "); last look ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
     MegaRacReadinessRefused { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_refusal: ca } =>
       Present { value: join(["the presentation of '", n as String, "' was refused by the readiness policy after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
-    MegaRacReadinessClockUnreadable { image_name: n, route: _, detail: d } =>
-      Present { value: concat("the clock could not be read, so the readiness window for '", concat(n as String, concat("' could not be declared or judged: ", d))) }
+    MegaRacReadinessClockUnreadable { image_name: n, route: r, detail: d } =>
+      Present { value: join(["the clock could not be read, so the readiness window for '", n as String, "' could not be declared or judged: ", d, " (route: ", attach_route_text(route: r), ")"], "") }
     MegaRacConfigurationsUnreadable { detail: d } =>
       Present { value: concat("the presented-media listing could not be read, so whether anything is attached is UNKNOWN; refusing rather than attaching over an unknown state: ", d) }
     MegaRacShareMismatch { expected: e, observed: o } =>
@@ -519,8 +534,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), ". Its meaning is unresolved, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
       Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
-    MegaRacReadinessClockIncoherent { image_name: n, route: _, opened_at: o, previous: p, look: l, looks: k } =>
-      Present { value: join(["the clock cannot bound the readiness wait for '", n as String, "': window opened at ", to_string(o), ", previous look at ", match p { Present { value: v } => to_string(v)  Absent => "none" }, ", this look ", readiness_look_text(l: l), " after ", to_string(k), " looks. No boot-device or power handoff was made"], "") }
+    MegaRacReadinessClockIncoherent { image_name: n, route: rt, opened_at: o, previous: p, look: l, looks: k } =>
+      Present { value: join(["the clock cannot bound the readiness wait for '", n as String, "': window opened at ", to_string(o), ", previous look at ", match p { Present { value: v } => to_string(v)  Absent => "none" }, ", this look ", readiness_look_text(l: l), " after ", to_string(k), " looks (route: ", attach_route_text(route: rt), "). No boot-device or power handoff was made"], "") }
     MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _ } =>
       Present { value: join(["NotEnumeratedAfterRefresh: after the stale image was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file"], "") }
   }

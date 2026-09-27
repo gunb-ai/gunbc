@@ -31,7 +31,7 @@ import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_one_socket_mi
 import gunbc.machine_intake_host_capture_envelope { host_capture_workload_total_bytes }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
 import gunbc.fleet_workflow_steps { ci_fleet_key_agent_step }
@@ -56,6 +56,7 @@ test fn the_step_timeout_covers_the_boot_phases() -> Bool {
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: megarac_convergence_allowance()) as Int)
     + 3 * (second_count(s: megarac_presentation_look_allowance()) as Int)
+    + (second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_in_run_smpro_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
