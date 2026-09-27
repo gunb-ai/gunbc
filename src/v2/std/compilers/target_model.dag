@@ -14229,8 +14229,9 @@ fn target_value_expr_project_atom_in_arrow_scope(
                 target_value_expression_binding_ref(binding: scoped)
               )
             Rejected { diagnostics: _ } =>
-              target_value_expr_project_atom_literal(
+              target_value_expr_project_atom_literal_or_refuse(
                 node: node,
+                id: id,
                 source_bool_form: source_bool_form
               )
           }
@@ -14244,6 +14245,44 @@ fn target_value_expr_project_atom_in_arrow_scope(
       }
     }
   )
+}
+
+// AN ATOM THAT MISSES ARROW SCOPE is a literal only when it SPELLS one: an int or bool literal, a
+// symbol-identity wire, or a row of the pick table. Anything else is a NAME the scope could not
+// resolve, and minting it as symbol_identity would emit the name as if it resolved (§5 absorbing
+// fallback) -- so it refuses with the scope diagnostic, located at the atom.
+fn target_value_expr_project_atom_literal_or_refuse(
+  node: Node,
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
+  if id == ^target_value_expression_symbol_identity_atom
+    || target_value_expr_is_int_literal_atom(node: node) {
+    target_value_expr_project_atom_literal(node: node, source_bool_form: source_bool_form)
+  } else {
+    match target_value_expr_bool_literal_value_from_atom(node: node) {
+      Present { value: b } => outcome_accepted(target_value_expression_bool_literal(value: b))
+      Absent =>
+        match target_value_expr_bool_literal_value_from_source_symbol(
+          id: id,
+          source_bool_form: source_bool_form
+        ) {
+          Present { value: b } => outcome_accepted(target_value_expression_bool_literal(value: b))
+          Absent =>
+            match target_value_expr_binding_ref_for_literal_atom(id: id) {
+              Present { value: binding } =>
+                outcome_accepted(target_value_expression_binding_ref(binding: binding))
+              Absent =>
+                outcome_rejected(
+                  target_value_expr_diagnostic(
+                    reason: ^target_value_expr_reason_body_scope_binding_invalid,
+                    node: node
+                  )
+                )
+            }
+        }
+    }
+  }
 }
 
 fn target_value_expr_project_atom_literal(
