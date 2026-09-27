@@ -1037,6 +1037,8 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// roster, which a reviewed pull request may carry (the nightly only publishes it). An owned
 /// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
 /// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
+/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
 /// `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
