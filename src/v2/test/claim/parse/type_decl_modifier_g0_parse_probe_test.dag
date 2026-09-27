@@ -116,21 +116,21 @@ test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
   )
 }
 
-// "NOT THE LEXEME" IS NOT "THE SAME IDENTITY AS BEFORE", and the gap between those two
-// facts is a second transition this change has to hold out. v2.compiler.02_parse resolves a
-// class stamp as exactly `StampClass => tok.class`, so promoting these spellings to their
-// own keyword classes moves a class-stamped site's published identity from ^dag_token_ident
-// to ^dag_token_kw_sole_constructor WITHOUT ever touching the stamp mode. A membership claim
-// that only says the interned lexeme is absent passes under both implementations, because
-// neither tree contains it. The claims below therefore assert the identity POSITIVELY --
-// what the site publishes, not merely what it does not -- at both class-stamped sites,
-// including the generic-parameter site, which carried no identity measurement at all.
+// "THE LEXEME" IS ALSO "NOT A CLASS". v2.compiler.02_parse resolves a class stamp as exactly
+// `StampClass => tok.class`, so a class-stamped site publishes a token class -- ^dag_token_ident, or,
+// once these spellings lex as their own keyword classes, ^dag_token_kw_sole_constructor -- WITHOUT
+// the stamp mode changing. The claims below assert what the caret site publishes positively and
+// what it must not: neither the generic identifier class nor the keyword class.
+// DECLARED FLIP (MQ-1 PR-2, true->false of caret_referenced_ident_publishes_the_generic_ident_class_holds,
+// measured seed base 9ce039421d0 vs head f2ad6a8a417 by fierce-gull-556): the caret site no longer
+// publishes ^dag_token_ident, and it is the only site in this fixture that did; inverted below as
+// caret_referenced_ident_does_not_publish_the_generic_ident_class_holds.
 
-test fn caret_referenced_ident_publishes_the_generic_ident_class_holds() -> Bool {
+test fn caret_referenced_ident_does_not_publish_the_generic_ident_class_holds() -> Bool {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_caret_source,
     identity: ^dag_token_ident
-  )
+  ) == false
 }
 
 test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool {
