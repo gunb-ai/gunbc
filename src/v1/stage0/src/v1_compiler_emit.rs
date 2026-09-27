@@ -2594,6 +2594,7 @@ pub enum FileVerb {
     FileWrite,
     FileWriteOwnerOnly,
     FileWriteCreateNew,
+    FileWriteCreateNewWithMode,
     FileDelete,
     FileList,
 }
@@ -2707,7 +2708,11 @@ pub fn bind_file_verb(
                     if (v.clone() == file_transport_verb_write_create_new()) {
                         FileVerb::FileWriteCreateNew
                     } else {
-                        FileVerb::FileWriteOwnerOnly
+                        if (v.clone() == file_transport_verb_write_create_new_with_mode()) {
+                            FileVerb::FileWriteCreateNewWithMode
+                        } else {
+                            FileVerb::FileWriteOwnerOnly
+                        }
                     }
                 }
             }
@@ -5274,6 +5279,7 @@ pub enum FileEmissionRefusal {
     FileVerbNotModeled { verb: String },
     FilePathNotStaticallyRenderable,
     FileWriteMissingContentInput { verb: String },
+    FileWriteMissingModeInput { verb: String },
     FileOutputKeyNotModeled { key: String },
     FileOutputShapeNotModeled,
 }
@@ -5281,9 +5287,10 @@ pub enum FileEmissionRefusal {
 pub fn file_emission_refusal_fact(refusal: Rc<FileEmissionRefusal>) -> String {
     match (*refusal.clone()).clone() {
     FileEmissionRefusal::FileTargetNotModeled { target_name: t, .. } => v1_rt::concat(v1_rt::concat("file transport emission is modeled for the rust target only; target '".to_string(), t.clone()), "' has no file realization handler, so no operation carrying `transport file` is emitted for it".to_string()),
-    FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only and write_create_new, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
+    FileEmissionRefusal::FileVerbNotModeled { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only, write_create_new and write_create_new_with_mode, and an absent verb means write when the operation declares a `content` input and read otherwise".to_string()),
     FileEmissionRefusal::FilePathNotStaticallyRenderable => "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering".to_string(),
     FileEmissionRefusal::FileWriteMissingContentInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent".to_string()),
+    FileEmissionRefusal::FileWriteMissingModeInput { verb: v, .. } => v1_rt::concat(v1_rt::concat("file transport verb '".to_string(), v.clone()), "' publishes with a declared mode, and the operation declares no `mode` input -- the mode is the caller's modeled fact, never a value the emitter may invent".to_string()),
     FileEmissionRefusal::FileOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("file transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are write_success, read_success, delete_success, list_success, success, bytes_written, bytes, byte_count, path, error, content and entries".to_string()),
     FileEmissionRefusal::FileOutputShapeNotModeled => "the file transport operation's declared output must be a product of named fields; the emitted realization answers per FIELD, so a return shape with no fields to answer for has no rendering".to_string(),
 }
@@ -5325,6 +5332,15 @@ pub fn file_transport_verb_write_create_new() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn file_transport_verb_write_create_new_with_mode() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "write_create_new_with_mode".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn file_transport_declared_verb(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5345,15 +5361,16 @@ pub fn file_transport_declared_verb(
     }
 }
 
-pub fn file_operation_has_content_input(
+pub fn file_operation_has_input(
     op_node: Rc<Node>,
+    name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for p in op_node.params.clone().iter().cloned() {
             if (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
-                == "content".to_string())
+                == name.clone())
             {
                 __found = true;
                 break;
@@ -5361,6 +5378,17 @@ pub fn file_operation_has_content_input(
         }
         __found
     }
+}
+
+pub fn file_operation_has_content_input(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    file_operation_has_input(
+        op_node.clone(),
+        "content".to_string(),
+        source_indices.clone(),
+    )
 }
 
 pub fn is_modeled_file_output_channel(key: String) -> bool {
@@ -5453,9 +5481,32 @@ pub fn file_emission_verb_refusal(
                         }))
                     }
                 } else {
-                    Some(Rc::new(FileEmissionRefusal::FileVerbNotModeled {
-                        verb: v.clone(),
-                    }))
+                    if (v.clone() == file_transport_verb_write_create_new_with_mode()) {
+                        if !file_operation_has_content_input(
+                            op_node.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(Rc::new(FileEmissionRefusal::FileWriteMissingContentInput {
+                                verb: v.clone(),
+                            }))
+                        } else {
+                            if !file_operation_has_input(
+                                op_node.clone(),
+                                "mode".to_string(),
+                                source_indices.clone(),
+                            ) {
+                                Some(Rc::new(FileEmissionRefusal::FileWriteMissingModeInput {
+                                    verb: v.clone(),
+                                }))
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                    } else {
+                        Some(Rc::new(FileEmissionRefusal::FileVerbNotModeled {
+                            verb: v.clone(),
+                        }))
+                    }
                 }
             }
         }
@@ -8424,6 +8475,8 @@ pub struct FileWrite;
 pub struct FileWriteOwnerOnly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileWriteCreateNew;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileWriteCreateNewWithMode;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileDelete;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -419,7 +419,7 @@ fn projection_method_call_optional(cap: Node) -> Optional<Symbol> {
             Absent => Absent
             Present { value: repeat_elem } =>
               if v2.compiler.body_lowering_fold.body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                v2.compiler.body_lowering_fold.body_lower_postfix_projection_step(repeat_elem: repeat_elem)
+                v2.compiler.body_lowering_fold.body_lower_postfix_projection_step_name(repeat_elem: repeat_elem)
               } else {
                 Absent
               }

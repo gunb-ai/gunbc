@@ -110,6 +110,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   is_empty_conj_root,
+  node_lowered_from,
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
@@ -5631,19 +5632,31 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
   }
 }
 
-fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<Symbol> {
+// ONE SEGMENT WALKER, TWO READINGS. The walker validates each segment once (parse_qn_lexeme_segment)
+// and hands the segment's token node and its identity to `seg`; a caller that wants names takes
+// the identity, and body lowering takes an atom lowered from the token (v2.std.node
+// node_lowered_from) so each segment keeps its minted occurrence (XL-2 LoweringOccurrenceProjection;
+// docs/plans/lowering-occurrence-projection-design.md). Two walkers would be two authorities for
+// what a qualified name's segments are.
+fn parse_qn_segment_with<T>(sym_node: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
+  match parse_qn_lexeme_segment(sym_node: sym_node, root: root) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: id, diagnostics: _ } => outcome_accepted(value: seg(sym_node, id))
+  }
+}
+
+fn parse_qn_repeat_suffix_ident_with<T>(sequence_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
   match find_named_child(
     root: sequence_capture,
     name: ^grammar_sequence_right_node_projection
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: ident_node, diagnostics: _ } =>
-      parse_qn_lexeme_segment(sym_node: ident_node, root: root)
+      parse_qn_segment_with(sym_node: ident_node, root: root, seg: seg)
   }
 }
 
-fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
-
+fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
@@ -5653,21 +5666,21 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
     ) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: head_sequence, diagnostics: _ } =>
-        match parse_qn_repeat_suffix_ident(sequence_capture: head_sequence, root: root) {
+        match parse_qn_repeat_suffix_ident_with(sequence_capture: head_sequence, root: root, seg: seg) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: sym, diagnostics: _ } =>
+          Accepted { value: item, diagnostics: _ } =>
             match find_named_child(
               root: repeat_capture,
               name: ^grammar_sequence_right_node_projection
             ) {
               Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
               Accepted { value: tail, diagnostics: _ } =>
-                match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
+                match parse_qn_repeat_suffixes_with(repeat_capture: tail, root: root, seg: seg) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
                     outcome_with_diagnostics(
                       value: list_append(
-                        left: Cons { head: sym, tail: Empty },
+                        left: Cons { head: item, tail: Empty },
                         right: suffixes
                       ),
                       diagnostics: tail_diag
@@ -5679,25 +5692,25 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
   }
 }
 
-fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+fn parse_qualified_name_segments_from_capture_with<T>(qn_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
   match find_named_child(root: qn_capture, name: ^grammar_sequence_left_node_projection) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: head_node, diagnostics: _ } =>
-      match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
+      match parse_qn_segment_with(sym_node: head_node, root: root, seg: seg) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-        Accepted { value: head_sym, diagnostics: head_diag } =>
+        Accepted { value: head_item, diagnostics: _ } =>
           match find_named_child(
             root: qn_capture,
             name: ^grammar_sequence_right_node_projection
           ) {
             Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
             Accepted { value: repeat_node, diagnostics: _ } =>
-              match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
+              match parse_qn_repeat_suffixes_with(repeat_capture: repeat_node, root: root, seg: seg) {
                 Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
                   outcome_with_diagnostics(
                     value: list_append(
-                      left: Cons { head: head_sym, tail: Empty },
+                      left: Cons { head: head_item, tail: Empty },
                       right: suffixes
                     ),
                     diagnostics: tail_diag
@@ -5706,6 +5719,21 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
           }
       }
   }
+}
+
+fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+  parse_qn_repeat_suffixes_with(repeat_capture: repeat_capture, root: root, seg: fn(n, id) { id })
+}
+
+fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+  parse_qualified_name_segments_from_capture_with(qn_capture: qn_capture, root: root, seg: fn(n, id) { id })
+}
+
+// Each segment as an atom lowered from its own token.
+fn parse_qualified_name_segment_atoms_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Node>> {
+  parse_qualified_name_segments_from_capture_with(qn_capture: qn_capture, root: root, seg: fn(n, id) {
+    node_lowered_from(kind: TypeNode { connective: Atom { identity: id } }, children: [], source: n)
+  })
 }
 
 fn parse_comma_ident_list_items(
