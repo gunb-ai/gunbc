@@ -1,6 +1,7 @@
 module test.claim.animal_crossing_dialogue_witness
 
 import std.types { Bool, Int, List, String }
+import v2.std.algebra { any }
 import extdeps.games.animal_crossing.message {
   LineWidthRange, LineUnbounded, TextLine, message_lines,
   MessageAccepted, MessageRefused, message_table_ends, message_table_octets, message_tokens, message_text,

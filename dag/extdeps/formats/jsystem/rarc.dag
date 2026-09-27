@@ -1,5 +1,6 @@
 module extdeps.formats.jsystem.rarc
 
+import v2.std.algebra { filter }
 import std.types { Bool, Int, List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.octet_read { OctetPatch, be_u8_at, be_u16_at, be_u32_at, be_u32_octets }

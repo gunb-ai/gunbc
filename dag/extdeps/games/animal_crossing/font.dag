@@ -1,5 +1,6 @@
 module extdeps.games.animal_crossing.font
 
+import v2.std.algebra { filter }
 import std.types { Bool, Int, List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
