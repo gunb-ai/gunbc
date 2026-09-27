@@ -2475,7 +2475,7 @@ fn infer_gather_application_row_on_entries(
 // not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
 // is: the check is neither admitted nor skipped silently.
 
-fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, tree: Node, symbol_index: SymbolIndex) -> Outcome<Bool> {
+fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, symbol_index: SymbolIndex) -> Outcome<Bool> {
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(true)
     Present { value: annotation } =>
@@ -2528,7 +2528,7 @@ fn infer_gather_bind_annotation_row_on_entries(
   partials: List<Node>,
   tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
-  match infer_bind_annotation_check(node: node, entries: entries, tree: tree, symbol_index: symbol_index) {
+  match infer_bind_annotation_check(node: node, entries: entries, symbol_index: symbol_index) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
