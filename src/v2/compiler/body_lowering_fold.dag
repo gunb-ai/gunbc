@@ -1248,9 +1248,9 @@ fn body_lower_caret_symbol_token_optional(captured: Node) -> Optional<Node> {
       ) {
         Present { value: id } =>
           if id == ^dag_token_caret {
-            Present { value: body_lower_deep_unwrap_optional(node: pair.left) }
+            optional_present(value: body_lower_deep_unwrap_optional(node: pair.left))
           } else {
-            Absent
+            optional_absent()
           }
         Absent => Absent
       }
