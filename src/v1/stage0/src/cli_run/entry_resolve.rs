@@ -2513,6 +2513,7 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         return hit;
     }
     let started = std::time::Instant::now();
+    eprintln!("[dbg] reference_pool_names build start");
     let mut decl_index: HashMap<String, BTreeSet<String>> = HashMap::new();
     let mut module_names: HashSet<String> = HashSet::new();
     for root in &abs_pool_roots {
@@ -2630,6 +2631,7 @@ impl ReferenceSelectionTier {
 
     fn whole(&self) -> &(HashMap<String, Vec<String>>, HashSet<String>) {
         self.whole.get_or_init(|| {
+            eprintln!("[dbg] selection whole start");
             let started = std::time::Instant::now();
             let mut selection_edges = self.import_edges.clone();
             selection_edges.extend(reference_edges_as_import_facts(
@@ -2674,6 +2676,7 @@ impl ReferenceSelectionTier {
             return hit.clone();
         }
         let started = std::time::Instant::now();
+        eprintln!("[dbg] produce_one {file_rel}");
         let targets = self.produce_one(file_rel);
         super::pre_entry_phase::record(
             "selection_tier_closure_files",
