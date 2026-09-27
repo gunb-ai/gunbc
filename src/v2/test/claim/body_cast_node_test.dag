@@ -1,5 +1,6 @@
 module v2.test.claim.body_cast_node
 
+import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.coercion { CoercionQuality, CoercionResult, NoTargetCandidate, Widened, coercion_cast_crossing }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -10,7 +11,7 @@ import v2.compiler.infer { InferredFacts, InferredTree, infer, refinement_declar
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_node_from_lexeme, dag_type_atom_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.test.lens_common.infer_fixture { claim_canonical_grounding, claim_inferred_facts_from_nodes }
+import v2.test.lens_common.infer_fixture { claim_canonical_grounding, claim_inferred_facts_from_nodes, claim_resolved_tree_without_declarations }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
@@ -62,59 +63,59 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body_lowering_reason_type_annotation_not_carried at `T` (the as-cast refusal), and before that
 // they were Accepted with `T` dropped: no cast node, so the count in bcn_one_cast_to_int was 0.
 
-fn bcn_tail_cast() -> Outcome<Node> {
+fn bcn_tail_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
 }
 
-fn bcn_let_value_cast() -> Outcome<Node> {
+fn bcn_let_value_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
 }
 
-fn bcn_call_argument_cast() -> Outcome<Node> {
+fn bcn_call_argument_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n")
 }
 
-fn bcn_if_arm_cast() -> Outcome<Node> {
+fn bcn_if_arm_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Int } else { x }\n}\n")
 }
 
-fn bcn_match_arm_cast() -> Outcome<Node> {
+fn bcn_match_arm_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n")
 }
 
-fn bcn_call_operand_cast() -> Outcome<Node> {
+fn bcn_call_operand_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n")
 }
 
-fn bcn_tail_undeclared() -> Outcome<Node> {
+fn bcn_tail_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
 }
 
-fn bcn_match_arm_undeclared() -> Outcome<Node> {
+fn bcn_match_arm_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n")
 }
 
-fn bcn_generic_cast() -> Outcome<Node> {
+fn bcn_generic_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  x as T\n}\n")
 }
 
-fn bcn_value_param_as_type() -> Outcome<Node> {
+fn bcn_value_param_as_type() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  Q as Q\n}\n")
 }
 
-fn bcn_int_sum_as_int() -> Outcome<Node> {
+fn bcn_int_sum_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  (x + x) as Int\n}\n")
 }
 
-fn bcn_int_sum_as_bool() -> Outcome<Node> {
+fn bcn_int_sum_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n")
 }
 
-fn bcn_into_refinement() -> Outcome<Node> {
+fn bcn_into_refinement() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n")
 }
 
-fn bcn_out_of_refinement() -> Outcome<Node> {
+fn bcn_out_of_refinement() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
 }
 
@@ -129,13 +130,13 @@ fn bcn_is_widened(q: Optional<CoercionQuality>) -> Bool {
 // The crossing's quality, from the real assembled tree: the refinement declaration the reference's
 // path reaches, and the tree's one cast target. Absent when the tree refuses, the reader finds no
 // refinement, the tree does not carry exactly one cast, or the crossing refuses.
-fn bcn_crossing_quality(o: Outcome<Node>, reference_path: QualifiedName) -> Optional<CoercionQuality> {
+fn bcn_crossing_quality(o: Outcome<ResolvedTree>, reference_path: QualifiedName) -> Optional<CoercionQuality> {
   match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: target, tail: Empty } =>
-          match refinement_declaration(tree: root, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
+          match refinement_declaration(index: root.symbol_index, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
             Absent => Absent
             Present { value: decl } =>
               match coercion_cast_crossing(
@@ -153,11 +154,11 @@ fn bcn_crossing_quality(o: Outcome<Node>, reference_path: QualifiedName) -> Opti
   }
 }
 
-fn bcn_refinement_param_as_bool() -> Outcome<Node> {
+fn bcn_refinement_param_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Bool {\n  x as Bool\n}\n")
 }
 
-fn bcn_refinement_identity_cast() -> Outcome<Node> {
+fn bcn_refinement_identity_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n")
 }
 
@@ -180,11 +181,11 @@ fn bcn_atom_identity(n: Node) -> Optional<Symbol> {
 
 // Accepted, with exactly one cast node whose target is a resolved atom: the lowering built the node
 // and resolve kept T.
-fn bcn_one_cast(o: Outcome<Node>) -> Bool {
+fn bcn_one_cast(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: t, tail: Empty } =>
           match bcn_atom_identity(n: t) {
             Present { value: _ } => true
@@ -195,11 +196,11 @@ fn bcn_one_cast(o: Outcome<Node>) -> Bool {
   }
 }
 
-fn bcn_cast_target_identity(o: Outcome<Node>) -> Optional<Symbol> {
+fn bcn_cast_target_identity(o: Outcome<ResolvedTree>) -> Optional<Symbol> {
   match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: t, tail: Empty } => bcn_atom_identity(n: t)
         _ => Absent
       }
@@ -216,7 +217,7 @@ fn bcn_atom_in(n: Node, id: Symbol) -> Bool {
 }
 
 // Refused with `reason`, located at a node spelling `id` and not at the fn or the `as` token.
-fn bcn_refused_at(o: Outcome<Node>, reason: Symbol, id: Symbol) -> Bool {
+fn bcn_refused_at(o: Outcome<ResolvedTree>, reason: Symbol, id: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -286,7 +287,7 @@ fn bcn_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
 }
 
-fn bcn_infers(o: Outcome<Node>) -> Outcome<Bool> {
+fn bcn_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
   match o {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: root, diagnostics: _ } =>
@@ -516,6 +517,9 @@ test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
 // x: Pos refusing on the production route.
 fn bcn_int_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_int) }
 fn bcn_bool_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_bool) }
+fn bcn_authored_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
 fn bcn_ref(leaf: Symbol) -> Node {
   declaration_reference_node(qn: Cons { head: ^p, tail: Cons { head: leaf, tail: Empty } }, occurrence_id: OccurrenceSynthetic)
 }
@@ -540,15 +544,33 @@ fn bcn_supplied_quality(o: Outcome<CoercionResult>) -> Optional<CoercionQuality>
   }
 }
 
-// (15b) A TARGET THAT IS NOT THE DECLARED CARRIER REFUSES, AND THE CARRIER EDGE IS ONE STEP.
-// `x as Bool` from x: Pos (carrier Int) refuses. `type Pos2 = Pos where ..` declares Pos as its
-// carrier, so `x as Pos` from x: Pos2 is Widened and `x as Int` REFUSES -- the edge is not walked to
-// a fixed point (v2.std.coercion states why). RED if the widening arm admitted any target, or walked
-// the carrier chain.
+// (15b) A TARGET THAT IS NOT THE DECLARED CARRIER REFUSES, AND A REFINEMENT OF A REFINEMENT DOES
+// NOT WIDEN. `x as Bool` from x: Pos (carrier Int) refuses. `type Pos2 = Pos where ..`: the index
+// resolution consulted holds the declaration AS AUTHORED, so Pos2's carrier is the bare atom `Pos`,
+// not the resolved reference a cast target `Pos` is -- measured on the production route while this
+// row was written (v2.compiler.infer refinement_declaration over the assembled tree returned the atom
+// ^Pos). So `x as Pos` from x: Pos2 REFUSES, as does `x as Int`: the carrier edge is not walked and an
+// unresolved carrier is never equated with a resolved type. The Int carrier row (15) is the paired
+// inhabitance claim: there the index's carrier is the kernel Int atom and the crossing widens. RED if
+// the widening arm admitted a non-carrier target or equated an unresolved carrier with a resolved one.
 test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
   bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_bool_type()))
-    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_int_type()))
-    && bcn_is_widened(q: bcn_supplied_quality(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_ref(leaf: ^Pos))))
+    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_authored_atom(identity: ^Pos), target: bcn_ref(leaf: ^Pos)))
+    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_authored_atom(identity: ^Pos), target: bcn_int_type()))
+}
+
+// (15d) A REFINEMENT LOOKUP MISS REFUSES. When v2.compiler.infer refinement_declaration finds no
+// declaration -- a tree inferred without resolution (v2.compiler.ingest's bridge supplies an index
+// holding no declarations), or an index with no unambiguous entry at the path -- no carrier reaches
+// coercion, and `x as Int` from a refinement-typed x keeps the exact crossing's refusal. RED if a
+// miss were read as permission (the widening arm admitting with no declared carrier).
+test fn bcn_a_refinement_lookup_miss_refuses() -> Bool {
+  bcn_supplied_refuses(o: coercion_cast_crossing(
+    source: claim_canonical_grounding(type_symbol: ^bcn_refinement_operand, algebra_symbol: ^bcn_refinement_operand),
+    source_type: bcn_ref(leaf: ^Pos),
+    source_declared_carrier: Absent,
+    target: bcn_int_type()
+  ))
 }
 
 // (15c) A SIBLING REFINEMENT OVER THE SAME CARRIER IS NOT A CARRIER: `x as Neg` from x: Pos, both
@@ -598,4 +620,5 @@ test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
     ]
   ))
 }
+
 

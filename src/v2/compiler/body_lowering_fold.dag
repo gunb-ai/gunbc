@@ -1243,6 +1243,34 @@ fn body_lower_is_block_delimiter_token(id: Symbol) -> Bool {
   (id == ^dag_token_lbrace) || (id == ^dag_token_rbrace)
 }
 
+// A CARET SYMBOL (`^name`) IS dag_grammar_caret_symbol_expr: seq(`^`, name), and body lowering has
+// no lowered form for it yet (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form). Every
+// value position -- argument, let value, body, data and field initializer, arm body, scrutinee,
+// if-branch, list item, condition operand -- reached body_lower_primary_expr's first-atom fallback,
+// which answered the caret with its `^` token: `if id == ^a {..} else if id == ^b {..}` accepted
+// with both conditions lowered to `id == ^`, two symbols made one node. The fallback now refuses a
+// caret shape, located at the `^` token, with its own cause, so the refused population is exactly
+// what the symbol-literal lowering must take over. Answers the `^` token node when the capture is one.
+fn body_lower_caret_symbol_token_optional(captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(
+    node: body_lower_unwrap_surface_shell(node: captured)
+  ) {
+    Absent => Absent
+    Present { value: pair } =>
+      match node_atom_identity_optional(
+        node: body_lower_deep_unwrap_optional(node: pair.left)
+      ) {
+        Present { value: id } =>
+          if id == ^dag_token_caret {
+            optional_present(value: body_lower_deep_unwrap_optional(node: pair.left))
+          } else {
+            optional_absent()
+          }
+        Absent => Absent
+      }
+  }
+}
+
 fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
   match sugar_sequence_pair_optional(
     node: body_lower_unwrap_surface_shell(node: captured)
@@ -7406,6 +7434,12 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       match body_lower_paren_group_inner_optional(node: captured) {
         Present { value: inner } => body_lower_paren_group_lowered(group: captured, inner: inner)
         Absent =>
+      match body_lower_caret_symbol_token_optional(captured: captured) {
+        Present { value: caret } =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_caret_symbol_not_lowered, n: caret)
+          )
+        Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
@@ -7442,6 +7476,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
           }
       }
   }
+      }
       }
       }
 }

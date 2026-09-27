@@ -462,10 +462,14 @@ test fn a_parenthesised_call_operand_resolves() -> Bool {
   }
 }
 
+// The caret operand refused operator_operand_unread until the first-atom fallback of
+// v2.compiler.body_lowering_fold body_lower_primary_expr began refusing a caret symbol with its own
+// cause, anchored at the `^` token; the operand now reaches that fallback, so every caret in value
+// position refuses with the one cause (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form).
 test fn a_caret_symbol_operand_refuses_at_normalize() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: v, as_cast_operand: _, else_less_if: _ } =>
-      cav_is_file_refused_for(v: v, reason: ^body_lowering_reason_operator_operand_unread)
+      cav_is_file_refused_for(v: v, reason: ^body_lowering_reason_caret_symbol_not_lowered)
     CavContextRefused => false
   }
 }

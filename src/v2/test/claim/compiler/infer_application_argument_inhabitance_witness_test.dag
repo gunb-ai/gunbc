@@ -1,5 +1,6 @@
 module v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
 import v2.std.inhabitance {
   inhabitance_cardinality_type,
@@ -151,7 +152,7 @@ fn inhabitance_formal_unresolved_tree() -> Node {
 
 test fn infer_incompatible_argument_refuses_holds() -> Bool {
   match infer(
-    tree: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true))
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true)))
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
@@ -163,7 +164,7 @@ test fn infer_incompatible_argument_refuses_holds() -> Bool {
 }
 
 test fn infer_compatible_argument_admits_holds() -> Bool {
-  match infer(tree: inhabitance_call_tree(arg: dag_int_literal_fixture_one())) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_int_literal_fixture_one()))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -171,9 +172,9 @@ test fn infer_compatible_argument_admits_holds() -> Bool {
 
 test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
   match infer(
-    tree: inhabitance_call_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(
       arg: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
-    )
+    ))
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -185,7 +186,7 @@ test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
 }
 
 test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
-  match infer(tree: inhabitance_generic_formal_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
@@ -209,7 +210,7 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
 }
 
 test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds() -> Bool {
-  match infer(tree: inhabitance_optional_formal_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
@@ -220,7 +221,7 @@ test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds(
 }
 
 test fn infer_positional_surplus_refuses_holds() -> Bool {
-  match infer(tree: inhabitance_arity_unmodeled_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_arity_unmodeled_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
@@ -231,7 +232,7 @@ test fn infer_positional_surplus_refuses_holds() -> Bool {
 }
 
 test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
-  match infer(tree: inhabitance_formal_unresolved_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_formal_unresolved_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
@@ -303,10 +304,10 @@ fn inhabitance_declared_formal_tree(declared: Node, arg: Node) -> Node {
 
 test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_holds() -> Bool {
   match infer(
-    tree: inhabitance_declared_formal_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
       declared: inhabitance_nominal_product_type_node(),
       arg: inhabitance_collection_type_node()
-    )
+    ))
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -319,10 +320,10 @@ test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_
 
 test fn inhabitance_product_produced_at_a_collection_formal_is_counted_frontier_holds() -> Bool {
   match infer(
-    tree: inhabitance_declared_formal_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
       declared: inhabitance_collection_type_node(),
       arg: inhabitance_nominal_product_type_node()
-    )
+    ))
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>

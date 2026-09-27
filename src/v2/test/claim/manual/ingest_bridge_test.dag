@@ -1,5 +1,6 @@
 module v2.test.manual.ingest_bridge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -229,7 +230,7 @@ test fn ingest_bridge_to_canonical_holds() -> Bool {
 
 test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> Bool {
   let source = dag_fixture_emitted_add_fn
-  match infer_and_discharge(tree: source) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: inferred, node: source) {
@@ -253,7 +254,7 @@ test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> 
 
 test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool {
   let source = ingest_unstamped_node()
-  match infer_and_discharge(tree: source) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match coerce_grounded_node(

@@ -15,6 +15,7 @@ import v2.std.compilers.target_model {
   target_model_canonical_operation_member_declared_type
 }
 import v2.compiler.resolve { ResolvedTree }
+import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
@@ -55,7 +56,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.compilers.body_lowering { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
@@ -970,54 +971,35 @@ fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -
   }
 }
 
-// A REFINEMENT DECLARATION, READ FROM A TYPE REFERENCE. `type Pos = Int where positive` is lowered
-// (v2.compiler.body_lowering_fold body_lower_type_variant, the head lowered as a type) to
-// `Pos: Conj { <type-expr>: Int,
-// <where-refinement-clause>: clause }` and grafted onto the containment spine at its qualified path
-// (v2.compiler.namespace_graft namespace_graft_fold_spine). A resolved reference to it carries that
-// path (v2.std.qualified_name declaration_reference_path_optional), so the declaration is reached by
-// walking the path's own segments down the spine, never by searching the tree for a matching shape.
+// A REFINEMENT DECLARATION, READ FROM A TYPE REFERENCE THROUGH THE AUTHORITY RESOLUTION USED. A
+// resolved reference carries its declaration's qualified path (v2.std.qualified_name
+// declaration_reference_path_optional); the declaration is what v2.std.symbol_index
+// symbol_index_lookup answers for that path in the index resolve resolved against, carried to infer
+// on v2.compiler.resolve ResolvedTree. No tree is walked and no second reference->declaration route
+// exists. `type Pos = Int where positive` is stored as its member `Conj { <type-expr>: Int,
+// <where-refinement-clause>: clause }` (v2.compiler.body_lowering_fold body_lower_type_variant, the
+// head lowered as a type). A MISS IS ABSENT, and Absent never admits: the declared-carrier widening
+// runs only after the exact crossing refused, so a lookup that finds nothing leaves that refusal
+// standing (v2.test.claim.body_cast_node bcn_a_refinement_lookup_miss_refuses).
 // CONSUMERS. .carrier is consumed in this change: refinement_declared_carrier hands it to
 // v2.std.coercion coercion_cast_crossing, the declared-carrier widening. .where_clause is a DECLARED
 // FRONTIER, not yet consumed: its consumer is the literal-into-refinement cast arm of work item
 // adhoc-032c89dc-138 (deep-bee-18), which projects it into resolve's where-predicate bindings. That arm
 // lands with the next-rung trigger of gunbc.recurring_failure_mode as_cast_has_no_lowered_form
-// (v2.std.coercion deciding a refinement's predicate on the cast operand), and it reads the clause
-// here rather than finding the declaration a second time. Absent when
-// the reference is not a declaration reference, the path does not reach a declaration, or the
-// declaration carries no where clause (it is then not a refinement, and has no carrier to widen to).
-// When the symbol index reaches infer's carriers, the spine walk becomes a lookup in it
-// (v2.std.symbol_index symbol_index_entry_at) and this reader keeps its signature.
+// (v2.std.coercion deciding a refinement's predicate on the cast operand); it must refuse on Absent
+// too, never read a miss as "not a refinement". Absent when the reference is not a declaration
+// reference, the index holds no unambiguous declaration at its path, or the declaration carries no
+// where clause (it is then not a refinement, and has no carrier to widen to).
 type RefinementDeclaration {
   carrier: Node
   where_clause: Node
 }
 
-fn refinement_declaration_spine_step(n: Node, segment: Symbol) -> Optional<Node> {
-  match find_named_child(root: n, name: segment) {
-    Accepted { value: next, diagnostics: _ } => Present { value: next }
-    Rejected { diagnostics: _ } =>
-      match find_named_child(root: n, name: ^grammar_production_captured_node_projection) {
-        Accepted { value: captured, diagnostics: _ } => refinement_declaration_spine_step(n: captured, segment: segment)
-        Rejected { diagnostics: _ } => Absent
-      }
-  }
-}
-
-fn refinement_declaration_at_path(tree: Node, path: QualifiedName) -> Optional<Node> {
-  fold_list(xs: path, empty: Present { value: tree }, cons: fn(at, segment) {
-    match at {
-      Present { value: n } => refinement_declaration_spine_step(n: n, segment: segment)
-      Absent => Absent
-    }
-  })
-}
-
-fn refinement_declaration(tree: Node, reference: Node) -> Optional<RefinementDeclaration> {
+fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<RefinementDeclaration> {
   match declaration_reference_path_optional(node: reference) {
     Absent => Absent
     Present { value: path } =>
-      match refinement_declaration_at_path(tree: tree, path: path) {
+      match symbol_index_lookup(index: index, qualified_path: path) {
         Absent => Absent
         Present { value: decl } =>
           match find_named_child(root: decl, name: ^dag_surface_where_refinement_clause) {
@@ -1026,20 +1008,15 @@ fn refinement_declaration(tree: Node, reference: Node) -> Optional<RefinementDec
               match find_named_child(root: decl, name: ^dag_surface_type_expr) {
                 Rejected { diagnostics: _ } => Absent
                 Accepted { value: head, diagnostics: _ } =>
-                  Present {
-                    value: RefinementDeclaration {
-                      carrier: head,
-                      where_clause: clause
-                    }
-                  }
+                  Present { value: RefinementDeclaration { carrier: head, where_clause: clause } }
               }
           }
       }
   }
 }
 
-fn refinement_declared_carrier(tree: Node, source_type: Node) -> Optional<Node> {
-  match refinement_declaration(tree: tree, reference: source_type) {
+fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optional<Node> {
+  match refinement_declaration(index: index, reference: source_type) {
     Present { value: d } => Present { value: d.carrier }
     Absent => Absent
   }
@@ -2367,11 +2344,11 @@ fn infer_gather_transform_row_on_entries(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
   match list_introduction_elements_optional(node: node) {
     Absent =>
-      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree)
+      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree, symbol_index: symbol_index)
     Present { value: elements } =>
     match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, tree: tree) {
       Absent =>
@@ -2422,7 +2399,7 @@ fn infer_gather_application_row_on_entries(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
   match infer_application_argument_inhabitance(node: node, entries: entries) {
     Rejected { diagnostics: r } =>
@@ -2437,7 +2414,7 @@ fn infer_gather_application_row_on_entries(
       )
     Accepted { value: _, diagnostics: id } =>
       let merged_pending = diagnostics_merge(outer: pending, inner: id)
-      match infer_transform_derived_optional(node: node, partials: partials, entries: entries, tree: tree) {
+      match infer_transform_derived_optional(node: node, partials: partials, entries: entries, tree: tree, symbol_index: symbol_index) {
         Present { value: derived } =>
         match derived {
           Rejected { diagnostics: r } =>
@@ -2498,7 +2475,7 @@ fn infer_gather_application_row_on_entries(
 // not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
 // is: the check is neither admitted nor skipped silently.
 
-fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Bool> {
+fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, tree: Node, symbol_index: SymbolIndex) -> Outcome<Bool> {
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(true)
     Present { value: annotation } =>
@@ -2514,7 +2491,7 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, tr
                   match coercion_cast_crossing(
                     source: g,
                     source_type: g.witness.structural.evidence,
-                    source_declared_carrier: refinement_declared_carrier(tree: tree, source_type: g.witness.structural.evidence),
+                    source_declared_carrier: refinement_declared_carrier(index: symbol_index, source_type: g.witness.structural.evidence),
                     target: annotation
                   ) {
                     Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
@@ -2549,9 +2526,9 @@ fn infer_gather_bind_annotation_row_on_entries(
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
   partials: List<Node>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
-  match infer_bind_annotation_check(node: node, entries: entries, tree: tree) {
+  match infer_bind_annotation_check(node: node, entries: entries, tree: tree, symbol_index: symbol_index) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -2579,12 +2556,12 @@ fn infer_transform_derived_optional(
   node: Node,
   partials: List<Node>,
   entries: List<InferredFactsEntry>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> Optional<Outcome<InferredFacts>> {
   if infer_transform_is_binary_infix_int_add_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
   } else {
-    infer_transform_cast_optional(node: node, entries: entries, tree: tree)
+    infer_transform_cast_optional(node: node, entries: entries, tree: tree, symbol_index: symbol_index)
   }
 }
 
@@ -2601,7 +2578,7 @@ fn infer_transform_is_cast(node: Node) -> Bool {
   }
 }
 
-fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, tree: Node) -> Optional<Outcome<InferredFacts>> {
+fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, tree: Node, symbol_index: SymbolIndex) -> Optional<Outcome<InferredFacts>> {
   if !infer_transform_is_cast(node: node) {
     optional_absent()
   } else {
@@ -2621,7 +2598,7 @@ fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, 
                       o: coercion_cast_crossing(
                         source: g,
                         source_type: g.witness.structural.evidence,
-                        source_declared_carrier: refinement_declared_carrier(tree: tree, source_type: g.witness.structural.evidence),
+                        source_declared_carrier: refinement_declared_carrier(index: symbol_index, source_type: g.witness.structural.evidence),
                         target: target
                       ),
                       f: fn(crossed) {
@@ -2667,7 +2644,7 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, tree: Node) -> I
 // -- a grounding this fold does not derive -- and it takes that arm. Deriving the reference's type
 // FROM its declaration by path is the end-state the roster lookups above already name as their
 // dissolution, not this arm.
-fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGatherFoldAcc {
+fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node, symbol_index: SymbolIndex) -> InferGatherFoldAcc {
   match n.kind {
     ComputationNode { behavior: Branch } =>
       infer_gather_fold_acc_ok(
@@ -2710,7 +2687,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
           entries: empty_inferred_facts_entry_list(),
           pending: None,
           partials: partials,
-          tree: tree
+          tree: tree, symbol_index: symbol_index
         )
       } else {
         infer_gather_fold_acc_ok(
@@ -2981,7 +2958,7 @@ fn infer_gather_fold_step(
   edge: Edge,
   child: InferGatherFoldAcc,
   partials: List<Node>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
@@ -3016,7 +2993,7 @@ fn infer_gather_fold_step(
           merged_entries: list_snoc_item(xs: acc.entries, item: domain_entry),
           merged_pending: acc.pending,
           partials: partials,
-          tree: tree
+          tree: tree, symbol_index: symbol_index
         )
     }
   } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
@@ -3037,7 +3014,7 @@ fn infer_gather_fold_step(
           merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
           merged_pending: acc.pending,
           partials: partials,
-          tree: tree
+          tree: tree, symbol_index: symbol_index
         )
     }
   } else {
@@ -3046,7 +3023,7 @@ fn infer_gather_fold_step(
       merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
       merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
       partials: partials,
-      tree: tree
+      tree: tree, symbol_index: symbol_index
     )
   }
 }
@@ -3056,7 +3033,7 @@ fn infer_gather_fold_step_merged(
   merged_entries: List<InferredFactsEntry>,
   merged_pending: Diagnostics,
   partials: List<Node>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
   let children_remaining = acc.children_remaining - 1
   if acc.await_branch_row && children_remaining == 0 {
@@ -3087,10 +3064,10 @@ fn infer_gather_fold_step_merged(
       entries: merged_entries,
       pending: merged_pending,
       partials: partials,
-      tree: tree
+      tree: tree, symbol_index: symbol_index
     )
   } else if children_remaining == 0 {
-    infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, tree: tree)
+    infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, tree: tree, symbol_index: symbol_index)
   } else {
     infer_gather_fold_acc_ok(
       node: acc.node,
@@ -3113,7 +3090,7 @@ fn infer_gather_settled_row(
   merged_entries: List<InferredFactsEntry>,
   merged_pending: Diagnostics,
   partials: List<Node>,
-  tree: Node,
+  tree: Node, symbol_index: SymbolIndex,
 ) -> InferGatherFoldAcc {
   match type_annotation_optional(n: acc.node) {
     Present { value: _ } =>
@@ -3122,7 +3099,7 @@ fn infer_gather_settled_row(
         entries: merged_entries,
         pending: merged_pending,
         partials: partials,
-        tree: tree
+        tree: tree, symbol_index: symbol_index
       )
     Absent =>
       if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
@@ -3147,13 +3124,13 @@ fn infer_gather_settled_row(
   }
 }
 
-fn infer_gather_fold_algebra(partials: List<Node>, tree: Node) -> NodeFold<InferGatherFoldAcc> {
+fn infer_gather_fold_algebra(partials: List<Node>, tree: Node, symbol_index: SymbolIndex) -> NodeFold<InferGatherFoldAcc> {
   NodeFold {
     init: fn(n0) {
-      infer_gather_fold_init(n: n0, partials: partials, tree: tree)
+      infer_gather_fold_init(n: n0, partials: partials, tree: tree, symbol_index: symbol_index)
     },
     step: fn(acc, e, child) {
-      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, tree: tree)
+      infer_gather_fold_step(acc: acc, edge: e, child: child, partials: partials, tree: tree, symbol_index: symbol_index)
     }
   }
 }
@@ -3163,9 +3140,9 @@ fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
 }
 
 fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
-  let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
+  let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
   infer_gather_acc_to_outcome(
-    acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, tree: tree))
+    acc: fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, tree: tree.root, symbol_index: tree.symbol_index))
   )
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
@@ -3181,7 +3158,7 @@ fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
         Accepted { value: facts_map, diagnostics: md } =>
           Accepted {
             value: ObligatedInferredTree {
-              root: tree,
+              root: tree.root,
               facts: facts_map,
               obligations: Empty
             },
