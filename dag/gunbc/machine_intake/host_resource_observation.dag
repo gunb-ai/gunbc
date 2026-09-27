@@ -153,19 +153,50 @@ fn observe_numa(numa: List<String>?) -> ObservationAttempt<List<NumaNode>, Resou
     Absent => ObservationRefused { cause: SectionAbsent { section: "numa" } }
     Present { value: out } => {
       let lines = filter(non_blank(out: out), l => is_node_cpus_line(line: l))
-      let nodes = flat_map(lines, l => match numa_node_line(line: l) { Present { value: n } => [n]  _ => [] })
+      // One pass: each candidate line is parsed once into an attempt that carries either its node or
+      // a refusal naming the line verbatim, so the diagnostic names the offending record.
+      let attempts = map(lines, l => numa_record_attempt(line: l))
+      let malformed = flat_map(attempts, a => numa_record_refusal(a: a))
       if count(lines) == 0 {
         ObservationRefused { cause: SectionUnparsed { section: "numa", detail: "no `node N cpus:` line" } }
-      } else if count(nodes) != count(lines) {
-        ObservationRefused { cause: SectionUnparsed { section: "numa", detail: "a `node N cpus:` line is not a node id and CPU ids" } }
-      } else if has_duplicate(map(nodes, n => n.node)) {
-        ObservationRefused { cause: SectionInconsistent { section: "numa", detail: "a node is listed more than once" } }
-      } else if has_duplicate(flat_map(nodes, n => n.cpus)) {
-        ObservationRefused { cause: SectionInconsistent { section: "numa", detail: "a CPU id is listed more than once" } }
       } else {
-        ObservationEstablished { observed: nodes }
+        match first(malformed) {
+          Present { value: c } => ObservationRefused { cause: c }
+          _ => numa_identities(nodes: flat_map(attempts, a => numa_record_node(a: a)))
+        }
       }
     }
+  }
+}
+
+fn numa_record_attempt(line: String) -> ObservationAttempt<NumaNode, ResourceUnread> {
+  match numa_node_line(line: line) {
+    Present { value: n } => ObservationEstablished { observed: n }
+    _ => ObservationRefused { cause: SectionUnparsed { section: "numa", detail: concat("not a `node N cpus: ids` record: ", line) } }
+  }
+}
+
+fn numa_record_refusal(a: ObservationAttempt<NumaNode, ResourceUnread>) -> List<ResourceUnread> {
+  match a {
+    ObservationRefused { cause: c } => [c]
+    ObservationEstablished { observed: _ } => []
+  }
+}
+
+fn numa_record_node(a: ObservationAttempt<NumaNode, ResourceUnread>) -> List<NumaNode> {
+  match a {
+    ObservationEstablished { observed: n } => [n]
+    ObservationRefused { cause: _ } => []
+  }
+}
+
+fn numa_identities(nodes: List<NumaNode>) -> ObservationAttempt<List<NumaNode>, ResourceUnread> {
+  if has_duplicate(map(nodes, n => n.node)) {
+    ObservationRefused { cause: SectionInconsistent { section: "numa", detail: "a node is listed more than once" } }
+  } else if has_duplicate(flat_map(nodes, n => n.cpus)) {
+    ObservationRefused { cause: SectionInconsistent { section: "numa", detail: "a CPU id is listed more than once" } }
+  } else {
+    ObservationEstablished { observed: nodes }
   }
 }
 

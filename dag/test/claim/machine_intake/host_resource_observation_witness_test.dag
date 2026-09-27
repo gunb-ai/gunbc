@@ -13,7 +13,7 @@ import product.fabric.supply { ThreadsNotCovered }
 import gunbc.machine_intake_mtcollins1_topology_goal { mtcollins1_topology_goal }
 import gunbc.machine_intake_host_resource_observation {
   HostResourceObservation, HostWorkloadEligibility, SectionUnparsed, SectionInconsistent, SectionAbsent, ReserveExceedsAvailable,
-  ThreadsBelowIntent, PopulatedNodesBelowIntent,
+  ThreadsBelowIntent, PopulatedNodesBelowIntent, TopologyFieldUnread,
   WorkloadEligible, WorkloadNotCovered, WorkloadCapacityUnknown, WorkloadHealthWithheld,
   host_resource_observation, host_topology_assessment, topology_health_admission,
   host_offered_shape, host_workload_eligibility,
@@ -182,24 +182,31 @@ test fn more_available_than_total_memory_refuses_the_reading_and_the_offer() -> 
 // A CPU record missing its colon, beside a valid one, in either order: the record is kept as
 // MALFORMED (not dropped), so the topology is unread, the assessment indeterminate, fitting work is
 // withheld on health, and the proved 80-of-160 shortfall still travels with it.
+data missing_colon_row: String = "node 1 cpus 80 81"
+
+fn names_row(d: String) -> Bool {
+  string_contains(s: d, pattern: missing_colon_row)
+}
+
 fn missing_colon_withholds_with_the_shortfall(numa: List<String>) -> Bool {
   let o = observed(nproc: "80", numa: numa)
-  let unread = match o.numa { ObservationRefused { cause: SectionUnparsed { section: _, detail: _ } } => true  _ => false }
+  let unread = match o.numa { ObservationRefused { cause: SectionUnparsed { section: _, detail: d } } => names_row(d: d)  _ => false }
   let indeterminate = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
   let withheld = match eligibility(o: o, needed: work(threads: 8, gib: 1)) {
-    WorkloadHealthWithheld { known: ks, unknowns: _ } =>
-      any(ks, d => match d { ThreadsBelowIntent { intended: i, observed: s } => hardware_thread_count_value(t: i) == 160 && hardware_thread_count_value(t: s) == 80  _ => false })
+    WorkloadHealthWithheld { known: ks, unknowns: us } =>
+      any(us, u => match u { TopologyFieldUnread { cause: SectionUnparsed { section: _, detail: d } } => names_row(d: d)  _ => false })
+      && any(ks, d => match d { ThreadsBelowIntent { intended: i, observed: s } => hardware_thread_count_value(t: i) == 160 && hardware_thread_count_value(t: s) == 80  _ => false })
     _ => false
   }
   unread && indeterminate && withheld
 }
 
 test fn a_cpu_record_missing_its_colon_after_a_valid_row_is_kept_as_malformed() -> Bool {
-  missing_colon_withholds_with_the_shortfall(numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), "node 1 cpus 80 81"])
+  missing_colon_withholds_with_the_shortfall(numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), missing_colon_row])
 }
 
 test fn a_cpu_record_missing_its_colon_before_a_valid_row_is_kept_as_malformed() -> Bool {
-  missing_colon_withholds_with_the_shortfall(numa: ["0-1", "node 1 cpus 80 81", concat("node 0 cpus: ", eighty_cpus)])
+  missing_colon_withholds_with_the_shortfall(numa: ["0-1", missing_colon_row, concat("node 0 cpus: ", eighty_cpus)])
 }
 
 // The other numactl lines are NOT CPU records and do not make the section malformed: size/free
