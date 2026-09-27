@@ -6,7 +6,7 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.std.collection { List, list_at_optional }
 import v2.std.compilers.body_lowering {
   AtomHead,
@@ -80,7 +80,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the same class v2.test.claim.namespace_xl0.reference_conservation reports as the if-arm call
 // argument and the block second statement being dropped. The rows red the build the day the value
 // positions are read whole, naming themselves for removal from v2.workflow.floor_expected_red.
-data body_shape_source: String = "module mq.shape\n\nimport v2.std.logic { Bool }\n\nfn leaf(v: Bool) -> Bool = v\n\nfn mq_call(v: Bool) -> Bool {\n  leaf(v)\n}\n\nfn mq_match(v: Bool) -> Bool {\n  match leaf(v) {\n    true => false\n    false => v\n  }\n}\n\nfn mq_infix(a: Bool, b: Bool, c: Bool) -> Bool {\n  a && b || c\n}\n\nfn mq_prefix(a: Bool) -> Bool {\n  !a\n}\n\nfn mq_bind(a: Bool) -> Bool {\n  let x = leaf(a)\n  x\n}\n\nfn mq_branch(a: Bool, b: Bool) -> Bool {\n  if a { b } else { leaf(b) }\n}\n"
+data body_shape_source: String = "module mq.shape\n\nimport v2.std.logic { Bool }\n\nfn leaf(v: Bool) -> Bool = v\n\nfn mq_call(v: Bool) -> Bool {\n  leaf(v)\n}\n\nfn mq_match(v: Bool) -> Bool {\n  match leaf(v) {\n    true => false\n    false => v\n  }\n}\n\nfn mq_infix(a: Bool, b: Bool, c: Bool) -> Bool {\n  a && b || c\n}\n\nfn mq_prefix(a: Bool) -> Bool {\n  !a\n}\n\nfn mq_bind(a: Bool) -> Bool {\n  let x = leaf(a)\n  x\n}\n\nfn named(e: Bool) -> Bool = e\n\nfn mq_bind_named(a: Bool) -> Bool {\n  let x = named(e: a)\n  x\n}\n\nfn mq_branch(a: Bool, b: Bool) -> Bool {\n  if a { b } else { leaf(b) }\n}\n"
 
 // Nullary and pure over an inline literal, so it is enrolled WARM in
 // v2.workflow.floor_pure_producer_share: the parse is not what any claim here is about, and the
@@ -278,6 +278,26 @@ test fn body_shape_bind_is_key_value_body_holds() -> Bool {
         Rejected { diagnostics: _ } => false
         Accepted { value: b, diagnostics: _ } =>
           (b.key_identity == ^x) && is_leaf_of(n: b.value, arg: ^a) && is_authored_atom(n: b.body, id: ^x)
+      }
+  }
+}
+
+// BIND, NAMED ARGUMENT: `let x = named(e: a)` binds the WHOLE call -- callee `named`, one argument,
+// the authored `a` -- not the bare callee atom a first-atom read of the value leaves.
+test fn body_shape_bind_value_is_the_whole_named_argument_call_holds() -> Bool {
+  match body_of(name: ^mq_bind_named) {
+    Absent => false
+    Present { value: body } =>
+      match bind_view(site: body) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: b, diagnostics: _ } =>
+          (b.key_identity == ^x)
+            && match as_call(n: b.value) {
+                 Absent => false
+                 Present { value: c } =>
+                   callee_is(c: c, id: ^named) && (count(c.arguments) == 1) && operand_is(xs: c.arguments, index: 0, id: ^a)
+               }
+            && is_authored_atom(n: b.body, id: ^x)
       }
   }
 }

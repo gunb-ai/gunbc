@@ -2,9 +2,9 @@ module v2.workflow.executor
 
 import v2.std.algebra {
   contains,
-  list_snoc_item,
   non_empty
 }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView, ReadinessLayer }
 import v2.std.logic { Bool }

@@ -1,0 +1,242 @@
+module v2.test.claim.infer_list_introduction
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer { infer, infer_branch_int_binding_type_node, inferred_facts_resolved_type }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.logic { bool_node }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.collection { List, list_at_optional }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
+import v2.std.witness { Holds, Violates }
+import std.algebra { Cons, Empty, list_snoc_item }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FREE-MONOID INTRODUCTION'S ONE INFER CASE (v2.compiler.infer
+// infer_transform_freemonoid_introduction), AT ITS OWN INTERFACE. The inputs are SUPPLIED: a flat
+// Transform whose head is the std.algebra FreeMonoid reference and whose operands are literals --
+// the shape v2.std.compilers.body_lowering lower_list_introduction builds, which
+// v2.test.claim.namespace_xl0.list_literal_value_lowering establishes on the production route
+// (DESIGN section 3: the inhabitance claim for this supplied boundary). Three cases, one each:
+// elements of one type derive FreeMonoid<T>; a differing element refuses AT that element, not at
+// the literal; `[]` derives nothing here, because its T is its boundary's.
+// The head in its RESOLVED form: infer runs on resolved trees, where resolve mints a corpus
+// declaration reference as the marked carrier (v2.std.qualified_name declaration_reference_node),
+// never as the bare spine body lowering writes before resolution.
+fn ilt_head() -> Node {
+  declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic)
+}
+
+fn ilt_list(elements: List<Node>) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: fold(elements, init: [Edge { label: Positional, target: ilt_head() }], f: fn(acc, e) {
+      list_snoc_item(xs: acc, item: Edge { label: Positional, target: e })
+    }),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ilt_true() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_true)
+}
+
+data ilt_ints: Node = ilt_list(elements: [dag_int_literal_fixture_one(), dag_int_literal_fixture_one()])
+
+data ilt_mixed: Node = ilt_list(elements: [dag_int_literal_fixture_one(), ilt_true()])
+
+data ilt_empty: Node = ilt_list(elements: Empty)
+
+fn ilt_false() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_false)
+}
+
+data ilt_bools: Node = ilt_list(elements: [ilt_true(), ilt_false()])
+
+// A list of lists whose element types are STRUCTURALLY equal (both FreeMonoid<Int>, minted at two
+// occurrences), and one whose element types differ structurally (FreeMonoid<Int> then FreeMonoid<Bool>).
+data ilt_nested_ints: Node = ilt_list(elements: [ilt_list(elements: [dag_int_literal_fixture_one()]), ilt_list(elements: [dag_int_literal_fixture_one(), dag_int_literal_fixture_one()])])
+
+data ilt_nested_mixed_inner: Node = ilt_list(elements: [dag_int_literal_fixture_one(), dag_int_literal_fixture_one()])
+
+data ilt_nested_bool_inner: Node = ilt_list(elements: [ilt_true()])
+
+data ilt_nested_mixed: Node = ilt_list(elements: [ilt_nested_mixed_inner, ilt_nested_bool_inner])
+
+// FreeMonoid<T>: an Instantiation whose head names std.algebra FreeMonoid; answers T, else Absent.
+fn ilt_freemonoid_argument(t: Node) -> Optional<Node> {
+  match t.kind {
+    TypeNode { connective: Instantiation } =>
+      if count(node_positional_child_targets(node: t)) == 2 {
+        match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
+          Present { value: head } =>
+            match declaration_reference_path_optional(node: head) {
+              Present { value: qn } =>
+                if qn == [^std, ^algebra, ^FreeMonoid] {
+                  list_at_optional(xs: node_positional_child_targets(node: t), index: 1)
+                } else {
+                  optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+// The literal's derived type, when infer accepts it with one.
+fn ilt_derived_type(tree: Node) -> Optional<Node> {
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: t, diagnostics: _ } =>
+      match t.facts.lookup(tree) {
+        Absent => optional_absent()
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: ty } => optional_present(value: ty)
+            Violates { diagnostic: _ } => optional_absent()
+          }
+      }
+  }
+}
+
+// The derived type is EXACTLY FreeMonoid<expected>: the argument is compared whole, structurally,
+// through the same authority infer unifies element types with.
+fn ilt_is_freemonoid_of(tree: Node, expected: Node) -> Bool {
+  match ilt_derived_type(tree: tree) {
+    Absent => false
+    Present { value: ty } =>
+      match ilt_freemonoid_argument(t: ty) {
+        Present { value: arg } => exact_structural_equality_zip_fold(source_facts: arg, candidate: expected)
+        Absent => false
+      }
+  }
+}
+
+fn ilt_freemonoid_of(element: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: ilt_head() },
+      Edge { label: Positional, target: element }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// THE ARGUMENT IS ASSERTED, NOT ONLY THE HEAD: FreeMonoid<Bool> or FreeMonoid<anything else> reds it,
+// and the Bool control below is the wrong-type twin that must NOT satisfy the Int claim.
+test fn a_list_of_ints_infers_to_freemonoid_of_int() -> Bool {
+  ilt_is_freemonoid_of(tree: ilt_ints, expected: infer_branch_int_binding_type_node())
+}
+
+test fn a_list_of_bools_infers_to_freemonoid_of_bool_and_not_of_int() -> Bool {
+  ilt_is_freemonoid_of(tree: ilt_bools, expected: bool_node())
+    && !ilt_is_freemonoid_of(tree: ilt_bools, expected: infer_branch_int_binding_type_node())
+}
+
+// STRUCTURAL ELEMENT TYPES: two FreeMonoid<Int> elements minted at different occurrences are one T,
+// so the list of lists is FreeMonoid<FreeMonoid<Int>>; an atom-only comparison would refuse it.
+test fn a_list_of_equal_lists_infers_to_a_nested_freemonoid() -> Bool {
+  ilt_is_freemonoid_of(tree: ilt_nested_ints, expected: ilt_freemonoid_of(element: infer_branch_int_binding_type_node()))
+}
+
+// A STRUCTURAL MISMATCH refuses located AT the differing element: the second inner list (a
+// FreeMonoid<Bool> beside a FreeMonoid<Int>), not the outer literal or the first element.
+test fn a_list_of_differently_typed_lists_refuses_at_the_differing_list() -> Bool {
+  match infer(tree: ilt_nested_mixed) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      (diagnostics_fatal(d: r).reason == ^infer_list_element_type_mismatch)
+        && (match diagnostics_fatal(d: r).at {
+          NodeLocus { anchor: a } => exact_structural_equality_zip_fold(source_facts: a.at, candidate: ilt_nested_bool_inner)
+          _ => false
+        })
+  }
+}
+
+// The FATAL diagnostic (v2.std.diagnostic diagnostics_fatal: the last one; rejected_with_pending
+// prepends the advisories pending before it) names the element-type mismatch and is located at the
+// `true` atom -- the element that differs -- not at the literal or its first element.
+fn ilt_is_mismatch_at_true(d: Diagnostic) -> Bool {
+  (d.reason == ^infer_list_element_type_mismatch) && (match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => id == ^dag_token_kw_true
+        Absent => false
+      }
+    _ => false
+  })
+}
+
+test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
+  match infer(tree: ilt_mixed) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => ilt_is_mismatch_at_true(d: diagnostics_fatal(d: r))
+  }
+}
+
+// `[]` carries no element to derive T from, so this case derives no type for it: it stays on the
+// counted GroundingNotDerived frontier rather than receiving a guessed T.
+// It must still be ACCEPTED: a refusal would also "derive no type", so accepting Rejected here would
+// let one failure common to every list pass this claim while the other two went red.
+test fn an_empty_list_derives_no_type_here() -> Bool {
+  match infer(tree: ilt_empty) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match tree.facts.lookup(ilt_empty) {
+        Absent => true
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: _ } => false
+            Violates { diagnostic: _ } => true
+          }
+      }
+  }
+}
+
+// A REPORT, NOT A CLAIM: each case's infer outcome rendered through the process exit, so a run names
+// what refused and where (gunbc run maps only ProcessExit to an exit code).
+fn ilt_diagnostic_text(d: Diagnostic) -> String {
+  symbol_lexeme(sym: d.reason) + " at=" + (match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => symbol_lexeme(sym: id)
+        Absent => "(non-atom node)"
+      }
+    _ => "(no node locus)"
+  })
+}
+
+fn ilt_outcome_text(tree: Node) -> String {
+  match infer(tree: tree) {
+    Rejected { diagnostics: r } => "rejected fatal=" + ilt_diagnostic_text(d: diagnostics_fatal(d: r)) + " head=" + ilt_diagnostic_text(d: r.head)
+    Accepted { value: t, diagnostics: _ } =>
+      match t.facts.lookup(tree) {
+        Absent => "accepted, no facts for the literal"
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: _ } => "accepted with a derived type"
+            Violates { diagnostic: d } => "accepted, type not derived: " + ilt_diagnostic_text(d: d)
+          }
+      }
+  }
+}
+
+fn ilt_report() -> ProcessExit {
+  exit_failure(reason: "ints: " + ilt_outcome_text(tree: ilt_ints) + " | mixed: " + ilt_outcome_text(tree: ilt_mixed) + " | empty: " + ilt_outcome_text(tree: ilt_empty))
+}

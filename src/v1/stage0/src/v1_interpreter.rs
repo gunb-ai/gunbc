@@ -7576,12 +7576,55 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
 }
 
 fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    let scrutinee_val = eval_expr(&match_scrutinee(node.clone()), env, ctx)?;
+    let scrutinee = match_scrutinee(node.clone());
+    let scrutinee_val = eval_expr(&scrutinee, env, ctx)?;
     let arms = match_arm_nodes(node.clone());
+    // WHICH arms of a match over an optional see the PRESENT value is one checker decision,
+    // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
+    // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
+    // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
+    // specific is only HOW the payload is reached: an optional's value has two runtime
+    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
+    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
+    // bare value (every arm then sees the same value either way) and a silent wrong answer when it
+    // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
+    // variant), so that one case refuses, located, rather than falling back (DESIGN section 5).
+    let scrutinee_type = match scrutinee.inferred.as_ref() {
+        Some(_) => Some(crate::v1_compiler_infer_types::resolved_type(
+            scrutinee.clone(),
+        )),
+        None if is_optional_variant(&scrutinee_val, ctx) => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "match at {}:{}: the scrutinee is an Optional variant but carries no inferred type, so which arms see its present value (v1.compiler.infer optional_match_arm_sees_present_value) cannot be read",
+                    node.span.file, node.span.start
+                ),
+            });
+        }
+        None => None,
+    };
+    let absent_arm_index = crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
 
-    for arm in arms.iter() {
+    for (arm_index, arm) in arms.iter().enumerate() {
         let pattern = arm_pattern(arm.clone());
-        if let Some(bindings) = match_pattern(&pattern, &scrutinee_val, ctx) {
+        let sees_present_value = scrutinee_type.as_ref().is_some_and(|ty| {
+            crate::v1_compiler_infer::optional_match_arm_sees_present_value(
+                ty.clone(),
+                pattern.clone(),
+                arm_index as i64,
+                absent_arm_index,
+            )
+        });
+        let arm_value = if sees_present_value {
+            match optional_present_payload(&scrutinee_val, ctx)? {
+                Some(payload) => payload,
+                None => continue,
+            }
+        } else {
+            scrutinee_val.clone()
+        };
+        if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
             let arm_env = Env::extend(env, bindings);
             return eval_expr(&arm_body(arm.clone()), &arm_env, ctx);
         }
@@ -7590,6 +7633,35 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     Err(InterpError::PatternMatchFailure {
         value: format!("{}", scrutinee_val),
     })
+}
+
+fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
+    matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
+}
+
+/// The present payload of an optional value in either runtime representation, `None` when it
+/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
+/// malformed and refuses rather than reading as absent.
+fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    match value {
+        Value::Null => Ok(None),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if is_optional_variant(value, ctx) => {
+            if *variant_name != ctx.sym("Present") {
+                return Ok(None);
+            }
+            match fields_get(fields, ctx.sym("value")) {
+                Some(payload) => Ok(Some(payload.clone())),
+                None => Err(InterpError::TypeError {
+                    msg: format!("malformed Optional.Present without a `value` field: {value}"),
+                }),
+            }
+        }
+        other => Ok(Some(other.clone())),
+    }
 }
 
 fn char_value(c: char) -> Value {
@@ -10951,9 +11023,10 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // A REFINEMENT cast (std.coercion refinement_cast_rules, e.g. `Int as Nat`) is refused by the
     // checker (v1.compiler.infer validate_cast) from the same rows, so no accepted program reaches
     // this arm with one; it refuses here as the echo of that refusal, not as a second authority.
-    // The residue this fold still decides alone: validate_cast abstains whenever either side is
-    // outside dag_cast_rules, and dag_cast_rules admits `Bool as Int`, which this fold refuses --
-    // rostered in gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
+    // `Bool as Int` is refused by the checker too since dag_cast_rules withdrew that row. The
+    // residue this fold still decides alone: validate_cast abstains whenever either side is outside
+    // dag_cast_rules -- rostered in gunbc.recurring_failure_mode
+    // the_checker_admits_a_cast_the_evaluator_refuses.
     if crate::std_coercion::dag_cast_requires_proof(source_name.clone(), target_name.clone()) {
         return Err(InterpError::TypeError {
             msg: format!(
@@ -15789,7 +15862,7 @@ mod write_file_create_new_tests {
             std::fs::write(name, format!("occupant {seq}")).expect("plant a candidate");
         }
 
-        let refusal = super::write_file_create_new(&target, b"a fresh repository")
+        let refusal = super::write_file_create_new(&target, b"a fresh repository", None)
             .expect_err("an exhausted candidate budget must refuse");
         // NOT AlreadyExists: the target is absent, and conflating the two is the defect this
         // whole module exists to remove.
@@ -15854,7 +15927,7 @@ mod write_file_create_new_tests {
         let planted = format!("{}.gunbc-create-{}-0", target, std::process::id());
         std::fs::write(&planted, b"a stale internal candidate").expect("plant the first candidate");
 
-        super::write_file_create_new(&target, b"a fresh repository")
+        super::write_file_create_new(&target, b"a fresh repository", None)
             .expect("an occupied staging candidate must be skipped, not refused");
         assert_eq!(
             std::fs::read(&path).expect("target must be published"),
@@ -15883,7 +15956,7 @@ mod write_file_create_new_tests {
         std::fs::write(&collided, b"a leftover from an earlier attempt")
             .expect("plant the leftover");
 
-        super::write_file_create_new(&target, b"a fresh repository")
+        super::write_file_create_new(&target, b"a fresh repository", None)
             .expect("a leftover staging file must not refuse a create whose TARGET is absent");
         assert_eq!(
             std::fs::read(&path).expect("target must exist"),
@@ -15910,7 +15983,7 @@ mod write_file_create_new_tests {
             .map(|_| {
                 let t = target.clone();
                 let p = payload.clone();
-                std::thread::spawn(move || super::write_file_create_new(&t, &p))
+                std::thread::spawn(move || super::write_file_create_new(&t, &p, None))
             })
             .collect();
         let results: Vec<_> = handles
@@ -15952,7 +16025,7 @@ mod write_file_create_new_tests {
         let path = dir.join("repo.json");
         std::fs::write(&path, b"SOMEONE ELSE'S BYTES").expect("seed the path");
 
-        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+        let err = super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository", None)
             .expect_err("a path that exists must refuse, not be truncated");
         assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
 
@@ -16005,7 +16078,7 @@ mod write_file_create_new_tests {
                 };
                 libc::setrlimit(libc::RLIMIT_FSIZE, &lim);
             }
-            let _ = super::write_file_create_new(&target_s, &content);
+            let _ = super::write_file_create_new(&target_s, &content, None);
             unsafe { libc::_exit(0) };
         }
         let mut status: libc::c_int = 0;
@@ -16085,13 +16158,81 @@ mod write_file_create_new_tests {
         let dir = std::env::temp_dir().join(format!("gunbc-create-new-ok-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join("repo.json");
-        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository")
+        super::write_file_create_new(path.to_str().unwrap(), b"a fresh repository", None)
             .expect("an absent path is created");
         assert_eq!(
             std::fs::read(&path).expect("written"),
             b"a fresh repository"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // THE DECLARED MODE IS THE PUBLISHED MODE, WHATEVER THE UMASK. A fleet-converge step runs
+    // `umask 077` in its credential prelude and then invokes gunbc in the same shell, so every
+    // create-new it performs used to publish 0600 -- a fabric-store object the other declared
+    // reader could not open. The child sets exactly that umask and publishes with a declared mode
+    // the umask would narrow; the published inode must carry the declared bits. RED against the
+    // umask-only construction: it publishes 0600 here.
+    //
+    // The paired control is the Absent arm under the same umask: a caller that declares no mode
+    // keeps today's behaviour exactly (0666 & !umask), so widening the signature changed nothing
+    // for the callers that did not ask.
+    fn create_new_mode_under_umask(label: &str, umask: libc::mode_t, declared: Option<u32>) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-create-new-mode-{label}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let target = dir.join("object");
+        let target_s = target.to_str().unwrap().to_string();
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe { libc::umask(umask) };
+            let code = match super::write_file_create_new(&target_s, b"an object", declared) {
+                Ok(()) => 0,
+                Err(_) => 1,
+            };
+            unsafe { libc::_exit(code) };
+        }
+        let mut status: libc::c_int = 0;
+        unsafe { libc::waitpid(pid, &mut status, 0) };
+        assert!(
+            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+            "the create in the child must succeed"
+        );
+        let mode = std::fs::metadata(&target)
+            .expect("published")
+            .permissions()
+            .mode()
+            & 0o7777;
+        std::fs::remove_dir_all(&dir).ok();
+        mode
+    }
+
+    #[test]
+    fn a_declared_mode_is_published_regardless_of_the_umask() {
+        assert_eq!(
+            create_new_mode_under_umask("declared", 0o077, Some(0o644)),
+            0o644
+        );
+        assert_eq!(
+            create_new_mode_under_umask("declared-narrow", 0o022, Some(0o640)),
+            0o640
+        );
+    }
+
+    #[test]
+    fn an_absent_mode_keeps_the_umask_derived_mode() {
+        assert_eq!(
+            create_new_mode_under_umask("absent-077", 0o077, None),
+            0o600
+        );
+        assert_eq!(
+            create_new_mode_under_umask("absent-022", 0o022, None),
+            0o644
+        );
     }
 }
 
@@ -16115,6 +16256,7 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::AlreadyExists => "already_exists",
         std::io::ErrorKind::PermissionDenied => "permission_denied",
+        std::io::ErrorKind::NotADirectory => "not_a_directory",
         _ => "other",
     }
     .to_string()
@@ -16274,7 +16416,7 @@ fn dispatch_file(
                     OutputChannel::ShellTrace,
                     &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
                 );
-                return match write_file_create_new(&path, content.as_bytes()) {
+                return match write_file_create_new(&path, content.as_bytes(), None) {
                     Ok(()) => Ok(FileResult {
                         success: true,
                         byte_count,
@@ -16297,10 +16439,66 @@ fn dispatch_file(
                     }),
                 };
             }
+            // THE DECLARED-MODE ARM. Same canonical realization as write_create_new; the only
+            // difference is that the staged inode is given the caller's declared permission bits
+            // before publication, so the published mode is the model's and not the process umask's.
+            // `mode` is the permission-bit VALUE (extdeps.access.posix file_mode_bits), refused
+            // rather than truncated when it is not a mode.
+            "write_create_new_with_mode" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new_with_mode operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let mode = match param_env.lookup(ctx.sym("mode")) {
+                    Some(Value::Int(n)) if (0..=0o7777).contains(n) => *n as u32,
+                    other => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_create_new_with_mode for {} needs an Int `mode` within 0..=0o7777, got {:?}",
+                                path,
+                                other.map(|v| format!("{}", v))
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!(
+                        "[file] write_create_new_with_mode {} ({} bytes, mode {:o})",
+                        path, byte_count, mode
+                    ),
+                );
+                return match write_file_create_new(&path, content.as_bytes(), Some(mode)) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        error_kind: String::new(),
+                        content: String::new(),
+                    }),
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
+                        content: String::new(),
+                    }),
+                };
+            }
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only, write_create_new, write_create_new_with_mode)"
                     ),
                 })
             }

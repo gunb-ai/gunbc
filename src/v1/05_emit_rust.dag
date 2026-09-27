@@ -210,11 +210,12 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
+  is_lambda_expr,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
   declared_return_type_node,
-  match_unguarded_absent_arm_index, optional_scrutinee_binding_is_present,
+  match_unguarded_absent_arm_index, optional_match_arm_sees_present_value,
   expr_span,
   resolved_type_name,
   expand_type_for_field_access,
@@ -259,7 +260,7 @@ import v1.compiler.emit {
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
 }
@@ -9468,6 +9469,9 @@ fn emit_fn_def_non_tco(name: String, type_params_str: String, params_str: String
   }
 }
 
+// Effectful tail calls use the same loop lowering as pure functions. The service bindings
+// stay fixed across iterations; only value parameters are reassigned. Wrapping the loop
+// once preserves its value-valued breaks while service failures still propagate through ?.
 fn emit_func_def(
   name: String,
   params: List<Node>,
@@ -9495,6 +9499,15 @@ fn emit_func_def(
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
+  let use_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
+  if use_tco {
+    let value_params = emit_tco_params(params: params, generic_param_names: [], shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+    let effect_params = emit_func_params(params: [], uses: uses, service_names: service_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
+    let all_params = [value_params, effect_params] |> filter(part => part != "") |> join(separator: ", ")
+    let loop_body = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
+    return concat(rust_visibility_prefix(), rust_items().async_prefix, rust_items().func_keyword, " ", emit_ident(name: name, target: Rust),
+      "(", all_params, ")", ret_str, " {\n    Ok(", loop_body, ")\n}")
+  }
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
   let items = rust_items()
   concat(rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: name, target: Rust),
@@ -11533,7 +11546,56 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       } else {
         emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
       }
+    ExprListLit =>
+      if rust_list_lit_holds_callables(texpr: texpr) {
+        let element_type = rust_list_lit_callable_element_type(texpr: texpr, shared_types: shared_types, scope: scope, emit_info: emit_info)
+        emit_list_lit_expr(element_strs: texpr.children |> map(el => rust_callable_list_element(el: el, element_type: element_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1)), target: Rust)
+      } else {
+        emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
+      }
     _ => emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
+  }
+}
+
+// A LAMBDA LITERAL IN A LIST IS A CALLABLE VALUE, and an arrow in value position realizes as
+// Rc<dyn Fn(..) -> ..> (callable_type_template), exactly as at an arrow-typed record field
+// (rust_callable_field_value_wrap) or fn return (rust_callable_return_wrap). Each lambda element is
+// therefore wrapped by the same callable row with its capture preamble; a bare closure there is
+// E0308 (every closure is its own type, and none is the Rc<dyn Fn> a List<fn..> renders to). The
+// decision is the element's own expression kind, not the list's recorded type: a lambda is a
+// callable whatever list holds it. A non-lambda element keeps its own rendering -- a call result or
+// a parameter already carries the arrow carrier its producer chose.
+fn rust_list_lit_holds_callables(texpr: Node) -> Bool {
+  texpr.children |> any(el => is_lambda_expr(e: el))
+}
+
+// vec! takes its element type from its first element, so each wrapped lambda is also BOUND at the
+// rendered arrow the list's element type names: without it the Vec is of one closure's Rc and the
+// others are E0308. A typed let and not an `as` cast, because a cast cuts the expectation that
+// types the closure's body -- `Some(7)` under `as Rc<dyn Fn() -> Option<i64>>` is Option<i32>,
+// E0271; the let is the same coercion site an arrow-typed record field already is.
+fn rust_list_lit_callable_element_type(texpr: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> String? {
+  match resolved_type(n: texpr).children |> first {
+    Present { value: el } =>
+      let et = child_type_node(ch: el)
+      if et.connective == Arrow {
+        Present { value: render_rust_type(n: et, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info) }
+      } else { none }
+    Absent => none
+  }
+}
+
+fn rust_callable_list_element(el: Node, element_type: String?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, fuel: Int) -> String {
+  match el.expr_data {
+    ExprLambda =>
+      let wrapped = rust_callable_field_value_wrap(
+        raw: emit_typed_collection_lambda(lambda_expr: el, elem_type_str: "_", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
+        value_node: Present { value: el }, scope: scope)
+      match element_type {
+        Present { value: ty } => concat(concat(concat("{ let __callable: ", ty), concat(" = ", wrapped)), "; __callable }")
+        Absent => wrapped
+      }
+    _ => emit_typed_expr(texpr: el, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
   }
 }
 
@@ -13558,27 +13620,22 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
   concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
 }
 
-// A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE, and the emitted pattern must
-// say so. v1.compiler.infer types the bare binding in `match opt { null => a  v => b }` at the
-// scrutinee's REQUIRED type (optional_scrutinee_binding_is_present over
-// match_unguarded_absent_arm_index); the body is emitted against that narrowed type. Emitting the
-// binding as a bare `v` bound the whole Option<T>, so the body met an Option where it was typed T
-// (E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>). The narrowing is read
-// from the checker's own predicate, never re-derived here, so the pattern and the typing cannot
-// disagree about which arm narrows: in exactly that arm the binding is emitted `Some(v)`, which the
-// earlier `None` arm keeps exhaustive. The tail-call lowering's own arm emitter
-// (emit_typed_tco_match_arm) and the String-literal re-emission (emit_typed_match's needs_string_from
-// arm) read the same predicate, so the three match renderings agree. In that re-emission a string
-// LITERAL arm over an optional scrutinee is `Some(ref __s)` as well: a literal matches only a
-// present value (the interpreter's Null never equals a Str), which is pattern semantics over an
-// optional carrier rather than the checker's narrowing, so it is keyed on the scrutinee's cardinality.
+// AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
+// is one checker decision, v1.compiler.infer optional_match_arm_sees_present_value: a bare binding
+// after an unguarded `null` arm (typed at the scrutinee's REQUIRED type, so a bare `v` bound the
+// whole Option<T> -- E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>), and a
+// non-null literal arm (a literal matches only a present value). Every match rendering here -- this
+// one, the tail-call lowering's emit_typed_tco_match_arm and emit_typed_match's String-literal
+// re-emission -- and the interpreter's eval_match read that predicate and decide nothing of their
+// own, so the typing, the emitted pattern and the interpreted arm cannot disagree about which arm
+// sees the payload. The earlier `None` arm keeps the `Some(..)` arms exhaustive.
 fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
     let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
     arms |> enumerate |> map(pair =>
       emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false,
-        present_binding: optional_scrutinee_binding_is_present(scrut_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
+        present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
     let entries = arms |> map(arm => RcGroupedArmEntry {
@@ -13642,10 +13699,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
     let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
-    let sf_scrut_optional = resolved_type(n: scrutinee).return_cardinality == CardOptional
     let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
-      present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)
-        || (sf_scrut_optional && is_string_lit_pattern(p: arm_pattern(n: pair.second)))))
+      present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
@@ -13720,8 +13775,16 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
     recurse: (node, d) => emit_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
 }
 
+// A LET-BOUND LAMBDA is emitted with its parameters TYPED, through the same renderer a collection
+// method's lambda uses (emit_typed_collection_lambda). The shared lambda rendering writes `|x|`, and
+// a closure bound to a local has no call site to infer x from before its body is checked, so any
+// method on x (the `.clone()` every operand carries) is E0282. The binding stays a bare closure --
+// the impl Fn slot a function-typed parameter takes it into -- and is called as one.
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let val_str = match value.expr_data {
+    ExprLambda => emit_typed_collection_lambda(lambda_expr: value, elem_type_str: "_", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    _ => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
   emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Rust,
     recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
     scope: scope, value_node: value)
@@ -14117,25 +14180,21 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
-// THE EFFECTFUL PATH HAS NO RECURSION REALIZATION, SO IT REFUSES ONE RATHER THAN RENDERING IT.
-// emit_func_def renders every effectful declaration as `async fn` and never consults
-// is_tco_eligible or is_self_recursive -- the loop transform and the stacker guard belong to the
-// pure path only -- so a self-call inside an effectful body would be emitted verbatim, and rustc
-// refuses recursion in an async fn without boxing (E0733). Emitting it would be a green compile
-// whose output cannot build (DESIGN section 5, fabricated plausible output). The fact is read from
-// the SAME registry row the pure path's TCO decision reads, through the same reader, so this is
-// the first consumer of is_self_recursive on an effectful declaration: until the FuncItem collapse
-// the registry hardcoded that field false for every effectful item, and this refusal could not
-// have fired. Rust-specific by construction: Python's `async def` and Go recurse without boxing.
+// Effectful tail recursion is realized by the same loop as pure tail recursion. Non-tail
+// effectful recursion still has no bounded-stack realization and refuses before Rust emission.
 fn effectful_self_recursion_diagnostics(tm: TypedModule, registry: Map<String, ItemInfo>) -> List<ErrorNode> {
   let si = tm.type_env.source_indices
   let module_name = authored_name_at(source_indices: si, node: tm.module)
   tm.items |> flat_map(item =>
     match item.body {
       Present { value: body } =>
-        if item.uses |> count > 0 {
-          let name = authored_name_at(source_indices: si, node: item)
-          if is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: name }, body: body, registry: registry, source_indices: si) {
+        let name = authored_name_at(source_indices: si, node: item)
+        let effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: name }) {
+          Present { value: info } => item_is_effectful_callee(info: info)
+          Absent => item.uses |> count > 0
+        }
+        if effectful {
+          if !is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: name }, body: body, registry: registry, source_indices: si) {
             [make_error_node(diagnostic: EffectfulSelfRecursionUnrealized { name: name, span: item.span }, module_name: module_name)]
           } else { [] }
         } else { [] }
@@ -15028,7 +15087,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
       let arm_strs = arm_list |> enumerate |> map(pair =>
         emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
-          present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
+          present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_rc_option_ref {
@@ -16225,6 +16284,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
     FileWrite          => file_write_expr
     FileWriteOwnerOnly => file_write_owner_only_expr
     FileWriteCreateNew => file_write_create_new_expr
+    FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr
     FileDelete         => file_delete_match_expr
     FileList           => file_list_match_expr
   }
@@ -16279,7 +16339,7 @@ data file_empty_path_guard: String = "if file_path.is_empty() { return Err(\"fil
 // emitted image of v1_interpreter io_error_kind_name, and its closed names are the ones
 // extdeps.filesystem.filesystem_io admit_filesystem_failure_kind admits -- a name outside that
 // roster reaches the consumer as FilesystemFailureKindUnrecognized, never as a guessed kind.
-data file_io_error_kind_fn: String = "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        _ => \"other\",\n    }\n    .to_string()\n};"
+data file_io_error_kind_fn: String = "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        _ => \"other\",\n    }\n    .to_string()\n};"
 
 data file_channel_binding_prefix: String = "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = "
 
@@ -16320,7 +16380,11 @@ data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;
 // policy -- a stringified error and a byte count -- and the realization deliberately does not
 // return it, because doing so would stringify std::io::Error inside the realization and discard
 // the host's structured failure before any consumer asked for that loss.
-data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
+data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), None) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
+
+// `mode` is the declared permission-bit value (extdeps.access.posix file_mode_bits). A value that is
+// not a mode REFUSES as InvalidInput before anything is created; it is never truncated into one.
+data file_write_create_new_with_mode_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};"
 
@@ -17305,111 +17369,29 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
   }
 }
 
-// THE SOURCE-ROOT WALK AND THE BYTE READS, RENDERED ONCE FOR EVERY DRIVER THAT OWNS THAT BOUNDARY.
-//
-// Two rendered mains now need the same host operation -- SourceRootEvalDriver and NativeCliDriver
-// both take source roots on argv and must hand the resulting ingest to a `.dag` fold -- and the
-// second one is exactly the edit that turns "a block inside one template" into two copies of one
-// program. They would drift in the way copied text always drifts: a fix to the extension test, the
-// path sort, or the witness fields would land in whichever main its author was reading.
-//
-// IT IS TOTAL OVER ITS ROOT LIST, deliberately, and that is a behavioural change from the text it
-// replaces. The eval driver's `read_ingest` refused an EMPTY root list with exit 2 inside the
-// shared body; that refusal is a fact about what THAT driver's modes require, not about reading
-// files, and it is wrong for the CLI driver, whose `.dag` entry already refuses a verb with no root
-// (`cli_no_source_root`) and owes the operator that located cause rather than a harness message.
-// So the guard moved out to the eval driver's own two call sites and this reader answers for
-// whatever it is handed -- including the empty list, which reads zero files.
-fn emit_host_source_root_read_rs() -> String {
+// The retained eval driver's synchronous boundary binds the existing emitted Filesystem
+// service and invokes the .dag acquisition fold. Traversal, sorting, read refusals and witness
+// construction live in gunbc.source_root_read / v2.compiler.source_authority; no std::fs walk
+// or byte read is authored in this shim. The native CLI invokes its entire entry fold instead.
+fn emit_host_source_root_read_rs(crate_name: String) -> String {
   concat(
-      "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> \{", "\n",
-      "    let entries = match std::fs::read_dir(dir) \{", "\n",
-      "        Ok(entries) => entries,", "\n",
-      "        Err(cause) => return Err(format!(\"could not walk source root {}: \{cause\}\", dir.display())),", "\n",
-      "    \};", "\n",
-      "    for entry in entries \{", "\n",
-      "        let entry = match entry \{", "\n",
-      "            Ok(entry) => entry,", "\n",
-      "            Err(cause) => return Err(format!(\"could not read entry under {}: \{cause\}\", dir.display())),", "\n",
-      "        \};", "\n",
-      "        let path = entry.path();", "\n",
-      "        if path.is_dir() \{", "\n",
-      "            collect_dag_paths(&path, out)?;", "\n",
-      "        \} else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) \{", "\n",
-      "            out.push(path.to_string_lossy().into_owned());", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
-      "    Ok(())", "\n",
-      "\}", "\n",
-      "\n",
-      "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> \{", "\n",
-      "    let mut paths: Vec<String> = Vec::new();", "\n",
-      "    for root in source_roots \{", "\n",
-      "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) \{", "\n",
-      "            eprintln!(\"REFUSED: \{cause\}\");", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
-      "    paths.sort();", "\n",
-      "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();", "\n",
-      "    for path in &paths \{", "\n",
-      "        let text = match std::fs::read_to_string(path) \{", "\n",
-      "            Ok(text) => text,", "\n",
-      "            Err(cause) => \{", "\n",
-      "                eprintln!(\"REFUSED: could not read \{path\}: \{cause\}\");", "\n",
-      "                std::process::exit(2);", "\n",
-      "            \}", "\n",
-      "        \};", "\n",
-      "        reads.push(Rc::new(DagSourceReadWitness \{", "\n",
-      "            source: Rc::new(Medium \{", "\n",
-      "                carried: text,", "\n",
-      "                fidelity: DecodeFidelity::Lossless,", "\n",
-      "                _phantom: std::marker::PhantomData,", "\n",
-      "            \}),", "\n",
-      "            artifact: Rc::new(Artifact \{", "\n",
-      "                kind: ArtifactKind::SourceFile,", "\n",
-      "                id: path.clone(),", "\n",
-      "                file_path: path.clone(),", "\n",
-      "            \}),", "\n",
-      "            compilation_unit: path.clone(),", "\n",
-      "            source_root: source_root_for_storage_path(path.clone()),", "\n",
-      "        \}));", "\n",
-      "    \}", "\n",
-      "    reads", "\n",
-      "\}", "\n",
-      "\n",
-  )
+    "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {\n",
+    "    let filesystem = ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());\n",
+    "    let runtime = match tokio::runtime::Builder::new_current_thread().build() { Ok(runtime) => runtime, Err(cause) => { eprintln!(\"REFUSED: native filesystem executor: {}\", cause); std::process::exit(2); } };\n",
+    "    let observed = runtime.block_on(", crate_name, "::gunbc_source_root_read::source_root_read(Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
+    "    match observed {\n",
+    "        Ok(files) => match &*files {\n",
+    "            ", crate_name, "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRead { files } =>\n",
+    "                ", crate_name, "::v2_compiler_source_authority::source_root_ingest_from_files(files.clone()).iter().cloned().collect(),\n",
+    "            ", crate_name, "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRefused { path, kind, cause } => {\n",
+    "                eprintln!(\"REFUSED: could not read source root at {} [{}]: {}\", path, kind, cause); std::process::exit(2);\n",
+    "            }\n",
+    "        },\n",
+    "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }\n",
+    "    }\n",
+    "}\n")
 }
 
-// THE V2-EXCLUSIVE CLI'S MAIN, AND THE REASON IT IS THIS SHORT.
-//
-// Everything below argv is a call. The verb, every refusal, what gets emitted and what status the
-// process takes are decided in `v2.cli.compile_cli` -- this template performs the four operations a
-// `.dag` fold cannot and hands each back as a VALUE: it reads argv, walks and reads the source
-// roots the PLAN named, writes the emitted text to stdout, and sets the status the `.dag` fold
-// returned. That is deliberately the shape `gunbc.source_root_eval_driver_seed_growth` states as the
-// capability retiring its own row ("the rendered main becomes one call into that fold"), so this
-// driver is written to it from the start rather than growing a second ~500-line hand-authored main
-// that would have to shrink later.
-//
-// IT IS TWO CALLS AND NOT ONE, and the reason is the boundary rather than convenience. The host
-// cannot know which roots to walk until argv has been parsed, and the `.dag` entry cannot parse
-// argv and then read the roots itself, so the plan comes back as a value the host acts on. The
-// roots come from `v2_cli_plan_source_roots` and NEVER from re-reading argv here: two readings of
-// one fact are free to disagree, and the disagreement would be a run that walked one closure while
-// reporting the verb's.
-//
-// THE EMPTY WALK IS NOT SHORT-CIRCUITED HERE, and that is load-bearing. A refused plan names no
-// roots, so the reader is handed an empty list and returns zero witnesses; the `.dag` fold then
-// answers with the PLAN'S OWN located cause rather than a harness message about missing roots. An
-// `if` here that refused early would put a second refusal authority in the shim, and it would
-// report the wrong one.
-//
-// THE STATUS IS NOT DERIVED FROM THE OUTPUT. `std.process` `ProcessExit` is the carrier for an exit
-// this program declares for itself, `v2_cli_exit` returns it, and this main maps the arm to a
-// number. Choosing the status here from whether stdout was empty would be a second representation
-// of the verdict, free to disagree with the outcome it came from -- and it would report a
-// legitimately empty emission as a failure.
 // THE NATIVE CLAIM DRIVER'S MAIN: ONE CALL, ONE WRITE, ONE STATUS. std.compiler_entry
 // NativeClaimDriver declares the contract: the entry's `native_claim_report` fold computes every case
 // and decides the closed NativeClaimTerminal, so this main reads no argv and no file, and it adds no
@@ -17447,6 +17429,8 @@ fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String)
   }
 }
 
+// Bind the existing file transport once. v2_cli_main owns parse, acquisition and compilation;
+// the host supplies argv and realizes output and ProcessExit, with no source-root walk.
 fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   TextFile {
@@ -17458,25 +17442,23 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
       "\n",
       "use std::rc::Rc;", "\n",
       "\n",
-      "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
-      "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};", "\n",
-      "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};", "\n",
       "use ", crate_name, "::std_process::ProcessExit;", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
-      "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,", "\n",
+      "    v2_cli_exit, v2_cli_outcome_text, v2_cli_main,", "\n",
       "\};", "\n",
       "\n",
-      emit_host_source_root_read_rs(),
-      "fn main() \{", "\n",
+      "#[tokio::main(flavor = \"current_thread\")]", "\n",
+      "async fn main() \{", "\n",
       "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
-      "    let plan = v2_cli_parse(Rc::new(argv.into()));", "\n",
-      "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();", "\n",
-      "    let reads = read_ingest(&roots);", "\n",
-      "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));", "\n",
+      "    let filesystem = ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());", "\n",
+      "    let outcome = match v2_cli_main(Rc::new(argv.into()), &filesystem).await {", "\n",
+      "        Ok(outcome) => outcome,", "\n",
+      "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }", "\n",
+      "    };", "\n",
       "    let text = v2_cli_outcome_text(outcome.clone());", "\n",
+      "    print!(\"\{text\}\");", "\n",
       "    match &*v2_cli_exit(outcome) \{", "\n",
       "        ProcessExit::ExitSuccess => \{", "\n",
-      "            print!(\"\{text\}\");", "\n",
       "            std::process::exit(0);", "\n",
       "        \}", "\n",
       "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",
@@ -17539,9 +17521,8 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
 // so the row count still equals the
 // universe size and every refusal stays located per test identity.
 //
-// THE FILESYSTEM READ IS THE HOST BOUNDARY THE DRIVER OWNS (std.compiler_entry): the rendered
-// main walks the declared source roots, reads the bytes, and mints one DagSourceReadWitness per
-// path -- the .dag pipeline itself never touches IO.
+// FILESYSTEM ACQUISITION is now a call into gunbc.source_root_read with the existing emitted
+// Filesystem handler. The retained main no longer owns traversal or byte-read decisions.
 //
 // THIS MAIN IS SEED, AND ITS RETENTION IS DECLARED AS A ROW, NOT HERE (DESIGN section 7; reviews
 // 63791 and 64181). The declaration lives at `gunbc.source_root_eval_driver_seed_growth`
@@ -17561,7 +17542,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
 // HOST BOUNDARY, retained by cause and not by schedule: argv (`main` reads it and hands it to
 // v2.compiler.compile `native_driver_parse`, which decides the verb, every argv refusal and its
 // status; the literal mode comparisons this main used to render are deleted),
-// the source-root walk and byte reads (`collect_dag_paths`, the read into DagSourceReadWitness),
+// the executor binding for the modeled source-root acquisition,
 // the monotonic clock (`Instant::now`, `Instant::elapsed`), the `/proc` memory reading
 // (`proc_status_kib`), the stdout/stderr writes and the exit status. Nothing in `.dag` can perform
 // these; they shrink only to the extent that each becomes a modeled host operation the emitter
@@ -17599,7 +17580,6 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use std::rc::Rc;", "\n",
       "use std::time::Instant;", "\n",
       "\n",
-      "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
       "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
@@ -17635,8 +17615,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_frontier_verdict_word,", "\n",
       "\};", "\n",
       "use ", crate_name, "::v2_compiler_native_test_vocabulary::NativeTestVerdict;", "\n",
-      "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};", "\n",
-      "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};", "\n",
+      "use ", crate_name, "::v2_compiler_source_authority::DagSourceReadWitness;", "\n",
       "use ", crate_name, "::v2_std_diagnostic::Outcome;", "\n",
       "use ", crate_name, "::std_process::ProcessExit;", "\n",
       "use ", crate_name, "::extdeps_bazel_target_pattern::TargetPattern;", "\n",
@@ -17648,7 +17627,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "\};", "\n",
       "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};", "\n",
       "\n",
-      emit_host_source_root_read_rs(),
+      emit_host_source_root_read_rs(crate_name: crate_name),
       "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String \{", "\n",
       "    match facts.get(key) \{", "\n",
       "        Some(value) => value.clone(),", "\n",

@@ -14,7 +14,8 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   path_in_list
 }
 import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { fold_list, list_map, list_snoc_item }
+import v2.std.algebra { fold_list, list_map }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.text { String }
 

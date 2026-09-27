@@ -12,8 +12,8 @@ import v2.std.diagnostic {
   Rejected,
   rejected_with_pending
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.node { Node, Symbol }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
@@ -132,7 +132,7 @@ fn admit_normalized_tree(
 // two sibling changes, both owned by the self-host closure frontier lane: PR-a's reference-derived
 // closure producer builds ONE SymbolIndex with symbol_index_fill_module_roots over the members'
 // normalized_tree_roots_to_binding_sources ++ census_tree_binding_source of every non-member, and
-// PR-c's door wiring (program_assembly / compiler_closure_emit / compile_cli) calls normalize_census
+// PR-c's door wiring (v2.compiler.self_host.closure_emission, called by v2.cli.compile_cli) calls normalize_census
 // for each parsed file outside the closure. TRIGGER: the gen-one emission of v2.compiler.compile
 // ingests a non-member through normalize_census -- until then this carrier is exercised only by
 // v2.test.claim.normalize.census_mode, and if that trigger is abandoned this carrier deletes.

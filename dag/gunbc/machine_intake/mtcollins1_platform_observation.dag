@@ -67,7 +67,7 @@ type AcceptedPowerRisk {
 
 data mtcollins1_single_ac_path_accepted: AcceptedPowerRisk = AcceptedPowerRisk {
   accepted_at: "2026-09-06",
-  accepted_condition: "the unit runs on one AC path; PSU2 is installed with no AC input and contributes nothing",
+  accepted_condition: "the unit runs on one AC path; PSU2 is installed with no AC input (uncabled, operator report 2026-09-24) and contributes nothing",
   revisit_trigger: "this unit acquiring dependents — becoming a boot or serving dependency for other machines, at which point its availability becomes theirs",
 }
 
@@ -85,6 +85,31 @@ data mtcollins1_psu2_standing: PowerSupplyStanding = PowerSupplyStanding {
   ac_input_present: false,
   output: watt(count: 0),
   fan_speed: rpm(count: 0),
+}
+
+// WHY PSU2 HAS NO AC IS NOW REPORTED, NOT INFERRED. On 2026-09-24 the operator stated that only PSU1
+// is connected: PSU2 is installed and uncabled. That explains the recurring "PSU2_Status | Power
+// Supply AC lost | Asserted" SEL entries (a supply present at every controller boot with no cord
+// asserts exactly that), so they are expected and not a new power fault. The standing is an
+// operator report, typed as such (DESIGN §4d): nothing here observed the cord, and a reader who
+// needs the cabling as a measured fact has a discriminator to take, a physical inspection or PSU2
+// reporting AC after a cord is attached. Absent that report the SEL entry is unexplained, which is
+// its own arm rather than a guess.
+type SupplyAcLossCause
+  = SupplyUncabledOperatorReported { reported_at: NonEmptyStr, statement: NonEmptyStr }
+  | SupplyAcLossUnexplained
+
+data mtcollins1_psu2_ac_loss_cause: SupplyAcLossCause = SupplyUncabledOperatorReported {
+  reported_at: "2026-09-24",
+  statement: "only PSU1 is connected; PSU2 is installed without an AC cord",
+}
+
+fn supply_ac_loss_cause_text(cause: SupplyAcLossCause) -> NonEmptyStr {
+  match cause {
+    SupplyUncabledOperatorReported { reported_at: at, statement: st } =>
+      join(["operator report ", at as String, ": ", st as String], "") as NonEmptyStr
+    SupplyAcLossUnexplained => "no report explains the AC loss"
+  }
 }
 
 data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
@@ -188,7 +213,7 @@ data mtcollins1_psu2_if_corded: PowerSupplyStanding = PowerSupplyStanding {
 
 fn mtcollins1_power_redundancy_probe() -> ProcessExit {
   if both_supplies_have_ac(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_standing) {
-    return exit_failure(reason: "both-AC probe: the measured rows were reported as both having AC, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM")
+    return exit_failure(reason: concat("both-AC probe: the measured rows were reported as both having AC, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM (", supply_ac_loss_cause_text(cause: mtcollins1_psu2_ac_loss_cause) as String, ")"))
   }
   if both_supplies_have_ac(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_if_corded) == false {
     return exit_failure(reason: "both-AC probe: two present, powered supplies were NOT reported as both having AC, so the check cannot distinguish the corded case and its verdict on the live rows carries no information")

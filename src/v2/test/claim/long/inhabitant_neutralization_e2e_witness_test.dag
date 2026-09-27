@@ -1,8 +1,8 @@
 module v2.test.long.inhabitant_neutralization_e2e_witness
 
+import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile }
-import v2.compiler.infer { infer }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.go { go_source_text, go_target_model }
 import v2.extdeps.languages.python {
@@ -88,7 +88,7 @@ test fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
     target: go_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
+      match infer_and_discharge(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match translate(tree: inferred, target: go_target_model()) {
             Rejected { diagnostics: _ } => true
@@ -106,7 +106,7 @@ test fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
     target: go_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer(tree: neutralized) {
+      match infer_and_discharge(tree: neutralized) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: go_target_model()) {
             Rejected { diagnostics: _ } => true
