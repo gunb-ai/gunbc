@@ -40,10 +40,11 @@ data proc_uptime_fraction_units_per_second: Nat = 100
 // read; only the first field (uptime) is carried, but the idle field must be well-formed too, so a
 // record the kernel could not have written never yields a reading.
 fn proc_uptime_parse(text: String) -> ProcUptimeRead {
-  if !ends_with(s: text, suffix: "\n") {
+  let len = string_length(s: text)
+  if len == 0 || substring(s: text, start: len - 1, end: len) != "\n" {
     return UptimeRefused { detail: concat("/proc/uptime record does not end with one newline: '", text, "'") }
   }
-  let line = substring(s: text, start: 0, end: string_length(s: text) - 1)
+  let line = substring(s: text, start: 0, end: len - 1)
   if contains(line, "\n") {
     return UptimeRefused { detail: concat("/proc/uptime has more than one record: '", text, "'") }
   }
