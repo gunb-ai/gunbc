@@ -13018,9 +13018,10 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         let base = std::env::var("GUNBC_SELECTION_BASE").expect("GUNBC_SELECTION_BASE");
         let base = git_stdout(&workspace, &["rev-parse", &base]).expect("base rev");
         let head = git_stdout(&workspace, &["rev-parse", "HEAD"]).expect("head rev");
-        let head_index = crate::cli_run::run_dag_parse_sweep(&workspace, &["dag", "src/v2"])
-            .expect("head sweep")
-            .index;
+        let head_index =
+            crate::cli_run::run_dag_parse_sweep(&workspace, &crate::cli_run::DAG_PARSE_SWEEP_ROOTS)
+                .expect("head sweep")
+                .index;
         let BaselineReconstruction::Reconstructed { base_index, .. } =
             reconstruct_base_index(&workspace, &base, &head, &head_index).expect("reconstruct")
         else {
