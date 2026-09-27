@@ -9,7 +9,8 @@ use v1_compiled::v2_std_node::{node_synthetic, Behavior, Node, NodeKind};
 // The expected verdicts are read off the authority instead: src/v2/compiler/use_site_verdict.dag
 // use_site_verdict_lookup reads the ONE use_site_verdict edge through v2.std.node
 // named_edge_target_lookup -- an attached verdict round-trips, no edge is VerdictAbsent, and two
-// edges are VerdictAmbiguous, never a found verdict (neither attachment is the answer).
+// edges are VerdictAmbiguous -- never a found verdict (neither attachment is the answer) and never
+// VerdictAbsent (the edges exist; reading them as missing erases the cause).
 
 fn bare_node() -> Rc<Node> {
     node_synthetic(
@@ -26,13 +27,10 @@ fn round_trips(v: UseSiteVerdict) -> bool {
         UseSiteVerdictLookup::VerdictFound { verdict } if **verdict == v)
 }
 
-fn doubly_attached_found() -> bool {
+fn doubly_attached() -> Rc<UseSiteVerdictLookup> {
     let once = emitted::attach_use_site_verdict(bare_node(), Rc::new(UseSiteVerdict::Borrow));
     let twice = emitted::attach_use_site_verdict(once, Rc::new(UseSiteVerdict::MoveWhole));
-    matches!(
-        &*emitted::use_site_verdict_lookup(twice),
-        UseSiteVerdictLookup::VerdictFound { .. }
-    )
+    emitted::use_site_verdict_lookup(twice)
 }
 
 // --inject-fault asserts ONLY the planted wrong acceptance (the #12275 shape): a node carrying two
@@ -40,7 +38,8 @@ fn doubly_attached_found() -> bool {
 // attachment greens it, which the harness rejects.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let ambiguous_found = doubly_attached_found();
+    let two_edges = doubly_attached();
+    let ambiguous_found = matches!(&*two_edges, UseSiteVerdictLookup::VerdictFound { .. });
     let all_pass = if inject_fault {
         println!("use_site_verdict injected: two verdict edges found={ambiguous_found}");
         ambiguous_found
@@ -61,8 +60,11 @@ fn main() {
         );
         println!("use_site_verdict every variant round-trips={every_variant}");
         println!("use_site_verdict no edge absent={absent}");
-        println!("use_site_verdict two edges refused={}", !ambiguous_found);
-        every_variant && absent && !ambiguous_found
+        // The refusal is asserted EXACTLY: VerdictAmbiguous, not merely "not found". A lookup that
+        // read two edges as VerdictAbsent would erase the cause and still not be a found verdict.
+        let ambiguous = matches!(&*two_edges, UseSiteVerdictLookup::VerdictAmbiguous);
+        println!("use_site_verdict two edges ambiguous={ambiguous}");
+        every_variant && absent && ambiguous
     };
 
     if all_pass {

@@ -5,7 +5,8 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // Wet self-host behavioral receipt (use_site_verdict): the driver (the roster's driver_rel) checks
 // the .dag contract on the EMITTED module with no seed oracle -- every attached verdict round-trips
 // through use_site_verdict_lookup, no edge reads VerdictAbsent, and two verdict edges read
-// VerdictAmbiguous rather than a found verdict; --inject-fault asserts only that the two-edge node
+// exactly VerdictAmbiguous (neither a found verdict nor VerdictAbsent, which would erase the cause);
+// --inject-fault asserts only that the two-edge node
 // is wrongly found. It used to compare every lookup against a hand copy in v1_compiler
 // (gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module). Nothing runs this receipt on
 // a schedule: std.witness_admission witness_cadence_has_scheduled_route answers

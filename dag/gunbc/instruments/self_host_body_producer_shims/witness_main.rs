@@ -14,6 +14,17 @@ fn accepted<T>(o: &Rc<emitted::Outcome<T>>) -> bool {
     matches!(&**o, emitted::Outcome::Accepted { .. })
 }
 
+// The refusal is asserted EXACTLY: rejected with body_producer_reason_resolved_shape, not merely
+// "not accepted", so a refusal that loses its cause does not pass as this one.
+fn refused_as_resolved_shape<T>(o: &Rc<emitted::Outcome<T>>) -> bool {
+    match &**o {
+        emitted::Outcome::Rejected { diagnostics } => {
+            format!("{diagnostics:?}").contains("body_producer_reason_resolved_shape")
+        }
+        emitted::Outcome::Accepted { .. } => false,
+    }
+}
+
 // The Transform fixture carries one positional edge because v2.std.node behavior_edges_conform
 // requires `count(children) >= 1` for Transform.
 fn transform_body() -> Rc<Node> {
@@ -58,10 +69,8 @@ fn arrow_signature() -> Rc<Node> {
 // an accept-everything producer greens it, which cssl_fault_run_detected_the_planted_fault refuses.
 fn main() {
     let inject_fault = std::env::args().any(|a| a == "--inject-fault");
-    let atom_produced = accepted(&emitted::produce_arrow_with_structured_body(
-        arrow_signature(),
-        atom_body(),
-    ));
+    let atom_produce = emitted::produce_arrow_with_structured_body(arrow_signature(), atom_body());
+    let atom_produced = accepted(&atom_produce);
     let all_pass = if inject_fault {
         println!("body_producer injected: produce_arrow atom accepted={atom_produced}");
         atom_produced
@@ -69,16 +78,17 @@ fn main() {
         let dispatch_accepts =
             accepted(&emitted::body_producer_dispatch_structured_body(transform_body()));
         let dispatch_refuses =
-            !accepted(&emitted::body_producer_dispatch_structured_body(atom_body()));
+            refused_as_resolved_shape(&emitted::body_producer_dispatch_structured_body(atom_body()));
+        let produce_refuses = refused_as_resolved_shape(&atom_produce);
         let produce_accepts = accepted(&emitted::produce_arrow_with_structured_body(
             arrow_signature(),
             transform_body(),
         ));
         println!("dispatch transform accepts={dispatch_accepts}");
-        println!("dispatch atom refuses={dispatch_refuses}");
+        println!("dispatch atom refused as resolved_shape={dispatch_refuses}");
         println!("produce_arrow transform accepts={produce_accepts}");
-        println!("produce_arrow atom refuses={}", !atom_produced);
-        dispatch_accepts && dispatch_refuses && produce_accepts && !atom_produced
+        println!("produce_arrow atom refuses={produce_refuses}");
+        dispatch_accepts && dispatch_refuses && produce_accepts && produce_refuses
     };
 
     if all_pass {

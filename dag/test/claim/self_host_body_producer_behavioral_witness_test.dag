@@ -4,7 +4,8 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 
 // Wet self-host behavioral receipt (03_body_producer): the driver (the roster's driver_rel) checks the
 // .dag contract on the EMITTED module with no seed oracle -- body_producer_dispatch_structured_body
-// accepts a behavior-rooted (Transform) body and refuses a type-rooted (Atom) one, and
+// accepts a behavior-rooted (Transform) body and refuses a type-rooted (Atom) one AS
+// body_producer_reason_resolved_shape (the cause is asserted, not just the verdict), and
 // produce_arrow_with_structured_body inherits that refusal; --inject-fault asserts only that the
 // Atom body is wrongly accepted. It used to require the same verdicts from a hand copy in
 // v1_compiler (gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module). Nothing runs
