@@ -1,0 +1,30 @@
+module v2.test.floor_claim_differential
+
+import v2.std.logic { Bool }
+import v2.workflow.required_floor {
+  ClaimStanding,
+  StandingPassed,
+  StandingFailed,
+  StandingNotDeclared,
+  claim_differential,
+  claim_differential_blocks,
+}
+
+// ONLY A VERDICT THE CHANGE MOVED BLOCKS. Passed -> failed is the one regression (gunbc#12361's
+// ten claims); failed -> failed is main's red and must not block a PR that did not cause it;
+// failed -> passed is a repair. The discriminating cell is the pair that differs only in base:
+// the same failing head blocks after a pass and does not after a fail.
+test fn only_a_pass_to_not_pass_blocks_among_declared_claims() -> Bool {
+  claim_differential_blocks(d: claim_differential(base: StandingPassed, head: StandingFailed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingFailed, head: StandingFailed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingFailed, head: StandingPassed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingPassed, head: StandingPassed))
+}
+
+// A NEW CLAIM HAS NO PRIOR VERDICT, so it is judged as today's changed witness: it must pass.
+// A removed claim blocks nothing here; its removal is the diff's own, reviewed as such.
+test fn a_new_claim_must_pass_and_a_removed_claim_blocks_nothing() -> Bool {
+  !claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: StandingPassed))
+    && claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: StandingFailed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingPassed, head: StandingNotDeclared))
+}

@@ -2362,3 +2362,77 @@ fn required_floor_grandfathered_eval_step_budget() -> EvalStepCount {
 fn required_floor_new_witness_eval_step_budget() -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: NewWitnessTier {})
 }
+
+// THE PER-PR v2 CLAIM DIFFERENTIAL (operator ruling 2026-09-27; gunbc.recurring_failure_mode
+// green_floor_executes_no_claim_whose_verdict_a_body_change_can_move). The population is the
+// execution-grain reach selection intersected with the v2 claim set -- never the whole set, which
+// is the absorbing superset DESIGN section 5 forbids. Those claims were never gated, so their
+// absolute verdict is not the question: main may already carry reds a PR did not cause. The
+// question is whether THIS change moved a verdict, so the verdict is over a PAIR of standings.
+type ClaimStanding
+  = StandingPassed
+  | StandingFailed
+  | StandingNotDeclared
+
+// A claim not declared at base is NEW: it has no prior verdict to regress from, so it is judged
+// exactly as today's changed witness is -- it must pass at head. A claim that fails on both sides
+// is main's red, counted and not this change's; a repair is reported and never blocks. Only a
+// claim that passed at base and does not pass at head is a regression the change caused.
+type ClaimDifferential
+  = DifferentialHeld
+  | DifferentialRegressed { head: ClaimStanding }
+  | DifferentialStillRed
+  | DifferentialRepaired
+  | DifferentialNewClaim { head: ClaimStanding }
+  | DifferentialRemoved
+
+fn claim_differential(base: ClaimStanding, head: ClaimStanding) -> ClaimDifferential {
+  match base {
+    StandingNotDeclared =>
+      match head {
+        StandingNotDeclared => DifferentialRemoved
+        StandingPassed => DifferentialNewClaim { head: head }
+        StandingFailed => DifferentialNewClaim { head: head }
+      }
+    StandingPassed =>
+      match head {
+        StandingPassed => DifferentialHeld
+        StandingFailed => DifferentialRegressed { head: head }
+        StandingNotDeclared => DifferentialRemoved
+      }
+    StandingFailed =>
+      match head {
+        StandingPassed => DifferentialRepaired
+        StandingFailed => DifferentialStillRed
+        StandingNotDeclared => DifferentialRemoved
+      }
+  }
+}
+
+fn claim_differential_blocks(d: ClaimDifferential) -> Bool {
+  match d {
+    DifferentialRegressed { head } => true
+    DifferentialNewClaim { head } =>
+      match head {
+        StandingPassed => false
+        StandingFailed => true
+        StandingNotDeclared => true
+      }
+    DifferentialHeld => false
+    DifferentialStillRed => false
+    DifferentialRepaired => false
+    DifferentialRemoved => false
+  }
+}
+
+// WHERE THE BASE STANDING COMES FROM. The baseline is produced once per landing, on the merge
+// group's composed revision, which is the sha main then carries; a PR reads it at its own merge
+// base. Its key is (main sha, claim identity) and that pair is COMPLETE for a hermetic claim: the
+// sha fixes the whole tree -- so every declaration in the claim's reach -- and the seed and
+// interpreter built from it. A wet claim reads the host, so no sha keys it; wet claims are not in
+// the baseline and are not selected for the differential. A missing baseline is not an empty one:
+// it is counted and the base side is run at the merge base, loudly, never skipped and never
+// widened into running every claim.
+type BaselineStanding
+  = BaselineRead { main_sha: String }
+  | BaselineMissingRanAtMergeBase { main_sha: String, cause: String }
