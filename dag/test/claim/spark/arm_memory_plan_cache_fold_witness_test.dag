@@ -27,6 +27,7 @@ import gunbc.spark.arm_memory_fit {
   CacheCapacityCandidate, cache_capacity_candidate,
   CacheFrontierRung, CacheFrontierRungProved, CacheFrontierRungRefused, CacheFrontier, CacheFrontierUnestablished, cache_frontier_from_plan,
   ArmMemoryFitUnestablished, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
+  ArmServingLivenessUnestablished,
   PrefillTransientFitUnestablished,
   pool_construction_per_rank,
   PoolConstructionSlackProved, PoolConstructionSlackUnestablished, PoolConstructionSlackRefused,
@@ -873,6 +874,7 @@ test fn the_cache_frontier_does_not_promote_the_whole_arm() -> Bool {
         cache: cache,
         prefill: PrefillTransientFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] },
         arm: arm,
+        serving_liveness: ArmServingLivenessUnestablished { seats: 6, length: token_count(count: 262144), obligations: ["fixture serving-liveness obligation standing in for the launch wall's own" as NonEmptyStr] },
         subject_length: token_count(count: 262144))
       frontier_proves_eight
         && (match cache {

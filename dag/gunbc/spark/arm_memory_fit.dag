@@ -3158,28 +3158,63 @@ fn prefill_transient_obligations(v: PrefillTransientFitVerdict) -> List<NonEmpty
   }
 }
 
+// ── THE SERVING-LIVENESS SUBPROOF (THE CONJUNCTION'S FOURTH MEMBER) ──────────────────────────────
+//
+// THE CACHE FITTING IS NOT THE ENGINE SERVING. THE 2026-09-27 CHURN RUN at this subject passed the
+// readiness gate, served token-exact construction (no 400s), completed FIVE of six concurrent
+// ~262144-token prefills 200 OK -- and the SIXTH HUNG INDEFINITELY (engine 'Running: 1 reqs,
+// Waiting: 0' at 0.0 tokens/s; KV cache usage peaked 6.1%, no memory pressure) until the client's
+// 1800-second timeout. THAT IS A SCHEDULER/LIVENESS DEFECT CLASS, not a memory term: it names a
+// subproof the memory census never priced -- under FULL OCCUPANCY the engine's behavior is
+// unestablished even where every memory term closes. THE THREE-ARMED VOCABULARY stands beside the
+// memory verdicts, and the standing carries it with its own prefix; the whole-arm fit waits on it
+// exactly as on a memory obligation. THE PROVED ARM'S protocol field is where the full
+// SLO/preemption/failure vocabulary of docs/plans/shared-pool-byte-correction.md step 4 lands --
+// a declared frontier, not modeled here; until a bounding protocol exists, the honest arms are
+// Unestablished (the obligation names what would bound it) and, for a repeated/defended hang,
+// Refused.
+type ArmServingLivenessVerdict
+  = ArmServingLivenessProved { seats: Nat, length: TokenCount, protocol: NonEmptyStr }
+  | ArmServingLivenessRefused { seats: Nat, length: TokenCount, cause: NonEmptyStr }
+  | ArmServingLivenessUnestablished { seats: Nat, length: TokenCount, obligations: List<NonEmptyStr> }
+
+fn arm_serving_liveness_obligations(v: ArmServingLivenessVerdict) -> List<NonEmptyStr> {
+  match v {
+    ArmServingLivenessProved { seats: _, length: _, protocol: _ } => [] as List<NonEmptyStr>
+    ArmServingLivenessRefused { seats: _, length: _, cause: c } => [c]
+    ArmServingLivenessUnestablished { seats: _, length: _, obligations: os } => os
+  }
+}
+
 type ArmMemoryWholeStanding {
   cache_verdict: CacheFitVerdict
   prefill_verdict: PrefillTransientFitVerdict
   arm_verdict: ArmMemoryFitVerdict
+  serving_liveness: ArmServingLivenessVerdict
   open_obligations: List<NonEmptyStr>
 }
 
-// THE STANDING ASSEMBLY: the three subproof verdicts side by side, and the open obligations named
+// THE STANDING ASSEMBLY: the subproof verdicts side by side, and the open obligations named
 // with their subproof -- cache obligations as they stand, prefill obligations as the fold mints
-// them, arm obligations as they stand. A proved cache beside a proved prefill transient beside an
-// arm verdict still carrying open terms is exactly that: the conjunction reports each subproof's
-// own state, and the whole-arm fit waits for every arm obligation to close, never promoted early.
-fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, prefill: PrefillTransientFitVerdict, arm: ArmMemoryFitVerdict, subject_length: TokenCount) -> ArmMemoryWholeStanding {
+// them, arm obligations as they stand, serving-liveness obligations as the liveness verdict
+// carries them. A proved cache beside a proved prefill transient beside an arm verdict still
+// carrying open terms is exactly that: the conjunction reports each subproof's own state, and
+// the whole-arm fit waits for every obligation to close, never promoted early -- and a fully
+// proved memory arm beside an Unestablished liveness verdict is still Unestablished, because the
+// cache fitting was never the engine serving.
+fn arm_memory_fit_whole_standing(cache: CacheFitVerdict, prefill: PrefillTransientFitVerdict, arm: ArmMemoryFitVerdict, serving_liveness: ArmServingLivenessVerdict, subject_length: TokenCount) -> ArmMemoryWholeStanding {
   ArmMemoryWholeStanding {
     cache_verdict: cache,
     prefill_verdict: prefill,
     arm_verdict: arm,
+    serving_liveness: serving_liveness,
     open_obligations: concat(
       map(cache_verdict_obligations(v: cache), o => join(["cache-capacity-fit: ", o as String], "") as NonEmptyStr),
       concat(
         map(prefill_transient_obligations(v: prefill), o => join(["prefill-transient-fit: ", o as String], "") as NonEmptyStr),
-        map(arm_verdict_obligations(v: arm), o => join(["arm-memory-fit: ", o as String], "") as NonEmptyStr))),
+        concat(
+          map(arm_verdict_obligations(v: arm), o => join(["arm-memory-fit: ", o as String], "") as NonEmptyStr),
+          map(arm_serving_liveness_obligations(v: serving_liveness), o => join(["serving-liveness-fit: ", o as String], "") as NonEmptyStr)))),
   }
 }
 

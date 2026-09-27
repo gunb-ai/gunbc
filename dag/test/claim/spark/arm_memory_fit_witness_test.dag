@@ -73,6 +73,7 @@ import gunbc.spark.arm_memory_fit {
   CacheFitProved, CacheFitRefused, CacheFitUnestablished,
   ArmRankCacheSupply, cache_fit_verdict, CacheCapacityCandidate, cache_capacity_candidate,
   sparse_indexer_prefill_buffer_candidate, arm_memory_fit_whole_standing, arm_prefill_transient_obligation,
+  ArmServingLivenessVerdict, ArmServingLivenessProved, ArmServingLivenessRefused, ArmServingLivenessUnestablished,
   ArmMemoryWholeStanding,
   PrefillTransientShape, PrefillTransientRankInput, PrefillTransientDemandTerms,
   prefill_transient_demand_terms, prefill_transient_extras_upper, prefill_transient_fit_verdict,
@@ -106,6 +107,11 @@ import gunbc.spark.arm_memory_experiment_observed {
   arm_loader_trace_runs, arm_loader_trace_converged, arm_loader_trace_failed_legs,
   arm_loader_trace_min_hundredths_gib, arm_loader_trace_bound,
   arm_loader_trace_receipt, arm_loader_trace_receipt_admitted,
+  arm_experiment_2026_09_27_serving_liveness, arm_experiment_2026_09_27_liveness_repro_matrix,
+  arm_experiment_2026_09_27_churn_run_readiness_gate_passed, arm_experiment_2026_09_27_churn_run_token_exact_no_400s,
+  arm_experiment_2026_09_27_churn_run_completed_prefills, arm_experiment_2026_09_27_churn_run_hung_prefills,
+  arm_experiment_2026_09_27_churn_run_kv_peak_percent, arm_experiment_2026_09_27_churn_run_client_timeout_seconds,
+  arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat,
   ArmCheckpointTensorRow, ArmPlacementVocabSharded, ArmPlacementColumnSharded, ArmPlacementRowSharded,
   ArmPlacementExpertSplit, ArmPlacementReplicated,
   arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
@@ -2086,6 +2092,7 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
           cache: cache,
           prefill: PrefillTransientFitUnestablished { obligations: [arm_prefill_transient_obligation(length: token_count(count: 262144))] },
           arm: arm_verdict,
+          serving_liveness: ArmServingLivenessUnestablished { seats: 6, length: token_count(count: 262144), obligations: ["fixture serving-liveness obligation standing in for the launch wall's own" as NonEmptyStr] },
           subject_length: token_count(count: 262144))
         (match standing.cache_verdict {
           CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
@@ -2345,8 +2352,8 @@ test fn w_a_proved_prefill_beside_open_arm_terms_names_exactly_what_remains() ->
       CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
       _ => false
     })
-    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: arm, subject_length: token_count(count: 262144)) {
-      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: p, arm_verdict: _, open_obligations: os } =>
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: arm, serving_liveness: ArmServingLivenessUnestablished { seats: 6, length: token_count(count: 262144), obligations: ["fixture serving-liveness obligation standing in for the launch wall's own" as NonEmptyStr] }, subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: p, arm_verdict: _, serving_liveness: _, open_obligations: os } =>
         (match p {
           PrefillTransientFitProved { limiting_rank: _, length: _, seats: _, demand_upper_bytes: _, supply_floor_bytes: _, headroom_bytes: _, terms: _ } => true
           _ => false
@@ -2633,12 +2640,19 @@ test fn w_the_whole_arm_conjunction_at_262144x6_names_exactly_what_remains() -> 
       CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => true
       _ => false
     })
-    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: fx_launch_wall_verdict(), subject_length: token_count(count: 262144)) {
-      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, open_obligations: os } =>
-        length(os) == 22
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: fx_launch_wall_verdict(), serving_liveness: arm_experiment_2026_09_27_serving_liveness(), subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: lv, open_obligations: os } =>
+        length(os) == 23
           && !any(os, o => string_contains(s: o as String, pattern: "cache-capacity-fit:"))
           && !any(os, o => string_contains(s: o as String, pattern: "prefill-transient-fit:"))
-          && all(os, o => string_contains(s: o as String, pattern: "arm-memory-fit:"))
+          && any(os, o => string_contains(s: o as String, pattern: "serving-liveness-fit:"))
+          && any(os, o => string_contains(s: o as String, pattern: "the sixth hung indefinitely"))
+          && all(os, o => string_contains(s: o as String, pattern: "arm-memory-fit:") || string_contains(s: o as String, pattern: "serving-liveness-fit:"))
+          && (match lv {
+            ArmServingLivenessUnestablished { seats: s, length: l, obligations: _ } =>
+              s == 6 && token_count_value(t: l) == 262144
+            _ => false
+          })
           && !any(os, o => string_contains(s: o as String, pattern: "loader-transform has no defensible bound"))
           && any(os, o => string_contains(s: o as String, pattern: "fragmentation-allowance has no defensible bound"))
           && any(os, o => string_contains(s: o as String, pattern: "phase loader-transform does not decide"))
@@ -2898,6 +2912,92 @@ test fn w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused() -> Bool {
     && !arm_loader_trace_receipt_admitted(bytes: byte_size(count: 0), receipt: arm_loader_trace_receipt(rank: 0, host: "srv9" as NonEmptyStr))
 }
 
+
+
+// ── WITNESS 36: THE SIXTH-SEAT HANG AS AN OPEN LIVENESS OBLIGATION ───────────────────────────────
+//
+// THE STANDING'S PRESENCE BLOCKS THE WHOLE-ARM PROOF: a fully proved memory arm beside the
+// Unestablished liveness verdict still carries the hang's obligation -- the cache fitting was
+// never the engine serving. THE REPRO MATRIX discriminates each axis of the hang with both
+// outcomes named. THE INTERIM FIVE-SEAT PROTOCOL is pinned with its named limitation. THE INTENT
+// STAYS SIX throughout: no memory-grounds re-price rides a scheduler/liveness defect.
+
+test fn w_the_churn_run_finding_is_pinned() -> Bool {
+  arm_experiment_2026_09_27_churn_run_readiness_gate_passed
+    && arm_experiment_2026_09_27_churn_run_token_exact_no_400s
+    && arm_experiment_2026_09_27_churn_run_completed_prefills == 5
+    && arm_experiment_2026_09_27_churn_run_hung_prefills == 1
+    && arm_experiment_2026_09_27_churn_run_kv_peak_percent == 6
+    && arm_experiment_2026_09_27_churn_run_client_timeout_seconds == 1800
+    && (match arm_experiment_2026_09_27_serving_liveness() {
+      ArmServingLivenessUnestablished { seats: s, length: l, obligations: os } =>
+        s == 6
+          && token_count_value(t: l) == 262144
+          && length(os) == 1
+          && string_contains(s: first_of(os: os) as String, pattern: "Running: 1 reqs, Waiting: 0")
+          && string_contains(s: first_of(os: os) as String, pattern: "not a memory term")
+      _ => false
+    })
+}
+
+test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool {
+  let cache = cache_fit_verdict(
+    layout: fx_roster_a(), shape: glm_5_3_flash_hybrid_shape,
+    seats: 6, at: token_count(count: 262144),
+    supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
+  let prefill = prefill_transient_fit_verdict(
+    shape: fx_prefill_shape(),
+    ranks: fx_prefill_v2_ranks(),
+    pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
+  let proved_memory_arm = ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: byte_size(count: 1) }
+  (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: proved_memory_arm, serving_liveness: arm_experiment_2026_09_27_serving_liveness(), subject_length: token_count(count: 262144)) {
+    ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: _, open_obligations: os } =>
+      any(os, o => string_contains(s: o as String, pattern: "serving-liveness-fit: six-seat full-window concurrency is unestablished"))
+        && length(os) == 1
+  })
+    && (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: proved_memory_arm, serving_liveness: ArmServingLivenessProved { seats: 6, length: token_count(count: 262144), protocol: "fixture bounding protocol" as NonEmptyStr }, subject_length: token_count(count: 262144)) {
+      ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: _, open_obligations: os2 } =>
+        length(os2) == 0
+    })
+}
+
+test fn w_the_repro_matrix_discriminates_each_axis() -> Bool {
+  length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
+    && all(arm_experiment_2026_09_27_liveness_repro_matrix, r =>
+      string_contains(s: r.workload as String, pattern: "prefill")
+        && length(r.if_completes as String) > 0
+        && length(r.if_hangs as String) > 0)
+    && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "b-five-concurrent-full-window")) {
+      Present { value: b } => string_contains(s: b.if_completes as String, pattern: "SIX-WAY occupancy")
+      Absent => false
+    })
+    && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "c-six-concurrent-short-window")) {
+      Present { value: c } => string_contains(s: c.if_completes as String, pattern: "LENGTH-DEPENDENT")
+      Absent => false
+    })
+    && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "e-stall-captured-six-full-window")) {
+      Present { value: e } =>
+        string_contains(s: e.workload as String, pattern: "py-spy dump")
+          && string_contains(s: e.if_hangs as String, pattern: "MUST RIDE EVERY HANGING RUN")
+      Absent => false
+    })
+}
+
+test fn w_the_five_seat_interim_protocol_is_named() -> Bool {
+  arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.plan == "fragmentation-churn-five-seat-interim"
+    && string_contains(s: arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.anchor_start as String, pattern: "FIVE concurrent cold 262144-token prefills")
+    && string_contains(s: arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.fail_bound as String, pattern: "does not price six-seat full occupancy")
+    && arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat.receipt_kind == "AllocatorFragmentationBound"
+    && (match fx_launch_wall_subject_mint() {
+      ArmMemorySubjectRefused { cause: _ } => false
+      ArmMemorySubjectReady { subject: subject } =>
+        all(subject.ranks, rb => match rb.fragmentation_allowance {
+          ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "NEVER RAN")
+          _ => false
+        })
+    })
+}
+
 test fn w_all_arm_memory_fit_claims_hold() -> Bool {
   w_the_production_tuple_is_unestablished_with_named_obligations()
     && w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank()
@@ -2971,4 +3071,8 @@ test fn w_all_arm_memory_fit_claims_hold() -> Bool {
     && w_the_loader_receipts_mint_from_the_executed_bracket()
     && w_the_loader_receipt_names_the_page_cache_mechanism()
     && w_a_trace_reading_claimed_as_engine_pinned_demand_is_refused()
+    && w_the_churn_run_finding_is_pinned()
+    && w_the_liveness_standing_blocks_the_whole_arm_proof()
+    && w_the_repro_matrix_discriminates_each_axis()
+    && w_the_five_seat_interim_protocol_is_named()
 }

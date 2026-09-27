@@ -48,6 +48,7 @@ import gunbc.spark.arm_memory_fit {
   ArmRankDemand, ArmSupplyDeductions,
   ArmLoaderTransform, ArmFragmentationAllowance,
   ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  ArmServingLivenessVerdict, ArmServingLivenessProved, ArmServingLivenessRefused, ArmServingLivenessUnestablished,
   arm_memory_fit_experiment_plan,
   CacheCapacityCandidate, cache_capacity_candidate,
 }
@@ -1066,7 +1067,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_kv_carry() -> ArmComponentBound {
 
 fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr {
   join([
-    "allocator fragmentation under churn admits no conservative construction in this corpus and no churn-protocol measurement exists at this subject: a bounded churn run at the launch wall (six 262144 seats driven through allocation churn, peak-over-runs) or a conservative fragmentation construction from the allocator's block accounting is the completing act. Subject: ",
+    "allocator fragmentation under churn admits no conservative construction in this corpus and the churn-protocol measurement has not minted: the 2026-09-27 bracket's workload phase NEVER RAN -- the sixth-seat hang fired during the six concurrent prefills that precede the churn, and no sampling evidence exists. The completing act has two named paths: the hang resolved (the 2026-09-27 repro matrix, then the six-seat churn as planned), or the INTERIM five-seat churn protocol at the occupancy that run proved operationally safe -- which mints an AllocatorFragmentationBound at the admissible-occupancy level and is named what it is not: it does not price six-seat full occupancy, which stays open until the hang resolves. Subject: ",
     arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
   ], "") as NonEmptyStr
 }
@@ -1627,4 +1628,123 @@ fn arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: Nat, host: NonEmptyStr
   } else {
     ComponentBoundOpen { obligation: "the loader-transient trace reading was not admitted: a host-pool trace enters the model only as the named outer bound (page-cache mechanism, conservative direction, peak-over-loads protocol, subject identity) -- an unnamed reading cannot bound the loader term, and the term stays open until a receipt passes the gate" as NonEmptyStr }
   }
+}
+
+
+// ── THE 2026-09-27 CHURN RUN: THE SIXTH-SEAT HANG, AN OPEN LIVENESS OBLIGATION ───────────────────
+//
+// THE RUN (parent, 2026-09-27, the fragmentation-churn bracket at this subject, image
+// derived-kvplan-v2-20260926, engine 0.1.dev1+g8d09804c8, TP4): the readiness gate PASSED; the
+// token-exact construction SERVED (no 400s); FIVE of six concurrent ~262144-token prefills
+// completed 200 OK; THE SIXTH HUNG INDEFINITELY -- engine log 'Running: 1 reqs, Waiting: 0' at
+// 0.0 tokens/s for minutes, KV cache usage peaked 6.1% (no memory pressure), until the client's
+// 1800-second timeout; the bracket tore down cleanly. THE FINDING'S CLASS: a SCHEDULER/LIVENESS
+// defect -- the cache fits with room (CacheFitProved, 738 of 1012 blocks), the prefill transient
+// is proved, and still the engine under full occupancy stopped making progress on one request.
+// THE INTENT STAYS SIX: this is not a memory-grounds re-price, and the memory verdict is
+// untouched; the standing gains the liveness subproof's obligation, and the whole-arm fit waits
+// on it exactly as on a memory obligation.
+
+data arm_experiment_2026_09_27_churn_run_image: NonEmptyStr = "derived-kvplan-v2-20260926" as NonEmptyStr
+
+data arm_experiment_2026_09_27_churn_run_engine: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+data arm_experiment_2026_09_27_churn_run_readiness_gate_passed: Bool = true
+
+data arm_experiment_2026_09_27_churn_run_token_exact_no_400s: Bool = true
+
+data arm_experiment_2026_09_27_churn_run_completed_prefills: Nat = 5
+
+data arm_experiment_2026_09_27_churn_run_hung_prefills: Nat = 1
+
+data arm_experiment_2026_09_27_churn_run_kv_peak_percent: Nat = 6
+
+data arm_experiment_2026_09_27_churn_run_client_timeout_seconds: Nat = 1800
+
+// THE LIVENESS VERDICT at the launch wall's subject: Unestablished, carrying the obligation. THE
+// COMPLETING ACTS it names: the minimal-repro matrix below (each variant discriminating one axis
+// of the hang), the stall-captured stack dump localizing the defect, and -- for the fragmentation
+// obligations the churn was meant to mint -- either the hang resolved or the interim 5-seat
+// churn protocol (the hang fired during prefill occupancy, BEFORE the churn phase ever ran: no
+// sampling evidence exists, and none can until one of those paths lands).
+fn arm_experiment_2026_09_27_serving_liveness() -> ArmServingLivenessVerdict {
+  ArmServingLivenessUnestablished {
+    seats: 6,
+    length: token_count(count: 262144),
+    obligations: [
+      join([
+        "six-seat full-window concurrency is unestablished at this subject: the 2026-09-27 churn run passed the readiness gate and served token-exact construction (no 400s), completed five of six concurrent ~262144-token prefills 200 OK, and the sixth hung indefinitely -- engine 'Running: 1 reqs, Waiting: 0' at 0.0 tokens/s, KV cache usage peaked 6.1%, no memory pressure -- until the client's 1800-second timeout: a scheduler/liveness defect class, not a memory term, and the intent stays six while it is open. Completing acts: the minimal-repro matrix (six concurrent full-window as the deterministic repro; five concurrent separating occupancy from length; six concurrent at 65536 separating length from occupancy; six sequential separating concurrency from occupancy), each variant's discriminating outcome named; the stall-captured py-spy stack dump on the hung worker localizing the defect before teardown; then a bounded liveness protocol at six seats mints the proof arm's protocol row. The fragmentation obligations' evidence path rides the same resolution: the hang fired in prefill occupancy BEFORE the churn phase ran -- no sampling evidence exists -- so the churn mint needs the hang resolved, or the interim five-seat churn protocol run as the admissible-occupancy bound.",
+        arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+      ], "") as NonEmptyStr,
+    ],
+  }
+}
+
+// ── THE MINIMAL-REPRO MATRIX, typed: each variant spells its workload and the discriminating
+// outcome per result, so the parent's wet run reads the table and the suite pins it. THE
+// INSTRUMENT ROW is the variant that must ride every hang: stall detection (no throughput for
+// the named window) triggers the py-spy dump on the hung engine worker BEFORE teardown, so the
+// hang is localized, not just reproduced.
+
+type ArmLivenessReproRow {
+  variant: NonEmptyStr
+  workload: NonEmptyStr
+  if_completes: NonEmptyStr
+  if_hangs: NonEmptyStr
+}
+
+data arm_experiment_2026_09_27_liveness_repro_matrix: List<ArmLivenessReproRow> = [
+  ArmLivenessReproRow {
+    variant: "a-repro-six-full-window" as NonEmptyStr,
+    workload: "six concurrent ~262144-token prefills, token-exact construction, readiness gate, per the 2026-09-27 configuration" as NonEmptyStr,
+    if_completes: "the defect is NOT deterministic at the subject -- the original hang had an incidental trigger (racing admission or scheduling), and the repro must add the original run's exact timing/ordering perturbations" as NonEmptyStr,
+    if_hangs: "the defect is deterministic at six-seat full-window occupancy -- proceed to the stack-captured run and the occupancy/length splits" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "b-five-concurrent-full-window" as NonEmptyStr,
+    workload: "five concurrent ~262144-token prefills, identical construction and gates" as NonEmptyStr,
+    if_completes: "the hang needs SIX-WAY occupancy -- a full-occupancy scheduler interaction (the sixth seat's admission against the pool's block accounting or the batch scheduler's ready-set) -- and five seats is operationally safe at the full window" as NonEmptyStr,
+    if_hangs: "the hang is not occupancy-count-specific -- length or content is implicated instead; run variant c" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "c-six-concurrent-short-window" as NonEmptyStr,
+    workload: "six concurrent 65536-token prefills, identical construction and gates" as NonEmptyStr,
+    if_completes: "the hang is LENGTH-DEPENDENT -- implicating the full-window indexing/chunking path (the sparse-indexer gather at 262144, the chunked prefill boundary, or the KPool tail) rather than pure concurrency" as NonEmptyStr,
+    if_hangs: "the hang is length-independent -- pure concurrency at six-way occupancy; the scheduler's simultaneous-prefill interaction is the defect" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "d-six-sequential-full-window" as NonEmptyStr,
+    workload: "six ~262144-token prefills issued sequentially (each awaited before the next), identical gates" as NonEmptyStr,
+    if_completes: "CONCURRENCY is necessary -- a batching/scheduler interaction under simultaneous prefills, consistent with the 'Running: 1 reqs' log (the engine saw one running request and stopped scheduling it)" as NonEmptyStr,
+    if_hangs: "a sequential hang would implicate single-request forward progress at the full window itself (a 262144-token decode/step liveness defect) -- the most severe reading, and the stack capture is decisive" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "e-stall-captured-six-full-window" as NonEmptyStr,
+    workload: "the six concurrent ~262144-token prefills of variant a plus the instrument: stall detection (no output tokens for 120 seconds on the in-flight request) triggers py-spy dump -- or the engine's own stack dump if present -- on the hung engine worker AND the head process, captured to the receipt before the bracket's teardown" as NonEmptyStr,
+    if_completes: "no hang this run -- the captured-empty result still refines the trigger's nondeterminism; the dump infrastructure is proven for the hanging variants" as NonEmptyStr,
+    if_hangs: "the dump localizes the hang -- scheduler loop, attention/indexer kernel, or collective wait -- converting the defect class into a located cause and directing the fix; THIS VARIANT MUST RIDE EVERY HANGING RUN" as NonEmptyStr,
+  },
+]
+
+// ── THE INTERIM FRAGMENTATION PROTOCOL AT FIVE SEATS ─────────────────────────────────────────────
+//
+// THE CHURN'S EVIDENCE PATH, named: the 2026-09-27 bracket's workload phase never ran -- the hang
+// fired during the six concurrent prefills that PRECEDE the churn. The fragmentation obligations
+// therefore stay open with two named paths: the hang resolved (repro matrix, then the six-seat
+// churn as planned), or THE INTERIM FIVE-SEAT CHURN -- the same runbook at five concurrent
+// seats, admissible at the occupancy the 2026-09-27 run PROVED operationally safe (five of five
+// prefills completed). What the interim mints: an AllocatorFragmentationBound at the
+// admissible-occupancy level -- a real, minted ceiling the launch wall can price. What it cannot
+// mint, named: fragmentation under SIX-seat full occupancy -- the unproven occupancy -- stays
+// open until the hang resolves; weaker evidence cannot price the behavior the hang left unread.
+
+data arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
+  plan: "fragmentation-churn-five-seat-interim" as NonEmptyStr,
+  anchor_start: "the rank's gpu_worker.py:867 profile line (engine warm, pool constructed), then FIVE concurrent cold 262144-token prefills -- the occupancy the 2026-09-27 run proved operationally safe" as NonEmptyStr,
+  anchor_end: "churn window expiry at five seats, then the bracket's stop contract: engine stopped on every rank and the container removed before the observer preserves receipts" as NonEmptyStr,
+  poll_seconds: 5,
+  runs: 1,
+  pass_bound: "the window's peak unreclaimable allocator gap mints an AllocatorFragmentationBound receipt at the ADMISSIBLE-OCCUPANCY level (five seats), priced into the launch wall's fragmentation allowance" as NonEmptyStr,
+  fail_bound: "a peak unreclaimable gap that pushes the peak-serving demand lower past a rank's conservative supply refuses the priced occupancy; and the receipt is named WHAT IT IS NOT: it does not price six-seat full occupancy -- that stays open until the hang resolves, and no consumer may read the five-seat ceiling as the six-seat bound" as NonEmptyStr,
+  receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr,
 }
