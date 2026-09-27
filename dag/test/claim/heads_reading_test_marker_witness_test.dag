@@ -1,6 +1,6 @@
 module test.claim.heads_reading_test_marker_witness_test
 
-import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_rows_of_class, census_total_count }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_count_at_key }
 
 // WHERE A DATA VALUE ENDS IN THE HEADS READING. `v1.compiler.parse` `heads_skip_data_value_tokens_at`
 // skips a data value at token grain and stops at a newline that is followed by the start of an
@@ -13,8 +13,7 @@ import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, cens
 //
 // The probes reference the fixture's two test data values by BARE name from an import-less module,
 // so the only route to the provider is the pool name census the heads reading feeds. The rows
-// count the class an unresolved bare name is reported under (the `undefined variable` refusal,
-// census class InternalError) and nothing else: once the name resolves, the provider's test-marked
+// count the undefined-variable refusal for the probed name and nothing else: once the name resolves, the provider's test-marked
 // item meets an UNRELATED refusal (a test item names no effect-registry row), which is correct and
 // is not what this claim is about. MEASURED on main: the after-data probe reports `undefined
 // variable 'heads_after_data_marked_probe'`; with the repair it resolves to the provider. The
@@ -30,21 +29,23 @@ data heads_before_data_probe_source: String = "module heads_before_data_probe_mo
 
 data heads_unknown_name_probe_source: String = "module heads_unknown_name_probe_mod\n\ntest fn heads_unknown_name_consumer() -> Bool \{\n  heads_reading_name_nobody_declares\n}\n"
 
-fn heads_probe_unresolved_count(source: String) -> Int {
+// The undefined-variable refusal for exactly `name`: census class InternalError, subject
+// `variable:<name>` (`cli_run` `compile_clean_internal_error_histogram_name`), blocking.
+fn heads_probe_unresolved_count(source: String, name: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError"))
+    CensusObserved { rows: rows } => census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: concat("variable:", name), blocking: true)
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
 test fn a_test_item_after_a_data_value_is_in_the_heads_census() -> Bool {
-  heads_probe_unresolved_count(source: heads_after_data_probe_source) == 0
+  heads_probe_unresolved_count(source: heads_after_data_probe_source, name: "heads_after_data_marked_probe") == 0
 }
 
 test fn a_test_item_before_a_data_value_is_in_the_heads_census() -> Bool {
-  heads_probe_unresolved_count(source: heads_before_data_probe_source) == 0
+  heads_probe_unresolved_count(source: heads_before_data_probe_source, name: "heads_before_data_marked_probe") == 0
 }
 
 test fn an_undeclared_bare_name_still_refuses() -> Bool {
-  heads_probe_unresolved_count(source: heads_unknown_name_probe_source) > 0
+  heads_probe_unresolved_count(source: heads_unknown_name_probe_source, name: "heads_reading_name_nobody_declares") > 0
 }
