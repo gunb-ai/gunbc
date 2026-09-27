@@ -40,6 +40,36 @@ fn anonymous_param_label(slot: Int) -> Symbol {
   )
 }
 
+// A FRESH TYPE VARIABLE IS MINTED HERE TOO, AND NAMED BY STRUCTURE, NEVER BY OCCURRENCE. A function
+// value (`p => body`, `fn(..) { .. }`) types each parameter it leaves unannotated, and its unwritten
+// return, with a fresh type parameter of its own Arrow (v2.compiler.body_lowering_fold
+// body_lower_function_value_arrow). Consumers identify type variables by SPELLING
+// (gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2), so the name must be unique
+// wherever two function values' types can meet: nested (`x => x => x`) and sibling
+// (`pair(x => x, x => x)`). It is `<type-variable@P:L>`: L is the binder's label (its authored name,
+// or its minted `<anonymous-parameter-N>`, or `<return>`), and P is the function value's STRUCTURAL
+// PATH within its enclosing declaration -- the child-position sequence from the declaration's body to
+// the function value, dot-joined -- assigned by the declaration's lowering
+// (body_lower_position_function_values). Before a declaration positions it, P is empty. The path,
+// like #12298's per-list slot, is structure, not an occurrence: the same lambda at the same position
+// in two declarations has the same type and content hash, and an edit outside the declaration never
+// renames it (ruled by neat-boar-16 and gentle-koi-724 on gunbc#12210, 2026-09-27, from #12298's D1).
+// `<` is not an identifier character, so no authored name can spell one.
+fn fresh_type_variable_prefix() -> String {
+  "<type-variable@"
+}
+
+fn fresh_type_variable(path: List<Int>, label: Symbol) -> Symbol {
+  let p = fold(path, init: "", f: fn(acc, i) {
+    if acc == "" { integer_int_to_decimal_string(value: i) } else { acc + "." + integer_int_to_decimal_string(value: i) }
+  })
+  symbol_intern_lexeme(lexeme: fresh_type_variable_prefix() + p + ":" + symbol_lexeme(sym: label) + ">")
+}
+
+fn fresh_return_type_variable(path: List<Int>) -> Symbol {
+  fresh_type_variable(path: path, label: symbol_intern_lexeme(lexeme: "<return>"))
+}
+
 // THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission
 // (v2.std.compilers.target_model bound_spelling_from_map) renders it `_`, and
 // v2.compiler.reference_conservation credits it -- asks this, and never compares a label to `_`.
