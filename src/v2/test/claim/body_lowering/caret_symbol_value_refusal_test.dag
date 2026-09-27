@@ -28,10 +28,12 @@ import v2.std.text { String }
 // to one node. Its control is the same declaration with int literals in place of the carets, which
 // must still normalize, so the refusal is the caret's and not the if-chain's.
 //
-// THE BARE OPERAND KEEPS ITS OWN CAUSE. `binding == ^grammar_free_name_slot` as a whole body
-// (v2.std.grammar formal_binding_is_free_name_slot) never reaches the fallback: the operator reader
-// refuses its right operand first, as body_lowering_reason_operator_operand_unread, on main and
-// here. It is pinned so a change that unifies the two causes has to say so.
+// THE BARE OPERAND UNIFIES WITH THE VALUE ROUTE. `binding == ^grammar_free_name_slot` as a whole body
+// (v2.std.grammar formal_binding_is_free_name_slot) refused on main as
+// body_lowering_reason_operator_operand_unread. Its right operand now reaches the same first-atom
+// fallback and refuses there, so every caret refuses with ONE cause, at the caret -- the population
+// the symbol-literal lowering flips is a single, countable one. Measured, not assumed: a pin
+// asserting the old cause ran red on this head (seed-interpreted, 39ab5c081dc).
 data caret_if_condition_source: String = "module chunk\n\nfn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {\n  if id == ^ordering_predicate_is_less {\n    optional_present(value: IsLess)\n  } else {\n    if id == ^ordering_predicate_is_less_or_equal {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
 
 data int_if_condition_control_source: String = "module chunk\n\nfn ordering_predicate_from_wire_int(id: Int) -> Optional<OrderingPredicate> {\n  if id == 1 {\n    optional_present(value: IsLess)\n  } else {\n    if id == 2 {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
@@ -111,8 +113,8 @@ test fn an_int_literal_if_condition_still_normalizes() -> Bool {
   caret_refusal_normalize_verdict(src: int_if_condition_control_source).cause == ^caret_refusal_accepted
 }
 
-test fn a_bare_caret_operand_keeps_the_operator_operand_cause() -> Bool {
-  caret_refusal_normalize_verdict(src: caret_bare_operand_source).cause == ^body_lowering_reason_operator_operand_unread
+test fn a_bare_caret_operand_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_bare_operand_source)
 }
 
 test fn a_caret_symbol_named_argument_refuses_at_the_caret() -> Bool {
