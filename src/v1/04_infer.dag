@@ -4324,8 +4324,50 @@ fn nominal_coproduct_applied_argument_conflict(
   } else if nominal_product_head_names_agree(
       declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
     false
+  } else if (declared.children |> count) == 0 || (declared.children |> count) != (produced.children |> count) {
+    false
   } else {
-    applied_type_arguments_conflict(declared: declared, produced: produced, scope: scope)
+    coproduct_applied_type_arguments_conflict_scan(
+      declared_args: declared.children, produced_args: produced.children, scope: scope)
+  }
+}
+
+// A PRODUCED `Unit` ARGUMENT IS NOT AN ESTABLISHED IDENTITY at this arm, and the whole-corpus
+// differential is what showed it. Five correct sites refused on the first cut, every one with Unit
+// or an empty name standing in the produced argument vector where the call site had no evidence
+// for that parameter: `outcome_accepted(Lossless)` read as Outcome<Unit> under a declared
+// Outcome<DecodeFidelity>, and `assess_by_deviations(.., deviations: [])` read its unconstrained
+// parameters as Unit under a declared GoalAssessment<.., RegistrationDeviation, .., Never>. The seed's
+// call-site generic solve answers Unit for a parameter it did not solve, so Unit there is the
+// absence of evidence, not a type -- the same reading kernel_value_declared_type_mismatch already
+// takes when it exits on an actual named Unit. It is judged per argument, so the other arguments
+// of the same application are still compared. The narrowing is stated: a genuinely Unit-typed
+// argument against a different declared one is admitted here until call-site generic solving
+// stops answering Unit for an unsolved parameter
+// (gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return).
+fn coproduct_applied_type_arguments_conflict_scan(
+  declared_args: List<Node>,
+  produced_args: List<Node>,
+  scope: InferScope
+) -> Bool {
+  match declared_args |> first {
+    Present { value: d } =>
+      match produced_args |> first {
+        Present { value: p } =>
+          let produced_name = authored_name_at(
+            source_indices: scope.type_env.source_indices, node: child_type_node(ch: p))
+          if produced_name != "Unit"
+            && applied_type_argument_conflicts(declared_arg: d, produced_arg: p, scope: scope) {
+            true
+          } else {
+            coproduct_applied_type_arguments_conflict_scan(
+              declared_args: declared_args |> skip(1),
+              produced_args: produced_args |> skip(1),
+              scope: scope)
+          }
+        Absent => false
+      }
+    Absent => false
   }
 }
 

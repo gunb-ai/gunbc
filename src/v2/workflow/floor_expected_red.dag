@@ -1077,6 +1077,15 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // argued: the repair that arrived greened exactly one of the seven and left six red, which is the
 // partial repair this split was authored to make visible.
 //
+// FOUR MORE RETIRED, TWO REMAIN (gunbc#12441). v1.compiler.infer_types
+// nominal_coproduct_applied_argument_conflict compares the argument vector of two applications of
+// ONE declared coproduct constructor. On the regenerated seed the argument rows at positions zero,
+// one and two and the carried-in-a-field row PASSED, and are removed below. The distinct-head row
+// and the nested-argument row stayed red, as the arm's contract predicts: it requires one
+// constructor, and it fails open on a nested argument. So the repair that arrived is again the
+// partial one this split exists to expose. Class and receipt:
+// gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return.
+//
 // DISSOLVE-ON: the declared-return expected-type comparison rejecting every STILL-ENROLLED mismatch
 // -- the same-head same-arity applications at argument positions zero, one and two plus the enrolled
 // nested argument-one case, together with the distinct-head pair. The plain-record pair is no longer
@@ -1087,12 +1096,8 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // which reds the build and names itself for removal -- measured, on the plain-record row, above. The witness itself is permanent under
 // DESIGN 4b(4) -- it flips to a regression control rather than retiring.
 fn floor_expected_red_chunk_24() -> List<String> {
-  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_carried_in_a_field_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_middle_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } } } } } }
+  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } }
 }
 
 // The disjoint-chain floor hole, enrolled red because the defect is LIVE rather than new.

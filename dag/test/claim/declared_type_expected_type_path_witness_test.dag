@@ -319,3 +319,13 @@ test fn w_a_wrong_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refuse
 test fn w_a_matching_or_type_variable_argument_of_a_two_arm_coproduct_is_admitted() -> Bool {
   refusing_count(source: two_arm_coproduct_argument_control_source) == 0
 }
+
+// THE CONTROL THE WHOLE-CORPUS DIFFERENTIAL FORCED. A generic constructor call whose argument the
+// call site does not solve reads its parameter as Unit on the seed; five correct corpus sites of
+// this shape (v2.compiler.target_carriers fidelity_disposition_node_decode_fidelity among them)
+// refused on the first cut of the repair. This keeps that shape admitted.
+data two_arm_coproduct_unsolved_argument_control_source: String = "module probe_two_arm_coproduct_unsolved\nimport std.types { Int, String }\ntype Fidelity = Lossless | Lossy\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn good<T>(v: T) -> Result<T> { Good { value: v } }\nfn probe() -> Result<Fidelity> { good(Lossless) }\n"
+
+test fn w_an_unsolved_argument_of_a_two_arm_coproduct_call_is_admitted() -> Bool {
+  refusing_count(source: two_arm_coproduct_unsolved_argument_control_source) == 0
+}
