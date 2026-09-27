@@ -638,8 +638,11 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
   }
 }
 
+// Reads the rostered warm producer (v2.workflow.floor_pure_producer_share) for the SAME source
+// rather than re-ingesting it: the ingest is that producer's subject, and this row's subject is
+// infer over its result (DESIGN section 3, a witness discriminates at one interface).
 test fn ingested_classical_not_real_infer_holds() -> Bool {
-  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+  match ingested_classical_not_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match infer(tree: arrow) {
         Accepted { value: _, diagnostics: _ } => true
