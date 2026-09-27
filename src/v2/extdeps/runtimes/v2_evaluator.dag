@@ -131,17 +131,12 @@ data v2_eval_bool_literal_pin: Node = Node {
 
 data v2_eval_unit_literal_pin: Node = v2_eval_unit_type_node()
 
-fn v2_eval_bool_true_byte() -> Byte {
-  Byte { bits: [true] }
-}
-
+// ONE ENCODING OF `true`. This used to be its own one-bit byte while v2_eval_bool_runtime_value, the
+// constructor every evaluated Bool takes, wrote eight bits -- two runtime values for one truth, so
+// v2.compiler.refinement_discharge, which compares against this, read an evaluated `true` as a
+// violated predicate. It is now that constructor's value, not a second encoding of it.
 fn v2_eval_bool_true_primitive() -> RuntimeValue {
-  RuntimePrimitive {
-    value: RuntimePrimitiveValue {
-      primitive_type: bool_node(),
-      bytes: [v2_eval_bool_true_byte()]
-    }
-  }
+  v2_eval_bool_runtime_value(is_true: true)
 }
 
 fn v2_eval_unit_runtime_value() -> RuntimeValue {

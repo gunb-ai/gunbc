@@ -6,8 +6,9 @@ module v2.test.claim.compiler.infer_arrow_elimination_witness_test
 // infer, and the Bool control through the real evaluator: before this rule no application derived,
 // Int included, and eval refused both with eval_rejected_grounding_not_derived.
 
-import v2.compiler.infer { InferredTree, infer, inferred_facts_grounding_derived, inferred_facts_resolved_type }
+import v2.compiler.infer { infer, inferred_facts_grounding_derived, inferred_facts_resolved_type }
 import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason }
@@ -84,8 +85,12 @@ fn ae_refuses_body_return(tree: Node) -> Bool {
 fn ae_eval(tree: Node) -> Outcome<RuntimeValue> {
   match infer(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: inferred, diagnostics: _ } =>
-      eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: tree))
+    Accepted { value: obligated, diagnostics: _ } =>
+      match discharge_refinement_obligations(t: obligated) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: inferred, diagnostics: _ } =>
+          eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: tree))
+      }
   }
 }
 
