@@ -518,8 +518,8 @@ test fn w_RED_a_mixed_set_refuses_the_unowned_part() -> Bool {
   )
   match v {
     FrontierLost { findings: fs } =>
-      any(xs: fs, predicate: fn(f) { starts_with(s: f, prefix: "NEW DEBT") && ends_with(s: f, suffix: "v2.test.beta.holds") })
-        && any(xs: fs, predicate: fn(f) { ends_with(s: f, suffix: "v2.test.alpha.holds") }) == false
+      any(xs: fs, predicate: fn(f) { starts_with(s: f, prefix: "NEW DEBT") && string_contains(s: f, pattern: "v2.test.beta.holds") })
+        && any(xs: fs, predicate: fn(f) { string_contains(s: f, pattern: "v2.test.alpha.holds") }) == false
         && proposes_nothing(v: v)
     FrontierHeld => false
     FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => false
