@@ -280,6 +280,24 @@ test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
 
 // ═══ THE STANDING NOTICE: WHAT A STRANGER READS WHEN THEY CLICK THE RED X ═══
 //
+// THE LIVE STANDING IS GREEN SINCE 2026-09-27 (main 5bfe79be45c self-hosts), so the red arm is
+// reachable only over a SUPPLIED standing. These claims render it through this probe, so the
+// discriminator, the no-owner rule and the retirement condition stay exercised while no red is
+// declared; the live claims below assert the green, blocking notice.
+fn advisory_red_probe_notice() -> String {
+  join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
+    known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
+  }, lane_blocks: false), "\n")
+}
+
+test fn the_live_notice_is_green_and_blocking() -> Bool {
+  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
+  string_contains(s: text, pattern: "BLOCKS your merge")
+    && string_contains(s: text, pattern: "REAL FINDING")
+    && (string_contains(s: text, pattern: "E0573") == false)
+    && (string_contains(s: text, pattern: "CONTRADICTION") == false)
+}
+//
 // From the moment this lane landed, every PR in the repository runs it, and while main cannot
 // self-host every one goes red for a defect its author did not introduce. The manager made
 // exactly that mistake on this PR's own predecessor with ONE instance in front of him.
@@ -289,9 +307,13 @@ test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
 // carry the DISCRIMINATOR -- what would be a genuinely new finding -- and not only the comfort.
 test fn the_notice_carries_the_discriminator_and_not_only_the_reassurance() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
-  string_contains(s: text, pattern: "does NOT block your merge")
-    && string_contains(s: text, pattern: "E0573 PointerWidth at src/std_integer.rs")
-    && string_contains(s: text, pattern: "DIFFERENT error code")
+  let probe = join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
+    known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
+  }, lane_blocks: false), "\n")
+  string_contains(s: probe, pattern: "does NOT block your merge")
+    && string_contains(s: probe, pattern: "E9999 Probe at src/probe.rs")
+    && string_contains(s: probe, pattern: "DIFFERENT error code")
+    && string_contains(s: text, pattern: "REAL FINDING")
 }
 
 // THE NOTICE NAMES NO OWNING PULL REQUEST, and this claim exists because the first cut DID.
@@ -308,14 +330,15 @@ test fn w_RED_the_notice_names_no_owning_pull_request() -> Bool {
   (string_contains(s: text, pattern: "#1") == false)
     && (string_contains(s: text, pattern: "#2") == false)
     && (string_contains(s: text, pattern: "PR #") == false)
-    && string_contains(s: text, pattern: "names no owning pull request")
+    && string_contains(s: advisory_red_probe_notice(), pattern: "names no owning pull request")
+    && (string_contains(s: advisory_red_probe_notice(), pattern: "#1") == false)
 }
 
 // AND IT TELLS A READER WHY THE CAUSE LINE CANNOT BE THE DISCRIMINATOR, because that is the trap:
 // every break at this step shares `cause=EmittedCompilerBuildFailed`, so a reader comparing cause
 // lines concludes "known break" for a defect that is new.
 test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
-  string_contains(s: join(compiler_gate_emit_build_notice_lines(), "\n"), pattern: "cause=EmittedCompilerBuildFailed")
+  string_contains(s: advisory_red_probe_notice(), pattern: "cause=EmittedCompilerBuildFailed")
 }
 
 // THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS. This renders the Green arm over a
@@ -340,7 +363,7 @@ test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> 
 // automatically when the condition holds -- that stays review diligence, and this claim does not
 // pretend otherwise; it establishes only that the condition reaches the surface a reader sees.
 test fn the_live_notice_prints_its_retirement_capability() -> Bool {
-  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
+  let text = advisory_red_probe_notice()
   string_contains(s: text, pattern: "THIS STANDING RETIRES WHEN: ")
     && string_contains(s: text, pattern: "//gunbc/instruments:self-host")
     && string_contains(s: text, pattern: "//gunbc/instruments:v2-native-cli")

@@ -233,26 +233,8 @@ jobs:
 
       - name: Why this lane is red, and what would be a real finding
         run: |-
-          printf '%s\n' 'emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:'
-          printf '%s\n' 'the required context is `witnesses`, and this job is not an input to it.'
-          printf '%s\n' ''
-          printf '%s\n' 'A RED IS CURRENTLY EXPECTED: main cannot self-host, and the break has this signature --'
-          printf '%s\n' '  E0573 PointerWidth at src/std_integer.rs'
-          printf '%s\n' ''
-          printf '%s\n' 'This notice names no owning pull request ON PURPOSE. Ownership of a standing break moves,'
-          printf '%s\n' 'and a stale pointer here would be read as authoritative by someone who has no other source.'
-          printf '%s\n' 'The SIGNATURE is the durable handle: search it to find whoever currently holds it.'
-          printf '%s\n' ''
-          printf '%s\n' 'WHAT TO DO: if the failure above matches that signature, this is not your defect and'
-          printf '%s\n' 'there is nothing for you to fix. Do not patch around it in your branch.'
-          printf '%s\n' ''
-          printf '%s\n' 'WHAT IS A REAL FINDING: a DIFFERENT error code, or a different emitted file. That is a'
-          printf '%s\n' 'second defect this lane just caught, and it should be reported rather than assumed to be'
-          printf '%s\n' 'the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the'
-          printf '%s\n' 'cause line does not discriminate and the ERROR CODE is what you compare.'
-          printf '%s\n' ''
-          printf '%s\n' 'THIS STANDING RETIRES WHEN: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` all exit zero'
-          printf '%s\n' 'If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.'
+          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
+          printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
         if: failure()
   floor:
     runs-on: [self-hosted, linux, arm64]
@@ -481,7 +463,7 @@ jobs:
       GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND: required_floor_cross_claim_demand.tsv
   witnesses:
     runs-on: ubuntu-24.04-arm
-    needs: [compiler, clippy, floor]
+    needs: [compiler, clippy, emit-build, floor]
     timeout-minutes: 5
     if: always()
     permissions:
@@ -489,12 +471,13 @@ jobs:
     steps:
       - name: Every required lane must have succeeded
         run: |-
-          echo "required lanes: compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR (same_repo=$SAME_REPO)"
-          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ] || [ "$FLOOR" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR) - open that job's log" >&2; exit 1; fi
-          if [ "$COMPILER" != success ] || [ "$CLIPPY" != success ]; then echo "::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)" >&2; exit 1; fi
+          echo "required lanes: compiler=$COMPILER clippy=$CLIPPY emit-build=$EMIT_BUILD floor=$FLOOR (same_repo=$SAME_REPO)"
+          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ] || [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY emit-build=$EMIT_BUILD floor=$FLOOR) - open that job's log" >&2; exit 1; fi
+          if [ "$COMPILER" != success ] || [ "$CLIPPY" != success ] || [ "$EMIT_BUILD" != success ]; then echo "::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY emit-build=$EMIT_BUILD)" >&2; exit 1; fi
           if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
         env:
           COMPILER: ${{ needs.compiler.result }}
           CLIPPY: ${{ needs.clippy.result }}
+          EMIT_BUILD: ${{ needs['emit-build'].result }}
           FLOOR: ${{ needs.floor.result }}
           SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
