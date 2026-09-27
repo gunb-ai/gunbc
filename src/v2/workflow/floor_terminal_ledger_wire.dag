@@ -956,10 +956,11 @@ fn render_ledger_from_seed(
           }
       }
     Absent =>
-      match filter(
+      let unclean_fields: List<String> = filter(
         flat_map(admitted, r => [r.qualified, r.terminal_detail]),
         field => !ledger_wire_field_is_clean(field: field)
-      ).first() {
+      )
+      match unclean_fields.first() {
         Present { value: offending } =>
           LedgerUnrenderable {
             reason: "field-carries-separator",
