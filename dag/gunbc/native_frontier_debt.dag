@@ -30,8 +30,8 @@ import gunbc.native_route_progress_guard { NativeProgressDispositionRow, NativeC
 //
 // WHO WRITES IT. Nobody by hand. A row is produced only by `native_frontier_proposal_lines`,
 // rendered by the emitted binary from its own run, and it lands through a reviewed pull request
-// that carries the run receipt (host, tested tree, executable, command). The nightly
-// `native-frontier` workflow opens that pull request. It is never merged automatically.
+// that carries the run receipt (host, tested tree, executable, command). Whoever ran the
+// instrument opens that pull request. It is never merged automatically.
 //
 // THE STANDING TODAY IS UNMINTED, AND THAT IS A RED, NOT A PASS. No run has yet produced a roster:
 // the route's measured wall (gunbc.rung_drop v2_native_route_off_the_merge_path, re-derived by the

@@ -27,12 +27,12 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // be two facts. What is lost is EXECUTION ON THE ACCEPTANCE PATH: nothing runs the native route
 // on a merge candidate unless a person chooses to.
 //
-// ITS THIRD OPTION IS BUILT, NOT YET OBSERVED (2026-09-23). The nightly `native-frontier` workflow
-// (gunbc.native_frontier_workflow) is the "job that runs on a different cadence", and its row is
-// gunbc.rung_drop v2_native_frontier_nightly_cadence. This row retires when the first nightly run on
-// main is OBSERVED to execute the whole universe and report a frontier verdict. Its receipt (run
-// id, tested tree, the `[native-cost-partition]` wall and peak) becomes `trigger_fired`. The
-// emission alone does not retire it.
+// ITS THIRD OPTION WAS BUILT AND DELETED UNOBSERVED. On 2026-09-23 a nightly `native-frontier`
+// workflow was built as the "job that runs on a different cadence". This row was to retire when a
+// nightly run was first OBSERVED to execute the whole universe. None was: both scheduled runs
+// stopped at their preflight (UserManagerUnreachable, on srv4 and srv3). On 2026-09-27 the operator ruled that
+// a nightly nobody checks is deleted rather than repaired, and it was. So this row never retired and
+// stands. The ratchet's own loss is gunbc.rung_drop v2_native_frontier_off_the_merge_path.
 
 data v2_native_route_off_the_merge_path_population: List<String> = [
   "gunbc.witness_v2_native_route native_route_admission — every receipt clause, on every merge candidate",
