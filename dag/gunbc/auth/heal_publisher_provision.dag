@@ -498,9 +498,3 @@ fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
   dedicated_federation_provision_with_supplied_token(f: heal_publisher_dedicated_federation())
 }
 
-// THE SECOND ENTRY, for gunbc-private's publisher: the same protocol over its own record, run once
-// by an operator with a control-plane token exactly as the first.
-fn private_heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
-{
-  dedicated_federation_provision_with_supplied_token(f: private_heal_publisher_dedicated_federation())
-}
