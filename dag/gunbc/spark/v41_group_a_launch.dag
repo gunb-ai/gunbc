@@ -5,7 +5,7 @@ import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { byte_size, Kibibyte, kibibyte, basis_point_count }
+import std.measure { byte_size }
 import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -26,7 +26,7 @@ import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryR
 import gunbc.spark.serving_arm {
   ServingRuntime, GunbcDeepseekV41EngramProduced, DeepseekV41FlashDba1be0a, FourSparkTp4,
   ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_measurement_profile,
-  runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished, gb10_unified_pool_gib,
+  runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished,
 }
 import gunbc.spark.serving_arm_launch {
   ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for,
@@ -364,20 +364,12 @@ fn v41_engram_staging_wire(manifest_text: String) -> String {
 //       spark_host_occupancy_admission); this fold takes each host's verdict as a supplied value and
 //       renders a refusal with host_occupancy_refusal, so the wording is that authority's. A host with
 //       no reading at all refuses: absence is not vacancy.
-//
-// THE MEMORY THE LAUNCH DECLARES IS WHAT THE ENGINE WILL DEMAND AT START: vLLM refuses to start a rank
-// unless the device reports at least --gpu-memory-utilization of its total free, so the need is that
-// fraction of one GB10's unified pool (gunbc.spark.serving_arm gb10_unified_pool_gib), rounded up. The
-// Engram page cache is not part of it: page cache is evictable and is charged by the arm wall, not
-// demanded at start.
+//       The memory need a reading is judged against is the reader's input, and it is declared by the
+//       step that takes the reading -- the wet runner, which does not exist yet (review 71721: a need
+//       with no reader here would be a declaration nothing consumes).
 type V41HostOccupancy {
   host: HostIdentity
   admission: HostOccupancyAdmission
-}
-
-fn v41_group_a_launch_memory_need(shape: V41MeasurementLaunchShape) -> Kibibyte {
-  let gib = (gb10_unified_pool_gib * basis_point_count(bp: shape.gpu_memory_utilization) + 9999) / 10000
-  kibibyte(count: gib * 1024 * 1024)
 }
 
 data v41_group_a_launch_purpose: String = "the V4.1 Group A four-rank launch"
@@ -530,7 +522,7 @@ fn v41_group_a_live_inputs() -> V41GroupALaunchInputs {
 
 // THE DRY RUN REACHES NO HOST, SO IT HAS NO OCCUPANCY READING, and says so per host rather than
 // assuming vacancy. The wet runner reads each host through gunbc.spark.host_occupancy_admission
-// spark_host_occupancy_admission with v41_group_a_launch_memory_need and supplies the verdicts here.
+// spark_host_occupancy_admission and supplies the verdicts here.
 fn v41_dry_run_occupancy() -> List<V41HostOccupancy> {
   map(fabric_group_hosts(g: FabricGroupA), h => V41HostOccupancy {
     host: h,
