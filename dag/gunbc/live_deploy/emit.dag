@@ -1864,59 +1864,6 @@ fn approval_broker_tree_digest_expr(root: String) -> String {
   ], "")
 }
 
-// THE RECEIPT IS WRITTEN BY THE COPY AND READ BY STAGE 2 -- and that second half was FALSE when
-// this note was written (review 68965). The receipt was written and nothing read it, while this
-// paragraph asserted the stage consumed it, so the only release evidence stage 2 actually had was
-// the revision the process reports on /livez: a launch argument this emitter writes into ExecStart,
-// echoed back whatever tree the unit loaded. The reader now exists
-// (gunbc.auth.approval_broker_cutover observe_broker_tree_receipt, consumed by
-// dark_install_release_discharged), which is what makes the sentence true rather than aspirational.
-//
-// WHAT IT ESTABLISHES, at its real strength: the copy for THIS candidate ran and recorded a digest,
-// which a stale tree from an earlier deploy fails. What it does NOT yet establish is that the
-// installed digest equals one computed independently over the deploying checkout -- that needs the
-// source-side digest at readback time and is named as the open half beside the reader. Without it the only evidence is the revision
-// the unit reports on /livez -- and that revision is a LAUNCH ARGUMENT this emitter wrote into
-// ExecStart, so the process echoes whatever it was told regardless of which bytes it loaded. A
-// control-plane fact standing in for the subject observation is the substitution
-// gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse; the
-// tree digest is the subject-side fact that closes it.
-//
-// ONLY THE INSTALLED DIGEST IS WRITTEN HERE, and that is a deliberate simplification over recording
-// both sides. The first cut of this command computed the SOURCE digest too, inside the emitted
-// shell, which meant a nested command substitution inside a printf inside an install -- four levels
-// of quoting hand-escaped in a string literal, unverifiable without rendering, and a malformed
-// quote fails the stage in a way that looks like a copy failure. The comparison does not need to
-// happen in shell: the readback runs IN the deploying checkout, so it computes the source digest
-// itself and compares against what it reads here. Shell reports one fact; the fold decides.
-// ONE ROOT IN, BOTH PATHS DERIVED. An earlier cut of this took the release directory AND the broker
-// root as separate parameters, which let a caller hand it a pair that did not correspond -- hash one
-// release and write the receipt into another -- and made the release directory a fact two folds knew
-// independently. The directory the digest covers and the directory the receipt lands in are the same
-// directory by construction now, which is a stronger statement than any check over two arguments.
-
-// THE BINARY IS INSTALLED BEFORE THE RECEIPT AND AFTER THE SOURCES, and the order is the only thing
-// that makes a partially-installed locus distinguishable from a complete one. The receipt is the
-// last write, so a locus carrying a receipt carries everything the receipt describes; a locus
-// without one was interrupted. install -m 0755 rather than cp because the mode is part of what is
-// being installed -- a binary copied without it starts nothing and the failure surfaces as a unit
-// that will not exec, several steps from the copy that caused it.
-//
-// THE PROGRAM NAME IS CONSUMED, AND THIS FORK ARRIVED BY MERGE RATHER THAN BY AUTHORING. main
-// minted extdeps.tools.gnu_coreutils install_program while this branch spelled "install" as a bare
-// literal in two commands; neither side was wrong when written, and the moment they composed there
-// were two spellings of one concept with only one of them reachable from the module that owns it.
-// That is the same defect review 68927 raised against find/sort/xargs/cut here, arriving through a
-// merge -- so it is repaired in the merge that creates it rather than left for the next reader to
-// find, which is the whole reason a merge is a place to look for defects and not only a place to
-// reconcile text.
-//
-// THE DIGEST COVERS THE SOURCES, NOT THE BINARY, and that is honest rather than an oversight: the
-// binary's identity is established upstream by claim_executor --verify-build-artifacts in the same
-// job, against the pack this deploy unpacked. Re-hashing it here would add a second authority for a
-// fact already verified, while the sources -- which nothing else in the job checks -- are exactly
-// what the receipt exists to pin.
-
 fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   release_locus_install_steps(
     owner: spec.service.service_user,
@@ -1991,6 +1938,28 @@ fn privileged_tree_files_install_command(src_sub: String, root: String, owner: N
   ], "")
 }
 
+// THE BINARY IS INSTALLED BEFORE THE RECEIPT AND AFTER THE SOURCES, and the order is the only thing
+// that makes a partially-installed locus distinguishable from a complete one. The receipt is the
+// last write, so a locus carrying a receipt carries everything the receipt describes; a locus
+// without one was interrupted. install with an executable mode rather than cp because the mode is
+// part of what is being installed -- a binary copied without it starts nothing and the failure surfaces as a unit
+// that will not exec, several steps from the copy that caused it.
+//
+// THE PROGRAM NAME IS CONSUMED, AND THIS FORK ARRIVED BY MERGE RATHER THAN BY AUTHORING. main
+// minted extdeps.tools.gnu_coreutils install_program while this branch spelled "install" as a bare
+// literal in two commands; neither side was wrong when written, and the moment they composed there
+// were two spellings of one concept with only one of them reachable from the module that owns it.
+// That is the same defect review 68927 raised against find/sort/xargs/cut here, arriving through a
+// merge -- so it is repaired in the merge that creates it rather than left for the next reader to
+// find, which is the whole reason a merge is a place to look for defects and not only a place to
+// reconcile text.
+//
+// THE DIGEST COVERS THE SOURCES, NOT THE BINARY, and that is honest rather than an oversight: the
+// binary's identity is established upstream by claim_executor --verify-build-artifacts in the same
+// job, against the pack this deploy unpacked. Re-hashing it here would add a second authority for a
+// fact already verified, while the sources -- which nothing else in the job checks -- are exactly
+// what the receipt exists to pin.
+//
 // THE PRIVILEGED BINARY SOURCE IS RELATIVE TO THE JOB'S WORKING DIRECTORY, not "$PWD": the argv
 // renderer single-quotes every word, so a variable there is a literal (run 35657588530: install
 // cannot stat '"$PWD"/target/release/gunbc').
@@ -2038,10 +2007,41 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
   )
 }
 
-// 🟡 dissolve-on: the privileged arm below assembles a `printf … | sudo install /dev/stdin` pipeline
+// THE RECEIPT IS WRITTEN BY THE COPY AND READ BY STAGE 2 -- and that second half was FALSE when
+// this note was written (review 68965). The receipt was written and nothing read it, while this
+// paragraph asserted the stage consumed it, so the only release evidence stage 2 actually had was
+// the revision the process reports on /livez: a launch argument this emitter writes into ExecStart,
+// echoed back whatever tree the unit loaded. The reader now exists
+// (gunbc.auth.approval_broker_cutover observe_broker_tree_receipt, consumed by
+// dark_install_release_discharged), which is what makes the sentence true rather than aspirational.
+//
+// WHAT IT ESTABLISHES, at its real strength: the copy for THIS candidate ran and recorded a digest,
+// which a stale tree from an earlier deploy fails. What it does NOT yet establish is that the
+// installed digest equals one computed independently over the deploying checkout -- that needs the
+// source-side digest at readback time and is named as the open half beside the reader. Without it the only evidence is the revision
+// the unit reports on /livez -- and that revision is a LAUNCH ARGUMENT this emitter wrote into
+// ExecStart, so the process echoes whatever it was told regardless of which bytes it loaded. A
+// control-plane fact standing in for the subject observation is the substitution
+// gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse; the
+// tree digest is the subject-side fact that closes it.
+//
+// ONLY THE INSTALLED DIGEST IS WRITTEN HERE, and that is a deliberate simplification over recording
+// both sides. The first cut of this command computed the SOURCE digest too, inside the emitted
+// shell, which meant a nested command substitution inside a printf inside an install -- four levels
+// of quoting hand-escaped in a string literal, unverifiable without rendering, and a malformed
+// quote fails the stage in a way that looks like a copy failure. The comparison does not need to
+// happen in shell: the readback runs IN the deploying checkout, so it computes the source digest
+// itself and compares against what it reads here. Shell reports one fact; the fold decides.
+// ONE ROOT IN, BOTH PATHS DERIVED. An earlier cut of this took the release directory AND the broker
+// root as separate parameters, which let a caller hand it a pair that did not correspond -- hash one
+// release and write the receipt into another -- and made the release directory a fact two folds knew
+// independently. The directory the digest covers and the directory the receipt lands in are the same
+// directory by construction now, which is a stronger statement than any check over two arguments.
+//
+// 🟡 dissolve-on: the step below assembles a `printf … | sudo install /dev/stdin` pipeline
 // as a string (medium-as-string, the same class approval_broker_tree_digest_expr marks); it
 // dissolves when v2.workflow.bash_emit can render a piped command from modeled parts.
-// THE RECEIPT IS WRITTEN BY THE SAME PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
+// THE RECEIPT IS WRITTEN BY THE PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
 // into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
 fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: join([
