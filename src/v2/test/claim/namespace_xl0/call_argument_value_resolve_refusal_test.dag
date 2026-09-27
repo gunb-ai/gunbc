@@ -462,14 +462,16 @@ test fn a_parenthesised_call_operand_resolves() -> Bool {
   }
 }
 
-// The caret operand refused operator_operand_unread until the first-atom fallback of
-// v2.compiler.body_lowering_fold body_lower_primary_expr began refusing a caret symbol with its own
-// cause, anchored at the `^` token; the operand now reaches that fallback, so every caret in value
-// position refuses with the one cause (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form).
-test fn a_caret_symbol_operand_refuses_at_normalize() -> Bool {
+// A caret operand RESOLVES, and resolve never looks its symbol up. `^cav_left == ^cav_right` names
+// two symbols NO declaration binds, so a lookup of either would refuse the module as unbound: the
+// module resolving is the evidence that v2.compiler.resolve resolve_atom returns a symbol literal
+// whole (dag_node_is_symbol_literal_atom) rather than reading it as a reference. It refused
+// operator_operand_unread, then (MQ-1 PR-1) caret_symbol_not_lowered at the `^`, before
+// v2.compiler.body_lowering_fold lowered a caret to its symbol literal (MQ-1 PR-2).
+test fn a_caret_symbol_operand_resolves_without_lookup() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _, scrutinee_call: _, scrutinee_multiline: _, nested_match_arm: _, paren_call_operand: _, paren_call_declared: _, caret_operand: v, as_cast_operand: _, else_less_if: _ } =>
-      cav_is_file_refused_for(v: v, reason: ^body_lowering_reason_caret_symbol_not_lowered)
+      cav_is_resolved(v: v)
     CavContextRefused => false
   }
 }
