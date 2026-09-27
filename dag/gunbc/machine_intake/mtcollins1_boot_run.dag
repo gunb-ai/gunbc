@@ -63,7 +63,7 @@ import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi { IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake_sol_hold {
-  mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_pid_not_published_line,
+  mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line,
 }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes, mtcollins1_smpro_probe_count }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -319,6 +319,7 @@ fn mtcollins1_sol_bind_capture_to_attempt(capture_path: String) -> Bool {
   Filesystem.Write(path: capture_path, content: "").success
     && Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path), content: "").success
     && Filesystem.Write(path: mtcollins1_sol_incident_path(capture_path: capture_path), content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path), content: "").success
 }
 
 // THE COLLECTOR'S OWN WORDS LIVE BESIDE THE HOST'S, NEVER AMONG THEM. gunbc.machine_intake_sol_hold
@@ -337,6 +338,33 @@ fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
 // is still returning, before any enrichment read, teardown or diagnostic bundle. The suffix is one
 // row both sides read.
 data mtcollins1_sol_incident_suffix: String = ".loss"
+
+// THE WORKFLOW'S OWN SOL ACTS, RECORDED APART FROM EVERYTHING THE COLLECTOR SAYS. When this run
+// deactivates the session, the client's next words ("SOL session closed by BMC", then an exit) are
+// the CONSEQUENCE of that act, not evidence the BMC dropped the session -- in both failed runs of
+// #12423 (runs 36333687404 and 36335369059) the workflow deactivated at the watch timeout before
+// re-reading the collector, so their untimestamped close line cannot be dated before that act. Only
+// this module writes this file (no racing append with the supervisor), one timestamped line per act.
+fn mtcollins1_sol_workflow_events_path(capture_path: String) -> String {
+  concat(capture_path, ".workflow")
+}
+
+data mtcollins1_sol_pre_teardown_suffix: String = ".pre-teardown"
+
+// BEFORE ANY TEARDOWN: the capture and the client diagnostics are copied aside exactly as they
+// stand, then the deactivate this run is about to issue is recorded with its instant. Everything the
+// session writes after this point -- including the lines our own deactivate provokes -- lands after
+// a snapshot and after an attributed event, so it can never be read as having happened earlier.
+fn mtcollins1_sol_teardown_record(capture_path: String, act: String) -> Bool {
+  let client_path = mtcollins1_sol_client_diagnostic_path(capture_path: capture_path)
+  let capture = Filesystem.Read(path: capture_path)
+  let client = Filesystem.Read(path: client_path)
+  let events_path = mtcollins1_sol_workflow_events_path(capture_path: capture_path)
+  let events = Filesystem.Read(path: events_path)
+  Filesystem.Write(path: concat(capture_path, mtcollins1_sol_pre_teardown_suffix), content: if capture.success { capture.content } else { "" }).success
+    && Filesystem.Write(path: concat(client_path, mtcollins1_sol_pre_teardown_suffix), content: if client.success { client.content } else { "" }).success
+    && Filesystem.Write(path: events_path, content: concat(if events.success { events.content } else { "" }, concat("gunbc-workflow: ", concat(act, concat(" at=", concat(clock_now_probed_at_or_unknown() as String, "\n")))))).success
+}
 
 fn mtcollins1_sol_incident_path(capture_path: String) -> String {
   concat(capture_path, mtcollins1_sol_incident_suffix)
@@ -986,7 +1014,7 @@ fn mtcollins1_boot_terminal_refusal_text(causes: List<MtCollins1BootTerminalCaus
 // one: a live collector is live whatever any file says, so a host that prints "SOL session closed"
 // cannot end its own observation, and a quiet, established session stays pending.
 type SolCollectorExit
-  = SolCollectorExitRecorded { status: String }
+  = SolCollectorExitRecorded { status: String, at: String }
   | SolCollectorExitUnrecorded
 
 // WHAT THE CLIENT SAID, AS ITS OWN WORDS AND NO MORE. ipmitool 1.8.19 ipmi_sol_red_pill prints
@@ -1024,7 +1052,13 @@ fn sol_client_diagnostics(text: String) -> SolClientDiagnostics {
     exit: match filter(lines, l => string_contains(s: l, pattern: sol_hold_exit_record_prefix)).last() {
       Present { value: l } =>
         match split(s: l, delimiter: sol_hold_exit_record_prefix).last() {
-          Present { value: st } => SolCollectorExitRecorded { status: trim(s: st) }
+          Present { value: rest } => {
+            let parts = split(s: rest, delimiter: sol_hold_exit_record_instant_marker)
+            SolCollectorExitRecorded {
+              status: match parts.first() { Present { value: st } => trim(s: st)  Absent => "" },
+              at: match parts.skip(n: 1).first() { Present { value: t } => trim(s: t)  Absent => "" },
+            }
+          }
           Absent => SolCollectorExitUnrecorded
         }
       Absent => SolCollectorExitUnrecorded
@@ -1064,7 +1098,7 @@ fn held_lease_observed_text(observed: HeldLeaseObservedState) -> String {
 fn sol_client_diagnostics_text(client: SolClientDiagnostics) -> String {
   concat(
     match client.exit {
-      SolCollectorExitRecorded { status: st } => concat("the collector exited with status ", st)
+      SolCollectorExitRecorded { status: st, at: t } => concat("the collector exited with status ", concat(st, if t == "" { " (instant not recorded)" } else { concat(" at ", t) }))
       SolCollectorExitUnrecorded => "the collector's exit is not yet recorded"
     },
     concat("; ", concat(
@@ -1456,12 +1490,14 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
   }
 }
 
-// TEARDOWN IS DEACTIVATE, THEN STOP THE OWNED COLLECTOR, THEN OBSERVE. The deactivate ends the BMC's
+// TEARDOWN IS RECORD, THEN DEACTIVATE, THEN STOP THE OWNED COLLECTOR, THEN OBSERVE. The record
+// (mtcollins1_sol_teardown_record) snapshots the capture and client diagnostics and writes the
+// deactivate as an attributed, timestamped workflow event BEFORE it is issued. The deactivate ends the BMC's
 // side; ReleaseHeld stops our process on the runner by (pid, start time), so a collector that did not
 // exit on the deactivate is not left holding the pipe or the capture. The observation that follows is
 // what the actuation's outcome reads -- ReleaseHeld's own success is not trusted as the postcondition.
 // The step's EXIT trap runs the same release on cancel and timeout, where this code never runs.
-fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String) -> HeldLeaseObservedState
+fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String, capture_path: String) -> HeldLeaseObservedState
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
@@ -1469,6 +1505,7 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
     Present { value: user } => {
+      let _recorded = mtcollins1_sol_teardown_record(capture_path: capture_path, act: "SOL deactivate issued by this run's teardown")
       let _attempted = mtcollins1_sol_release(proof: proof, username: user, password_file: password_file as NonEmptyStr)
       let _stopped = if pid_path == "" { false } else { gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr).success }
       mtcollins1_sol_observed_from_pid_path(pid_path: pid_path)
@@ -1553,7 +1590,7 @@ fn mtcollins1_boot_actuate(
         census_ended: match observed.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
         remaining: mtcollins1_boot_power_after_samples,
       )
-      let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
+      let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path, capture_path: sol_capture_path)
       MtCollins1BootActuation {
         override_before: p5_before,
         override_after: p5_after,

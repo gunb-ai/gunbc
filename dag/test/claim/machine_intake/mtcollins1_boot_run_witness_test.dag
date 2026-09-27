@@ -899,7 +899,10 @@ test fn a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_strong
   let closed = sol_client_diagnostics(text: concat("Error sending SOL data: FAIL\nSOL session closed by BMC\n", concat(sol_hold_exit_record_prefix, "1\n")))
   let keepalive = sol_client_diagnostics(text: "Error: No response to keepalive - Terminating session\n")
   let silent = sol_client_diagnostics(text: "")
-  (match closed.exit { SolCollectorExitRecorded { status: st } => st == "1"  _ => false })
+  let timed = sol_client_diagnostics(text: concat(sol_hold_exit_record_prefix, "143 at=2026-09-27T20:00:05Z\n"))
+  (match closed.exit { SolCollectorExitRecorded { status: st, at: t } => st == "1" && t == ""  _ => false })
+    && (match timed.exit { SolCollectorExitRecorded { status: st, at: t } => st == "143" && t == "2026-09-27T20:00:05Z"  _ => false })
+    && string_contains(s: sol_client_diagnostics_text(client: timed), pattern: "exited with status 143 at 2026-09-27T20:00:05Z")
     && (match closed.report { SolClientReportedSessionClosed => true  _ => false })
     && closed.last_client_line == "SOL session closed by BMC"
     && !string_contains(s: sol_client_diagnostics_text(client: closed), pattern: "the BMC closed")

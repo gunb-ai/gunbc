@@ -10,6 +10,7 @@ import std.process { ExitSuccess, ExitFailure }
 import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_await_capture_terminal, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, TerminalWatch,
+  mtcollins1_sol_teardown_record, mtcollins1_sol_workflow_events_path, mtcollins1_sol_pre_teardown_suffix,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -190,8 +191,31 @@ test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
   let _removed = shell.Remove.RecursiveForce(path: dir)
   run.launched
     && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost")
-    && string_contains(s: incident, pattern: "the collector exited with status 1")
+    && string_contains(s: incident, pattern: "the collector exited with status 1 at 20")
     && string_contains(s: incident, pattern: "does not say which side ended the session")
     && !string_contains(s: incident, pattern: "the BMC closed")
     && !string_contains(s: capture, pattern: "SOL session closed")
+}
+
+// OUR OWN DEACTIVATE IS AN ATTRIBUTED EVENT, AND THE EVIDENCE BEFORE IT IS KEPT. The teardown record
+// runs before the deactivate: it snapshots the capture and client diagnostics as they stand and
+// writes a timestamped workflow event. Lines the session writes afterwards -- here the close line our
+// own deactivate would provoke -- are absent from the snapshot and follow the recorded act.
+test fn our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept() -> Bool {
+  let dir = scratch_dir()
+  let capture_path = concat(dir, "/capture")
+  let client_path = mtcollins1_sol_client_diagnostic_path(capture_path: capture_path)
+  let seeded = Filesystem.Write(path: capture_path, content: concat(begin_line, "\nhost line\n")).success
+    && Filesystem.Write(path: client_path, content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path), content: "").success
+  let recorded = mtcollins1_sol_teardown_record(capture_path: capture_path, act: "SOL deactivate issued by this run's teardown")
+  let after = Filesystem.Write(path: client_path, content: "SOL session closed by BMC\n").success
+  let snapshot = read_or_empty(path: concat(capture_path, mtcollins1_sol_pre_teardown_suffix))
+  let client_snapshot = read_or_empty(path: concat(client_path, mtcollins1_sol_pre_teardown_suffix))
+  let events = read_or_empty(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  seeded && recorded && after
+    && string_contains(s: snapshot, pattern: "host line")
+    && !string_contains(s: client_snapshot, pattern: "SOL session closed")
+    && string_contains(s: events, pattern: "gunbc-workflow: SOL deactivate issued by this run's teardown at=")
 }
