@@ -418,3 +418,15 @@ test fn converge_admits_a_derived_host_while_another_is_refused() -> Bool {
     ConvergePolicyUnsound { reason: _ } => false
   }
 }
+
+// srv1 DERIVES ON THE REAL PATH WITH ITS SHAKEDOWN SLOT CHARGED AT ITS REAL SIZE. This is the
+// inhabitance claim for host_runner_pool_charge: the live plan, through host_allocation_verdict,
+// admits srv1. By the cited rows that is about 498 of 502.24 GiB, so a further served-slice or
+// session raise makes this row the first to go red, which is the intended alarm.
+test fn srv1_derives_with_the_shakedown_slot_charged_at_its_real_size() -> Bool {
+  match runner_host_deployment_for(p: live_plan(), host: operator_host_srv1) {
+    HostRunnerDeploymentDerived { deployment: d } =>
+      runner_count_is_the_derived_width(host: operator_host_srv1, count: d.runner_count)
+    HostRunnerDeploymentRefused { refusal: _ } => false
+  }
+}
