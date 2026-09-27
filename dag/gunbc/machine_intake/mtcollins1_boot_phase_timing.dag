@@ -110,93 +110,95 @@ fn mtcollins1_boot_phase_timing_not_taken(reason: NonEmptyStr) -> MtCollins1Boot
   }
 }
 
-// THE BOUNDARY READINGS AND THE PHASE VERDICTS OF ONE ACTUATION, as mtcollins1_boot_actuate takes
-// them. The builder below is pure, so a refused route can be exercised with supplied readings; the
-// actuation is its one production caller.
-type MtCollins1BootPhaseReadings {
-  hold_acquired: ProcUptimeRead
-  sol_held: ProcUptimeRead
-  param5_before_read: ProcUptimeRead
-  attach_verified: ProcUptimeRead
-  power_verified: ProcUptimeRead
-  smpro_power_on_read: ProcUptimeRead
-  terminal_observed: ProcUptimeRead
-  param5_after_read: ProcUptimeRead
-  power_after_read: ProcUptimeRead
-  released: ProcUptimeRead
+// ONE PHASE OF THE ROUTE THE ACTUATION ACTUALLY TOOK. mtcollins1_boot_actuate creates each step in
+// the same branch that performs (or skips) the phase: a phase that ran carries its verdict and the
+// ONE clock reading taken right after it, and a skipped phase carries its reason and no reading.
+// So the route and its readings cannot disagree: a phase never performed has no reading to misplace.
+type MtCollins1PhaseStep
+  = PhaseStepRan { result: MtCollins1PhaseRunResult, end: ProcUptimeRead }
+  | PhaseStepSkipped { reason: NonEmptyStr }
+
+// THE ROUTE IS FIXED-SHAPE, one field per phase in actuation order, so it cannot omit or reorder one.
+type MtCollins1BootRoute {
+  sol_acquire: MtCollins1PhaseStep
+  param5_before: MtCollins1PhaseStep
+  media_attach: MtCollins1PhaseStep
+  handoff: MtCollins1PhaseStep
+  smpro_power_on: MtCollins1PhaseStep
+  terminal_watch: MtCollins1PhaseStep
+  param5_after: MtCollins1PhaseStep
+  power_after: MtCollins1PhaseStep
+  sol_release: MtCollins1PhaseStep
 }
 
-type MtCollins1BootPhaseResults {
-  param5_before: MtCollins1PhaseRunResult
-  media_attach: MtCollins1PhaseRunResult
-  handoff: MtCollins1PhaseRunResult
-  smpro_power_on: MtCollins1PhaseRunResult
-  terminal_watch: MtCollins1PhaseRunResult
-  param5_after: MtCollins1PhaseRunResult
-  power_after: MtCollins1PhaseRunResult
-  sol_release: MtCollins1PhaseRunResult
-}
-
-// REACHABILITY FOLLOWS THE ACTUATION'S ORDER: the handoff runs only after a verified attach, the
-// power-on SMpro pass and the terminal watch only after a verified handoff. The after-reads, the
-// final power and the SOL release run on every arm that held the SOL, so they are always PhaseRan.
-fn mtcollins1_boot_phase_spans(r: MtCollins1BootPhaseReadings, v: MtCollins1BootPhaseResults) -> List<MtCollins1BootPhaseSpan> {
-  concat(
-    [
-      PhaseRan { phase: PhaseSolAcquire, result: PhaseVerified, begin: r.hold_acquired, end: r.sol_held },
-      PhaseRan { phase: PhaseParam5Before, result: v.param5_before, begin: r.sol_held, end: r.param5_before_read },
-      PhaseRan { phase: PhaseMediaAttach, result: v.media_attach, begin: r.param5_before_read, end: r.attach_verified },
-    ],
-    concat(
-      match v.media_attach {
-        PhaseVerified => mtcollins1_boot_spans_after_attach(r: r, v: v)
-        PhaseRefused { cause: _ } =>
-          [
-            PhaseNotRan { phase: PhaseHandoff, reason: "the media attach did not verify" },
-            PhaseNotRan { phase: PhaseSmproPowerOn, reason: "power on was never verified" },
-            PhaseNotRan { phase: PhaseTerminalWatch, reason: "power on was never verified" },
-          ]
-      },
-      [
-        PhaseRan { phase: PhaseParam5After, result: v.param5_after, begin: r.terminal_observed, end: r.param5_after_read },
-        PhaseRan { phase: PhasePowerAfter, result: v.power_after, begin: r.param5_after_read, end: r.power_after_read },
-        PhaseRan { phase: PhaseSolRelease, result: v.sol_release, begin: r.power_after_read, end: r.released },
-      ],
-    ),
-  )
-}
-
-fn mtcollins1_boot_spans_after_attach(r: MtCollins1BootPhaseReadings, v: MtCollins1BootPhaseResults) -> List<MtCollins1BootPhaseSpan> {
-  concat(
-    [PhaseRan { phase: PhaseHandoff, result: v.handoff, begin: r.attach_verified, end: r.power_verified }],
-    match v.handoff {
-      PhaseVerified =>
-        [
-          PhaseRan { phase: PhaseSmproPowerOn, result: v.smpro_power_on, begin: r.power_verified, end: r.smpro_power_on_read },
-          PhaseRan { phase: PhaseTerminalWatch, result: v.terminal_watch, begin: r.smpro_power_on_read, end: r.terminal_observed },
-        ]
-      PhaseRefused { cause: _ } =>
-        [
-          PhaseNotRan { phase: PhaseSmproPowerOn, reason: "power on was never verified" },
-          PhaseNotRan { phase: PhaseTerminalWatch, reason: "power on was never verified" },
-        ]
-    },
-  )
-}
-
-// A SOL ACQUIRE THAT REFUSED is the one arm that holds nothing: the acquire ran and refused, and no
-// later phase ran, because the actuation writes nothing without the SOL lease.
-fn mtcollins1_boot_phase_timing_sol_refused(hold_acquired: ProcUptimeRead, refused_at: ProcUptimeRead, cause: String) -> MtCollins1BootPhaseTiming {
-  let not_ran = "the SOL lease was not acquired, so nothing was written" as NonEmptyStr
-  MtCollins1BootPhaseTiming {
-    hold_acquired: hold_acquired,
-    start: BootStartUnobserved { reason: not_ran },
-    spans: concat(
-      [PhaseRan { phase: PhaseSolAcquire, result: PhaseRefused { cause: cause }, begin: hold_acquired, end: refused_at }],
-      map([PhaseParam5Before, PhaseMediaAttach, PhaseHandoff, PhaseSmproPowerOn, PhaseTerminalWatch, PhaseParam5After, PhasePowerAfter, PhaseSolRelease],
-        p => PhaseNotRan { phase: p, reason: not_ran }),
-    ),
+fn mtcollins1_boot_span_of(phase: MtCollins1BootPhase, begin: ProcUptimeRead, step: MtCollins1PhaseStep) -> MtCollins1BootPhaseSpan {
+  match step {
+    PhaseStepRan { result: r, end: e } => PhaseRan { phase: phase, result: r, begin: begin, end: e }
+    PhaseStepSkipped { reason: why } => PhaseNotRan { phase: phase, reason: why }
   }
+}
+
+// WHERE THE NEXT PHASE BEGINS: the end of this one if it ran, otherwise where this one would have
+// begun. Time between two ran phases therefore belongs to the later one; nothing falls between.
+fn mtcollins1_boot_after(begin: ProcUptimeRead, step: MtCollins1PhaseStep) -> ProcUptimeRead {
+  match step {
+    PhaseStepRan { result: _, end: e } => e
+    PhaseStepSkipped { reason: _ } => begin
+  }
+}
+
+// THE SPANS PARTITION HOLD -> LAST RAN PHASE ON EVERY ROUTE BY CONSTRUCTION: each begin is the
+// previous ran phase's end, threaded through one binding per phase (no loop, no copied accumulator).
+fn mtcollins1_boot_phase_spans(hold: ProcUptimeRead, route: MtCollins1BootRoute) -> List<MtCollins1BootPhaseSpan> {
+  let b1 = mtcollins1_boot_after(begin: hold, step: route.sol_acquire)
+  let b2 = mtcollins1_boot_after(begin: b1, step: route.param5_before)
+  let b3 = mtcollins1_boot_after(begin: b2, step: route.media_attach)
+  let b4 = mtcollins1_boot_after(begin: b3, step: route.handoff)
+  let b5 = mtcollins1_boot_after(begin: b4, step: route.smpro_power_on)
+  let b6 = mtcollins1_boot_after(begin: b5, step: route.terminal_watch)
+  let b7 = mtcollins1_boot_after(begin: b6, step: route.param5_after)
+  let b8 = mtcollins1_boot_after(begin: b7, step: route.power_after)
+  [
+    mtcollins1_boot_span_of(phase: PhaseSolAcquire, begin: hold, step: route.sol_acquire),
+    mtcollins1_boot_span_of(phase: PhaseParam5Before, begin: b1, step: route.param5_before),
+    mtcollins1_boot_span_of(phase: PhaseMediaAttach, begin: b2, step: route.media_attach),
+    mtcollins1_boot_span_of(phase: PhaseHandoff, begin: b3, step: route.handoff),
+    mtcollins1_boot_span_of(phase: PhaseSmproPowerOn, begin: b4, step: route.smpro_power_on),
+    mtcollins1_boot_span_of(phase: PhaseTerminalWatch, begin: b5, step: route.terminal_watch),
+    mtcollins1_boot_span_of(phase: PhaseParam5After, begin: b6, step: route.param5_after),
+    mtcollins1_boot_span_of(phase: PhasePowerAfter, begin: b7, step: route.power_after),
+    mtcollins1_boot_span_of(phase: PhaseSolRelease, begin: b8, step: route.sol_release),
+  ]
+}
+
+// THE END OF THE LAST PHASE THAT RAN: the instant the route's covered interval closes.
+fn mtcollins1_boot_route_end(hold: ProcUptimeRead, route: MtCollins1BootRoute) -> ProcUptimeRead {
+  mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin:
+    mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin:
+    mtcollins1_boot_after(begin: hold, step: route.sol_acquire), step: route.param5_before), step: route.media_attach),
+    step: route.handoff), step: route.smpro_power_on), step: route.terminal_watch), step: route.param5_after),
+    step: route.power_after), step: route.sol_release)
+}
+
+// A SOL ACQUIRE THAT REFUSED is the one route that holds nothing: the acquire ran and refused, and
+// every later phase is skipped, because the actuation writes nothing without the SOL lease.
+fn mtcollins1_boot_route_sol_refused(refused_at: ProcUptimeRead, cause: String) -> MtCollins1BootRoute {
+  let not_ran = PhaseStepSkipped { reason: "the SOL lease was not acquired, so nothing was written" }
+  MtCollins1BootRoute {
+    sol_acquire: PhaseStepRan { result: PhaseRefused { cause: cause }, end: refused_at },
+    param5_before: not_ran,
+    media_attach: not_ran,
+    handoff: not_ran,
+    smpro_power_on: not_ran,
+    terminal_watch: not_ran,
+    param5_after: not_ran,
+    power_after: not_ran,
+    sol_release: not_ran,
+  }
+}
+
+fn mtcollins1_boot_phase_timing_of(hold: ProcUptimeRead, start: MtCollins1BootStart, route: MtCollins1BootRoute) -> MtCollins1BootPhaseTiming {
+  MtCollins1BootPhaseTiming { hold_acquired: hold, start: start, spans: mtcollins1_boot_phase_spans(hold: hold, route: route) }
 }
 
 // A DURATION BETWEEN TWO READINGS IS ONE OF THREE THINGS, never a bare number. The subtraction is
