@@ -3096,7 +3096,7 @@ fn infer_gather_fold_step(
       merged_entries: acc.entries,
       merged_pending: acc.pending,
       partials: partials,
-      tree: tree
+      tree: tree, symbol_index: symbol_index
     )
   } else if child.failed {
     infer_gather_fold_acc_failed(
