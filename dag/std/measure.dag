@@ -313,6 +313,15 @@ fn gibibyte_count(g: Gibibyte) -> Nat {
   measure_count(g)
 }
 
+// THE GiB A BYTE COUNT OCCUPIES, ROUNDED UP -- the only safe direction for a consumer that screens on
+// it: a ceiling can refuse a candidate a byte-exact test would admit, never admit one it would refuse.
+// One home for the rounding, so the Hub manifest and a published-file population cannot round one byte
+// count two ways.
+fn gibibyte_ceiling(b: ByteSize) -> Gibibyte {
+  let scale = gibibyte_scale_factor_bytes()
+  gibibyte(count: (byte_size_count(b: b) + (scale - 1)) / scale)
+}
+
 fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
   byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
 }

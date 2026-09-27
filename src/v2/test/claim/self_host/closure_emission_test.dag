@@ -19,6 +19,7 @@ import v2.compiler.self_host.closure_emission {
   ClosureMemberEmission,
   ClosureMemberEmitted,
   ClosureMemberRefused,
+  closure_census_refusals_json,
   closure_emission_json,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
@@ -69,6 +70,8 @@ data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport v2.s
 
 data ce_unparseable_outsider_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
 
+data ce_second_unparseable_outsider_source: String = "module v2.test.ce_unparseable_two\nfn ce_broken_two( -> Int { y }\n"
+
 // A member whose body does not lower: the entry reaches it, so the refusal is a member's.
 data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport v2.std.logic { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
 
@@ -114,7 +117,8 @@ fn ce_emission_outsider_unparseable() -> ClosureEmissionLocated {
       ce_read(source: ce_logic_source, id: ^ce_logic_read, path: "src/v2/test/fixture/closure_emission/logic.dag"),
       ce_read(source: ce_entry_source, id: ^ce_entry_read, path: "src/v2/test/fixture/closure_emission/entry.dag"),
       ce_read(source: ce_member_source, id: ^ce_member_read, path: "src/v2/test/fixture/closure_emission/member.dag"),
-      ce_read(source: ce_unparseable_outsider_source, id: ^ce_unparseable_read, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
+      ce_read(source: ce_unparseable_outsider_source, id: ^ce_unparseable_read, path: "src/v2/test/fixture/closure_emission/unparseable.dag"),
+      ce_read(source: ce_second_unparseable_outsider_source, id: ^ce_unparseable_two_read, path: "src/v2/test/fixture/closure_emission/unparseable_two.dag")
     ],
     entry: "v2.test.ce_entry"
   )
@@ -193,6 +197,30 @@ test fn a_module_outside_the_closure_that_does_not_parse_refuses_the_emission_ho
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+}
+
+// Whether some census refusal row names exactly this file.
+fn ce_census_names(located: ClosureEmissionLocated, path: String) -> Bool {
+  fold_list(xs: located.census_refusals, empty: false, cons: fn(found, r) { found || r.path == path })
+}
+
+// THE CENSUS REPORTS EVERY FILE IT COULD NOT READ, NOT THE FIRST: two unparseable outsiders are two
+// refusal rows, and EACH file is named by one of them -- two rows naming the same file fail, which is
+// the first-only behaviour this row exists to catch (review 71156).
+test fn the_census_names_every_file_it_could_not_read_holds() -> Bool {
+  let located = ce_emission_outsider_unparseable()
+  length(xs: located.census_refusals) == 2
+    && ce_census_names(located: located, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
+    && ce_census_names(located: located, path: "src/v2/test/fixture/closure_emission/unparseable_two.dag")
+    && (match located.outcome {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    })
+}
+
+// A clean census reports no refusal row.
+test fn a_census_that_reads_every_file_reports_no_refusal_holds() -> Bool {
+  length(xs: ce_emission_outsider_body_refuses().census_refusals) == 0
 }
 
 // DIRECTION 3. A member whose body does not lower REFUSES THE EMISSION, located at its own cause,
@@ -298,5 +326,37 @@ test fn two_files_declaring_one_module_refuse_the_emission_at_the_census_holds()
   match ce_emission_duplicate_module().outcome {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^closure_census_duplicate_module
+  }
+}
+
+// Whether some parsed census row names exactly this file and carries a non-empty reason.
+fn ce_census_row_names(rows: FreeMonoid<JsonValue>, path: String) -> Bool {
+  fold_list(xs: rows, empty: false, cons: fn(found, row) {
+    found || ((match json_field_string(obj: row, key: "file") {
+      FieldRead { value: f } => f == path
+      _ => false
+    }) && (match json_field_string(obj: row, key: "reason") {
+      FieldRead { value: r } => !(r == "")
+      _ => false
+    }))
+  })
+}
+
+// THE CENSUS REFUSAL SET THROUGH ITS CODEC, AT IDENTITY GRAIN: the rendering parses back through the
+// codec's other direction as exactly one row per refused file, each naming its own file with a
+// non-empty reason. A serializer that dropped a row, repeated one file, or emptied the reason reds
+// here (review 71289: the payload was carried end to end but pinned by no claim).
+test fn the_census_refusal_set_renders_one_row_per_refused_file_holds() -> Bool {
+  let located = ce_emission_outsider_unparseable()
+  match parse_json_document(s: closure_census_refusals_json(refusals: located.census_refusals, spans: located.spans)) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: doc } =>
+      match json_field(obj: doc, key: "census_refused") {
+        FieldRead { value: JsonArray { elements: rows } } =>
+          length(xs: rows) == 2
+            && ce_census_row_names(rows: rows, path: "src/v2/test/fixture/closure_emission/unparseable.dag")
+            && ce_census_row_names(rows: rows, path: "src/v2/test/fixture/closure_emission/unparseable_two.dag")
+        _ => false
+      }
   }
 }

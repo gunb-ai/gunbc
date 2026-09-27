@@ -17,7 +17,6 @@ import gunbc.machine_intake_mtcollins1_access_observation {
 import gunbc.machine_intake_mtcollins1_actuate {
   mtcollins1_bmc_username,
   mtcollins1_cdrom_selection,
-  mtcollins1_power_action,
 }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key, mtcollins1_unit_hold_store_host }
@@ -55,7 +54,6 @@ type ResetSubjectCandidate {
   capability_row: BmcFirmwareReleaseCapabilityRow
   username: NonEmptyStr
   boot_selection: IpmiBootSelection
-  power_action: NonEmptyStr
   unit_hold: ResetUnitHold
 }
 
@@ -87,7 +85,6 @@ fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
           capability_row: mtcollins1_capability_row,
           username: username,
           boot_selection: mtcollins1_cdrom_selection,
-          power_action: mtcollins1_power_action,
           unit_hold: ResetUnitHoldRequired { key: mtcollins1_unit_hold_key, store_host: mtcollins1_unit_hold_store_host },
         },
       ]

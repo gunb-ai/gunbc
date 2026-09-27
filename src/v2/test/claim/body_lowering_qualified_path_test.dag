@@ -13,7 +13,6 @@ import v2.compiler.body_lowering_fold {
   body_lower_dotted_chain_lowered_optional,
   body_lower_find_captured,
   body_lower_postfix_chain_read,
-  body_lower_postfix_step_segments,
   body_lower_pattern_first_atom_optional,
   body_lower_postfix_expr,
   body_lower_try_body_lowered
@@ -26,7 +25,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
+import v2.std.algebra { length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -352,7 +351,7 @@ test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
   match body_lower_postfix_chain_read(node: dotted_fixture_call_before_end()) {
     PostfixChainNotThisShape => false
     PostfixChainSuffixCarried { at: _ } => false
-    PostfixChainBare { steps: _ } => false
+    PostfixChainBare { segments: _ } => false
     PostfixChainFound { steps: steps } => length(xs: steps) == 2
   }
 }
@@ -366,7 +365,14 @@ test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool {
     PostfixChainNotThisShape => false
     PostfixChainSuffixCarried { at: _ } => false
     PostfixChainFound { steps: _ } => false
-    PostfixChainBare { steps: steps } => body_lower_postfix_step_segments(steps: steps) == [^peer, ^peer_leaf]
+    PostfixChainBare { segments: segments } =>
+      length(xs: segments) == 2
+        && fold(segments, init: Empty, f: fn(acc, n) {
+          match node_atom_identity_optional(node: n) {
+            Present { value: s } => list_snoc_item(xs: acc, item: s)
+            Absent => acc
+          }
+        }) == [^peer, ^peer_leaf]
   }
 }
 
