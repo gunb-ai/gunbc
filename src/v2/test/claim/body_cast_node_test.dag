@@ -1,7 +1,7 @@
 module v2.test.claim.body_cast_node
 
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.coercion { CoercionQuality, NoTargetCandidate, Widened, coercion_cast_crossing }
+import v2.std.coercion { CoercionQuality, CoercionResult, NoTargetCandidate, Widened, coercion_cast_crossing }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
 import v2.compiler.emit { emit }
@@ -116,18 +116,6 @@ fn bcn_into_refinement() -> Outcome<Node> {
 
 fn bcn_out_of_refinement() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
-}
-
-fn bcn_refinement_of_refinement_as_int() -> Outcome<Node> {
-  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\nfn f(x: Pos2) -> Int {\n  x as Int\n}\n")
-}
-
-fn bcn_refinement_of_refinement_as_its_carrier() -> Outcome<Node> {
-  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\nfn f(x: Pos2) -> Pos {\n  x as Pos\n}\n")
-}
-
-fn bcn_sibling_refinement_cast() -> Outcome<Node> {
-  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Neg {\n  x as Neg\n}\n")
 }
 
 fn bcn_is_widened(q: Optional<CoercionQuality>) -> Bool {
@@ -519,24 +507,54 @@ test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
   }
 }
 
-// (15b) THE WIDENING IS THE DECLARED CARRIER ONLY. `x as Bool` from x: Pos refuses (Bool is not Pos's
-// carrier). ONE STEP, PINNED: `type Pos2 = Pos where positive` declares Pos as its carrier, so `x as
-// Pos` from x: Pos2 is Widened and `x as Int` REFUSES at the operand -- the carrier edge is not walked
-// to a fixed point (v2.std.coercion states why).
-test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
-  bcn_refused_with_mismatch(o: bcn_refinement_param_as_bool_inferred())
-    && bcn_refused_with_mismatch_at_operand(o: bcn_infers(o: bcn_refinement_of_refinement_as_int()))
-    && match bcn_infers(o: bcn_refinement_of_refinement_as_its_carrier()) {
-      Accepted { value: _, diagnostics: _ } => true
-      Rejected { diagnostics: _ } => false
-    }
-    && bcn_is_widened(q: bcn_crossing_quality(o: bcn_refinement_of_refinement_as_its_carrier(), reference_path: Cons { head: ^p, tail: Cons { head: ^Pos2, tail: Empty } }))
+// (15b)/(15c) ONLY THE DECLARED CARRIER WIDENS -- at v2.std.coercion's interface, with SUPPLIED
+// values (DESIGN section 3, a witness discriminates at one interface): the source is a refinement's
+// declaration reference, its declared carrier the node refinement_declaration returns, the target the
+// cast's. Row (15) is the inhabitance claim that pairs them: on the production route the reader
+// returns the kernel Int atom as Pos's carrier and it meets the tree's own cast target, so the Int
+// atom supplied here is the shape the real producer emits. Row (16)'s partner keeps `x as Bool` from
+// x: Pos refusing on the production route.
+fn bcn_int_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_int) }
+fn bcn_bool_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_bool) }
+fn bcn_ref(leaf: Symbol) -> Node {
+  declaration_reference_node(qn: Cons { head: ^p, tail: Cons { head: leaf, tail: Empty } }, occurrence_id: OccurrenceSynthetic)
+}
+fn bcn_supplied_crossing(source_leaf: Symbol, carrier: Node, target: Node) -> Outcome<CoercionResult> {
+  coercion_cast_crossing(
+    source: claim_canonical_grounding(type_symbol: ^bcn_refinement_operand, algebra_symbol: ^bcn_refinement_operand),
+    source_type: bcn_ref(leaf: source_leaf),
+    source_declared_carrier: Present { value: carrier },
+    target: target
+  )
+}
+fn bcn_supplied_refuses(o: Outcome<CoercionResult>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+  }
+}
+fn bcn_supplied_quality(o: Outcome<CoercionResult>) -> Optional<CoercionQuality> {
+  match o {
+    Accepted { value: crossed, diagnostics: _ } => Present { value: crossed.quality }
+    Rejected { diagnostics: _ } => Absent
+  }
 }
 
-// (15c) A SIBLING REFINEMENT OVER THE SAME CARRIER IS NOT A CARRIER. `x as Neg` from x: Pos, where
-// both are `Int where ...`: sharing a carrier admits nothing, so the cast refuses at the operand.
+// (15b) A TARGET THAT IS NOT THE DECLARED CARRIER REFUSES, AND THE CARRIER EDGE IS ONE STEP.
+// `x as Bool` from x: Pos (carrier Int) refuses. `type Pos2 = Pos where ..` declares Pos as its
+// carrier, so `x as Pos` from x: Pos2 is Widened and `x as Int` REFUSES -- the edge is not walked to
+// a fixed point (v2.std.coercion states why). RED if the widening arm admitted any target, or walked
+// the carrier chain.
+test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
+  bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_bool_type()))
+    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_int_type()))
+    && bcn_is_widened(q: bcn_supplied_quality(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_ref(leaf: ^Pos))))
+}
+
+// (15c) A SIBLING REFINEMENT OVER THE SAME CARRIER IS NOT A CARRIER: `x as Neg` from x: Pos, both
+// `Int where ..`, refuses. RED if sharing a carrier admitted a crossing between refinements.
 test fn bcn_cast_between_sibling_refinements_refuses() -> Bool {
-  bcn_refused_with_mismatch_at_operand(o: bcn_infers(o: bcn_sibling_refinement_cast()))
+  bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_ref(leaf: ^Neg)))
 }
 
 // (16) THE IDENTITY CAST INTO A REFINEMENT IS ADMITTED BY THE EXACT RULE. `x as Pos` from `x: Pos`:

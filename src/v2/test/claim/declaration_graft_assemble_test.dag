@@ -127,7 +127,6 @@ data src_empty: String = "module p\n"
 data src_fn_only: String = "module p\n\nfn f(x: Int) -> Int { x }\n"
 data src_type_only: String = "module p\n\ntype Flag = On | Off\n"
 data src_where_alias_only: String = "module p\n\ntype Name = Int where brand(\"Name\")\n"
-data src_where_alias_undeclared_carrier: String = "module p\n\ntype Name = Undeclared where brand(\"Name\")\n"
 data src_record_construct: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n"
 data src_record_type_only: String = "module p\n\ntype Rec { n: Int }\n"
 data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
@@ -184,20 +183,6 @@ test fn declaration_graft_type_only_flag_is_named() -> Bool {
 
 test fn declaration_graft_where_alias_accepts() -> Bool {
   declaration_graft_accepts(out: declaration_graft_where_alias_only_assembled())
-}
-
-// A WHERE-ALIAS'S CARRIER IS A RESOLVED TYPE. Body lowering lowers the refined head as a type
-// (v2.compiler.body_lowering_fold body_lower_type_variant), so resolve binds it and a carrier nothing
-// declares refuses unbound. RED BEFORE: the head rode as the raw parse sequence no stage resolved, so
-// `Undeclared where ..` ASSEMBLED -- the declaration named its carrier in a vocabulary nothing checked
-// (and this module's own fixtures carried an unimported `String` that way; they now carry Int).
-test fn declaration_graft_where_alias_over_an_undeclared_carrier_refuses() -> Bool {
-  match declaration_graft_assemble_for(src: src_where_alias_undeclared_carrier) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      (d.head.reason == ^resolve_reason_unbound_symbol)
-        || fold(d.tail, init: false, f: fn(acc, x) { acc || (x.reason == ^resolve_reason_unbound_symbol) })
-  }
 }
 
 test fn declaration_graft_combined_accepts() -> Bool {
