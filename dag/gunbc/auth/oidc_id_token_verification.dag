@@ -935,15 +935,30 @@ fn rs256_verify_over_key(
   match base64_decode(s: signature_b64url, variant: UrlSafe) {
     Absent => Rs256SignatureInvalid { detail: "the signature segment is not valid base64url" }
     Present { value: signature_octets } =>
+      if count(signature_octets) == 0 {
+        Rs256SignatureInvalid { detail: "the signature segment decoded to zero octets" }
+      } else {
       let key_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-key.pem"], "")
       let message_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-message.bin"], "")
+      let signature_url_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-signature.b64url"], "")
       let signature_path = join([scratch_dir, "/", "gunbc-jwks-", verify_id as String, "-signature.bin"], "")
+      let rem = string_length(s: signature_b64url) - (string_length(s: signature_b64url) / 4) * 4
+      let pad = if rem == 0 { "" } else if rem == 2 { "==" } else if rem == 3 { "=" } else { "" }
       let key_write = Filesystem.Write(path: key_path, content: spki_pem)
       let message_write = Filesystem.Write(path: message_path, content: signing_input)
-      let signature_write = Filesystem.Write(path: signature_path, content: string_of_octets(octets: signature_octets))
+      let signature_write = Filesystem.Write(path: signature_url_path, content: join([signature_b64url, pad], ""))
       if !key_write.success || !message_write.success || !signature_write.success {
         Rs256VerificationUnrealizable { detail: "the verification scratch files could not be written" }
       } else {
+        let decode = gunbc.WitnessBin.Run(
+          workdir: scratch_dir as FilePath,
+          bin_path: "sh" as FilePath,
+          args: ["-c", join(["tr -- '-_' '+/' < ", signature_url_path, " | base64 -d > ", signature_path], "")],
+          expect: OutcomeIsData,
+        )
+        if decode.exit_code != 0 {
+          Rs256VerificationUnrealizable { detail: join(["the signature's base64url decode refused: ", trim(decode.stderr)], "") }
+        } else {
         let result = gunbc.WitnessBin.Run(
           workdir: scratch_dir as FilePath,
           bin_path: "openssl" as FilePath,
@@ -955,17 +970,15 @@ fn rs256_verify_over_key(
         } else {
           Rs256SignatureInvalid { detail: join(["openssl refused the signature: ", trim(result.stderr)], "") }
         }
+        }
+      }
       }
   }
 }
 
-// SIGNATURE OCTETS RIDE A FILE as raw bytes: the model's String is a sequence of code points,
-// so each octet below 128 becomes itself and nothing re-encodes — a signature byte is never a
-// UTF-8 transform of anything. (RS256 signatures are byte strings, not text; this spelling
-// keeps every octet intact through the file write.)
-fn string_of_octets(octets: List<UInt8>) -> String {
-  join(map(octets, o => from_code_point(cp: o)), "")
-}
+// (the string_of_octets helper retired 2026-09-27: from_code_point(cp > 127) is a two-byte UTF-8
+// encoding, so its premise — "each octet below 128 becomes itself" — mangles every byte at 128
+// and above; the signature now rides its base64url text to disk and decodes through the shell.)
 
 // ── The producer ───────────────────────────────────────────────────────────────────────────────
 // THE ONE PRODUCTION ENTRY: an instance (store layout), the raw token, the caller's epoch
