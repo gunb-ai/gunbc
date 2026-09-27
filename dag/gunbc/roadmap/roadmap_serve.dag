@@ -2059,9 +2059,12 @@ fn auth_pkce_challenge_of_verifier(verifier: NonEmptyStr) -> NonEmptyStr? {
   }
 }
 
-// THE GOOGLE CLIENT-ID WIRE ALPHABET: OAuth client ids ride [A-Za-z0-9_-] and ride the
-// authorization URL unencoded; an id outside that alphabet is a config error the login refuses
-// with located, never a broken URL.
+// THE GOOGLE CLIENT-ID WIRE ALPHABET: Google's client ids spell <digits>-<base32>.apps.
+// googleusercontent.com — [A-Za-z0-9_-] PLUS the dot (the 2026-09-27 correction: the first cut
+// admitted no dot and refused every real Google client id; the id additionally rides the
+// authorization URL through the form-component percent-encoder, so the wire is safe regardless,
+// and the wall exists to catch config typos, not to second-guess Google's alphabet). An id
+// outside the alphabet is a config error the login refuses with located, never a broken URL.
 fn auth_client_id_wire_admitted(id: String) -> Bool {
   auth_client_id_wire_admitted_from(id: id, i: 0, len: string_length(s: id))
 }
@@ -2072,7 +2075,7 @@ fn auth_client_id_wire_admitted_from(id: String, i: Int, len: Int) -> Bool {
   } else {
     let cp = code_point(c: char_at(id, i))
     let alnum = (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
-    (alnum || cp == 45 || cp == 95) && auth_client_id_wire_admitted_from(id: id, i: i + 1, len: len)
+    (alnum || cp == 45 || cp == 95 || cp == 46) && auth_client_id_wire_admitted_from(id: id, i: i + 1, len: len)
   }
 }
 
