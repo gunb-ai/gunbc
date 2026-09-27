@@ -122,8 +122,8 @@ test fn equality_holds() -> Bool {
   }
 }
 
-// A CLEARED ROW IS AN ADVANCE, AND ITS PROPOSAL IS THE ROSTER WITHOUT IT. This is the shrink the
-// nightly opens a pull request for.
+// A CLEARED ROW IS AN ADVANCE, AND ITS PROPOSAL IS THE ROSTER WITHOUT IT. This is the shrink a
+// frontier run's pull request proposes.
 test fn a_cleared_row_advances_and_the_proposal_drops_it() -> Bool {
   match judge(
     standing: minted(universe: [subject_a], rows: [debt_row(identity: subject_a, stage: NativeTestStagePrepare, cause: entry_cause)], dispositions: []),
