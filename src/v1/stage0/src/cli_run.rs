@@ -20235,7 +20235,7 @@ pub fn handle_serve(
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
                 Ok(None) => {}
-                Ok(Some((method, path, body, tailscale_identity))) => {
+                Ok(Some((method, path, body, tailscale_identity, cookie_header))) => {
                     let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
                         (Some("method".to_string()), str_value(method)),
                         (Some("path".to_string()), str_value(path)),
@@ -20253,6 +20253,13 @@ pub fn handle_serve(
                         (
                             Some("release_revision".to_string()),
                             str_value(release_revision.clone()),
+                        ),
+                        // Empty when the request carried no Cookie header; the
+                        // request-security context builds AuthAbsent from empty,
+                        // never an anonymous caller.
+                        (
+                            Some("cookie_header".to_string()),
+                            str_value(cookie_header),
                         ),
                     ];
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
@@ -20403,9 +20410,16 @@ pub fn handle_serve(
 /// misconfigured deployment is a closed door rather than an open one.
 const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
 
+/// THE SECOND NAMED HEADER, on the same discipline as the tailnet identity above: the session
+/// cookie. The login flow's Set-Cookie answers a session mint, and this is the only way the
+/// browser can present it back — the `.dag` side's request-security context builds from this
+/// exact string (absent = AuthAbsent, never anonymous), and every other header stays out of the
+/// handlers exactly as before.
+const SERVE_COOKIE_HEADER: &str = "cookie";
+
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
-) -> Result<Option<(String, String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -20453,6 +20467,7 @@ fn serve_read_request(
     }
     let mut content_length: Option<usize> = None;
     let mut tailscale_identity: Option<String> = None;
+    let mut cookie_header: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -20493,6 +20508,12 @@ fn serve_read_request(
                 }
                 tailscale_identity = Some(value.trim().to_string());
             }
+            if name.eq_ignore_ascii_case(SERVE_COOKIE_HEADER) {
+                if cookie_header.is_some() {
+                    return Err(format!("duplicate {} header", SERVE_COOKIE_HEADER));
+                }
+                cookie_header = Some(value.trim().to_string());
+            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -20512,6 +20533,7 @@ fn serve_read_request(
         target,
         body,
         tailscale_identity.unwrap_or_default(),
+        cookie_header.unwrap_or_default(),
     )))
 }
 
