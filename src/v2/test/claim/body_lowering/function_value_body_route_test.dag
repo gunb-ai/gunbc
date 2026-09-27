@@ -29,8 +29,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // instead of refusing -- are v2.test.claim.body_lowering.function_value_body's. These claims read
 // what follows: the module RESOLVES with the inner binders scoped (an inner body naming both the
 // outer and the inner parameter resolves; an undeclared name there refuses at its own atom), it
-// reaches INFER, and the Rust closure-emit door refuses a function-typed declared return at its
-// type-shape frontier (the last claim below; it does not emit). Removing the FunctionValueBody arm makes the module ill-formed at normalize, so
+// reaches INFER, and the Rust closure-emit door renders a function-typed declared return (`impl
+// Fn` / `Box<dyn Fn>`, the last two claims below) with the body as returned `move` closures. Removing the FunctionValueBody arm makes the module ill-formed at normalize, so
 // every positive claim here goes red with it.
 data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport v2.std.logic { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
 
