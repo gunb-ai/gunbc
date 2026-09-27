@@ -371,6 +371,9 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         edges.clone(),
         &nodes,
     ));
+    if std::env::var("DBG_EAGER").is_ok() {
+        let _ = selection.selection_adjacency();
+    }
     let declared_paths = nodes
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
