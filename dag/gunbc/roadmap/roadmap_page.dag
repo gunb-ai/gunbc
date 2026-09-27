@@ -235,8 +235,12 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 // client-computed initials (the standing flips to data-avatar="resolved" only when the picture
 // lands); an absent picture, a failed fetch, or a failed image all render the initials — the
 // /avatar/<principal> proxy endpoint is the tailnet-privacy follow-up, not a blocker.
-// Sign out is the target's native form POSTing /auth/logout: the page reloads, the fetch re-runs,
-// Sign in returns.
+// THE ACCOUNT MENU (owner ask 2026-09-27): the chip is a BUTTON (avatar + name), not a bare
+// row — activating it toggles a small menu with the Google-account actions: Switch account
+// (a GET to /auth/login?prompt=select_account, the one admitted login prompt, so Google shows
+// its chooser) and Sign out (the native form POSTing /auth/logout: the 303 lands back here,
+// the fetch re-runs against the cleared cookie, Sign in returns). The menu ships hidden and
+// the emitted client owns the toggle; the static bytes still carry no identity claim.
 fn header_account_nodes() -> List<Fragment> {
   let signin = el_attrs("a", [
     attr(name: "class", value: "header-account header-account-signin" ),
@@ -253,20 +257,39 @@ fn header_account_nodes() -> List<Fragment> {
     attr(name: "class", value: "header-account-name" ),
     attr(name: "data-account-name", value: "" ),
   ], [])
+  let trigger = el_attrs("button", [
+    attr(name: "class", value: "header-account-trigger" ),
+    attr(name: "type", value: "button" ),
+    attr(name: "data-account-trigger", value: "" ),
+    attr(name: "aria-haspopup", value: "menu" ),
+    attr(name: "aria-expanded", value: "false" ),
+  ], [ avatar, name ])
+  let switch_item = el_attrs("a", [
+    attr(name: "class", value: "header-account-menu-item" ),
+    attr(name: "href", value: "/auth/login?prompt=select_account" ),
+    attr(name: "role", value: "menuitem" ),
+  ], [ txt("Switch account") ])
   let signout_btn = el_attrs("button", [
-    attr(name: "class", value: "header-account-signout-btn" ),
+    attr(name: "class", value: "header-account-menu-item header-account-signout-btn" ),
     attr(name: "type", value: "submit" ),
+    attr(name: "role", value: "menuitem" ),
   ], [ txt("Sign out") ])
   let signout_form = el_attrs("form", [
     attr(name: "class", value: "header-account-signout" ),
     attr(name: "method", value: "post" ),
     attr(name: "action", value: "/auth/logout" ),
   ], [ signout_btn ])
+  let menu = el_attrs("span", [
+    attr(name: "class", value: "header-account-menu" ),
+    attr(name: "data-account-menu", value: "" ),
+    attr(name: "role", value: "menu" ),
+    attr(name: "hidden", value: "" ),
+  ], [ switch_item, signout_form ])
   let session = el_attrs("span", [
     attr(name: "class", value: "header-account header-account-session" ),
     attr(name: "data-account-session", value: "" ),
     attr(name: "hidden", value: "" ),
-  ], [ avatar, name, signout_form ])
+  ], [ trigger, menu ])
   [ el_class("span", "header-account-slot", [ signin, session ]) ]
 }
 

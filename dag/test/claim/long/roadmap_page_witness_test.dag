@@ -2324,12 +2324,15 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
 // belt's pre-rendered static body, so the account area personalizes client-side). THE STATIC
 // BODY always renders the Sign-in link plus a HIDDEN, EMPTY session target — witnessed here: the
 // Sign-in href is /auth/login, the session span carries hidden with EMPTY avatar and name fields
-// (no identity claim in the static bytes), and the sign-out form posts /auth/logout natively.
-// THE HIDDEN-RULE PIN reads the live selector (the allocation-page repair broadened it to cover
-// the sign-in link too — the old single-selector pin went stale on the merged tree and is
-// re-transcribed here), and the avatar pins land the PFP slice: the chip becomes the image's
-// positioning context and clips it, and the .issue-avatar img rule paints any image inside a
-// chip — the projection the assignee avatar slots reuse.
+// (no identity claim in the static bytes), and the account menu (owner ask 2026-09-27) nests the
+// Google-account actions under the chip: the trigger button (avatar + name, aria-haspopup=menu),
+// the hidden menu, Switch account riding the one admitted login prompt, and the sign-out form
+// posting /auth/logout natively. THE HIDDEN-RULE PIN reads the live selector (the
+// allocation-page repair broadened it to cover the sign-in link too — the old single-selector
+// pin went stale on the merged tree and is re-transcribed here), and the avatar pins land the
+// PFP slice: the chip becomes the image's positioning context and clips it, and the
+// .issue-avatar img rule paints any image inside a chip — the projection the assignee avatar
+// slots reuse.
 test fn witness_header_account_static_body_carries_signin_and_hidden_target() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
@@ -2337,10 +2340,14 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
       let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
       occurrence_count(s: body, pattern: "<a class=\"header-account header-account-signin\" href=\"/auth/login\" data-account-signin=\"\"") == 1
         && occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\" data-account-session=\"\" hidden=\"\">") == 1
+        && occurrence_count(s: body, pattern: "<button class=\"header-account-trigger\" type=\"button\" data-account-trigger=\"\" aria-haspopup=\"menu\" aria-expanded=\"false\">") == 1
         && occurrence_count(s: body, pattern: "<span class=\"issue-avatar\" data-account-avatar=\"\" data-avatar=\"absent\"></span>") == 1
         && occurrence_count(s: body, pattern: "<span class=\"header-account-name\" data-account-name=\"\"></span>") == 1
+        && occurrence_count(s: body, pattern: "<span class=\"header-account-menu\" data-account-menu=\"\" role=\"menu\" hidden=\"\">") == 1
+        && string_contains(s: body, pattern: "<a class=\"header-account-menu-item\" href=\"/auth/login?prompt=select_account\" role=\"menuitem\">Switch account</a>")
         && string_contains(s: body, pattern: "<form class=\"header-account-signout\" method=\"post\" action=\"/auth/logout\">")
         && string_contains(s: roadmap_css(), pattern: ".header-account-session[hidden], .header-account-signin[hidden] { display: none }")
+        && string_contains(s: roadmap_css(), pattern: ".header-account-menu[hidden] { display: none }")
         && string_contains(s: roadmap_css(), pattern: ".issue-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }")
         && string_contains(s: roadmap_css(), pattern: "var(--issue-text-dim); position: relative; overflow: hidden }")
   }
@@ -2384,6 +2391,10 @@ test fn witness_header_account_swap_table() -> Bool {
     && string_contains(s: js, pattern: "gunbcAvatarImg.alt = '';")
     && string_contains(s: js, pattern: ".setAttribute('data-avatar', 'resolved');")
     && string_contains(s: js, pattern: ".appendChild(gunbcAvatarImg);")
+    && string_contains(s: js, pattern: "document.querySelector('[data-account-trigger]')")
+    && string_contains(s: js, pattern: "document.querySelector('[data-account-menu]')")
+    && string_contains(s: js, pattern: "gunbcAccountMenu.hidden = !gunbcMenuOpen;")
+    && string_contains(s: js, pattern: "gunbcAccountMenu.hidden = true;")
 }
 // THE RAIL-FIT LAW (owner polish 2026-09-26: the Assign button clipped the rail's right edge):
 // the input flexes with min-width 0 — it shrinks below its default intrinsic size instead of

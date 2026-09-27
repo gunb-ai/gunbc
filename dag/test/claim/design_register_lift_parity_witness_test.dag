@@ -435,19 +435,12 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // (position: relative; overflow: hidden) and the .issue-avatar img rule paints any image
 // inside a chip (absolute / inset 0 / 100% x 100% / object-fit cover via RawProperty — the
 // projection the assignee avatar slots reuse). Behavioral receipts:
-// witness_header_account_static_body_carries_signin_and_hidden_target (the stale
-// single-selector hidden pin re-transcribed to the live broadened selector),
-// witness_header_account_swap_table (the s.picture branch), the auth-session and serve
-// witnesses for the wire/file picture member, the register censuses unchanged. Derived by
-// execution (roadmap_css_derived_digest on this tree, 82fd3d556e4957a0); this digest only pins
-// bytes.
-// Session-read unification (2026-09-27): the account-area header swap and the tracker bundle's
-// inline assignment now ride ONE shared client-side /auth/session read; the slice moves no CSS —
-// roadmap_css()'s derivation closure (roadmap_style and its imports) never reaches the
-// client-program modules — so the PFP pin above holds by execution
-// (witness_roadmap_css_digest_pinned green in the parity claim-run). No re-pin for this slice;
-// this note dates the verification.
-data roadmap_css_lift_parity_digest: String = "82fd3d556e4957a0"
+// witness_header_account_static_body_carries_signin_and_hidden_target (the account menu's
+// trigger/menu markup and the hidden-menu rule pin), witness_header_account_swap_table (the
+// menu toggle statements), the serve witnesses for the admitted login prompt, the register
+// censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// d43dd7a918f31c5f); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "d43dd7a918f31c5f"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

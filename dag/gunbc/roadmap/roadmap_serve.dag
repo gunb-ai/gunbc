@@ -2156,11 +2156,38 @@ fn auth_login_response(instance: HostDashboardInstance, request: ServeHttpReques
     ReturnPathRefused { raw: _, reason: r } =>
       serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: ", r, "\n"], ""))
     ReturnPathAdmitted { path: return_path } =>
-      match oidc_deployment_config_read() {
-        OidcDeploymentConfigUnavailable { cause: c } => auth_login_config_refusal(cause: c)
-        OidcDeploymentConfigLoaded { config: config } =>
-          auth_login_response_loaded(instance: instance, config: config, return_path: return_path)
+      match auth_login_prompt_admit(raw: uri_query_param(path: request.path, key: "prompt")) {
+        LoginPromptRefused { raw: p } =>
+          serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the prompt parameter \"", p, "\" is not an admitted login prompt\n"], ""))
+        LoginPromptAdmitted { prompt: prompt } =>
+          match oidc_deployment_config_read() {
+            OidcDeploymentConfigUnavailable { cause: c } => auth_login_config_refusal(cause: c)
+            OidcDeploymentConfigLoaded { config: config } =>
+              auth_login_response_loaded(instance: instance, config: config, return_path: return_path, prompt: prompt)
+          }
       }
+  }
+}
+
+// THE LOGIN PROMPT, a closed admission like the return path: the account menu's "Switch
+// account" asks Google for its account chooser (prompt=select_account), the one prompt the
+// login admits. Absence is no prompt member on the authorization request; any other spelling
+// refuses the login before state, entropy, or Google is touched — an open prompt parameter
+// would be a Google-side behavior knob for anyone who can get the operator to click a link.
+type OidcLoginPrompt
+  = | OidcLoginPromptSelectAccount
+
+type LoginPromptAdmission
+  = LoginPromptAdmitted { prompt: OidcLoginPrompt? }
+  | LoginPromptRefused { raw: String }
+
+fn auth_login_prompt_admit(raw: String) -> LoginPromptAdmission {
+  if raw == "" {
+    LoginPromptAdmitted { prompt: none }
+  } else if raw == "select_account" {
+    LoginPromptAdmitted { prompt: Present { value: OidcLoginPromptSelectAccount } }
+  } else {
+    LoginPromptRefused { raw: raw }
   }
 }
 
@@ -2175,7 +2202,7 @@ fn auth_login_config_refusal(cause: String) -> ServeHttpResponse {
   )
 }
 
-fn auth_login_response_loaded(instance: HostDashboardInstance, config: OidcDeploymentConfig, return_path: RelativeReturnPath) -> ServeHttpResponse {
+fn auth_login_response_loaded(instance: HostDashboardInstance, config: OidcDeploymentConfig, return_path: RelativeReturnPath, prompt: OidcLoginPrompt?) -> ServeHttpResponse {
   if !auth_client_id_wire_admitted(id: config.client_id as String) {
     auth_login_config_refusal(cause: "the config file's client_id member carries a character outside the admitted OAuth client-id alphabet")
   } else {
@@ -2195,6 +2222,7 @@ fn auth_login_response_loaded(instance: HostDashboardInstance, config: OidcDeplo
                   instance: instance,
                   config: config,
                   return_path: return_path,
+                  prompt: prompt,
                   state: state,
                   nonce: nonce,
                   verifier: verifier,
@@ -2209,6 +2237,7 @@ fn auth_login_transaction_step(
   instance: HostDashboardInstance,
   config: OidcDeploymentConfig,
   return_path: RelativeReturnPath,
+  prompt: OidcLoginPrompt?,
   state: NonEmptyStr,
   nonce: NonEmptyStr,
   verifier: NonEmptyStr,
@@ -2235,7 +2264,7 @@ fn auth_login_transaction_step(
           LoginTransactionSaveRefused { step: s, reason: r } =>
             serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be persisted (", s, "): ", r, "\n"], ""))
           LoginTransactionSaved { state: _ } =>
-            auth_login_redirect_response(config: config, transaction: transaction)
+            auth_login_redirect_response(config: config, transaction: transaction, prompt: prompt)
         }
       }
   }
@@ -2247,7 +2276,7 @@ fn auth_login_transaction_step(
 // redirect URI, and the PKCE challenge. state and nonce ride the base64url alphabet
 // unencoded by construction; the redirect URI and scope are percent-encoded by the uri
 // authority.
-fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcLoginTransaction) -> ServeHttpResponse {
+fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, prompt: OidcLoginPrompt?) -> ServeHttpResponse {
   match auth_pkce_challenge_of_verifier(verifier: transaction.verifier.verifier) {
     Absent =>
       serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the PKCE challenge could not be computed\n")
@@ -2266,6 +2295,7 @@ fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcL
                   transaction: transaction,
                   redirect_encoded: redirect_encoded,
                   challenge: challenge,
+                  prompt: prompt,
                 ) as NonEmptyStr,
               },
             ],
@@ -2274,9 +2304,9 @@ fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcL
   }
 }
 
-fn auth_login_redirect_location(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, redirect_encoded: String, challenge: NonEmptyStr) -> String {
+fn auth_login_redirect_location(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, redirect_encoded: String, challenge: NonEmptyStr, prompt: OidcLoginPrompt?) -> String {
   join(
-    [
+    concat([
       "https://accounts.google.com/o/oauth2/v2/auth?client_id=",
       config.client_id as String,
       "&response_type=code&scope=",
@@ -2290,9 +2320,18 @@ fn auth_login_redirect_location(config: OidcDeploymentConfig, transaction: OidcL
       "&code_challenge=",
       challenge as String,
       "&code_challenge_method=S256",
-    ],
+    ], auth_login_prompt_wire_members(prompt: prompt)),
     "",
   )
+}
+
+// THE PROMPT WIRE MEMBER, the admitted coproduct's own spelling: present only when the login
+// admitted one, so an ordinary login's authorization request is byte-identical to before.
+fn auth_login_prompt_wire_members(prompt: OidcLoginPrompt?) -> List<String> {
+  match prompt {
+    Present { value: OidcLoginPromptSelectAccount } => ["&prompt=select_account"]
+    Absent => []
+  }
 }
 
 // THE SCOPE WIRE SPELLING, derived from the closed login-scope coproduct: the labels are the

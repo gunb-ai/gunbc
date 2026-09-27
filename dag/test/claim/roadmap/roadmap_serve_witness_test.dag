@@ -33,6 +33,7 @@ import gunbc.roadmap_serve {
   serve_comment_recorded_response,
   auth_login_config_refusal, auth_login_redirect_location, auth_callback_state_refusal,
   auth_session_body, auth_logout_response,
+  auth_login_prompt_admit, LoginPromptAdmitted, LoginPromptRefused, OidcLoginPromptSelectAccount,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
@@ -984,16 +985,49 @@ test fn the_login_route_without_config_refuses_naming_the_cause() -> Bool {
 // THE LOGIN REDIRECT IS THE GOOGLE AUTHORIZATION REQUEST, derived entirely from the closed
 // model: the fixture transaction's state and nonce, the PKCE challenge computed the RFC 7636
 // way from the fixture verifier, the config's exact-match redirect URI percent-encoded by the
-// uri authority, and only the ruling's three scopes.
+// uri authority, only the ruling's three scopes, and the prompt member ONLY when the login
+// admitted one — an ordinary login carries no prompt, the account menu's "Switch account"
+// carries prompt=select_account, and an unadmitted prompt spelling refuses before anything
+// else.
 test fn the_login_redirect_location_is_the_google_authorization_request() -> Bool {
   auth_login_redirect_location(
     config: witness_auth_config(),
     transaction: witness_auth_transaction(),
     redirect_encoded: "%68%74%74%70%73%3A%2F%2F%74%72%61%63%6B%65%72%2E%67%75%6E%62%2E%61%69%2F%61%75%74%68%2F%67%6F%6F%67%6C%65%2F%63%61%6C%6C%62%61%63%6B",
     challenge: "xTYRBLTDt1gS3-rw_3FBVafZ0iNg9bZYBbG8fRPvkEs" as NonEmptyStr,
+    prompt: none,
   ) == witness_auth_redirect_expected()
     && string_contains(s: witness_auth_redirect_expected(), pattern: "code_challenge_method=S256")
     && !string_contains(s: witness_auth_redirect_expected(), pattern: "gmail")
+    && !string_contains(s: witness_auth_redirect_expected(), pattern: "prompt")
+    && string_contains(
+      s: auth_login_redirect_location(
+        config: witness_auth_config(),
+        transaction: witness_auth_transaction(),
+        redirect_encoded: "%68%74%74%70%73%3A%2F%2F%74%72%61%63%6B%65%72%2E%67%75%6E%62%2E%61%69%2F%61%75%74%68%2F%67%6F%6F%67%6C%65%2F%63%61%6C%6C%62%61%63%6B",
+        challenge: "xTYRBLTDt1gS3-rw_3FBVafZ0iNg9bZYBbG8fRPvkEs" as NonEmptyStr,
+        prompt: Present { value: OidcLoginPromptSelectAccount },
+      ),
+      pattern: "&prompt=select_account",
+    )
+    && match auth_login_prompt_admit(raw: "") {
+      LoginPromptAdmitted { prompt: p } => match p {
+        Absent => true
+        Present { value: _ } => false
+      }
+      LoginPromptRefused { raw: _ } => false
+    }
+    && match auth_login_prompt_admit(raw: "select_account") {
+      LoginPromptAdmitted { prompt: p } => match p {
+        Present { value: OidcLoginPromptSelectAccount } => true
+        Absent => false
+      }
+      LoginPromptRefused { raw: _ } => false
+    }
+    && match auth_login_prompt_admit(raw: "consent") {
+      LoginPromptRefused { raw: r } => r == "consent"
+      LoginPromptAdmitted { prompt: _ } => false
+    }
 }
 
 // A CALLBACK WITH WRONG STATE REFUSES BEFORE ANYTHING ELSE: the 400 names the state as forged,
