@@ -21,6 +21,7 @@ module std.judgment_contract
 // dependency is the whole point: meaning does not import storage.
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import v2.std.algebra { skip }
 import std.materialization_ladder { DemandNature }
 import std.cache_identity { ArtifactKindId }
 import std.content_hash { ContentHash, Fnv1a64Structural, fnv1a64_structural_hex_digest }
