@@ -168,24 +168,21 @@ jobs:
         id: release_bins_lookup
         run: |
           set -e
-          BODY="$RUNNER_TEMP"'/release-bins-lookup.json'
-          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY" '-o' "$BODY" || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
-          'python3' '-c' 'import os,sys,json
-          d=json.load(open(sys.argv[1]))
-          k=sys.argv[2]
-          refs=sys.argv[3:]
-          c=d["actions_caches"]
-          assert d["total_count"]==len(c), "incomplete answer"
-          m=[e for e in c if e["key"]==k and e["ref"] in refs]
-          o=open(os.environ["GITHUB_OUTPUT"],"a")
-          if m:
-            e=m[0]
-            o.write("standing=present\nentry=id=%s ref=%s created=%s size=%s\n" % (e["id"], e["ref"], e["created_at"], e["size_in_bytes"]))
-            print("release-bins entry: id=%s ref=%s created=%s size=%s" % (e["id"], e["ref"], e["created_at"], e["size_in_bytes"]))
-          else:
-            o.write("standing=absent\n")
-            print("::notice title=release-bins::no admitted entry for this key (never published, or evicted); this dispatch builds")
-          ' "$BODY" "$RELEASE_BINS_KEY" 'refs/heads/main' "$GITHUB_REF" || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          STANDING='absent'
+          ENTRY='none'
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref=''refs/heads/main' '-o' "$RUNNER_TEMP"'/lookup-main.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          TOTAL_main=$('sed' '-n' 's/.*"total_count": *\([0-9][0-9]*\).*/\1/p' "$RUNNER_TEMP"'/lookup-main.json')
+          '[' '-n' "$TOTAL_main" ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          '[' "$TOTAL_main" '-le' '100' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          if 'grep' '-qE' '"key": *"'"$RELEASE_BINS_KEY"'"' "$RUNNER_TEMP"'/lookup-main.json'; then STANDING='present'; ENTRY='ref=''refs/heads/main'' total='"$TOTAL_main"; fi
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref='"$GITHUB_REF" '-o' "$RUNNER_TEMP"'/lookup-dispatch.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          TOTAL_dispatch=$('sed' '-n' 's/.*"total_count": *\([0-9][0-9]*\).*/\1/p' "$RUNNER_TEMP"'/lookup-dispatch.json')
+          '[' '-n' "$TOTAL_dispatch" ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          '[' "$TOTAL_dispatch" '-le' '100' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          if 'grep' '-qE' '"key": *"'"$RELEASE_BINS_KEY"'"' "$RUNNER_TEMP"'/lookup-dispatch.json'; then STANDING='present'; ENTRY='ref='"$GITHUB_REF"' total='"$TOTAL_dispatch"; fi
+          'echo' 'standing='"$STANDING" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'entry='"$ENTRY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'release-bins lookup: standing='"$STANDING"' entry='"$ENTRY"
         env:
           RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
           GH_TOKEN: ${{ github.token }}

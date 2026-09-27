@@ -7,7 +7,7 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_if_else, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
+  bash_build_if, bash_build_if_else, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir, bash_build_with_redir_to_file,
   bash_build_exit,
 }
@@ -601,49 +601,60 @@ fn release_bins_key_statements() -> List<Node> {
 }
 
 // LOOKUP: GitHub's cache API is the authority for whether an exact entry exists under an admitted
-// producer ref. The JSON is read by a python3 program whose only output is the standing and entry
-// lines; every failure to get a complete answer refuses, and only an answered empty set is absence.
-fn release_bins_lookup_reader_program() -> String {
-  join([
-    "import os,sys,json\n",
-    "d=json.load(open(sys.argv[1]))\n",
-    "k=sys.argv[2]\n",
-    "refs=sys.argv[3:]\n",
-    "c=d[\"actions_caches\"]\n",
-    "assert d[\"total_count\"]==len(c), \"incomplete answer\"\n",
-    "m=[e for e in c if e[\"key\"]==k and e[\"ref\"] in refs]\n",
-    "o=open(os.environ[\"GITHUB_OUTPUT\"],\"a\")\n",
-    "if m:\n",
-    "  e=m[0]\n",
-    "  o.write(\"standing=", release_bins_standing_wire(standing: LookupEntryPresent), "\\nentry=id=%s ref=%s created=%s size=%s\\n\" % (e[\"id\"], e[\"ref\"], e[\"created_at\"], e[\"size_in_bytes\"]))\n",
-    "  print(\"release-bins entry: id=%s ref=%s created=%s size=%s\" % (e[\"id\"], e[\"ref\"], e[\"created_at\"], e[\"size_in_bytes\"]))\n",
-    "else:\n",
-    "  o.write(\"standing=", release_bins_standing_wire(standing: LookupEntryAbsent), "\\n\")\n",
-    "  print(\"::notice title=release-bins::no admitted entry for this key (never published, or evicted); this dispatch builds\")\n",
-  ], "")
-}
+// producer ref. There is no reader program: the API filters by ref exactly (`ref=`), one request per
+// admitted ref writes its answer to a file, the answer's total_count is read back and must be a
+// number no larger than the page (a larger or unreadable answer is incomplete, never absence), and
+// presence is an exact match on the quoted key -- the closing quote is what makes the API's PREFIX
+// key filter an equality. Only an answered set with no exact key is absence.
+data release_bins_lookup_page_size: String = "100"
 
-fn release_bins_lookup_statements() -> List<Node> {
+fn lookup_ref_statements(ref_word: Node, tag: String) -> List<Node> {
   [
-    bash_build_assign(name: "BODY", value: temp(file: "release-bins-lookup.json")),
     or_refuse(
       check: cmd(ws: [
         lit(t: "curl"), lit(t: "-sSf"),
         lit(t: "-H"), words(ws: [lit(t: "Authorization: Bearer "), var(n: "GH_TOKEN")]),
         lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"),
-        words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/caches?per_page=100&key="), var(n: "RELEASE_BINS_KEY")]),
-        lit(t: "-o"), var(n: "BODY"),
+        words(ws: [
+          var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+          lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&key="], "")), var(n: "RELEASE_BINS_KEY"),
+          lit(t: "&ref="), ref_word,
+        ]),
+        lit(t: "-o"), temp(file: join(["lookup-", tag, ".json"], "")),
       ]),
       r: LookupTransportFailed,
     ),
-    or_refuse(
-      check: cmd(ws: [
-        lit(t: "python3"), lit(t: "-c"), lit(t: release_bins_lookup_reader_program()),
-        var(n: "BODY"), var(n: "RELEASE_BINS_KEY"), lit(t: release_bins_admitted_producer_ref), var(n: "GITHUB_REF"),
+    read_back(name: join(["TOTAL_", tag], ""), file: join(["lookup-", tag, ".json"], ""), reader: ["sed", "-n", "s/.*\"total_count\": *\\([0-9][0-9]*\\).*/\\1/p"]),
+    or_refuse(check: test_words(ws: [lit(t: "-n"), var(n: join(["TOTAL_", tag], ""))]), r: LookupAnswerUnusable),
+    or_refuse(check: test_words(ws: [var(n: join(["TOTAL_", tag], "")), lit(t: "-le"), lit(t: release_bins_lookup_page_size)]), r: LookupAnswerUnusable),
+    bash_build_if(
+      cond: cmd(ws: [
+        lit(t: "grep"), lit(t: "-qE"),
+        words(ws: [lit(t: "\"key\": *\""), var(n: "RELEASE_BINS_KEY"), lit(t: "\"")]),
+        temp(file: join(["lookup-", tag, ".json"], "")),
       ]),
-      r: LookupAnswerUnusable,
+      body: bash_build_stmt_list_from_nodes(stmts: [
+        bash_build_assign(name: "STANDING", value: lit(t: release_bins_standing_wire(standing: LookupEntryPresent))),
+        bash_build_assign(name: "ENTRY", value: words(ws: [lit(t: "ref="), ref_word, lit(t: " total="), var(n: join(["TOTAL_", tag], ""))])),
+      ]),
     ),
   ]
+}
+
+fn release_bins_lookup_statements() -> List<Node> {
+  seq(parts: [
+    [
+      bash_build_assign(name: "STANDING", value: lit(t: release_bins_standing_wire(standing: LookupEntryAbsent))),
+      bash_build_assign(name: "ENTRY", value: lit(t: "none")),
+    ],
+    lookup_ref_statements(ref_word: lit(t: release_bins_admitted_producer_ref), tag: "main"),
+    lookup_ref_statements(ref_word: var(n: "GITHUB_REF"), tag: "dispatch"),
+    [
+      append_line(file_var: "GITHUB_OUTPUT", line: words(ws: [lit(t: "standing="), var(n: "STANDING")])),
+      append_line(file_var: "GITHUB_OUTPUT", line: words(ws: [lit(t: "entry="), var(n: "ENTRY")])),
+      cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins lookup: standing="), var(n: "STANDING"), lit(t: " entry="), var(n: "ENTRY")])]),
+    ],
+  ])
 }
 
 // OUTCOME: join the lookup's standing with the transport's exactness, verify a reuse candidate
