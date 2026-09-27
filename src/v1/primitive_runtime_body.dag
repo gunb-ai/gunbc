@@ -1,4 +1,4 @@
-module gunbc.primitive_runtime_body
+module v1.compiler.primitive_runtime_body
 
 import std.primitive_identity {
   PrimitiveRuntimeBodyCensus, PrimitiveRuntimeBodyCheck,

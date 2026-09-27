@@ -1641,7 +1641,7 @@ fn run_required_primitive_runtime_body() -> bool {
     }
     command.args([
         "--entry",
-        "dag/gunbc/primitive_runtime_body.dag",
+        "src/v1/primitive_runtime_body.dag",
         "--function",
         "check",
     ]);

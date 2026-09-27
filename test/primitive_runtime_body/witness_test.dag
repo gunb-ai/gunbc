@@ -1,6 +1,6 @@
 module test.primitive_runtime_body.witness_test
 
-import gunbc.primitive_runtime_body { rust_primitive_runtime_body_census, rust_primitive_runtime_body_check }
+import v1.compiler.primitive_runtime_body { rust_primitive_runtime_body_census, rust_primitive_runtime_body_check }
 import std.primitive_identity {
   PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing,
   primitive_runtime_body_check_in,

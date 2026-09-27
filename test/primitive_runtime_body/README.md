@@ -13,7 +13,9 @@ in an isolated child of the required dispatcher, using its already-built sibling
 caches rather than retaining another corpus pool in the floor process. It does not widen the ordinary floor subject,
 whose exclusion of src/v1 protects it from the documented name collisions.
 
-The phase calls `gunbc.primitive_runtime_body.check`. That door reads the current
+The producer integration lives under `src/v1`, outside the ordinary floor roots;
+its reusable census and mutation predicate remain under `dag`. The phase calls
+`v1.compiler.primitive_runtime_body.check`. That door reads the current
 `rt_function_registry` and `rust_runtime_source()` declarations, derives body rows
 through the shared Rust item scanner, and joins **bridge_name**, not operation
 spelling. No copied registry, body-name list, or population-count oracle exists.
@@ -34,7 +36,7 @@ memory bound:
 
 ```sh
 gunbc run --source-root dag --source-root src/v2 --source-root src/v1 \
-  --entry dag/gunbc/primitive_runtime_body.dag --function check
+  --entry src/v1/primitive_runtime_body.dag --function check
 ```
 
 Required-regen is complementary. Its host `compare_generated_surfaces` compares
