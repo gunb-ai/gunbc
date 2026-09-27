@@ -1,10 +1,7 @@
 module v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers
 
-import v2.compiler.infer {
-  infer,
-  inferred_facts_grounding_derived,
-  inferred_facts_witness_for_node
-}
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.compiler.infer { inferred_facts_grounding_derived, inferred_facts_witness_for_node }
 import v2.compiler.resolve { resolve }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_record_declarations}
@@ -83,7 +80,7 @@ fn infer_transform_add_vertical_discriminating_holds() -> Bool {
       match infer_transform_witness_add_body(arrow: arrow) {
         Absent => false
         Present { value: body } =>
-          match infer(tree: arrow) {
+          match infer_and_discharge(tree: arrow) {
             Accepted { value: tree, diagnostics: _ } =>
               match inferred_facts_witness_for_node(tree: tree, node: body) {
                 Holds { value: body_facts } =>

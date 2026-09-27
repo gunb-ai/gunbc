@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.missing_precondition_reported_as_a_pass
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data missing_precondition_reported_as_a_pass: RecurringFailureMode = RecurringFailureMode {
+  identity: "missing_precondition_reported_as_a_pass" as NonEmptyStr,
+
+  receipts: [
+    "**a test whose precondition is missing returns early and the harness reports it as a pass** (INVALID STATE: a claim that measured nothing is counted among the claims that held. A test harness with outcomes pass, fail and ignored has no fourth outcome for `not measured`, so an early `return` from a test body IS the pass arm, whatever the comment beside it says. The harm is the same as any vacuous green: the claim is cited as coverage on exactly the hosts where it never ran, and the precondition's absence -- the one fact worth reporting -- never ranks for fixing.)",
+
+    "SPECIMEN, 2026-09-26, `v1_compiler` `cli_run::required_regen_host` `regen_emission_scope_tests`: the tree-digest walls in the scope-repair control read `match ResolvedFormatter::admit() { Ok(f) => f, Err(_) => return }` under a comment saying the half is `unobservable and says so rather than passing vacuously` -- the comment asserted the opposite of what the arm did. It now panics `NOT MEASURED`. Its neighbour, fourteen live-corpus claims in the same file, did NOT have this defect: on a host with no readable memory bound they go red with `HostBudgetUnreadable` from inside resolution, which is loud and correct; the change there only states the precondition at the claim boundary (`require_measurable_host_budget`), and it too panics rather than returning.",
+
+    "DISTINGUISHING FACTS: the precondition is a HOST fact the claim does not own (a formatter binary, a cgroup bound, a network, a credential), and the test body decides locally what to do when it is absent. Compare [[absent_reads_identically_to_never_looked]], where an instrument's miss reads as a finding, and [[predicate_vacuously_true_on_an_empty_domain]], where the vacuity is in the predicate rather than in the harness outcome. The honest arms are two: red with a located `not measured` diagnostic, or a static `#[ignore = reason]` that the harness reports as ignored -- and the second removes the claim from hosts where it DOES measure, so it is the weaker choice whenever the precondition holds somewhere the suite runs.",
+
+    "RUNG FOUND AT: 1 (review diligence). CEILING: 2 -- a lens over test bodies can flag a bare `return` in an arm that matches an Err or None from a host-facing admission, which is decidable syntax; the class cannot reach 3 while a test body is hand-authored host Rust. NEXT TRIGGER: that lens, enrolled where the Rust test targets are compiled (the `rust_clippy_all_targets_step` lane), since `cargo test` itself runs on no CI step (`gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`).",
+  ],
+
+  evidence: [],
+}

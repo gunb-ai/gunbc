@@ -296,6 +296,17 @@ fn is_positional(e: Edge) -> Bool {
   }
 }
 
+// A NODE'S SLOTS ARE ITS POSITIONAL EDGES, in the order the producer wrote them; its Named edges are
+// the markers beside them. Readers that index a Bind's binder, value and body take the slots from
+// here, so one fact decides what a slot is.
+fn positional_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { is_positional(e: e) })
+}
+
+fn named_edges(children: List<Edge>) -> List<Edge> {
+  filter(children, fn(e) { !is_positional(e: e) })
+}
+
 fn all_edges_named(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     acc && is_named(e: e)
@@ -832,7 +843,8 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
         && (positional_child_count(children: children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
-    Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
+    Bind =>
+      edges_conform(children: children, d: PositionalPrefixThenLabeledEdges) && (positional_child_count(children: children) == 3)
     Match =>
       edges_conform(children: children, d: PositionalEdges)
         && (positional_child_count(children: children) >= 2)
@@ -872,7 +884,7 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
     Transform => PositionalPrefixThenLabeledEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
-    Bind => PositionalEdges
+    Bind => PositionalPrefixThenLabeledEdges
     Match => PositionalEdges
   }
 }
@@ -956,13 +968,14 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
   )
 }
 
-// A TRANSFORM'S CANONICAL ORDER: its positional children in order, then its named edges sorted by
-// label. The named edges are either one v2.std.type_binder marker (a cast's target) or an
-// application's named actuals (positional_prefix_then_labeled_conform states the shape;
-// v2.std.type_binder type_binder_labels_conform states which labels, and forbids mixing the two).
+// A TRANSFORM'S OR BIND'S CANONICAL ORDER: its positional children in order, then its named edges
+// sorted by label. A Transform's named edges are either one v2.std.type_binder marker (a cast's
+// target) or an application's named actuals; a Bind's is at most its let annotation
+// (positional_prefix_then_labeled_conform states the shape; v2.std.type_binder
+// type_binder_labels_conform states which labels, and forbids a Transform mixing marker and actuals).
 // Positional order is identity-bearing, so it is kept; named edges bind by label, so where a producer
 // placed them cannot move the content hash: f(a: 1, b: 2) and f(b: 2, a: 1) are one node, and
-// f(1, 2) and f(2, 1) stay two. A Bind stays PositionalEdges until the let-annotation carrier lands.
+// f(1, 2) and f(2, 1) stay two.
 //
 // EVALUATION ORDER IS NEVER READ FROM A CANONICALIZED NODE. Actuals are evaluated in the stored
 // node's authored order (v2.compiler.eval eval_edge_is_runtime_argument); this ordering exists for

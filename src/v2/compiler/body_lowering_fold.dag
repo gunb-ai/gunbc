@@ -37,6 +37,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
   dag_surface_kw_then_ident_from_captured,
+  parse_qualified_name_segment_atoms_from_capture,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
@@ -53,7 +54,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering { declared_signature, lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_bind_annotated, lower_loop, lower_match, lower_unary_prefix }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -77,7 +78,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -1773,21 +1774,33 @@ fn body_lower_param_edges(sequence_capture: Node) -> List<Edge> {
 }
 
 fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
+  match body_lower_param_binding_atom_optional(node: node) {
+    Present { value: atom } => node_atom_identity_optional(node: atom)
+    Absent => optional_absent()
+  }
+}
+
+// The same read, answered as the atom that carries the name: lowered from the token it was read
+// from (v2.std.node node_lowered_from), so a caller that places the name in the tree keeps its
+// minted occurrence. The name-only reader above is this one's projection, not a second reader.
+fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
   match dag_binding_branded_atom_identity(node: node) {
-    Present { value: binding } => Present { value: binding }
+    Present { value: binding } =>
+      optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: binding } }, children: [], source: node))
     Absent =>
       match node_atom_identity_optional(node: node) {
         Present { value: sym } =>
           if dag_lex_token_symbol(sym: sym) {
             optional_absent()
           } else {
-            optional_present(value: sym)
+            optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
           }
         Absent =>
           match body_lower_operand_ref_optional(node: node) {
             Present { value: ref_node } =>
               match node_atom_identity_optional(node: ref_node) {
-                Present { value: sym } => optional_present(value: sym)
+                Present { value: sym } =>
+                  optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: ref_node))
                 Absent => optional_absent()
               }
             Absent => optional_absent()
@@ -3201,20 +3214,15 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                   o: body_lower_wrapper_retained_shell(shell: shell)
                                 )
                                 Present { value: data_name } =>
+                                  let signature = declared_signature(params: [], source: type_expr)
                                   let arrow = node_lowered_from(
                                     source: shell,
                                     kind: TypeNode { connective: Arrow },
                                     children: [
-                                      Edge {
-                                        label: Positional,
-                                        target: node_lowered_from(
-                                          kind: TypeNode { connective: Conj },
-                                          children: [],
-                                          source: type_expr
-                                        )
-                                      },
+                                      signature.domain,
                                       Edge { label: Positional, target: declared_type },
                                       Edge { label: Positional, target: declared_type },
+                                      signature.order,
                                       Edge {
                                         label: Named { name: ^arrow_body_edge },
                                         target: reified_body
@@ -3472,17 +3480,6 @@ fn body_lower_transform_call(operator: Node, args: List<Edge>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: list_append(left: [Edge { label: Positional, target: operator }], right: args)
-  )
-}
-
-fn body_lower_positional_edges(args: List<Node>) -> List<Edge> {
-  fold(args, init: Empty, f: fn(acc, arg) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: arg }) })
-}
-
-fn body_lower_method_operator_atom(sym: Symbol) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
   )
 }
 
@@ -4051,7 +4048,16 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<Li
   }
 }
 
-fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
+// The step's method or field name alone, for a reader that needs only the spelling (the
+// complexity lens). A projection of the step reader below, not a second reader of the step.
+fn body_lower_postfix_projection_step_name(repeat_elem: Node) -> Optional<Symbol> {
+  match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
+    Present { value: atom } => node_atom_identity_optional(node: atom)
+    Absent => optional_absent()
+  }
+}
+
+fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => Absent
@@ -4062,7 +4068,7 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
             match sugar_sequence_pair_optional(node: pair.right) {
               Absent => Absent
               Present { value: after_dot } =>
-                match body_lower_param_binding_optional(node: after_dot.left) {
+                match body_lower_param_binding_atom_optional(node: after_dot.left) {
                   Present { value: method } => optional_present(value: method)
                   Absent => Absent
                 }
@@ -4120,13 +4126,13 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
 // idiom the existing arms still erase (the receipt is on the class row; see DottedChainTailRead).
 // A brace suffix (`a.b.C { f: v }`) and an `as` suffix answer Absent and the existing arms run
 // unchanged for them.
-fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
+fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
       if dag_lex_token_symbol(sym: sym) {
         optional_absent()
       } else {
-        optional_present(value: sym)
+        optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
       }
     Absent =>
       match parse_production_emitted_identity_optional(node: node) {
@@ -4137,11 +4143,11 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
                 match sugar_sequence_pair_optional(node: captured) {
                   Present { value: pair } =>
                     if is_empty_conj_root(n: body_lower_postfix_optional_unwrap(node: pair.right)) {
-                      body_lower_dotted_head_symbol_optional(node: pair.left)
+                      body_lower_dotted_head_atom_optional(node: pair.left)
                     } else {
                       optional_absent()
                     }
-                  Absent => body_lower_dotted_head_symbol_optional(node: captured)
+                  Absent => body_lower_dotted_head_atom_optional(node: captured)
                 }
               Absent => optional_absent()
             }
@@ -4181,7 +4187,7 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
 // expression; the fold lowers it, and a type expression the lowering cannot read refuses
 // body_lowering_reason_type_annotation_not_carried located at it, never dropped.
 type PostfixStep
-  = PostfixProjection { segment: Symbol, call_elem: Optional<Node> }
+  = PostfixProjection { segment: Node, call_elem: Optional<Node> }
   | PostfixCast { target: Node }
 
 // THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
@@ -4200,7 +4206,7 @@ type PostfixStep
 // call. A reader then MATCHES the arm, rather than a Bool predicate over each step's Optional
 // re-deriving afterwards what the read had in hand.
 type PostfixChainRead
-  = PostfixChainBare { segments: List<Symbol> }
+  = PostfixChainBare { segments: List<Node> }
   | PostfixChainFound { steps: List<PostfixStep> }
   | PostfixChainNotThisShape
   | PostfixChainSuffixCarried { at: Node }
@@ -4239,16 +4245,16 @@ fn body_lower_postfix_chain_steps_grow(
 
 // The read's accumulator: every step so far bare (the segments alone), or a call seen (the steps).
 type PostfixChainAcc
-  = PostfixChainAccBare { segments: List<Symbol> }
+  = PostfixChainAccBare { segments: List<Node> }
   | PostfixChainAccCalled { steps: List<PostfixStep> }
 
-fn body_lower_postfix_bare_steps(segments: List<Symbol>) -> List<PostfixStep> {
+fn body_lower_postfix_bare_steps(segments: List<Node>) -> List<PostfixStep> {
   fold(segments, init: Empty, f: fn(acc, segment) {
     list_snoc_item(xs: acc, item: PostfixProjection { segment: segment, call_elem: optional_absent() })
   })
 }
 
-fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Symbol) -> PostfixChainAcc {
+fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Node) -> PostfixChainAcc {
   match acc {
     PostfixChainAccBare { segments: segments } =>
       PostfixChainAccBare { segments: list_snoc_item(xs: segments, item: segment) }
@@ -4261,7 +4267,7 @@ fn body_lower_postfix_chain_acc_bare_step(acc: PostfixChainAcc, segment: Symbol)
 
 fn body_lower_postfix_chain_acc_call_step(
   acc: PostfixChainAcc,
-  segment: Symbol,
+  segment: Node,
   call_elem: Node
 ) -> PostfixChainAcc {
   let step = PostfixProjection { segment: segment, call_elem: optional_present(value: call_elem) }
@@ -4339,8 +4345,8 @@ fn body_lower_postfix_chain_steps_read(
   }
 }
 
-fn body_lower_qualified_name_spine_node(segments: List<Symbol>, source: Node) -> Node {
-  qualified_name_spine_node(qn: segments, occurrence_id: source.occurrence_id)
+fn body_lower_qualified_name_spine_node(segments: List<Node>, source: Node) -> Node {
+  qualified_name_spine_of_atoms(atoms: segments, occurrence_id: source.occurrence_id)
 }
 
 fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
@@ -4387,7 +4393,7 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
     PostfixChainSuffixCarried { at: _ } => optional_absent()
     PostfixChainFound { steps: _ } => optional_absent()
     PostfixChainBare { segments: segments } =>
-      match body_lower_dotted_head_symbol_optional(
+      match body_lower_dotted_head_atom_optional(
         node: body_lower_postfix_chain_head_or_self(node: node)
       ) {
         Absent => optional_absent()
@@ -4422,11 +4428,12 @@ fn body_lower_postfix_chain_head_or_self(node: Node) -> Node {
 // (v2.std.node_query field_projection_node).
 //
 // WHY A PROJECTION OFF A VALUE CANNOT BE A SPINE CASE, which is the cheaper repair a reader will
-// reach for: v2.std.qualified_name QualifiedName is FreeMonoid<Symbol>. It has no slot for a Node,
-// so a computed root is not representable in it at all. This is a separate construct by the
-// structure of the carrier, not by preference.
+// reach for: a spine is a path of NAME segments (v2.std.qualified_name QualifiedName is
+// FreeMonoid<Symbol>; the spine carries each segment as the atom lowered from its token), and a
+// computed root is not a name at all. This is a separate construct by the structure of the
+// carrier, not by preference.
 type PostfixAccum
-  = PostfixAccumSpine { segments: List<Symbol> }
+  = PostfixAccumSpine { segments: List<Node> }
   | PostfixAccumValue { node: Node }
 
 fn body_lower_postfix_accum_node(acc: PostfixAccum, source: Node) -> Node {
@@ -4502,7 +4509,7 @@ fn body_lower_postfix_chain_fold_step(
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
                       node: body_lower_transform_call(
-                        operator: body_lower_method_operator_atom(sym: step_segment),
+                        operator: step_segment,
                         args: list_append(left: [Edge { label: Positional, target: receiver }], right: args)
                       )
                     },
@@ -4570,7 +4577,7 @@ fn body_lower_postfix_chain_lowered_from_steps(
   steps: List<PostfixStep>
 ) -> Outcome<Optional<Node>> {
   let head_node = body_lower_postfix_chain_head_or_self(node: node)
-  match body_lower_postfix_chain_head_symbol_for_steps(head_node: head_node, steps: steps) {
+  match body_lower_postfix_chain_head_atom_for_steps(head_node: head_node, steps: steps) {
     Present { value: head } =>
       body_lower_postfix_chain_fold_from(
         steps: steps,
@@ -4617,14 +4624,14 @@ fn body_lower_postfix_cast_chain_computed_head(
 
 // A bare head starts a SPINE only when a projection follows it (`a.b`); a head cast directly
 // (`x as T`) is an operand, read by the operand reader like any other value.
-fn body_lower_postfix_chain_head_symbol_for_steps(head_node: Node, steps: List<PostfixStep>) -> Optional<Symbol> {
+fn body_lower_postfix_chain_head_atom_for_steps(head_node: Node, steps: List<PostfixStep>) -> Optional<Node> {
   match steps {
     Cons { head: first, tail: _ } =>
       match first {
         PostfixCast { target: _ } => optional_absent()
-        PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_symbol_optional(node: head_node)
+        PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_atom_optional(node: head_node)
       }
-    Empty => body_lower_dotted_head_symbol_optional(node: head_node)
+    Empty => body_lower_dotted_head_atom_optional(node: head_node)
   }
 }
 
@@ -4668,7 +4675,7 @@ fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node 
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: body_lower_method_operator_atom(sym: ^dag_token_kw_as) },
+      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_as } }, children: []) },
       Edge { label: Positional, target: operand },
       cast_target_edge(target_type: target_type)
     ]
@@ -4696,7 +4703,7 @@ fn body_lower_postfix_chain_fold_from(
 // lowers to the same spine. A single segment keeps the atom path above it, which is where the
 // Int / Bool canonical bindings are applied.
 fn body_lower_qualified_name_production_spine_optional(node: Node, captured: Node) -> Optional<Node> {
-  match parse_qualified_name_segments_from_capture(qn_capture: captured, root: node) {
+  match parse_qualified_name_segment_atoms_from_capture(qn_capture: captured, root: node) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: segments, diagnostics: _ } =>
       if length(xs: segments) > 1 {
@@ -6074,13 +6081,13 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
 // only the diagnostic does. A coproduct whose sole consumer immediately
 // collapses it would be a second representation of a fact the reason symbol
 // already carries.
-// A LET ANNOTATION BODY LOWERING CANNOT CARRY REFUSES; IT IS NEVER DROPPED. `let y: T = e` lowers
-// to Bind[binder, value, body], which has no position for `T`, so dropping the annotation made it
-// invisible to v2.compiler.resolve and `let y: Q = x` was Accepted with `Q` declared nowhere
-// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). It refuses
-// body_lowering_reason_type_annotation_not_carried, located at the annotation, until a Bind
-// annotation carrier exists. A fn literal's return annotation is that row's other route; it refuses
-// the same way in body_lower_bound_value until gunbc#12210 lowers function values to Arrows.
+// AN ANNOTATION BODY LOWERING CANNOT CARRY REFUSES; IT IS NEVER DROPPED. Dropping one made it
+// invisible to v2.compiler.resolve, so `let y: Q = x` was Accepted with `Q` declared nowhere
+// (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). A statement
+// let's annotation is now CARRIED on its Bind (v2.std.type_binder <type-annotation>, see
+// body_lower_let_annotation_lowered); a type expression the lowering cannot read still refuses
+// here, located at it. A fn literal's return annotation is that row's other route; it refuses the
+// same way in body_lower_bound_value until gunbc#12210 lowers function values to Arrows.
 fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: at)
@@ -6113,6 +6120,31 @@ fn body_lower_let_annotation_optional(captured: Node) -> Optional<Node> {
               }
           }
       }
+  }
+}
+
+// A STATEMENT LET'S ANNOTATION, LOWERED AS A TYPE EXPRESSION -- the reader the cast target uses
+// (body_lower_type_expr_lowered_optional). Absent when the let is unannotated; a written annotation
+// the lowering cannot read refuses located at it, so an annotation is carried or refused, never lost.
+fn body_lower_let_annotation_lowered(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_let_annotation_optional(captured: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: annotation } =>
+      match body_lower_type_expr_lowered_optional(node: annotation) {
+        Absent =>
+          outcome_rejected(
+            d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: annotation)
+          )
+        Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+      }
+  }
+}
+
+fn body_lower_let_bind(key_binding: Node, value: Node, body_binding: Node, annotation: Optional<Node>) -> Node {
+  match annotation {
+    Absent => lower_bind(key_binding: key_binding, value: value, body_binding: body_binding)
+    Present { value: t } =>
+      lower_bind_annotated(key_binding: key_binding, value: value, body_binding: body_binding, annotation: t)
   }
 }
 
@@ -6343,9 +6375,6 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                         )
                       )
                     Present { value: key } =>
-                      match body_lower_let_annotation_optional(captured: let_captured) {
-                      Present { value: annotation } => body_lower_type_annotation_not_carried(at: annotation)
-                      Absent =>
                       match body_lower_let_statement_value_optional(captured: let_captured) {
                         Absent =>
                           outcome_rejected(
@@ -6356,23 +6385,28 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
                           )
                         Present { value: value_capture } =>
                           bind_outcome(
-                            o: body_lower_bound_value(node: value_capture),
-                            f: fn(value) {
+                            o: body_lower_let_annotation_lowered(captured: let_captured),
+                            f: fn(annotation) {
                               bind_outcome(
-                                o: body_lower_stmt_spine(spine: rest),
-                                f: fn(body) {
-                                  outcome_accepted(
-                                    value: lower_bind(
-                                      key_binding: body_lower_type_atom_node(sym: key, source: let_captured),
-                                      value: value,
-                                      body_binding: body
-                                    )
+                                o: body_lower_bound_value(node: value_capture),
+                                f: fn(value) {
+                                  bind_outcome(
+                                    o: body_lower_stmt_spine(spine: rest),
+                                    f: fn(body) {
+                                      outcome_accepted(
+                                        value: body_lower_let_bind(
+                                          key_binding: body_lower_type_atom_node(sym: key, source: let_captured),
+                                          value: value,
+                                          body_binding: body,
+                                          annotation: annotation
+                                        )
+                                      )
+                                    }
                                   )
                                 }
                               )
                             }
                           )
-                      }
                       }
                   }
               }

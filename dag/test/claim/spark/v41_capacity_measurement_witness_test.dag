@@ -6,7 +6,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count, token_count, millisecond, microsecond, microsecond_count,
-  milli_tokens_per_second, concurrent_request_hundredths, basis_point,
+  milli_tokens_per_second, concurrent_request_hundredths, basis_point, basis_point_count, token_count_value,
 }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import v2.std.optional { Present, Absent }
@@ -21,6 +21,7 @@ import extdeps.linux.diskstats { parse_diskstats, DiskstatsDeviceRead, Diskstats
 import extdeps.linux.mincore { MincoreFileResidency, MincoreResidencyAdmitted, MincoreResidencyRefused, mincore_file_residency }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryStat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete, parse_cgroup_memory_stat }
 import gunbc.floor_memory_demand { CgroupMemoryEvents }
+import extdeps.vllm.engine_args { PrefixCachingExplicit, PrefixCachingOmitted }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest, v41_oci_image_digest }
 import gunbc.spark.serving_load_probe { ClientBenchLatency, ClientBenchLatencyReported, ForeignTrafficNotObserved, DrainObservedIdle }
 import gunbc.spark.v41_capacity_measurement {
@@ -38,7 +39,7 @@ import gunbc.spark.v41_capacity_measurement {
   v41_kv_admission_capacity, v41_engram_resident_capacity, v41_sla_capacity, v41_capacity_report,
   V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
   MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
-  v41_capacity_measurement_plan_text, v41_measurement_ranks,
+  v41_capacity_measurement_plan_text, v41_measurement_ranks, v41_measurement_launch_shape,
   v41_engram_resident_bets, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable,
 }
 
@@ -482,4 +483,13 @@ test fn an_engram_bet_is_paired_with_the_after_requests_residency_in_bytes() -> 
       observed && unreadable
     }
   }
+}
+
+// THE LAUNCH SHAPE IS THE PLAN'S: max_num_seqs is the largest staircase concurrency, max_model_len the
+// plan's context, and the two measurement axes are the declared values.
+test fn the_launch_shape_derives_from_the_plan() -> Bool {
+  let l = v41_measurement_launch_shape()
+  l.max_num_seqs == 16 && token_count_value(t: l.max_model_len) == 262144
+    && token_count_value(t: l.max_num_batched_tokens) == 8192 && basis_point_count(bp: l.gpu_memory_utilization) == 8000
+    && match l.prefix_caching { PrefixCachingExplicit { enabled: e } => !e  PrefixCachingOmitted => false }
 }

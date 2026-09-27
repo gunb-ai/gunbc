@@ -11,9 +11,7 @@ import gunbc.auth.github_gcp_federation {
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
-import gunbc.repository { gunbc_repository, gunbc_repository_numeric_identity }
-import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
-import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_job_claim_pins, fleet_converge_workflow_ref_at_main }
 
 // ── THE MT. COLLINS BOOT'S OWN FEDERATION (operator ruling 2026-09-23) ─────────────────────────
 //
@@ -63,48 +61,21 @@ data mtcollins1_boot_service_account_display_name: NonEmptyStr = "Mt. Collins bo
 
 data mtcollins1_boot_environment: NonEmptyStr = "mtcollins1-boot"
 
-data mtcollins1_boot_wif_event_name: String = "workflow_dispatch"
-
 fn mtcollins1_boot_workflow_ref() -> String {
-  join([
-    gunbc_repository.full_name as String, "/",
-    artifact_path(a: FleetConvergeYamlArtifact),
-    "@refs/heads/", gunbc_default_branch_name
-  ], "")
+  fleet_converge_workflow_ref_at_main()
 }
 
-// ── ONE LIST OF PINS, TWO PROJECTIONS ───────────────────────────────────────────────────────────
-// The CEL condition GCP stores and the admission this corpus evaluates are both folds over this one
-// list, so the witness that refuses another workflow or ref is refusing on the condition that is
-// provisioned, not on a second description of it.
-type OidcClaimPin {
-  claim: NonEmptyStr
-  value: String
-}
-
+// The pin list and both of its projections are gunbc.auth.oidc_claim_pins's.
 fn mtcollins1_boot_claim_pins() -> List<OidcClaimPin> {
-  [
-    OidcClaimPin { claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id) },
-    OidcClaimPin { claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id) },
-    OidcClaimPin { claim: "workflow_ref", value: mtcollins1_boot_workflow_ref() },
-    OidcClaimPin { claim: "ref", value: concat("refs/heads/", gunbc_default_branch_name) },
-    OidcClaimPin { claim: "event_name", value: mtcollins1_boot_wif_event_name },
-    OidcClaimPin { claim: "environment", value: mtcollins1_boot_environment as String },
-  ]
+  fleet_converge_job_claim_pins(environment: mtcollins1_boot_environment)
 }
 
 fn mtcollins1_boot_wif_attribute_condition() -> String {
-  join(map(mtcollins1_boot_claim_pins(), p => join(["assertion.", p.claim as String, " == '", p.value, "'"], "")), " && ")
-}
-
-// A presented token's claims, as the provider sees them. An absent claim is simply not in the list,
-// which is how a job with no environment presents.
-fn claim_value_is(claims: List<OidcClaimPin>, pin: OidcClaimPin) -> Bool {
-  filter(claims, c => (c.claim as String) == (pin.claim as String) && c.value == pin.value).length() > 0
+  claim_pins_attribute_condition(pins: mtcollins1_boot_claim_pins())
 }
 
 fn mtcollins1_boot_claims_admitted(claims: List<OidcClaimPin>) -> Bool {
-  filter(mtcollins1_boot_claim_pins(), p => !claim_value_is(claims: claims, pin: p)).length() == 0
+  claim_pins_admit(pins: mtcollins1_boot_claim_pins(), claims: claims)
 }
 
 data mtcollins1_boot_wif_attribute_mapping: Map<String, String> = {
@@ -152,17 +123,30 @@ fn mtcollins1_boot_service_account_member() -> String {
 // it existed in this run only to sign the approval filing, which the ruling removed. Each cell is
 // conditioned on its one version resource, so a rotation to a new version is refused until the pin
 // and the cell move together.
-fn pinned_version_accessor_grant(target: SecretRef) -> SecretAccessGrant {
+// THE LABELS ARE PARAMETERS because a second dedicated job (gunbc.auth.gcp_iam_converge) pins its own
+// version the same way; the title prefix and description are the job's, the condition construction
+// is one. They are parameters rather than derived from one job name because the boot's cells are
+// PROVISIONED with the strings below, and a condition whose description changed is a different cell
+// to reconcile_gcp_policy -- re-deriving them would add a duplicate binding on the next converge.
+fn pinned_version_accessor_grant_for(title_prefix: String, description: String, target: SecretRef) -> SecretAccessGrant {
   let resource = gcp_version_resource_by_number(project_number: fleet_secrets_project_number, secret: target.secret, version: target.version)
   SecretAccessGrant {
     target: target,
     role: role_secretmanager_secret_accessor,
     condition: Present { value: IamCondition {
-      title: join(["mtcollins1-boot pinned ", target.secret as String, " v", target.version as String], ""),
+      title: join([title_prefix, " pinned ", target.secret as String, " v", target.version as String], ""),
       expression: join(["resource.name == \"", resource, "\""], ""),
-      description: Present { value: "gunbc.auth.mtcollins1_boot_federation: the one version the mtcollins1 boot job reads" },
+      description: Present { value: description },
     } },
   }
+}
+
+fn pinned_version_accessor_grant(target: SecretRef) -> SecretAccessGrant {
+  pinned_version_accessor_grant_for(
+    title_prefix: "mtcollins1-boot",
+    description: "gunbc.auth.mtcollins1_boot_federation: the one version the mtcollins1 boot job reads",
+    target: target,
+  )
 }
 
 fn mtcollins1_boot_secret_grants() -> List<SecretAccessGrant> {
