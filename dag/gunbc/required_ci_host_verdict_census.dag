@@ -132,6 +132,15 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
     }
   },
   {
+    phase: "primitive-runtime-body",
+    lane: WitnessesLane,
+    host_site: "claim_executor run_required_primitive_runtime_body",
+    relation: RealizesCarrier {
+      carrier: decl_ref(module_path: "gunbc.primitive_runtime_body", decl_name: "check"),
+      host_effect_only: "resolve the runtime producer's source universe and transport its ProcessExit; the .dag gate owns the live bridge/body join and permanent missing-body control"
+    }
+  },
+  {
     phase: "floor",
     lane: WitnessesLane,
     host_site: "v1_compiler.cli_run run_required_floor plus claim_executor RequiredCiPhase::Floor",

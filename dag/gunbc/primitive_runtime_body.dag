@@ -1,0 +1,31 @@
+module gunbc.primitive_runtime_body
+
+import std.primitive_identity {
+  PrimitiveRuntimeBodyCensus, PrimitiveRuntimeBodyCheck,
+  primitive_runtime_body_census_in, primitive_runtime_body_check_in,
+}
+import std.process { ProcessExit }
+import gunbc.primitive_runtime_body_gate { runtime_body_required_check_in }
+import extdeps.languages.rust.emit { rt_function_registry }
+import v1.compiler.runtime_rust { rust_runtime_source }
+
+// Read the bytes the runtime producer emits, never its checked-in bootstrap mirror.
+fn rust_primitive_runtime_body_census() -> PrimitiveRuntimeBodyCensus {
+  primitive_runtime_body_census_in(
+    registry: rt_function_registry,
+    source: rust_runtime_source()
+  )
+}
+
+fn rust_primitive_runtime_body_check() -> PrimitiveRuntimeBodyCheck {
+  primitive_runtime_body_check_in(
+    registry: rt_function_registry,
+    census: rust_primitive_runtime_body_census()
+  )
+}
+
+// Both the standalone door and the required phase execute the live population and its permanent
+// mutation control. The host transports ProcessExit; all admission decisions stay in .dag.
+fn check() -> ProcessExit {
+  runtime_body_required_check_in(registry: rt_function_registry, source: rust_runtime_source())
+}

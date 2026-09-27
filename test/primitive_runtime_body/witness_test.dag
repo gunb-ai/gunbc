@@ -1,0 +1,28 @@
+module test.primitive_runtime_body.witness_test
+
+import gunbc.primitive_runtime_body { rust_primitive_runtime_body_census, rust_primitive_runtime_body_check }
+import std.primitive_identity {
+  PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing,
+  primitive_runtime_body_check_in,
+}
+import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
+import std.types { Bool }
+
+test fn every_registered_bridge_has_an_emitted_runtime_body() -> Bool {
+  match rust_primitive_runtime_body_check() {
+    PrimitiveRuntimeBodiesComplete => true
+    _ => false
+  }
+}
+
+test fn live_census_does_not_admit_a_new_bridge_without_a_body() -> Bool {
+  let registry = concat(rt_function_registry, [RuntimeFunction {
+    name: "runtime_body_missing_control", bridge_name: "runtime_body_missing_control",
+    passes_by_ref: false, wraps_result: false
+  }])
+  match primitive_runtime_body_check_in(registry: registry, census: rust_primitive_runtime_body_census()) {
+    PrimitiveRuntimeBodiesMissing { violations: rows } =>
+      count(rows) == 1 && (rows |> all(row => row.bridge_name == "runtime_body_missing_control"))
+    _ => false
+  }
+}
