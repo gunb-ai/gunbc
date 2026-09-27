@@ -106,7 +106,8 @@ import v2.std.node {
   fold_node,
   match_arm_body,
   match_arm_pattern,
-  edge_is_signature_order,
+  arrow_signature_order_label,
+  edge_label_of,
   node_with_occurrence_id,
   well_formed,
 }
@@ -1717,7 +1718,7 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
       Named { name: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
-        } else if edge_is_signature_order(e: e) {
+        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(

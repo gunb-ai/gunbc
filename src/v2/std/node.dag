@@ -355,22 +355,17 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
 // which this module cannot intern (v2.std.compilers.lexing imports it). So this module states the
 // SHAPE -- any Named edge other than the body targets a well-formed binder Conj, and there is at most
 // one -- and v2.std.type_binder type_binder_labels_conform states that such an edge carries the marker.
-// THE ONE TEST FOR THE DECLARED-ORDER EDGE, asked by every stage that must tell it apart
-// (v2.compiler.resolve, v2.compiler.infer, v2.std.compilers.body_lowering), so the label is compared
-// in one place.
-fn edge_is_signature_order(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == ^arrow_signature_order_edge
-    Positional => false
-  }
-}
+// THE DECLARED-ORDER EDGE'S LABEL, as one value every stage compares against through edge_label_of
+// (v2.compiler.resolve, v2.compiler.infer, v2.std.compilers.body_lowering), so the label is spelled in
+// one place and no stage writes its own variant match.
+data arrow_signature_order_label: EdgeLabel = Named { name: ^arrow_signature_order_edge }
 
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   let binder_edges = fold(children, init: 0, f: fn(acc, e) {
     match e.label {
       Positional => acc
       Named { name: sym } =>
-        if (sym == ^arrow_body_edge) || edge_is_signature_order(e: e) { acc } else { acc + 1 }
+        if (sym == ^arrow_body_edge) || (edge_label_of(e: e) == arrow_signature_order_label) { acc } else { acc + 1 }
     }
   })
   (binder_edges <= 1)
@@ -379,7 +374,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
     match e.label {
       Positional => acc
       Named { name: sym } =>
-        acc && ((sym == ^arrow_body_edge) || edge_is_signature_order(e: e) || type_binder_conj_conforms(t: e.target))
+        acc && ((sym == ^arrow_body_edge) || (edge_label_of(e: e) == arrow_signature_order_label) || type_binder_conj_conforms(t: e.target))
     }
   })
 }
@@ -464,9 +459,8 @@ fn arrow_signature_order_conforms(children: List<Edge>) -> Bool {
     OrderUnreadable => false
     OrderLabels { labels: labels } =>
       match arrow_domain_binder_labels(children: children) {
-        OrderLabels { labels: binders } => symbols_are_one_distinct_set(a: labels, b: binders)
-        OrderAbsent => false
-        OrderUnreadable => false
+        DomainBinderLabels { labels: binders } => symbols_are_one_distinct_set(a: labels, b: binders)
+        DomainBinderLabelsUnreadable => false
       }
   }
 }
@@ -498,25 +492,29 @@ fn symbols_are_one_distinct_set(a: List<Symbol>, b: List<Symbol>) -> Bool {
 }
 
 // The domain's binder labels, in any order: the Arrow's FIRST positional child, a Conj of Named edges.
-fn arrow_domain_binder_labels(children: List<Edge>) -> ArrowParameterOrderRead {
+// Its own result type: a domain's labels are never "absent" the way an order edge is.
+type DomainBinderLabelsRead
+  = DomainBinderLabels { labels: List<Symbol> }
+  | DomainBinderLabelsUnreadable
+
+fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
   match arrow_first_positional_target(children: children) {
     FirstPositionalFound { target: domain } =>
       match domain.kind {
         TypeNode { connective: Conj } =>
-          fold(domain.children, init: OrderLabels { labels: [] }, f: fn(acc, d) {
+          fold(domain.children, init: DomainBinderLabels { labels: [] }, f: fn(acc, d) {
             match acc {
-              OrderUnreadable => OrderUnreadable
-              OrderAbsent => OrderUnreadable
-              OrderLabels { labels: ls } =>
+              DomainBinderLabelsUnreadable => DomainBinderLabelsUnreadable
+              DomainBinderLabels { labels: ls } =>
                 match d.label {
-                  Named { name: sym } => OrderLabels { labels: Cons { head: sym, tail: ls } }
-                  Positional => OrderUnreadable
+                  Named { name: sym } => DomainBinderLabels { labels: Cons { head: sym, tail: ls } }
+                  Positional => DomainBinderLabelsUnreadable
                 }
             }
           })
-        _ => OrderUnreadable
+        _ => DomainBinderLabelsUnreadable
       }
-    FirstPositionalAbsent => OrderUnreadable
+    FirstPositionalAbsent => DomainBinderLabelsUnreadable
   }
 }
 

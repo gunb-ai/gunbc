@@ -55,7 +55,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { edge_is_signature_order }
+import v2.std.node { arrow_signature_order_label, edge_label_of }
 import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
@@ -638,7 +638,7 @@ fn infer_product_child_evidence_edges(
       match acc {
         Absent => acc
         Present { value: evidence_edges } =>
-          if edge_is_signature_order(e: edge) {
+          if (edge_label_of(e: edge) == arrow_signature_order_label) {
             optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
           } else {
           match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
@@ -1661,9 +1661,6 @@ fn infer_application_formals(node: Node) -> InferApplicationFormals {
   }
 }
 
-// Each declared label selects its one formal by identity. The order edge is a permutation of the
-// domain's binders (v2.std.node arrow_signature_order_conforms), so a label with no formal is
-// malformed and refuses rather than shortening the list.
 // Each declared label selects its one formal by identity, in declared order. Both sides are sorted by
 // label once and matched in one walk, then put back in declared order by position -- O(n log n), not
 // a scan of the formals per label. The order edge is a permutation of the domain's binders
@@ -2897,12 +2894,12 @@ fn infer_gather_product_row_on_entries(
 // the domain's binder LABELS (v2.std.compilers.body_lowering signature_order_edge), not values: there
 // is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
 // frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
-// as its own evidence (infer_edge_is_signature_order), and this step takes nothing from its subtree --
+// as its own evidence (infer_product_child_evidence_edges), and this step takes nothing from its subtree --
 // the same shape as infer_arrow_empty_domain_edge and the literal payload arm, where the parent's
 // model, not the child's walk, says what the child is.
 fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
-    TypeNode { connective: Arrow } => edge_is_signature_order(e: edge)
+    TypeNode { connective: Arrow } => (edge_label_of(e: edge) == arrow_signature_order_label)
     _ => false
   }
 }

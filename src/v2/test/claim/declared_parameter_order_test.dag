@@ -5,7 +5,7 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.infer { FormalsInDeclaredOrder, FormalsOrderRefused, FormalsUnresolved, infer_application_formals }
-import v2.compiler.eval { eval_param_edges_in_declared_order }
+import v2.compiler.eval { eval_param_labels_in_declared_order }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.anonymous_binder { anonymous_param_label }
@@ -51,7 +51,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.std.compilers.body_lowering signature_order_edge, walled by v2.std.node
 // arrow_signature_order_conforms, read by v2.std.compilers.body_lowering
 // arrow_declared_parameter_order, and consumed by positional binding in v2.compiler.infer
-// infer_application_formals and v2.compiler.eval eval_param_edges_in_declared_order.
+// infer_application_formals and v2.compiler.eval eval_param_labels_in_declared_order.
 //
 // ROUTE: every specimen is source text assembled through assemble_program_from_ingest, so the
 // lowering, the mint and resolve run for real; the claims then read one interface each over the
@@ -64,7 +64,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `<anonymous-parameter-10>` before `<anonymous-parameter-2>` in label order.
 //
 // MUTATION RECEIPT: infer_application_formals returning the domain's stored formals (the pre-change
-// fold) reds (3) and (4) through their canonical-domain arm; eval_param_edges_in_declared_order
+// fold) reds (3) and (4) through their canonical-domain arm; eval_param_labels_in_declared_order
 // returning domain.children reds (6) the same way; resolve walking the order edge reds (7).
 
 data dpo_artifact: Artifact = Artifact {
@@ -327,20 +327,14 @@ fn dpo_domain(arrow: Node) -> Node {
 }
 
 fn dpo_eval_param_labels(arrow: Node) -> List<Symbol> {
-  match eval_param_edges_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
-    Accepted { value: edges, diagnostics: _ } =>
-      fold(edges, init: [], f: fn(acc, e) {
-        match e.label {
-          Named { name: sym } => concat(acc, [sym])
-          Positional => acc
-        }
-      })
+  match eval_param_labels_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
+    Accepted { value: labels, diagnostics: _ } => labels
     Rejected { diagnostics: _ } => []
   }
 }
 
 fn dpo_eval_refuses_with(arrow: Node, reason: Symbol) -> Bool {
-  match eval_param_edges_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
+  match eval_param_labels_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }

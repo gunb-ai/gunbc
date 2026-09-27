@@ -27,7 +27,8 @@ import v2.std.node {
   OrderLabels,
   OrderUnreadable,
   arrow_signature_order_read,
-  edge_is_signature_order,
+  arrow_signature_order_label,
+  edge_label_of,
   Bind,
   Branch,
   ComputationNode,
@@ -214,7 +215,7 @@ fn arrow_declared_parameter_order(arrow: Node) -> ArrowParameterOrder {
 // The one fact v2.std.node cannot check: the order list's head is the FreeMonoid introduction.
 fn arrow_signature_order_head_is_list_introduction(arrow: Node) -> Bool {
   fold(arrow.children, init: false, f: fn(acc, e) {
-    if edge_is_signature_order(e: e) {
+    if (edge_label_of(e: e) == arrow_signature_order_label) {
       match list_at_optional(xs: node_positional_child_targets(node: e.target), index: 0) {
         Present { value: head } =>
           match list_introduction_head_path_optional(head: head) {
