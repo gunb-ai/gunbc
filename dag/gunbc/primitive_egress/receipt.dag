@@ -31,7 +31,7 @@ import gunbc.primitive_egress.census {
   PureDagComputationClass, BoundHostEffectClass, TargetKernelRealizationClass, CompilerQueryFrontierClass, UnresolvedClass,
   census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
 }
-import std.primitive_identity { PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler }
+import std.primitive_identity { PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler, RuntimeBody }
 
 // MACHINE-READABLE RECEIPT: one JSON object per line. The first line is the summary whose every
 // count is the length of a list printed on a later line; then one `identity` line per canonical
@@ -56,6 +56,7 @@ fn surface_label(s: PrimitiveSurfaceAuthority) -> String {
     AlgebraTemplate => "algebra"
     InterpreterDispatch => "interpreter"
     EmitHandler => "emit"
+    RuntimeBody => "runtime_body"
   }
 }
 
