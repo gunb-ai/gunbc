@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_name_production_no_role_reader_covers
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_name_production_no_role_reader_covers: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_name_production_no_role_reader_covers" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a grammar production whose own expression holds a name terminal (a lexeme-stamped identifier) has no row in the occurrence-role dispatch table (`v2.compiler.occurrence_role` `dag_name_production_rows`), so the names it introduces or labels are never given an OccurrenceRole, and every consumer that asks which authored names are binders reads them as references.",
+    "HARM: the conservation census (XL-2 LoweringOccurrenceProjection) counts binders and labels outside the XL-2 population by their recorded role. A production silently missing from the table would move its binders INTO the counted reference population -- or, if a consumer read a missing role as not-a-reference, OUT of it -- and neither direction would be visible.",
+    "RUNG: mechanically preventable. `v2.compiler.occurrence_role` `name_production_table_admission` checks the table against the grammar in both directions (a name-holding production with no row, a row naming no production) and refuses with the productions named; the walk runs only over an admitted table. The discriminating RED is planted at the interface: a grammar root with one added name-holding production refuses and names it, and the table without its fn_decl row refuses and names fn_decl (`v2.test.claim.occurrence_role.occurrence_role`). The state stays WRITABLE -- the table is authored beside the grammar -- which is why this is not structural.",
+    "CEILING: structurally impossible, when the role is a property of the grammar position the parser reads the token from (v1 records it in its parser, `v1 02_parse` ParsedOccurrenceDeclaration), so a name terminal cannot be declared without its role. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the v2 parser records which Choice alternative it took. Until it does, a walker keyed on grammar position must guess the arm of a choice such as `arg` (a named or a positional argument), which is why the table dispatches to the decoders that already disambiguate by shape. When the parser records choice arms, the rows become grammar annotations stamped at parse, and this table and its admission check are deleted.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.occurrence_role", decl_name: "name_production_table_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.occurrence_role.occurrence_role", decl_name: "a_planted_unlisted_binder_production_refuses_by_name_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.occurrence_role.occurrence_role", decl_name: "a_missing_row_refuses_by_name_holds", field: WholeDeclaration },
+  ],
+}
