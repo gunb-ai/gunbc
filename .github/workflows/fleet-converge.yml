@@ -73,7 +73,12 @@ on:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 70
+    timeout-minutes: 95
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      release_bins_key: ${{ steps.release_bins_key.outputs.key }}
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -118,6 +123,113 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)
+        id: release_bins_key
+        run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then { echo "::error title=release-bins::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key"; exit 1; }; fi
+          EXPECTED="$RUNNER_TEMP/release-bins.preimage.expected"
+          {
+          printf 'kind=%s\n' 'gunbc.fleet_release_bins'
+          printf 'address=sha256 scope=cross_run\n'
+          printf 'producer_compiler=%s\n' "$("$CARGO_BIN" -V)"
+          printf 'source_closure=%s\n' "tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')"
+          printf 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$(rustc -vV | sed -n 's/^host: //p')" "$(cc --version 2>&1 | head -n 1)" "$(ld --version 2>&1 | head -n 1)" "$(ldd --version 2>&1 | head -n 1)"
+          printf 'toolchain=%s\n' "$(rustc -vV | tr '\n' ';')"
+          printf 'build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin discover_source_root_ingest --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "${RUSTFLAGS-}" "${CARGO_ENCODED_RUSTFLAGS-}" "${CC-}" "${CFLAGS-}" "${LDFLAGS-}" 'claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'
+          printf 'required_lens_contract=none (a seed cargo build admits no lens contract)\n'
+          } > "$EXPECTED"
+          KEY='release-bins-'"$(sha256sum "$EXPECTED" | cut -d ' ' -f 1)"
+          rm -rf "$ROOT/.release-bins-staging"
+          mkdir -p "$ROOT/.release-bins-staging"
+          echo "release-bins request key $KEY over preimage:"
+          cat "$EXPECTED"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "GUNBC_MATERIALIZED_TREE_IDENTITY=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+        timeout-minutes: 5
+      - name: Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)
+        id: release_bins_lookup
+        run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          BODY="$RUNNER_TEMP/release-bins-lookup.json"
+          if ! curl -sSf -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=$RELEASE_BINS_KEY" -o "$BODY"; then { echo "::error title=release-bins::release-bins lookup FAILED (cache API unreachable or refused); this is not absence, so neither reuse nor rebuild is decided"; exit 1; }; fi
+          ANSWER="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); k=sys.argv[2]; r=sys.argv[3:]; c=d["actions_caches"]; m=[e for e in c if e["key"]==k and e["ref"] in r]; print("incomplete" if d["total_count"]!=len(c) else ("absent" if not m else "present id=%s ref=%s created=%s size=%s" % (m[0]["id"], m[0]["ref"], m[0]["created_at"], m[0]["size_in_bytes"])))' "$BODY" "$RELEASE_BINS_KEY" 'refs/heads/main' "$GITHUB_REF")" || { echo "::error title=release-bins::release-bins lookup answer unreadable; not treated as absence"; exit 1; }
+          case "$ANSWER" in
+            absent) echo "standing=absent" >> "$GITHUB_OUTPUT"; echo "::notice title=release-bins::no entry under $RELEASE_BINS_KEY on refs/heads/main or $GITHUB_REF (never published, or evicted); this dispatch builds" ;;
+            present*) echo "standing=present" >> "$GITHUB_OUTPUT"; echo "entry=$ANSWER" >> "$GITHUB_OUTPUT"; echo "release-bins entry: $ANSWER" ;;
+            *) { echo "::error title=release-bins::release-bins lookup answered incompletely ($ANSWER); not treated as absence"; exit 1; } ;;
+          esac
+        env:
+          RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 5
+      - name: Restore release-bins into isolated staging (transport only; publishes on a verified build)
+        id: release_bins_cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            .release-bins-staging/release-bins.tgz
+            .release-bins-staging/release-bins.preimage
+            .release-bins-staging/release-bins.manifest
+          key: ${{ steps.release_bins_key.outputs.key }}
+        timeout-minutes: 10
+      - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs
+        id: release_bins_outcome
+        run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          STAGE="$ROOT/.release-bins-staging"
+          EXPECTED="$RUNNER_TEMP/release-bins.preimage.expected"
+          case "$LOOKUP_STANDING/$CACHE_HIT" in
+            absent/true) { echo "::error title=release-bins::the cache API holds no exact entry under $RELEASE_BINS_KEY but the transport reported an exact hit; the store and its transport disagree"; exit 1; } ;;
+            absent/*) rm -rf "$STAGE"; mkdir -p "$STAGE"; echo "outcome=build" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            present/true) ;;
+            present/*) { echo "::error title=release-bins::the cache API holds an exact entry under $RELEASE_BINS_KEY but the transport did not restore it exactly; refusing rather than rebuilding over a present entry"; exit 1; } ;;
+            *) { echo "::error title=release-bins::release-bins outcome inputs missing (lookup=$LOOKUP_STANDING hit=$CACHE_HIT)"; exit 1; } ;;
+          esac
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$STAGE/$f" ] || { echo "::error title=release-bins::stored release-bins entry is incomplete: $f is missing"; exit 1; }
+          done
+          cmp -s "$EXPECTED" "$STAGE/release-bins.preimage" || { diff "$EXPECTED" "$STAGE/release-bins.preimage" || true; { echo "::error title=release-bins::stored preimage differs from this run's independently derived preimage under $RELEASE_BINS_KEY"; exit 1; }; }
+          [ 'release-bins-'"$(sha256sum "$STAGE/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::stored preimage does not hash to the probed key $RELEASE_BINS_KEY"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$STAGE/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::stored manifest does not name exactly the gunbc.ci_release_bins roster in order"; exit 1; }
+          rm -rf "$STAGE/unpacked"; mkdir -p "$STAGE/unpacked"
+          tar -xzf "$STAGE/release-bins.tgz" -C "$STAGE/unpacked"
+          [ "$(ls -A "$STAGE/unpacked" | sort)" = "$(sort "$RUNNER_TEMP/release-bins.roster")" ] || { echo "::error title=release-bins::stored pack members are not exactly the roster"; exit 1; }
+          (cd "$STAGE/unpacked" && sha256sum --quiet -c "$STAGE/release-bins.manifest") || { echo "::error title=release-bins::a stored member's sha256 differs from the manifest; refusing before any restored binary runs"; exit 1; }
+          mkdir -p "$ROOT/target/release"
+          cp -p "$STAGE"/unpacked/* "$ROOT/target/release/"
+          rm -rf "$STAGE/unpacked"
+          echo "ReleaseBinsReuseReceipt: request=$RELEASE_BINS_KEY output=sha256:$(sha256sum "$STAGE/release-bins.manifest" | cut -d ' ' -f 1) dispatch=$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT producer=[$LOOKUP_ENTRY] built=no"
+          echo "outcome=reuse" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+          LOOKUP_STANDING: ${{ steps.release_bins_lookup.outputs.standing }}
+          LOOKUP_ENTRY: ${{ steps.release_bins_lookup.outputs.entry }}
+          CACHE_HIT: ${{ steps.release_bins_cache.outputs.cache-hit }}
+        timeout-minutes: 5
       - name: Cache Cargo
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
@@ -129,6 +241,7 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
       - name: Build release bins (claim_executor + gunbc)
         id: release_build
         run: |-
@@ -147,6 +260,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
           sccache --show-stats 2>/dev/null || true
+        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
         timeout-minutes: 45
       - name: "Reset-return dispatch admission: refuse an unnamed observer before anything is scheduled"
         id: reset_observer_dispatch_admission
@@ -157,17 +271,30 @@ jobs:
           GUNBC_HOST_RESET_DISPATCH_MODE: ${{ github.event.inputs.mode }}
           GUNBC_HOST_RESET_OBSERVER: ${{ github.event.inputs.reset_observer }}
         timeout-minutes: 5
-      - name: Pack release bins for cross-job handoff (tar keeps exec bits)
+      - name: Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)
         run: |
-          # 🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "discover_source_root_ingest" "claim_batch" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "effects_rest_transport_witness" "infer_semantics_witness" "parse_witness" "cssl_assemble" "namespace_structural_root_exposure_generated_witness" "codex_app_server_stdio_session"
+          STAGE="$ROOT/.release-bins-staging"
+          mkdir -p "$STAGE"
+          (cd "$ROOT/target/release" && sha256sum claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session) > "$STAGE/release-bins.manifest"
+          tar -czf "$STAGE/release-bins.tgz" -C "$ROOT/target/release" claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session
+          cp "$RUNNER_TEMP/release-bins.preimage.expected" "$STAGE/release-bins.preimage"
+          echo "ReleaseBinsBuildReceipt: request=$RELEASE_BINS_KEY output=sha256:$(sha256sum "$STAGE/release-bins.manifest" | cut -d ' ' -f 1) dispatch=$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT outcome=$RELEASE_BINS_OUTCOME publish=requested-not-yet-persisted scope=$GITHUB_REF"
+        env:
+          RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+          RELEASE_BINS_OUTCOME: ${{ steps.release_bins_outcome.outputs.outcome }}
+        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
         timeout-minutes: 5
       - name: Upload release-bins artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: release-bins
-          path: release-bins.tgz
+          path: |-
+            .release-bins-staging/release-bins.tgz
+            .release-bins-staging/release-bins.preimage
+            .release-bins-staging/release-bins.manifest
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
@@ -198,12 +325,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: "Pair-serving D0 admission (credential-free): the executor is srv1, the consent and the expected revision are named"
         id: pair_serving_d0_admit
@@ -1427,12 +1587,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: "Mt. Collins boot admission (credential-free): the dispatch names the unit hold store host"
         id: mtcollins1_boot_admit
@@ -1543,12 +1736,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: "Host reset-return: drive the subject through its controller and measure the return from a peer"
         id: host_reset_return
@@ -1592,12 +1818,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: Download the plan artifact (carries the plan receipt) from the plan run
         id: dashboard_plan_receipt_download
@@ -1662,12 +1921,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: Install the approval broker dark on srv1 (additive unit + slice; does not restart gunbc-roadmap.service)
         id: approval_broker_dark_install
@@ -1697,12 +1989,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: Install the microVM slot controller release locus, VMM + jailer and template unit on srv1 (additive; starts no instance)
         id: microvm_controller_install
@@ -1736,12 +2061,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
@@ -1862,12 +2220,45 @@ jobs:
       - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
         id: release_bins
         run: |
+          # 🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply
+          set -eu
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          [ -n "${RELEASE_BINS_KEY:-}" ] || { echo "::error title=release-bins::the build job published no release-bins key"; exit 1; }
+          for f in 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'; do
+            [ -f "$ROOT/$f" ] || { echo "::error title=release-bins::the release-bins artifact is missing $f"; exit 1; }
+          done
+          [ 'release-bins-'"$(sha256sum "$ROOT/release-bins.preimage" | cut -d ' ' -f 1)" = "$RELEASE_BINS_KEY" ] || { echo "::error title=release-bins::the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"; exit 1; }
+          grep -qxF "source_closure=tree:$(git -C "$ROOT" rev-parse --show-object-format):$(git -C "$ROOT" rev-parse 'HEAD^{tree}')" "$ROOT/release-bins.preimage" || { echo "::error title=release-bins::the pack was keyed on a different source tree than this job's checkout"; exit 1; }
+          printf '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP/release-bins.roster"
+          cut -c 67- "$ROOT/release-bins.manifest" | cmp -s - "$RUNNER_TEMP/release-bins.roster" || { echo "::error title=release-bins::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"; exit 1; }
+          CHECK="$RUNNER_TEMP/release-bins-check"; rm -rf "$CHECK"; mkdir -p "$CHECK"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$CHECK"
+          (cd "$CHECK" && sha256sum --quiet -c "$ROOT/release-bins.manifest") || { echo "::error title=release-bins::a downloaded member's sha256 differs from the manifest"; exit 1; }
+          rm -rf "$CHECK"
           # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           mkdir -p "$ROOT/target/release"
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: WIF auth (OIDC -> dedicated gcp-iam-converge pool -> iam-observe SA, access token only)
         id: wif_auth

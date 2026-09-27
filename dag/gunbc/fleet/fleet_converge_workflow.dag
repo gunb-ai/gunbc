@@ -27,7 +27,8 @@ import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_re
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
-import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability }
+import gunbc.fleet_release_bins_key { release_bins_key_job_output, release_bins_key_expression }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
   WorkflowToolchainHomesAdmitted,
@@ -47,6 +48,11 @@ import gunbc.fleet_workflow_steps {
   ci_prelude_annotations,
   ci_release_build_step,
   ci_release_bins_pack_step,
+  ci_release_bins_key_step,
+  ci_release_bins_lookup_step,
+  ci_release_bins_cache_step,
+  ci_release_bins_outcome_step,
+  ci_cache_cargo_step,
   ci_release_bins_upload_step,
   ci_release_bins_download_step,
   ci_release_bins_unpack_verify_step,
@@ -789,6 +795,11 @@ fn fleet_converge_build_job_steps() -> List<Step> {
 
 fn fleet_converge_build_job_own_steps() -> List<Step> {
   [
+    ci_release_bins_key_step(),
+    ci_release_bins_lookup_step(),
+    ci_release_bins_cache_step(),
+    ci_release_bins_outcome_step(),
+    ci_cache_cargo_step(),
     ci_release_build_step(),
     fleet_converge_reset_observer_dispatch_admission_step(),
     ci_release_bins_pack_step(),
@@ -821,6 +832,14 @@ fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
   concat(
     ci_prelude_annotations(),
     [
+      CapabilityAnnotatedStep {
+        step_name: "Derive release-bins key",
+        role: consumes_only(capabilities: [RustcCapability, CargoCapability]),
+      },
+      CapabilityAnnotatedStep { step_name: "Look up release-bins", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Restore release-bins into staging", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Decide release-bins outcome", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Cache Cargo", role: capability_neutral },
       CapabilityAnnotatedStep {
         step_name: "Build release binaries",
         role: consumes_only(capabilities: [CargoCapability]),
@@ -898,12 +917,22 @@ fn fleet_converge_build_job() -> Job {
     steps: fleet_converge_build_job_steps(),
     needs: fleet_converge_job_needs(id: "build" as NonEmptyStr),
     env: none,
-    outputs: none,
+    outputs: Present {
+      value: [kv(key: release_bins_key_job_output, value: yaml_string(s: release_bins_key_expression()))]
+    },
     if_condition: none,
     timeout_minutes: Present { value: gunbc_fleet_converge_build_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
-    permissions: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: none,
+      }
+    },
   }
 }
 

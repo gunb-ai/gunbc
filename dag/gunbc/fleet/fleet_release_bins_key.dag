@@ -1,0 +1,372 @@
+module gunbc.fleet_release_bins_key
+
+import std.types { String, List, Bool }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { Sha256Family }
+import std.materialization_provider {
+  CrossRunScope,
+  HashFamilyScopeAdmission,
+  HashFamilyAdmittedForScope,
+  StructuralFingerprintRefusedAsStoreKey,
+  FamilyNotAdmittedForRelation,
+  admit_hash_family_for_scope,
+}
+import v2.compiler.self_host.generation {
+  GenerationAxis,
+  ProducerCompilerAxis,
+  SourceClosureAxis,
+  TargetModelAxis,
+  ToolchainAxis,
+  BuildConfigurationAxis,
+  MaterializedArtifactAxis,
+  RequiredLensContractAxis,
+  generation_axes,
+}
+import extdeps.git { TreeObj }
+import extdeps.git.object_store { git_object_type_wire_name }
+import gunbc.ci_release_bins { ci_floor_required_artifact_names }
+import gunbc.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+
+// THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
+// ruling 2026-09-27, route B chosen by eager-owl-205: the fleet-converge build job is the keyed
+// producer, building only on a miss). Every fleet-converge dispatch rebuilt the sixteen-bin pack --
+// 4m23s in run 36253081549 -- although repeated dispatches at one revision (plan, apply, the deploy
+// and receipt modes that name expected_revision) ask for the same computation.
+//
+// NO NEW KEY RELATION IS MINTED HERE. What identifies a compiler build before its artifact exists is
+// already owned by v2.compiler.self_host.generation PreMaterializationIdentity: the causal axes,
+// with MaterializedArtifactAxis excluded because it is earned from bytes afterwards. The preimage
+// below has exactly one line per pre-materialization axis, in generation_axes order, and the line's
+// label is the axis. What varies per build is only the VALUE the realization reads (a git tree id,
+// rustc -vV), because those facts exist on the runner and nowhere earlier. The address is SHA-256
+// over that preimage: std.materialization_provider admits Sha256Family for CrossRunScope and
+// refuses the structural fingerprint there, and release_bins_key_family_admission consumes that
+// admission rather than restating it.
+//
+// THE SOURCE CLOSURE IS THE WHOLE COMMITTED TREE, deliberately a superset. The crates read files
+// far outside their own directories (include_str! into dag/ and tools/), so a hand list of "the
+// crates' inputs" would be complete only until the next include_str!, and an incomplete source axis
+// serves a stale binary silently -- the one failure a key exists to rule out. HEAD^\{tree} is
+// complete by construction; the price is that the key moves on every commit, so reuse is across
+// dispatches at one revision (the brief's case), not across revisions. Narrowing it to the rustc
+// dep-info closure is a hit-rate improvement, not a correctness one, and is left unbuilt.
+//
+// THE BINARY IS STAMPED WITH THE SAME TREE. src/v1/stage0/build.rs embeds a build identity; left
+// to itself it embeds the checkout's COMMIT, which would make a reused binary report whichever
+// commit first built it. The key step exports GUNBC_MATERIALIZED_TREE_IDENTITY (the build script's
+// existing materialized-tree channel, gunbc.build_identity) set to the source-closure value, so the
+// embedded identity is a function of the key and reuse cannot misreport provenance.
+//
+// IDENTITY UP TO BUILD LOCATION, as generation.dag's own note says of every axis set: the runner's
+// workspace path is not an axis. A release binary embeds source paths only in panic locations, so a
+// pack built under another runner's workspace behaves identically; it is not byte-identical.
+//
+// THE REQUEST, THE OUTPUT AND THE DISPATCH ARE THREE IDENTITIES, joined only by a receipt. The
+// REQUEST identity is the key above. The OUTPUT identity is the SHA-256 of the pack's member manifest
+// (one sha256 per member of gunbc.ci_release_bins ci_floor_required_artifact_names, in roster order),
+// fixed by the producer after its own build verified. The DISPATCH identity is the run and attempt
+// that consumed it. A reuse prints ReleaseBinsReuseReceipt joining all three plus the producing cache
+// entry; it never prints a build receipt, because nothing was built.
+//
+// A STATED DEPARTURE FROM std.materialization_provider (DESIGN section 3b, keys row). The contract's
+// NativeCompilerArtifactRequest carries the same axes as in-model Hash digests, and the model cannot
+// evaluate those here: the axis VALUES exist only on the runner, before any gunbc binary exists to
+// fold them (the hit path must not need one). So the realization reads each axis value and addresses
+// the preimage with the family the contract admits for CrossRunScope. What is persisted is the
+// executable pack and its manifest; build diagnostics are not persisted, so this is not yet a
+// provider_serve-complete artifact of that family, and joining it to that request family is the
+// trigger that retires this departure.
+//
+// TRUST, stated at the grain it holds. actions/cache is UNSIGNED: whoever can write an entry can put
+// any bytes under any key. The ADMITTED PRODUCER is therefore defined by who can write, not by what
+// the payload says: an entry is admitted only when GitHub's own cache API reports it under
+// refs/heads/main or under the ref this dispatch itself runs on. Only workflows executing on a ref
+// can write that ref's scope, and whoever can push the dispatch's own ref can already rewrite this
+// workflow on it, so admitting that ref adds no principal the run did not already trust; any other
+// ref's entry is not admitted. Before ANY restored binary executes, the job (1) recomputes the
+// preimage independently and requires the stored one to equal it byte for byte, (2) requires the
+// stored manifest to name exactly the derived roster in order, and (3) checks every member's sha256
+// against that manifest in an isolated staging directory. Only then are members copied into
+// target/release. The restored claim_executor never vouches for itself.
+//
+// THE OUTCOME PARTITION. The lookup is GitHub's cache API filtered to EXACT key equality under
+// refs/heads/main -- actions/cache itself can restore a PREFIX match even with no restore-keys, so its
+// restore is never the lookup, only the transport, and it restores into staging where a non-exact
+// restore is discarded.
+//   exact entry on an admitted ref + exact restore + verified -> reuse (no build, no repack)
+//   established absence (never published, or evicted) -> build, verify, publish
+//   wrong key / corrupt / incomplete / tampered       -> refuse
+//   admitted entry but restore not exact, or the reverse -> refuse (the store and its transport disagree)
+//   lookup failed or answered incompletely             -> refuse, REPORTED as a lookup failure; never absence
+// A dispatch on a branch publishes into that branch's scope, which main never reads.
+// Publication is actions/cache's post step, which saves only when the probe was not an exact hit and
+// the job succeeded. Concurrent producers of one key are FIRST-WRITER-WINS by the cache service's
+// reservation: the second save is refused by the service and logged, never overwrites. A requested save
+// is NOT persistence: this job never claims it; the next dispatch's lookup is the only evidence.
+//
+// RETENTION AND CAPACITY. GitHub evicts an entry not accessed for 7 days, and evicts
+// least-recently-used entries once the repository exceeds its cache quota (10 GB by default), which the
+// Cache Cargo target/ entries share. Eviction is established absence: a rebuild, announced by name.
+data release_bins_key_prefix: String = "release-bins-"
+data release_bins_preimage_name: String = "release-bins.preimage"
+data release_bins_manifest_name: String = "release-bins.manifest"
+data release_bins_staging_dir: String = ".release-bins-staging"
+data release_bins_key_kind: String = "gunbc.fleet_release_bins"
+data release_bins_admitted_producer_ref: String = "refs/heads/main"
+
+// Step ids bound once, consumed by the steps that carry them AND by every expression that reads
+// them (gunbc.fleet_workflow_steps records why a hand-spelled steps.<id> is a silent-false class).
+data release_bins_key_step_id: String = "release_bins_key"
+data release_bins_lookup_step_id: String = "release_bins_lookup"
+data release_bins_cache_step_id: String = "release_bins_cache"
+data release_bins_outcome_step_id: String = "release_bins_outcome"
+data release_bins_key_job_output: String = "release_bins_key"
+
+fn release_bins_key_expression() -> String {
+  join(["$", "{{ steps.", release_bins_key_step_id, ".outputs.key }}"], "")
+}
+
+fn release_bins_consumer_key_expression() -> String {
+  join(["$", "{{ needs.build.outputs.", release_bins_key_job_output, " }}"], "")
+}
+
+fn release_bins_lookup_standing_expression() -> String {
+  join(["$", "{{ steps.", release_bins_lookup_step_id, ".outputs.standing }}"], "")
+}
+
+fn release_bins_lookup_entry_expression() -> String {
+  join(["$", "{{ steps.", release_bins_lookup_step_id, ".outputs.entry }}"], "")
+}
+
+fn release_bins_cache_hit_expression() -> String {
+  join(["$", "{{ steps.", release_bins_cache_step_id, ".outputs.cache-hit }}"], "")
+}
+
+fn release_bins_build_condition() -> String {
+  join(["steps.", release_bins_outcome_step_id, ".outputs.outcome != 'reuse'"], "")
+}
+
+fn release_bins_key_family_admission() -> HashFamilyScopeAdmission {
+  admit_hash_family_for_scope(family: Sha256Family, scope: CrossRunScope)
+}
+
+fn release_bins_key_family_admitted() -> Bool {
+  match release_bins_key_family_admission() {
+    HashFamilyAdmittedForScope { family: _, scope: _ } => true
+    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+    FamilyNotAdmittedForRelation { family: _, scope: _ } => false
+  }
+}
+
+fn release_bins_roster_text() -> String {
+  join(ci_floor_required_artifact_names(), " ")
+}
+
+fn release_bins_roster_lines() -> String {
+  fold(ci_floor_required_artifact_names(), init: "", f: (acc, name) => join([acc, name, "\n"], ""))
+}
+
+// The single-quoted shell spelling of a model string; the model strings here carry no single quote.
+fn sq(s: String) -> String {
+  join(["'", s, "'"], "")
+}
+
+fn release_bins_source_closure_shell() -> String {
+  join([
+    git_object_type_wire_name(object_type: TreeObj),
+    ":$(git -C \"$ROOT\" rev-parse --show-object-format):$(git -C \"$ROOT\" rev-parse 'HEAD^\{tree}')",
+  ], "")
+}
+
+// One preimage line per pre-materialization axis. An axis that is not an input of a seed cargo build
+// says so in its own line rather than being dropped, so the line count is the axis count.
+fn release_bins_axis_line(axis: GenerationAxis) -> String {
+  match axis {
+    SourceClosureAxis =>
+      join(["printf 'source_closure=%s\\n' \"", release_bins_source_closure_shell(), "\""], "")
+    ToolchainAxis =>
+      "printf 'toolchain=%s\\n' \"$(rustc -vV | tr '\\n' ';')\""
+    ProducerCompilerAxis =>
+      "printf 'producer_compiler=%s\\n' \"$(\"$CARGO_BIN\" -V)\""
+    TargetModelAxis =>
+      "printf 'target_model=%s;cc=%s;ld=%s;libc=%s\\n' \"$(rustc -vV | sed -n 's/^host: //p')\" \"$(cc --version 2>&1 | head -n 1)\" \"$(ld --version 2>&1 | head -n 1)\" \"$(ldd --version 2>&1 | head -n 1)\""
+    BuildConfigurationAxis =>
+      join([
+        "printf 'build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\\n' ",
+        sq(s: ci_release_build_line()), " \"", release_bins_source_closure_shell(), "\"",
+        " \"$\{RUSTFLAGS-}\" \"$\{CARGO_ENCODED_RUSTFLAGS-}\" \"$\{CC-}\" \"$\{CFLAGS-}\" \"$\{LDFLAGS-}\" ",
+        sq(s: release_bins_roster_text()),
+      ], "")
+    RequiredLensContractAxis =>
+      "printf 'required_lens_contract=none (a seed cargo build admits no lens contract)\\n'"
+    MaterializedArtifactAxis => ""
+  }
+}
+
+fn release_bins_preimage_lines() -> String {
+  fold(
+    generation_axes,
+    init: join([
+      "printf 'kind=%s\\n' ", sq(s: release_bins_key_kind), "\n",
+      "printf 'address=sha256 scope=cross_run\\n'\n",
+    ], ""),
+    f: (acc, axis) => if release_bins_axis_line(axis: axis) == "" {
+      acc
+    } else {
+      join([acc, release_bins_axis_line(axis: axis), "\n"], "")
+    },
+  )
+}
+
+data release_bins_key_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_release_bins_key",
+    decl_name: "release_bins_key_script",
+    field: WholeDeclaration
+  }
+}
+
+data release_bins_key_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the release-bins key, lookup, outcome, pack-manifest and consumer-check runners in gunbc.fleet_release_bins_key — concat-built foreign-executor (GitHub Actions run:) realization of the release-bins materialization; the axis roster and labels, address family and scope, pack roster, admitted producer ref and outcome partition are derived from v2.compiler.self_host.generation, std.materialization_provider and gunbc.ci_release_bins, but the readers of each axis value (git rev-parse, rustc -vV, cc/ld/ldd), the cache-API read and the sha256 checks remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes these runners through orchestration emit or typed host_effect_apply")
+
+fn release_bins_refuse(message: String) -> String {
+  join(["{ echo \"::error title=release-bins::", message, "\"; exit 1; }"], "")
+}
+
+fn release_bins_script_head() -> String {
+  join([
+    "# ", dissolution_description(condition: release_bins_key_shell_emit_dissolution_trigger), "\n",
+    "set -eu\n",
+    "ROOT=", ci_repo_root_shell(), "\n",
+  ], "")
+}
+
+// KEY: recompute the preimage into RUNNER_TEMP (outside anything a restore can write), address it,
+// bind the embedded build identity, and empty the staging directory.
+fn release_bins_key_script() -> String {
+  if !release_bins_key_family_admitted() {
+    release_bins_refuse(message: "std.materialization_provider no longer admits sha256 at CrossRunScope; the release-bins address has no admitted family")
+  } else {
+    release_bins_key_script_admitted()
+  }
+}
+
+fn release_bins_key_script_admitted() -> String {
+  join([
+    release_bins_script_head(),
+    "if [ -n \"$(git -C \"$ROOT\" status --porcelain --untracked-files=no)\" ]; then ",
+    release_bins_refuse(message: "tracked files differ from HEAD, so HEAD^\{tree} does not name the build input; refusing to key"),
+    "; fi\n",
+    "EXPECTED=\"$RUNNER_TEMP/", release_bins_preimage_name, ".expected\"\n",
+    "{\n", release_bins_preimage_lines(), "} > \"$EXPECTED\"\n",
+    "KEY=", sq(s: release_bins_key_prefix), "\"$(sha256sum \"$EXPECTED\" | cut -d ' ' -f 1)\"\n",
+    "rm -rf \"$ROOT/", release_bins_staging_dir, "\"\n",
+    "mkdir -p \"$ROOT/", release_bins_staging_dir, "\"\n",
+    "echo \"release-bins request key $KEY over preimage:\"\n",
+    "cat \"$EXPECTED\"\n",
+    "echo \"key=$KEY\" >> \"$GITHUB_OUTPUT\"\n",
+    "echo \"GUNBC_MATERIALIZED_TREE_IDENTITY=", release_bins_source_closure_shell(), "\" >> \"$GITHUB_ENV\"\n",
+  ], "")
+}
+
+// LOOKUP: GitHub's cache API is the authority for whether an exact entry exists under the admitted
+// producer ref. Every failure to get a complete answer refuses; only an answered empty list is absence.
+fn release_bins_lookup_script() -> String {
+  join([
+    release_bins_script_head(),
+    "BODY=\"$RUNNER_TEMP/release-bins-lookup.json\"\n",
+    "if ! curl -sSf -H \"Authorization: Bearer $GH_TOKEN\" -H 'Accept: application/vnd.github+json' ",
+    "\"$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=$RELEASE_BINS_KEY\" -o \"$BODY\"; then ",
+    release_bins_refuse(message: "release-bins lookup FAILED (cache API unreachable or refused); this is not absence, so neither reuse nor rebuild is decided"),
+    "; fi\n",
+    "ANSWER=\"$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); k=sys.argv[2]; r=sys.argv[3:]; c=d[\"actions_caches\"]; m=[e for e in c if e[\"key\"]==k and e[\"ref\"] in r]; print(\"incomplete\" if d[\"total_count\"]!=len(c) else (\"absent\" if not m else \"present id=%s ref=%s created=%s size=%s\" % (m[0][\"id\"], m[0][\"ref\"], m[0][\"created_at\"], m[0][\"size_in_bytes\"])))' \"$BODY\" \"$RELEASE_BINS_KEY\" ",
+    sq(s: release_bins_admitted_producer_ref), " \"$GITHUB_REF\")\" || ",
+    release_bins_refuse(message: "release-bins lookup answer unreadable; not treated as absence"), "\n",
+    "case \"$ANSWER\" in\n",
+    "  absent) echo \"standing=absent\" >> \"$GITHUB_OUTPUT\"; echo \"::notice title=release-bins::no entry under $RELEASE_BINS_KEY on ", release_bins_admitted_producer_ref, " or $GITHUB_REF (never published, or evicted); this dispatch builds\" ;;\n",
+    "  present*) echo \"standing=present\" >> \"$GITHUB_OUTPUT\"; echo \"entry=$ANSWER\" >> \"$GITHUB_OUTPUT\"; echo \"release-bins entry: $ANSWER\" ;;\n",
+    "  *) ", release_bins_refuse(message: "release-bins lookup answered incompletely ($ANSWER); not treated as absence"), " ;;\n",
+    "esac\n",
+  ], "")
+}
+
+// OUTCOME: join the lookup's standing with the transport's exactness, verify a reuse candidate
+// completely BEFORE any restored byte executes, and publish the outcome.
+fn release_bins_outcome_script() -> String {
+  join([
+    release_bins_script_head(),
+    "STAGE=\"$ROOT/", release_bins_staging_dir, "\"\n",
+    "EXPECTED=\"$RUNNER_TEMP/", release_bins_preimage_name, ".expected\"\n",
+    "case \"$LOOKUP_STANDING/$CACHE_HIT\" in\n",
+    "  absent/true) ", release_bins_refuse(message: "the cache API holds no exact entry under $RELEASE_BINS_KEY but the transport reported an exact hit; the store and its transport disagree"), " ;;\n",
+    "  absent/*) rm -rf \"$STAGE\"; mkdir -p \"$STAGE\"; echo \"outcome=build\" >> \"$GITHUB_OUTPUT\"; exit 0 ;;\n",
+    "  present/true) ;;\n",
+    "  present/*) ", release_bins_refuse(message: "the cache API holds an exact entry under $RELEASE_BINS_KEY but the transport did not restore it exactly; refusing rather than rebuilding over a present entry"), " ;;\n",
+    "  *) ", release_bins_refuse(message: "release-bins outcome inputs missing (lookup=$LOOKUP_STANDING hit=$CACHE_HIT)"), " ;;\n",
+    "esac\n",
+    "for f in ", sq(s: release_bins_preimage_name), " ", sq(s: release_bins_manifest_name), " ", sq(s: ci_release_bins_archive_name), "; do\n",
+    "  [ -f \"$STAGE/$f\" ] || ", release_bins_refuse(message: "stored release-bins entry is incomplete: $f is missing"), "\n",
+    "done\n",
+    "cmp -s \"$EXPECTED\" \"$STAGE/", release_bins_preimage_name, "\" || { diff \"$EXPECTED\" \"$STAGE/", release_bins_preimage_name, "\" || true; ",
+    release_bins_refuse(message: "stored preimage differs from this run's independently derived preimage under $RELEASE_BINS_KEY"), "; }\n",
+    "[ ", sq(s: release_bins_key_prefix), "\"$(sha256sum \"$STAGE/", release_bins_preimage_name, "\" | cut -d ' ' -f 1)\" = \"$RELEASE_BINS_KEY\" ] || ",
+    release_bins_refuse(message: "stored preimage does not hash to the probed key $RELEASE_BINS_KEY"), "\n",
+    "printf '%s' ", sq(s: release_bins_roster_lines()), " > \"$RUNNER_TEMP/release-bins.roster\"\n",
+    "cut -c 67- \"$STAGE/", release_bins_manifest_name, "\" | cmp -s - \"$RUNNER_TEMP/release-bins.roster\" || ",
+    release_bins_refuse(message: "stored manifest does not name exactly the gunbc.ci_release_bins roster in order"), "\n",
+    "rm -rf \"$STAGE/unpacked\"; mkdir -p \"$STAGE/unpacked\"\n",
+    "tar -xzf \"$STAGE/", ci_release_bins_archive_name, "\" -C \"$STAGE/unpacked\"\n",
+    "[ \"$(ls -A \"$STAGE/unpacked\" | sort)\" = \"$(sort \"$RUNNER_TEMP/release-bins.roster\")\" ] || ",
+    release_bins_refuse(message: "stored pack members are not exactly the roster"), "\n",
+    "(cd \"$STAGE/unpacked\" && sha256sum --quiet -c \"$STAGE/", release_bins_manifest_name, "\") || ",
+    release_bins_refuse(message: "a stored member's sha256 differs from the manifest; refusing before any restored binary runs"), "\n",
+    "mkdir -p \"$ROOT/target/release\"\n",
+    "cp -p \"$STAGE\"/unpacked/* \"$ROOT/target/release/\"\n",
+    "rm -rf \"$STAGE/unpacked\"\n",
+    "echo \"ReleaseBinsReuseReceipt: request=$RELEASE_BINS_KEY output=sha256:$(sha256sum \"$STAGE/", release_bins_manifest_name, "\" | cut -d ' ' -f 1) dispatch=$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT producer=[$LOOKUP_ENTRY] built=no\"\n",
+    "echo \"outcome=reuse\" >> \"$GITHUB_OUTPUT\"\n",
+  ], "")
+}
+
+// PACK (build outcomes only): the manifest is taken from target/release after the build step's own
+// verification, the preimage is this run's, and all three land in staging, which is both the upload
+// source and the path actions/cache publishes.
+fn release_bins_pack_manifest_script() -> String {
+  join([
+    release_bins_script_head(),
+    "STAGE=\"$ROOT/", release_bins_staging_dir, "\"\n",
+    "mkdir -p \"$STAGE\"\n",
+    "(cd \"$ROOT/target/release\" && sha256sum ", release_bins_roster_text(), ") > \"$STAGE/", release_bins_manifest_name, "\"\n",
+    "tar -czf \"$STAGE/", ci_release_bins_archive_name, "\" -C \"$ROOT/target/release\" ", release_bins_roster_text(), "\n",
+    "cp \"$RUNNER_TEMP/", release_bins_preimage_name, ".expected\" \"$STAGE/", release_bins_preimage_name, "\"\n",
+    "echo \"ReleaseBinsBuildReceipt: request=$RELEASE_BINS_KEY output=sha256:$(sha256sum \"$STAGE/", release_bins_manifest_name, "\" | cut -d ' ' -f 1) dispatch=$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT outcome=$RELEASE_BINS_OUTCOME publish=requested-not-yet-persisted scope=$GITHUB_REF\"\n",
+  ], "")
+}
+
+// CONSUMER: a downstream job holds the key its build job published and refuses, before executing
+// anything it downloaded, a pack whose preimage hashes elsewhere, names another source tree, or whose
+// members do not match the manifest.
+fn release_bins_consumer_key_check_script() -> String {
+  join([
+    release_bins_script_head(),
+    "[ -n \"$\{RELEASE_BINS_KEY:-}\" ] || ", release_bins_refuse(message: "the build job published no release-bins key"), "\n",
+    "for f in ", sq(s: release_bins_preimage_name), " ", sq(s: release_bins_manifest_name), " ", sq(s: ci_release_bins_archive_name), "; do\n",
+    "  [ -f \"$ROOT/$f\" ] || ", release_bins_refuse(message: "the release-bins artifact is missing $f"), "\n",
+    "done\n",
+    "[ ", sq(s: release_bins_key_prefix), "\"$(sha256sum \"$ROOT/", release_bins_preimage_name, "\" | cut -d ' ' -f 1)\" = \"$RELEASE_BINS_KEY\" ] || ",
+    release_bins_refuse(message: "the downloaded preimage does not hash to the build job's key $RELEASE_BINS_KEY"), "\n",
+    "grep -qxF \"source_closure=", release_bins_source_closure_shell(), "\" \"$ROOT/", release_bins_preimage_name, "\" || ",
+    release_bins_refuse(message: "the pack was keyed on a different source tree than this job's checkout"), "\n",
+    "printf '%s' ", sq(s: release_bins_roster_lines()), " > \"$RUNNER_TEMP/release-bins.roster\"\n",
+    "cut -c 67- \"$ROOT/", release_bins_manifest_name, "\" | cmp -s - \"$RUNNER_TEMP/release-bins.roster\" || ",
+    release_bins_refuse(message: "the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"), "\n",
+    "CHECK=\"$RUNNER_TEMP/release-bins-check\"; rm -rf \"$CHECK\"; mkdir -p \"$CHECK\"\n",
+    "tar -xzf \"$ROOT/", ci_release_bins_archive_name, "\" -C \"$CHECK\"\n",
+    "(cd \"$CHECK\" && sha256sum --quiet -c \"$ROOT/", release_bins_manifest_name, "\") || ",
+    release_bins_refuse(message: "a downloaded member's sha256 differs from the manifest"), "\n",
+    "rm -rf \"$CHECK\"\n",
+  ], "")
+}
