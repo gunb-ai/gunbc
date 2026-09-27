@@ -1,5 +1,24 @@
 module test.claim.deploy_access_privilege_witness
 
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_access,
+  deploy_access_check,
+  deploy_access_decision_reason,
+  deploy_access_privileged_fixture_actor,
+  deploy_access_unprivileged_fixture_actor
+}
+import gunbc.host_effect {
+  ConvergePlanApplied,
+  HostOs,
+  LiveDeployRetract,
+  LocalShell,
+  NodeControlPlane,
+  ShellEffectApplied,
+  Srv3ReceiptEmit,
+  ToolchainHomeInterferenceDiscriminated,
+  host_effect_identity_evidence
+}
+import gunbc.host_effect_realize { host_effect_apply_gated, host_effect_drive_directive }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 
 // Denial subjects are real deployment mutations. The permit pole uses receipt

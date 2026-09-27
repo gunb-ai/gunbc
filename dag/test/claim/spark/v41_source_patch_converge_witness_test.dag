@@ -287,7 +287,7 @@ test fn digestfile_inhabits_the_committed_patch_population() -> Bool {
       length(ps) == 2
         && match get(xs: ps, index: 1) {
           Absent => false
-          Present { value: p } => (p.purpose as String).contains("not rebound")
+          Present { value: p } => (p.purpose as String).contains("FileBackedParallelEngramEmbedding for every Engram layer")
         }
     V41PatchesAbsentByObservation => false
     V41PatchesUnestablished { obligation: _ } => false

@@ -52,7 +52,6 @@ data self_host_wet_route_receipt_lifetime_stall: GuaranteeStall = GuaranteeStall
       "test.claim.self_host_discovery_enumeration_behavioral_witness.self_host_discovery_enumeration_behavioral_receipt_holds",
       "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds",
       "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds",
-      "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds",
       "test.claim.self_host_program_assembly_behavioral_witness.self_host_program_assembly_behavioral_receipt_holds",
       "test.claim.self_host_program_partition_behavioral_witness.self_host_program_partition_behavioral_receipt_holds",
       "test.claim.self_host_source_authority_behavioral_witness.self_host_source_authority_behavioral_receipt_holds",
