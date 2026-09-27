@@ -231,11 +231,11 @@ fn optional_text_is(v: String?, want: String) -> Bool {
 
 data duplicate_rows: String = concat("[", concat(
   "{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, concat("\",\"redirection_status\":1,\"media_index\":0,\"session_index\":0},",
-  concat("{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, "\",\"redirection_status\":1,\"media_index\":1,\"session_index\":1}]")))))))
+  concat("{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, "\",\"redirection_status\":1,\"media_index\":1,\"session_index\":1}]"))))))
 
 data wrong_rows: String = concat("[", concat(
   "{\"media_type\":1,\"image_name\":\"", concat(desired_census as String, concat("\",\"redirection_status\":1,\"media_index\":0,\"session_index\":0},",
-  concat("{\"media_type\":1,\"image_name\":\"", concat(stale_census as String, "\",\"redirection_status\":1,\"media_index\":1,\"session_index\":1}]")))))))
+  concat("{\"media_type\":1,\"image_name\":\"", concat(stale_census as String, "\",\"redirection_status\":1,\"media_index\":1,\"session_index\":1}]"))))))
 
 test fn duplicate_rows_for_the_image_refuse_keeping_the_document() -> Bool {
   match attach_readiness(answered: true, body: duplicate_rows, image_name: desired_census, firmware: megarac_firmware_0_32) {
