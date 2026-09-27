@@ -663,7 +663,7 @@ fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
         PresentationStateUnestablished { cd_error: c } => [concat("after the handoff the presentation read Started but cd_error_code was ", concat(cd_reading_text(r: c), concat(", so its state is unestablished: ", observation_text(r: a))))]
         PresentationReadyButSessionHeld { held: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
       }
-      })
+      )
   }
 }
 

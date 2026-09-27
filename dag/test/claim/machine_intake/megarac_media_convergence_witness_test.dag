@@ -806,5 +806,5 @@ test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Boo
     session_release: SessionReleased,
     baseline: none,
   }))
-  string_contains(s: rendered, pattern: "13100") && string_contains(s: rendered, pattern: "\"cd_error_code\": 16")
+  string_contains(s: rendered, pattern: "13100") && string_contains(s: rendered, pattern: "16 (uncatalogued)")
 }
