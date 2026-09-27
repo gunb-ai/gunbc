@@ -1436,11 +1436,7 @@ fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRe
   OperatorExpressionRefused { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: reason, n: at)) }
 }
 
-// One operand of an operator expression, lowered whole or refused at the operand. An operand the
-// bottom-up fold does not bring to a lowered node is a VALUE, read by the one value reader
-// (body_lower_value_read), so a block operand (`t && match w {..}`) lowers as that block and its
-// refusal is the value's, located at the value. It used to fall to body_lower_operand_ref_optional,
-// an operand reader that cannot read a block, and refuse as operator_operand_unread.
+// One operand of an operator expression, lowered whole or refused at the operand.
 fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   let operand = body_lower_strip_operator_free_levels(node: node)
   match body_lower_read_operator_expression(node: operand) {
@@ -1454,7 +1450,14 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: Present { value: lowered }, diagnostics: d } =>
             outcome_with_diagnostics(value: lowered, diagnostics: d)
-          Accepted { value: Absent, diagnostics: _ } => body_lower_value_read(value: operand)
+          Accepted { value: Absent, diagnostics: _ } =>
+            match body_lower_operand_ref_optional(node: operand) {
+              Present { value: lowered } => outcome_accepted(value: lowered)
+              Absent =>
+                outcome_rejected(
+                  d: body_lower_diagnostic(reason: ^body_lowering_reason_operator_operand_unread, n: operand)
+                )
+            }
         }
       }
   }
@@ -7394,11 +7397,22 @@ fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> 
   )
 }
 
+// A CAPTURE THE FOLD ALREADY LOWERED IS THE PRIMARY'S VALUE. body_lower_fold_reduce folds a node's
+// children before reducing it, so a primary whose capture is a control form -- `match w {..}`,
+// `if c {..} else {..}` in operand, argument or field position -- reaches this reducer holding the
+// lowered Match or Branch, not syntax. The strategy readers below read raw syntax: handed a lowered
+// node, one of them answered it with its first child, so `t && match w {..}` lowered to `t && w`
+// with every arm dropped (the value reader on the match_expr node itself was correct; on its primary
+// parent it was not). The postfix reducer already passes a lowered primary through
+// (body_lower_postfix_lowered_primary_optional); this is the same rule one level down.
 fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   let captured = match body_lower_unwrap_captured(shell: shell) {
     Present { value: inner } => inner
     Absent => shell
   }
+  if body_lower_is_core_substrate(node: captured) {
+    outcome_accepted(value: captured)
+  } else {
   match body_lower_int_literal_with_magnitude_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
@@ -7478,6 +7492,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       }
       }
       }
+  }
 }
 
 fn body_lower_fn_body_shell(shell: Node) -> Outcome<BodyLowering> {
