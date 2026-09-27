@@ -158,3 +158,59 @@ pub(crate) fn census_heads_both_readings(
     };
     (read(false), read(true))
 }
+
+#[cfg(test)]
+mod heads_reading_item_boundary_tests {
+    //! A DATA VALUE ENDS WHERE AN ITEM BEGINS, and "an item begins" is the grammar's own answer:
+    //! its item forms plus the test marker `parse_item` peels first. The heads reading used a
+    //! hand-written keyword list with no test marker, so the test item below was consumed into the
+    //! data value above it and its name vanished from every pool census on that reading. The
+    //! declaration-name population of `heads_reading_differential` is this class's corpus-wide
+    //! reading; this is its smallest specimen. Local diligence only: the Rust unit run is off the
+    //! merge path (`gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`).
+    use super::*;
+
+    fn heads_names(content: &str) -> Vec<String> {
+        let path = "dag/test/fixture/heads_after_data_provider.dag".to_string();
+        let tokens = v1_compiler_tokenize::tokenize(
+            content.to_string(),
+            path.clone(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
+        let mut si = HashMap::new();
+        si.insert(
+            path.clone(),
+            build_newline_index(path.clone(), content.to_string()),
+        );
+        let parsed = v1_compiler_parse::parse_heads_with_table(
+            tokens,
+            Rc::new(si),
+            crate::v1_std_core::empty_intern_table(),
+        );
+        assert!(
+            parsed.result.error.is_none(),
+            "heads reading refused the specimen"
+        );
+        let module = parsed.result.module.clone().expect("module");
+        module
+            .children
+            .iter()
+            .map(|item| item.name.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_test_item_after_a_data_value_is_its_own_item() {
+        let names = heads_names(include_str!(
+            "../../../../../dag/test/fixture/heads_after_data_provider.dag"
+        ));
+        assert!(
+            names.iter().any(|n| n == "heads_after_data_marked_probe"),
+            "the test item after the data value was swallowed: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "heads_before_data_marked_probe"),
+            "the control row before the data value must also be read: {names:?}"
+        );
+    }
+}

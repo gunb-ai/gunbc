@@ -23,7 +23,7 @@ import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: anonymous parameter slots (`_`) as minted, unwritable binders -- v2.std.anonymous_binder
-// anonymous_binder_mint_domain, reached through v2.compiler.body_lowering_fold
+// anonymous_binder_mint_parameter_list, reached through v2.compiler.body_lowering_fold
 // body_lower_domain_from_param_list, and the refusal v2.compiler.resolve raises for a `_` in value
 // position. BOUNDARY: source text in, assembled (normalized + resolved) program out through
 // assemble_program_from_ingest -- the production route, so the lowering, the mint and the resolve

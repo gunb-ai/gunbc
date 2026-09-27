@@ -16872,6 +16872,12 @@ pub struct HeadsReadingDifferential {
     pub narrowed: Vec<String>,
     pub regressed: Vec<String>,
     pub both_refused: Vec<String>,
+    /// Modules both readings accept whose DECLARATION NAMES differ (the population the pool
+    /// name census reads), each with the names only one reading carries. Narrower than
+    /// `divergent`, which compares whole stripped nodes: a reading can differ in a field no
+    /// name census consumes and still agree here, and the converse is the defect this row
+    /// exists to show -- a declaration one reading silently loses.
+    pub declaration_names_divergent: Vec<String>,
     /// Wall spent in the FULL reading, summed over every module, and the same for the
     /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
     /// list, alternating per module — so the ratio compares two READINGS, not two builds,
@@ -16903,6 +16909,7 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         narrowed: Vec::new(),
         regressed: Vec::new(),
         both_refused: Vec::new(),
+        declaration_names_divergent: Vec::new(),
         full_reading_nanos: 0,
         heads_reading_nanos: 0,
     };
@@ -16918,6 +16925,17 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         out.heads_reading_nanos += heads_nanos;
         match (full_read, heads_read) {
             (Ok(full), Ok(heads)) => {
+                let full_names: BTreeSet<String> =
+                    collect_module_decl_names(&full).into_iter().collect();
+                let heads_names: BTreeSet<String> =
+                    collect_module_decl_names(&heads).into_iter().collect();
+                if full_names != heads_names {
+                    let only_full: Vec<&String> = full_names.difference(&heads_names).collect();
+                    let only_heads: Vec<&String> = heads_names.difference(&full_names).collect();
+                    out.declaration_names_divergent.push(format!(
+                        "{path} only_full={only_full:?} only_heads={only_heads:?}"
+                    ));
+                }
                 if full != heads {
                     out.divergent.push(path);
                 }
@@ -17905,7 +17923,10 @@ fn render_witness_claim_result_text(
 /// so a shared pool re-binds bare cross-module references. This walk resolves nothing — it
 /// tokenizes and parses each file in isolation, with a fresh empty table per file — so no
 /// module of one root is ever visible to another and that objection cannot reach it.
-pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
+// The required runtime producer also participates in declaration/citation integrity.
+// This parse-only enrollment does not add it to the v1 stage0 regeneration sweep.
+pub const DAG_PARSE_SWEEP_ROOTS: [&str; 4] =
+    ["src/v1", "dag", "src/v2", "test/primitive_runtime_body"];
 
 /// The `.dag` parse sweep, as a callable phase rather than a separate binary.
 ///
