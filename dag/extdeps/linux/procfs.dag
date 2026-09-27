@@ -125,8 +125,6 @@ service linux.Procfs {
     }
   }
 
-  // /proc/uptime's shape and parse are extdeps.linux.proc_uptime's; the mtcollins1 boot's phase
-  // clock reads it because the boot-based clock does not step with the wall clock.
   operation ReadUptime {
     input {}
     output {
