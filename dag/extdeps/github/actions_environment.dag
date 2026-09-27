@@ -65,6 +65,11 @@ data github_runner_name_variable_name: String = "RUNNER_NAME"
 // files during a workflow read this name here rather than re-spelling the variable.
 data github_runner_temp_variable_name: String = "RUNNER_TEMP"
 
+// GITHUB_OUTPUT names the step's own output file: `name=value` lines written to it become
+// `steps.<id>.outputs.<name>` for later steps of the job (the cited variables reference). The file
+// is per step, so a step that writes one output owns the whole file.
+data github_output_variable_name: String = "GITHUB_OUTPUT"
+
 // THE RUN'S REPOSITORY AND WORKFLOW REFERENCE, carried for the same reason the coordinates above
 // are. GITHUB_REPOSITORY is `owner/repo`; GITHUB_WORKFLOW_REF is
 // `owner/repo/.github/workflows/<file>@<ref>`, the one runner-supplied variable that names the

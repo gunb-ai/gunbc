@@ -362,19 +362,14 @@ fn field_projection_field_name() -> Symbol {
   ^field_projection_field
 }
 
-fn field_projection_node(base: Node, field: Symbol, source: Node) -> Node {
+// `field` is the field-name atom the caller already lowered from its own token, so the projection
+// keeps that token's occurrence rather than the whole chain's.
+fn field_projection_node(base: Node, field: Node, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: field_projection_base_name() }, target: base },
-      Edge {
-        label: Named { name: field_projection_field_name() },
-        target: node_with_occurrence_id(
-          kind: TypeNode { connective: Atom { identity: field } },
-          children: [],
-          occurrence_id: source.occurrence_id
-        )
-      }
+      Edge { label: Named { name: field_projection_field_name() }, target: field }
     ],
     occurrence_id: source.occurrence_id
   )
