@@ -1,0 +1,30 @@
+module test.claim.fabric.fabric_closure_budget_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.fabric_storage { FabricObject, FabricObjectStored, FabricHeadAdvanced, ExpectHeadAbsent, FabricClosureRead, FabricClosureBudgetExhausted }
+import extdeps.shell
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure }
+
+// Actual two-object closure: a short budget must refuse; a large ceiling must terminate at the
+// observed end. Both probes read the same durable head, so early termination cannot truncate it.
+test fn closure_budget_is_a_ceiling_and_complete_two_object_history_is_preserved() -> Bool {
+  let root = fabric_storage_file_root(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_closure_budget.XXXXXX").path as NonEmptyStr)
+  match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => match fabric_storage_file_put(root: root, object: FabricObject { links: [], body: "leaf" }) {
+      FabricObjectStored { object: leaf } => match fabric_storage_file_put(root: root, object: FabricObject { links: [leaf], body: "parent" }) {
+        FabricObjectStored { object: parent } => match fabric_storage_file_advance(root: root, name: "closure-budget", expected: ExpectHeadAbsent, target: parent) {
+          FabricHeadAdvanced { object: _, generation: _ } => {
+            let short = fabric_storage_file_closure(root: root, name: "closure-budget", bound: 1)
+            let complete = fabric_storage_file_closure(root: root, name: "closure-budget", bound: 100000)
+            (match short { FabricClosureBudgetExhausted { at: _, bound: b } => b == 1 _ => false })
+              && (match complete { FabricClosureRead { reading: _, newest_first: objects } => objects.count() == 2 _ => false })
+          }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}

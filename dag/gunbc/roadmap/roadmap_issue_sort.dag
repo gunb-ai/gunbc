@@ -1,0 +1,137 @@
+module gunbc.roadmap_issue_sort
+
+import extdeps.languages.typescript.program {
+  TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_index, ts_call,
+  ts_arrow, ts_block, ts_const, ts_let, ts_return, ts_expr_stmt, ts_if,
+  ts_new, ts_cond, ts_prefix, ts_object, ts_field, ts_array, ts_binop, ts_for_of,
+}
+
+// Presentation-only ordering over the server's modeled sort values and dependency edges.
+// Stable Kahn traversal chooses the first eligible row in the preceding order. Missing
+// prerequisites are outside this table; cycles refuse before any DOM mutation. All rows,
+// including filtered rows, participate. Undo restores order and sort state together.
+fn issue_sort_bind_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".roadmap-frontier")]), property: "forEach"), args: [ts_arrow(params: ["root"], body: ts_block(stmts: [
+                ts_const(name: "table", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-table")])),
+                ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "table")), then: ts_block(stmts: [
+                      ts_return(expr: none)
+                  ]), else_stmt: none),
+                ts_const(name: "list", value: ts_call(callee: ts_member(object: ts_ident(name: "table"), property: "querySelector"), args: [ts_lit_str(value: "ul")])),
+                ts_const(name: "buttons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "table"), property: "querySelectorAll"), args: [ts_lit_str(value: "[data-sort-key]")])])),
+                ts_const(name: "topological", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-topological")])),
+                ts_const(name: "undo", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-sort-undo")])),
+                ts_const(name: "status", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-sort-status")])),
+                ts_const(name: "history", value: ts_array(elements: [])),
+                ts_let(name: "key", value: ts_lit_str(value: "")),
+                ts_let(name: "direction", value: ts_lit_str(value: "ascending")),
+                ts_let(name: "topo", value: ts_ident(name: "false")),
+                ts_const(name: "rows", value: ts_arrow(params: [], body: ts_block(stmts: [
+                        ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_member(object: ts_ident(name: "list"), property: "children")]) })
+                ]))),
+                ts_const(name: "paint", value: ts_arrow(params: [], body: ts_block(stmts: [
+                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "buttons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
+                                    ts_const(name: "label", value: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortLabel"), op: "||", right: ts_member(object: ts_ident(name: "button"), property: "textContent"))),
+                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortLabel"), op: "=", right: ts_ident(name: "label"))),
+                                    ts_const(name: "selected", value: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "topo")), op: "&&", right: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortKey"), op: "===", right: ts_ident(name: "key")))),
+                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "parentElement"), property: "setAttribute"), args: [ts_lit_str(value: "aria-sort"), ts_cond(test: ts_ident(name: "selected"), consequent: ts_ident(name: "direction"), alternate: ts_lit_str(value: "none"))])),
+                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "textContent"), op: "=", right: ts_binop(left: ts_ident(name: "label"), op: "+", right: ts_cond(test: ts_ident(name: "selected"), consequent: ts_cond(test: ts_binop(left: ts_ident(name: "direction"), op: "===", right: ts_lit_str(value: "ascending")), consequent: ts_lit_str(value: " ↑"), alternate: ts_lit_str(value: " ↓")), alternate: ts_lit_str(value: ""))))),
+                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "setAttribute"), args: [ts_lit_str(value: "aria-label"), ts_binop(left: ts_binop(left: ts_lit_str(value: "Sort by "), op: "+", right: ts_ident(name: "label")), op: "+", right: ts_cond(test: ts_ident(name: "selected"), consequent: ts_cond(test: ts_binop(left: ts_ident(name: "direction"), op: "===", right: ts_lit_str(value: "ascending")), consequent: ts_lit_str(value: ", descending next"), alternate: ts_lit_str(value: ", ascending next")), alternate: ts_lit_str(value: ", ascending next")))]))
+                        ]))])),
+                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "topological"), property: "setAttribute"), args: [ts_lit_str(value: "aria-pressed"), ts_cond(test: ts_ident(name: "topo"), consequent: ts_lit_str(value: "true"), alternate: ts_lit_str(value: "false"))])),
+                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "topological"), property: "classList"), property: "toggle"), args: [ts_lit_str(value: "chip-on"), ts_ident(name: "topo")])),
+                        ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "undo"), property: "disabled"), op: "=", right: ts_binop(left: ts_member(object: ts_ident(name: "history"), property: "length"), op: "===", right: ts_lit_num(text: "0"))))
+                ]))),
+                ts_const(name: "remember", value: ts_arrow(params: [], body: ts_block(stmts: [
+                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "history"), property: "push"), args: [ts_object(fields: [ts_field(key: "rows", value: ts_call(callee: ts_ident(name: "rows"), args: [])), ts_field(key: "key", value: ts_ident(name: "key")), ts_field(key: "direction", value: ts_ident(name: "direction")), ts_field(key: "topo", value: ts_ident(name: "topo"))])]))
+                ]))),
+                ts_const(name: "restore", value: ts_arrow(params: [], body: ts_block(stmts: [
+                        ts_const(name: "previous", value: ts_call(callee: ts_member(object: ts_ident(name: "history"), property: "pop"), args: [])),
+                        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "previous")), then: ts_block(stmts: [
+                              ts_return(expr: none)
+                          ]), else_stmt: none),
+                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "previous"), property: "rows"), property: "forEach"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
+                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "appendChild"), args: [ts_ident(name: "row")]))
+                        ]))])),
+                        ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "key"))),
+                        ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "direction"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "direction"))),
+                        ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "topo"))),
+                        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+                        ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Previous order restored.")))
+                ]))),
+                ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "undo"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_ident(name: "restore")])),
+                ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "buttons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
+                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+                                        ts_const(name: "nextKey", value: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortKey")),
+                                        ts_const(name: "nextDirection", value: ts_cond(test: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "topo")), op: "&&", right: ts_binop(left: ts_ident(name: "key"), op: "===", right: ts_ident(name: "nextKey"))), op: "&&", right: ts_binop(left: ts_ident(name: "direction"), op: "===", right: ts_lit_str(value: "ascending"))), consequent: ts_lit_str(value: "descending"), alternate: ts_lit_str(value: "ascending"))),
+                                        ts_const(name: "ordered", value: ts_call(callee: ts_ident(name: "rows"), args: [])),
+                                        ts_const(name: "value", value: ts_arrow(params: ["row"], body: ts_block(stmts: [
+                                                ts_const(name: "cell", value: ts_call(callee: ts_member(object: ts_ident(name: "row"), property: "querySelector"), args: [ts_binop(left: ts_binop(left: ts_lit_str(value: "[data-col=\""), op: "+", right: ts_ident(name: "nextKey")), op: "+", right: ts_lit_str(value: "\"]"))])),
+                                                ts_return(expr: Present { value: ts_cond(test: ts_ident(name: "cell"), consequent: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "cell"), property: "dataset"), property: "sortValue"), op: "||", right: ts_lit_str(value: "")), alternate: ts_lit_str(value: "")) })
+                                        ]))),
+                                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "ordered"), property: "sort"), args: [ts_arrow(params: ["a", "b"], body: ts_block(stmts: [
+                                                    ts_const(name: "av", value: ts_call(callee: ts_ident(name: "value"), args: [ts_ident(name: "a")])),
+                                                    ts_const(name: "bv", value: ts_call(callee: ts_ident(name: "value"), args: [ts_ident(name: "b")])),
+                                                    ts_if(cond: ts_binop(left: ts_ident(name: "av"), op: "===", right: ts_lit_str(value: "")), then: ts_block(stmts: [
+                                                          ts_return(expr: Present { value: ts_cond(test: ts_binop(left: ts_ident(name: "bv"), op: "===", right: ts_lit_str(value: "")), consequent: ts_lit_num(text: "0"), alternate: ts_lit_num(text: "1")) })
+                                                      ]), else_stmt: none),
+                                                    ts_if(cond: ts_binop(left: ts_ident(name: "bv"), op: "===", right: ts_lit_str(value: "")), then: ts_block(stmts: [
+                                                          ts_return(expr: Present { value: ts_prefix(op: "-", expr: ts_lit_num(text: "1")) })
+                                                      ]), else_stmt: none),
+                                                    ts_const(name: "left", value: ts_cond(test: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortNumeric"), op: "===", right: ts_lit_str(value: "true")), consequent: ts_call(callee: ts_ident(name: "Number"), args: [ts_ident(name: "av")]), alternate: ts_call(callee: ts_member(object: ts_ident(name: "av"), property: "toLowerCase"), args: []))),
+                                                    ts_const(name: "right", value: ts_cond(test: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortNumeric"), op: "===", right: ts_lit_str(value: "true")), consequent: ts_call(callee: ts_ident(name: "Number"), args: [ts_ident(name: "bv")]), alternate: ts_call(callee: ts_member(object: ts_ident(name: "bv"), property: "toLowerCase"), args: []))),
+                                                    ts_const(name: "compared", value: ts_cond(test: ts_binop(left: ts_ident(name: "left"), op: "<", right: ts_ident(name: "right")), consequent: ts_prefix(op: "-", expr: ts_lit_num(text: "1")), alternate: ts_cond(test: ts_binop(left: ts_ident(name: "left"), op: ">", right: ts_ident(name: "right")), consequent: ts_lit_num(text: "1"), alternate: ts_lit_num(text: "0")))),
+                                                    ts_return(expr: Present { value: ts_cond(test: ts_binop(left: ts_ident(name: "nextDirection"), op: "===", right: ts_lit_str(value: "ascending")), consequent: ts_ident(name: "compared"), alternate: ts_prefix(op: "-", expr: ts_ident(name: "compared"))) })
+                                        ]))])),
+                                        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "remember"), args: [])),
+                                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "ordered"), property: "forEach"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
+                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "appendChild"), args: [ts_ident(name: "row")]))
+                                        ]))])),
+                                        ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_ident(name: "nextKey"))),
+                                        ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "direction"), op: "=", right: ts_ident(name: "nextDirection"))),
+                                        ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_ident(name: "false"))),
+                                        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+                                        ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_lit_str(value: "Sorted by "), op: "+", right: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortLabel")), op: "+", right: ts_lit_str(value: ", ")), op: "+", right: ts_ident(name: "direction")), op: "+", right: ts_lit_str(value: "."))))
+                            ]))]))
+                ]))])),
+                ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "topological"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
+                            ts_if(cond: ts_ident(name: "topo"), then: ts_block(stmts: [
+                                  ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "restore"), args: [])),
+                                  ts_return(expr: none)
+                              ]), else_stmt: none),
+                            ts_const(name: "original", value: ts_call(callee: ts_ident(name: "rows"), args: [])),
+                            ts_let(name: "remaining", value: ts_call(callee: ts_member(object: ts_ident(name: "original"), property: "slice"), args: [])),
+                            ts_const(name: "ordered", value: ts_array(elements: [])),
+                            ts_for_of(var_name: "step", iterable: ts_ident(name: "original"), body: ts_block(stmts: [
+                                  ts_const(name: "next", value: ts_call(callee: ts_member(object: ts_ident(name: "remaining"), property: "find"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
+                                              ts_const(name: "dependencies", value: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "dataset"), property: "dependencies"), op: "||", right: ts_lit_str(value: "")), property: "split"), args: [ts_lit_str(value: " ")]), property: "filter"), args: [ts_arrow(params: ["id"], body: ts_block(stmts: [
+                                                          ts_return(expr: Present { value: ts_binop(left: ts_ident(name: "id"), op: "!==", right: ts_lit_str(value: "")) })
+                                              ]))])),
+                                              ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "dependencies"), property: "every"), args: [ts_arrow(params: ["id"], body: ts_block(stmts: [
+                                                            ts_return(expr: Present { value: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "remaining"), property: "some"), args: [ts_arrow(params: ["candidate"], body: ts_block(stmts: [
+                                                                            ts_return(expr: Present { value: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "candidate"), property: "dataset"), property: "node"), op: "===", right: ts_ident(name: "id")) })
+                                                                ]))])) })
+                                                  ]))]) })
+                                  ]))])),
+                                  ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "next")), then: ts_block(stmts: [
+                                        ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Cannot sort: dependency cycle. Order unchanged."))),
+                                        ts_return(expr: none)
+                                    ]), else_stmt: none),
+                                  ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "ordered"), property: "push"), args: [ts_ident(name: "next")])),
+                                  ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "remaining"), op: "=", right: ts_call(callee: ts_member(object: ts_ident(name: "remaining"), property: "filter"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
+                                                ts_return(expr: Present { value: ts_binop(left: ts_ident(name: "row"), op: "!==", right: ts_ident(name: "next")) })
+                                  ]))])))
+                            ])),
+                            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "remember"), args: [])),
+                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "ordered"), property: "forEach"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
+                                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "appendChild"), args: [ts_ident(name: "row")]))
+                            ]))])),
+                            ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_lit_str(value: ""))),
+                            ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_ident(name: "true"))),
+                            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
+                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Prerequisites before dependents.")))
+                ]))])),
+                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: []))
+    ]))]))
+  ]
+}

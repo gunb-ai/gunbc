@@ -1,0 +1,56 @@
+module gunbc.workspace_allocation_wire
+
+import std.types { String, NonEmptyStr, Int }
+import extdeps.languages.json.emit { JsonObject, JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
+
+// One JSON contract for allocation creation and incarnation-bound release. Authority-bearing
+// owner, image, access and expiry fields are supplied by verified session and server policy.
+type WorkspaceCreateSubmission { csrf_token: String, idempotency_key: NonEmptyStr, profile: String }
+
+fn workspace_create_submission(body: String) -> WorkspaceCreateSubmission? {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: document } => match document {
+      JsonObject { members } => if count(members) == 3 {
+        match json_object_unique_member(v: document, key: "csrf_token") {
+          JsonMemberFound { value: JsonString { value: csrf } } => match json_object_unique_member(v: document, key: "idempotency_key") {
+            JsonMemberFound { value: JsonString { value: key } } => if key != "" && length(key) <= 128 {
+              match json_object_unique_member(v: document, key: "profile") {
+                JsonMemberFound { value: JsonString { value: selected } } => Present { value: WorkspaceCreateSubmission { csrf_token: csrf, idempotency_key: key as NonEmptyStr, profile: selected } }
+                _ => none
+              }
+            } else { none }
+            _ => none
+          }
+          _ => none
+        }
+      } else { none }
+      _ => none
+    }
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}
+
+
+type WorkspaceReleaseSubmission { csrf_token: String, generation: Int }
+
+fn workspace_release_submission(body: String) -> WorkspaceReleaseSubmission? {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: document } => match document {
+      JsonObject { members } => if count(members) == 2 {
+        match json_object_unique_member(v: document, key: "csrf_token") {
+          JsonMemberFound { value: JsonString { value: csrf } } => match json_object_unique_member(v: document, key: "generation") {
+            JsonMemberFound { value: JsonString { value: generation_wire } } => match parse_int(s: generation_wire) {
+              Present { value: parsed_generation } => if parsed_generation >= 0 { Present { value: WorkspaceReleaseSubmission { csrf_token: csrf, generation: parsed_generation } } } else { none }
+              Absent => none
+            }
+            _ => none
+          }
+          _ => none
+        }
+      } else { none }
+      _ => none
+    }
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}

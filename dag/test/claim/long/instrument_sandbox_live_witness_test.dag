@@ -1,4 +1,7 @@
 module test.claim.long.instrument_sandbox_live_witness
+
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent }
+import extdeps.http.server { RequestSecurityContext, AccessPathLocalDev }
 import extdeps.tailscale.identity { TailnetIdentityAbsent }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -49,8 +52,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (restructure the derivation onto keyed lookup) was MET by #7822 and did not dissolve the row, so
 // a second copy of it would now be doubly wrong.
 
-fn fixture_request(path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: GET, path: path, body: "", identity: TailnetIdentityAbsent }
+fn fixture_request(path: String) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+  ServeHttpRequest { method: GET, path: path, body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
 }
 
 fn served() -> ServeHttpResponse {

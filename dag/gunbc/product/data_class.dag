@@ -103,6 +103,7 @@ type Classified<C, T> sole_constructor {
 fn classify_personal_identity<T>(value: T) -> Classified<PersonalIdentity, T>
   admit_callers: [
     decl_ref(module_path: "gunbc.principal_projection", decl_name: "oidc_projection"),
+    decl_ref(module_path: "gunbc.principal_projection", decl_name: "verified_oidc_projection"),
   ]
   = Classified { category: personal_identity_ref(), reveal: fn(k) { value } }
 

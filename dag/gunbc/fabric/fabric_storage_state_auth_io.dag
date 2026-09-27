@@ -1,0 +1,26 @@
+module gunbc.fabric_storage_state_auth_io
+
+import std.types { String, Timestamp }
+import gunbc.auth.mac_keyring { read_mac_keyring, ApprovalKeyLoaded, ApprovalKeyringRefused }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fabric_storage_state_auth { fabric_state_key_path, fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestReading, FabricStateRequestRefused }
+
+fn fabric_state_signed_request(operation: String, request: String) -> String? {
+  match read_mac_keyring(path: fabric_state_key_path, key_id: fabric_state_key_id) {
+    ApprovalKeyringRefused { cause: _ } => none
+    ApprovalKeyLoaded { key } => match clock_now_probed_at() {
+      Absent => none
+      Present { value: now } => fabric_state_sign(key: key, operation: operation, request: request, issued_at: now as Timestamp)
+    }
+  }
+}
+
+fn fabric_state_verified_request(body: String) -> FabricStateRequestReading {
+  match read_mac_keyring(path: fabric_state_key_path, key_id: fabric_state_key_id) {
+    ApprovalKeyringRefused { cause: _ } => FabricStateRequestRefused
+    ApprovalKeyLoaded { key } => match clock_now_probed_at() {
+      Absent => FabricStateRequestRefused
+      Present { value: now } => fabric_state_verify(key: key, body: body, now: now as Timestamp)
+    }
+  }
+}

@@ -1,0 +1,96 @@
+module gunbc.workspace_allocation_metrics
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.algebra { trim }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.measure { byte_size_count }
+import product.fabric.memory_grant { memory_grant_bytes }
+import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
+import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation { WorkspaceReservation, workspace_reservation_json, workspace_profile_memory }
+import gunbc.runner_microvm_lifecycle { AttemptIdentity }
+import gunbc.runner_microvm_lifecycle_realize { AttemptLaunch, bind_attempt_console, AttemptConsoleBound }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_controller_slice_unit_name }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.workspace_allocation_milestones { workspace_first_ready_at, workspace_observed_duration }
+import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk }
+import gunbc.clock_read { clock_now_probed_at }
+import extdeps.systemd { SystemdUnitProperty, MemoryPeak, MemoryMax, MemorySwapMax, InvocationIDProperty, systemd_unit_property_wire }
+import extdeps.languages.json.emit { JsonValue, json_null, json_object, json_kv, json_string, json_int, serialize_json }
+
+// Preserve an unreadable property as null. Infinity remains the manager's explicit reading;
+// the separately observed ancestor slice prevents mistaking it for an unlimited controller.
+fn workspace_metric_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> JsonValue {
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+  if !shown.success || trim(s: shown.value) == "" || trim(s: shown.value) == "[not set]" { json_null() }
+  else { json_string(s: trim(s: shown.value)) }
+}
+
+fn workspace_metric_unit(unit: NonEmptyStr) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "unit", value: json_string(s: unit as String)),
+    json_kv(key: "memory_peak_bytes", value: workspace_metric_property(unit: unit, property: MemoryPeak)),
+    json_kv(key: "memory_max_bytes", value: workspace_metric_property(unit: unit, property: MemoryMax)),
+    json_kv(key: "memory_swap_max_bytes", value: workspace_metric_property(unit: unit, property: MemorySwapMax)),
+  ])
+}
+
+// Called before shared teardown removes the attempt unit. The two invocation reads fence a
+// unit-name reuse during measurement. This is a before-teardown sample, not a final exit peak.
+fn workspace_capture_runtime_metrics(store: FabricStorageBinding, reservation: WorkspaceReservation, identity: AttemptIdentity, launch: AttemptLaunch) -> Bool {
+  if identity.allocation_generation != reservation.generation || identity.attempt.slot != reservation.slot { false }
+  else { match bind_attempt_console(identity: identity, launch: launch) {
+    AttemptConsoleBound { unit: attempt_unit, systemd_invocation: before } => match clock_now_probed_at() {
+      Absent => false
+      Present { value: observed_clock } => {
+        let controller = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: reservation.slot) as String)
+        let controller_before = workspace_metric_property(unit: controller, property: InvocationIDProperty)
+        let attempt_sample = workspace_metric_unit(unit: attempt_unit)
+        let controller_sample = workspace_metric_unit(unit: controller)
+        let controller_slice = workspace_metric_unit(unit: microvm_controller_slice_unit_name)
+        let controller_after = workspace_metric_property(unit: controller, property: InvocationIDProperty)
+        match bind_attempt_console(identity: identity, launch: launch) {
+          AttemptConsoleBound { unit: after_unit, systemd_invocation: after } => if after_unit != attempt_unit || after != before || serialize_json(v: controller_before) != serialize_json(v: controller_after) || serialize_json(v: controller_before) != serialize_json(v: json_string(s: identity.invocation_id as String)) {
+            false
+          } else {
+            let requested_at = match workspace_read_owner(store: store, owner: reservation.request.owner) {
+              WorkspaceStoreReadOk { snapshot: owner_state } => match filter(owner_state.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
+                Present { value: allocation } => allocation.recorded_at
+                Absent => ""
+              }
+              other => ""
+            }
+            let ready_at = workspace_first_ready_at(store: store, reservation: reservation)
+            let wire = serialize_json(v: json_object(members: [
+              json_kv(key: "schema", value: json_string(s: "workspace-runtime-metrics/1")),
+              json_kv(key: "reservation", value: workspace_reservation_json(reservation: reservation)),
+              json_kv(key: "attempt_invocation", value: json_string(s: identity.invocation_id as String)),
+              json_kv(key: "systemd_invocation", value: json_string(s: before as String)),
+              json_kv(key: "controller_invocation", value: controller_before),
+              json_kv(key: "sample_phase", value: json_string(s: "before-teardown")),
+              json_kv(key: "observed_at", value: json_string(s: observed_clock)),
+              json_kv(key: "committed_guest_ram_bytes", value: json_int(n: byte_size_count(b: memory_grant_bytes(g: reservation.grant)) as Int)),
+              json_kv(key: "selected_guest_ram_bytes", value: json_int(n: byte_size_count(b: workspace_profile_memory(profile: reservation.request.profile)) as Int)),
+              json_kv(key: "request_to_ready_seconds", value: workspace_observed_duration(later: ready_at, earlier: requested_at)),
+              json_kv(key: "attempt", value: attempt_sample),
+              json_kv(key: "controller", value: controller_sample),
+              json_kv(key: "controller_ancestor_slice", value: controller_slice),
+            ])) as NonEmptyStr
+            let key = concat("workspace-metrics-", serialize_content_hash(hash: content_hash_of_value(value: concat(serialize_json(v: workspace_reservation_json(reservation: reservation)), identity.invocation_id as String) as NonEmptyStr)) as String) as NonEmptyStr
+            match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: wire) {
+              DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+                CasCommitted { committed: _ } => true
+                other => false
+              }
+              other => false
+            }
+          }
+          other => false
+        }
+      }
+    }
+    other => false
+  } }
+}

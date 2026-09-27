@@ -1,0 +1,42 @@
+module test.manual.roadmap_carrier_process_wet
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+import std.types { String, NonEmptyStr, Bool }
+import std.fabric_storage { ExpectHeadAbsent }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, Progress }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout, roadmap_event_append, roadmap_event_append_snapshot, roadmap_event_snapshot_read,
+  RoadmapEventSnapshot, RoadmapEventSnapshotObserved, EventAppended, EventAlreadyPresent, EventAppendRefused,
+}
+import test.claim.roadmap.roadmap_event_carrier_witness_test { roadmap_carrier_test_event }
+
+// Each named step runs in a fresh interpreter against one caller-provided temporary store.
+// The stale writer carries the original absent-head observation across the process boundary.
+fn roadmap_carrier_process_check(root: String, step: String) -> Bool {
+  if !starts_with(s: root, prefix: "/tmp/gunbc-carrier-process-") { false }
+  else {
+    let file_root = fabric_storage_file_root(root: root as NonEmptyStr)
+    let layout = roadmap_event_carrier_layout(store: FabricStorageLocalFiles { root: file_root })
+    let second = RoadmapEvent { node: "other-node" as RoadmapNodeId, author: roadmap_carrier_test_event(note: "two").author,
+      parent: none, kind: Progress { note: "two" }, recorded_at: "2026-09-27T00:00:00Z" }
+    if step == "initialize" { match fabric_storage_file_root_ensure(root: file_root) { FabricStorageRootReady => true _ => false } }
+    else if step == "first" { match roadmap_event_append(layout: layout, event: roadmap_carrier_test_event(note: "one")) { EventAppended { id: _ } => true _ => false } }
+    else if step == "stale" { match roadmap_event_append_snapshot(layout: layout, snapshot: RoadmapEventSnapshot { expected: ExpectHeadAbsent, events: [] }, event: second) {
+      EventAppendRefused { id: _, step: refused_step, reason: _ } => refused_step == "advance"
+      _ => false
+    } }
+    else if step == "second" { match roadmap_event_append(layout: layout, event: second) { EventAppended { id: _ } => true _ => false } }
+    else if step == "replay" { match roadmap_event_append(layout: layout, event: roadmap_carrier_test_event(note: "one")) { EventAlreadyPresent { id: _ } => true _ => false } }
+    else if step == "verify" { match roadmap_event_snapshot_read(layout: layout) { RoadmapEventSnapshotObserved { snapshot: observed } => observed.events.count() == 2 _ => false } }
+    else { false }
+  }
+}
+
+fn roadmap_carrier_process_wet(root: String, step: String) -> ProcessExit {
+  if roadmap_carrier_process_check(root: root, step: step) { ExitSuccess }
+  else { ExitFailure { code: 1, reason: concat("carrier process step failed: ", step) } }
+}

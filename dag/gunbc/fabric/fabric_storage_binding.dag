@@ -1,0 +1,27 @@
+module gunbc.fabric_storage_binding
+
+import std.types { String, NonEmptyStr }
+import gunbc.fabric_storage_address { fabric_storage_state_suffix }
+import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageLocalFiles, FabricStorageServed }
+
+fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
+  match placement {
+    FabricStorageUnplaced => FabricStorageBindingUnplaced
+    FabricStoragePlaced { host: h, store_root: r, endpoint: e } =>
+      if host_identity_eq(a: h, b: executor) {
+        match fabric_storage_placed_file_root(store_root: r) {
+          FabricStoragePlacedRootReady { root } => FabricStorageLocalFiles { root: root }
+          FabricStoragePlacedRootRefused { detail } => FabricStorageBindingRefused { detail: detail }
+        }
+      } else { FabricStorageServed { endpoint: e } }
+  }
+}
+
+fn fabric_state_storage_binding() -> FabricStorageBinding {
+  match fabric_storage_placement() {
+    FabricStorageUnplaced => FabricStorageBindingUnplaced
+    FabricStoragePlaced { host: _, store_root: _, endpoint } => FabricStorageServed { endpoint: concat(endpoint as String, fabric_storage_state_suffix) as NonEmptyStr }
+  }
+}

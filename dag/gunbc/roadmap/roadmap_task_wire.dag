@@ -1,0 +1,67 @@
+module gunbc.roadmap.roadmap_task_wire
+
+import std.algebra { trim }
+import std.types { String, NonEmptyStr, List }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial, roadmap_task_string, roadmap_task_dependencies }
+import extdeps.google.issue_tracker { IssueStatus, issue_status_parse }
+import extdeps.languages.json.emit { JsonObject, JsonArray }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
+
+type RoadmapTaskRevisionSubmission {
+  csrf_token: String
+  expected_revision: NonEmptyStr
+  title: NonEmptyStr
+  body: String
+  prerequisites: List<RoadmapNodeId>
+  state: IssueStatus
+}
+
+// The browser edits editorial fields, never node identity, code-contract binding or proof facts.
+fn roadmap_task_revision_submission(body: String) -> RoadmapTaskRevisionSubmission? {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: document } => match document {
+      JsonObject { members } => if count(members) != 6 { none } else {
+        match roadmap_task_string(doc: document, key: "csrf_token") {
+          Present { value: csrf } => match roadmap_task_string(doc: document, key: "expected_revision") {
+            Present { value: revision_wire } => if revision_wire == "" { none } else {
+              match roadmap_task_string(doc: document, key: "title") {
+                Present { value: title_wire } => if trim(title_wire) == "" { none } else {
+                  match roadmap_task_string(doc: document, key: "body") {
+                    Present { value: body_wire } => match roadmap_task_string(doc: document, key: "state") {
+                      Present { value: state_wire } => match issue_status_parse(wire: state_wire) {
+                        Present { value: parsed_state } => match json_object_unique_member(v: document, key: "prerequisites") {
+                          JsonMemberFound { value: JsonArray { elements } } => match roadmap_task_dependencies(values: elements) {
+                            Present { value: parsed_dependencies } => Present { value: RoadmapTaskRevisionSubmission {
+                              csrf_token: csrf, expected_revision: revision_wire as NonEmptyStr,
+                              title: title_wire as NonEmptyStr, body: body_wire, state: parsed_state, prerequisites: parsed_dependencies,
+                            } }
+                            Absent => none
+                          }
+                          _ => none
+                        }
+                        Absent => none
+                      }
+                      Absent => none
+                    }
+                    Absent => none
+                  }
+                }
+                Absent => none
+              }
+            }
+            Absent => none
+          }
+          Absent => none
+        }
+      }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+fn roadmap_task_revision_value(prior: RoadmapTaskEditorial, submission: RoadmapTaskRevisionSubmission) -> RoadmapTaskEditorial {
+  RoadmapTaskEditorial { identity: prior.identity, code_contract: prior.code_contract,
+    title: submission.title, body: submission.body, prerequisites: submission.prerequisites, state: submission.state }
+}

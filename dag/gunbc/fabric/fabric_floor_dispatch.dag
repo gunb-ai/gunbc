@@ -10,7 +10,7 @@ import product.fabric.selection {
   select_supply,
 }
 import product.fabric.supply { StableRosterOrder, PlacementAffinityKey }
-import gunbc.fabric_witness_run {
+import gunbc.fabric_floor_policy {
   floor_execution_requirements, floor_grant_duration, floor_buy_terms, floor_admission_terms,
   floor_satisfaction_requirement,
 }
