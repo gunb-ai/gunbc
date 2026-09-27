@@ -111,6 +111,7 @@ pub use required_floor_runner::{
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
+pub mod pre_entry_phase;
 mod required_lane_resolution_census;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
@@ -9606,6 +9607,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
     if let Some(verdict) = index.bare_reference_admission.borrow().as_ref() {
         return verdict.clone();
     }
+    let admission_started = std::time::Instant::now();
     let mut sources: Vec<_> = index.source_files.values().collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     let verdict = sources.into_iter().try_for_each(|source| {
@@ -9620,6 +9622,11 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
         )
     });
     *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
+    pre_entry_phase::record(
+        "pool_bare_reference_admission",
+        pre_entry_phase::PhaseScale::Tree,
+        admission_started.elapsed(),
+    );
     verdict
 }
 
@@ -16834,6 +16841,11 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         nodes_by_file,
         combined_si: Rc::new(combined_si),
     });
+    pre_entry_phase::record(
+        "pool_census_parse",
+        pre_entry_phase::PhaseScale::Tree,
+        pool_started.elapsed(),
+    );
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
     // The one place this term is measured, so it is counted once wherever it is forced
     // from. Every enclosing timer records itself net of this row — see

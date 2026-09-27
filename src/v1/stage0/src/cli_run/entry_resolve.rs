@@ -347,24 +347,40 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
-    let observation = import_resolution_facts_with_observation(&roots, &roots, EXCLUDE);
+    let observation = super::pre_entry_phase::timed(
+        "graph_facts_import_edges",
+        super::pre_entry_phase::PhaseScale::Tree,
+        || import_resolution_facts_with_observation(&roots, &roots, EXCLUDE),
+    );
     let edges = observation.facts;
-    let nodes = module_declaration_facts(&roots);
+    let nodes = super::pre_entry_phase::timed(
+        "graph_facts_module_declarations",
+        super::pre_entry_phase::PhaseScale::Tree,
+        || module_declaration_facts(&roots),
+    );
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
     // reaches reads this one.
     let adjacency = build_import_adjacency(&edges, &nodes);
     // Selection tier: import edges + strict reference edges.
     let mut selection_edges = edges.clone();
+    let selection_reference_facts = super::pre_entry_phase::timed(
+        "graph_facts_selection_reference_edges",
+        super::pre_entry_phase::PhaseScale::Tree,
+        || reference_resolution_facts(&roots, &roots, EXCLUDE),
+    );
     selection_edges.extend(reference_edges_as_import_facts(
-        &reference_resolution_facts(&roots, &roots, EXCLUDE),
+        &selection_reference_facts,
         /* strict */ true,
     ));
     let selection_adjacency = build_import_adjacency(&selection_edges, &nodes);
-    let reference_unaccounted: HashSet<String> =
-        reference_accounting_refusals(&roots, &roots, EXCLUDE)
-            .into_iter()
-            .map(|r| workspace_relative_repo_path(&r.path))
-            .collect();
+    let reference_unaccounted: HashSet<String> = super::pre_entry_phase::timed(
+        "graph_facts_reference_accounting",
+        super::pre_entry_phase::PhaseScale::Tree,
+        || reference_accounting_refusals(&roots, &roots, EXCLUDE),
+    )
+    .into_iter()
+    .map(|r| workspace_relative_repo_path(&r.path))
+    .collect();
     let declared_paths = nodes
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
@@ -749,11 +765,17 @@ pub fn try_process_shared_index_for_pool(
         return Ok(idx);
     }
     let build_started = std::time::Instant::now();
+    let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
     } else {
         try_build_module_index(&roots)?
     };
+    super::pre_entry_phase::record(
+        "source_root_walk_and_read",
+        super::pre_entry_phase::PhaseScale::Tree,
+        walk_started.elapsed(),
+    );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
