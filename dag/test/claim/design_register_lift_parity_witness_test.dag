@@ -429,7 +429,7 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_header_account_claims_no_identity_without_a_session,
 // witness_issue_assign_form_fits_the_rail, the register censuses unchanged. Derived by execution
 // (roadmap_css_derived_digest on the merged tree, 18b798669b7c1358); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "02bcb2789b39bcf5"
+data roadmap_css_lift_parity_digest: String = "5355aad13cead30d"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the
