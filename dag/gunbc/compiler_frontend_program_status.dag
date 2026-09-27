@@ -174,6 +174,7 @@ type MissingInstrument
   | DeclaringIdentitySpellingCensus
   | ResolverBoundDeclaringIdentity
   | ExactOccurrenceResidualCensus
+  | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
   | LiveTreeCompilePhaseMeasurement
   | SeedDeletionObservation
@@ -184,6 +185,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     ResolverBoundDeclaringIdentity => "the v2 resolver answering a qualified reference with an EXACT declaring identity by execution -- the binding's declaration containment path, not a leaf and not the authored spelling -- so that v2.compiler.repair_input_origin_roster derives RepairInputDeclared.declaring from that binding rather than from carrier_declaration_ref's spelling arm (XL-0's population; the roster producer itself exists and answers)"
     DeclaringIdentitySpellingCensus => "a declaring-identity spelling census that answers over XL-3's usable population on the production ingest route: QUALIFIED cross-module mentions (every position) and bare type names in FIELD position, joined to their declaring identity - the producer v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest exists and answers over the bare same-module classes only, which is not that population (XL-3's population)"
     ExactOccurrenceResidualCensus => concat("the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population): the typed import strip (std.import strip_import_statements) applied to a throwaway tree, then the v2 production route -- ingest, graft, normalize, RESOLVE -- over every stripped module, its resolve refusals joined to occurrence identity where an id is minted and to module + path + locus structure where it is synthetic (the residual's ids are mixed, majority synthetic over the whole tree; a wave keyed on occurrence identity alone would cover a minority and report success on the rest). Its known necessary prerequisites are the typed list xl2_prerequisites -- not an exhaustive set -- rendered here from their standings: ", render_xl2_prerequisites())
+    PersistedBehavioralReceipt => "a persisted behavioral-equivalence receipt (the taker exists; the series is empty or refused until one is appended)"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
     SeedDeletionObservation => "an observation of the live tree that the v1 seed families (interpreter, cli_run, seed harness, interpreter floor) are ABSENT, read from the tree rather than from an authored roster"
     LiveTreeCompilePhaseMeasurement => "a compile-phase board measured on the TREE UNDER JUDGMENT and joined to the receipt series by tree identity, which is what gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage consumes -- gated on an in-epoch receipt first and an affordable whole-closure measurement second, both named in this instrument's obstacle"
@@ -484,6 +486,7 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     DeclaringIdentitySpellingCensus => NotBuilt
     ResolverBoundDeclaringIdentity => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
+    PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
     SeedDeletionObservation => NotBuilt
     LiveTreeCompilePhaseMeasurement => RefusedByAuthority {
@@ -747,14 +750,16 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           subject: "self-host: rows of the latest deliberately taken behavioral-equivalence receipt, identity-joined to the behavioral transport roster" as NonEmptyStr,
           outstanding: outstanding
         ))
-        BehavioralEquivalenceSeriesEmpty => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: behavioral-equivalence receipt series has no receipt" as NonEmptyStr,
-          outstanding: ["behavioral-equivalence receipt series is empty"]
-        ))
-        BehavioralEquivalenceSeriesInvalid { reason } => standing_from_evidence(e: observe_outstanding(
-          subject: "self-host: behavioral-equivalence receipt series validation" as NonEmptyStr,
-          outstanding: [reason as String]
-        ))
+        BehavioralEquivalenceSeriesEmpty =>
+          NotDerivable {
+            why: "no behavioral-equivalence receipt is persisted: the taker exists (gunbc test //gunbc/instruments:self-host-behavioral-equivalence) but nothing has been measured, and an unmeasured standing is not an observation that failed. Derivable once the first receipt is appended to gunbc.self_host_behavioral_equivalence_receipt self_host_behavioral_equivalence_receipts." as NonEmptyStr,
+            cause: needs(i: PersistedBehavioralReceipt)
+          }
+        BehavioralEquivalenceSeriesInvalid { reason } =>
+          NotDerivable {
+            why: concat("the behavioral-equivalence receipt series has no admissible latest receipt: ", reason as String) as NonEmptyStr,
+            cause: needs(i: PersistedBehavioralReceipt)
+          }
       }
     SelfHostEmitterProducesEveryRetainedArtifact =>
       standing_from_evidence(
@@ -951,6 +956,7 @@ data all_missing_instruments: List<MissingInstrument> = [
   DeclaringIdentitySpellingCensus,
   ResolverBoundDeclaringIdentity,
   ExactOccurrenceResidualCensus,
+  PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
   LiveTreeCompilePhaseMeasurement,
   SeedDeletionObservation,

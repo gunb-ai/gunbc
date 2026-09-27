@@ -22,6 +22,7 @@ import gunbc.compiler_frontend_program_interlock { SelfHostBehavioralEquivalence
 import gunbc.compiler_frontend_program_status {
   ClassClear,
   ClassOutstanding,
+  ClassNotDerivable,
   milestone_status,
   standing_class,
   standing_class_label,
@@ -138,10 +139,20 @@ test fn a_non_increasing_sequence_refuses_the_series() -> Bool {
   }
 }
 
-// Inhabitance of the real route: the interlock milestone is DERIVED from the persisted series --
-// never NotDerivable -- and its class is exactly what the live standing's outstanding set says.
+// The real route: the interlock milestone reads the persisted series through the same standing.
+// A latest receipt yields Clear or Outstanding by its outstanding set; an empty or refused series is
+// NO OBSERVATION and stays NotDerivable -- never Outstanding, which would report an unmeasured
+// equivalence as a measured failure.
+fn class_of_series(s: BehavioralEquivalenceStanding) -> String {
+  match s {
+    BehavioralEquivalenceLatest { latest: _, outstanding } =>
+      if count(outstanding) == 0 { standing_class_label(c: ClassClear) } else { standing_class_label(c: ClassOutstanding) }
+    BehavioralEquivalenceSeriesEmpty => standing_class_label(c: ClassNotDerivable)
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => standing_class_label(c: ClassNotDerivable)
+  }
+}
+
 test fn the_milestone_derives_from_the_persisted_series() -> Bool {
-  let want = if count(outstanding_of(s: current_behavioral_equivalence_standing())) == 0 { ClassClear } else { ClassOutstanding }
   standing_class_label(c: standing_class(s: milestone_status(m: SelfHostBehavioralEquivalenceReestablished)))
-    == standing_class_label(c: want)
+    == class_of_series(s: current_behavioral_equivalence_standing())
 }
