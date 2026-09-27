@@ -209,9 +209,11 @@ fn v2_native_cli_label() -> Label {
 // because its verdict is a separate fact: a regressed identity turns this red, while qualification
 // counts a classified refusal and stays green.
 //
-// ITS CONSUMER is the nightly `native-frontier` workflow (gunbc.native_frontier_workflow), which runs
-// it on the srv self-hosted class under a memory bound and opens the pull request its proposal
-// describes. Its subject corpus is the self-host instrument's, because the adjudicating binary is
+// ITS CONSUMER is the native route's REQUIRED lane on the merge_group revision (operator ruling
+// 2026-09-27). The nightly `native-frontier` workflow that ran it on a schedule was deleted by that
+// ruling; the lane is promoted under a separate work item and is a declared frontier until it lands
+// (gunbc.rung_drop v2_native_frontier_nightly_cadence). The run's printed proposal is what a mint or
+// re-mint pull request carries (gunbc.native_frontier_debt). Its subject corpus is the self-host instrument's, because the adjudicating binary is
 // that instrument's emitted closure.
 fn v2_native_frontier_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }

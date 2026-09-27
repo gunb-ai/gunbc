@@ -1034,7 +1034,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 ///
 /// `held` and `advanced` are the observation holding: every planned identity reached a terminal
 /// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
-/// roster, which the nightly turns into a pull request. `lost` and `unminted` are the observation
+/// roster, which a reviewed pull request may carry (the required native-route lane publishes it). `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.

@@ -30,8 +30,17 @@ import gunbc.native_route_progress_guard { NativeProgressDispositionRow, NativeC
 //
 // WHO WRITES IT. Nobody by hand. A row is produced only by `native_frontier_proposal_lines`,
 // rendered by the emitted binary from its own run, and it lands through a reviewed pull request
-// that carries the run receipt (host, tested tree, executable, command). The nightly
-// `native-frontier` workflow opens that pull request. It is never merged automatically.
+// that carries the run receipt (host, tested tree, executable, command). It is never merged
+// automatically.
+//
+// WHICH RUN PROPOSES IT (operator ruling 2026-09-27). The native route's REQUIRED lane: its run on
+// the merge_group revision executes `//gunbc/instruments:v2-native-frontier`, the emitted binary
+// prints the `[native-frontier-roster]` proposal, and the lane publishes it. A mint or re-mint pull
+// request carries that one run's proposal verbatim, with `tested_tree` equal to the merge_group
+// sha, so the roster's receipt names a revision that was judged on the landing path. No schedule
+// and no hand-run produces it: the nightly `native-frontier` workflow that used to was deleted by
+// that ruling, and until the lane is live the roster stays unminted
+// (gunbc.rung_drop v2_native_frontier_nightly_cadence).
 //
 // THE STANDING TODAY IS UNMINTED, AND THAT IS A RED, NOT A PASS. No run has yet produced a roster:
 // the route's measured wall (gunbc.rung_drop v2_native_route_off_the_merge_path, re-derived by the
