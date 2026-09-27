@@ -11,6 +11,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  Loop,
   Named,
   Node,
   Positional,
@@ -164,12 +165,39 @@ data probe_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
 
 // A CANONICAL PARAMETER NAME IS A NAME, NOT A LITERAL: `^dag_binding_param_x` is in no domain of this
 // fixture, so it must refuse located at the atom -- the historical canonical-parameter table
-// (target_value_expr_binding_ref_for_canonical_param_atom) may not admit it past a scope miss.
+// (target_value_expr_binding_ref_for_canonical_param_atom, since deleted) may not admit it past a
+// scope miss.
 test fn arrow_scope_out_of_scope_canonical_param_refuses_located() -> Bool {
   match probe_project(closure_body: probe_out_of_scope_param_atom) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
         && diagnostics_fatal(d: d).at == node_locus(node: probe_out_of_scope_param_atom)
+  }
+}
+
+// THE LOOP BODY IS THE SAME ROUTE, NOT A SECOND ONE (target_model target_project_loop). Its atom used
+// to reach the literal projector directly, whose no-literal arm minted the name as a symbol_identity
+// (target_value_expr_mint_unscoped_atom, deleted): a loop body naming nothing emitted as if it
+// resolved. It now projects through target_value_expr_project_atom_in_arrow_scope, so the same atom
+// refuses located inside `loop`, and a literal loop body still projects. Restoring the mint on the loop
+// arm makes the refusal row false.
+fn probe_loop(body: Node) -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Loop }, children: [probe_positional(target: body)])
+}
+
+test fn loop_body_unresolved_atom_refuses_located() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_unbound_atom)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_unbound_atom)
+  }
+}
+
+test fn loop_body_literal_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_pick_lit_one))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
