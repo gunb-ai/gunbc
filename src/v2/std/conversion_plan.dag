@@ -1,0 +1,60 @@
+module v2.std.conversion_plan
+
+import std.algebra { Cons, Empty }
+import std.literal_elaboration { LiteralUnfolding }
+import std.decl_ref { DeclarationRef }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+
+// THE DECLARED CONVERSIONS AN AUTHOR MAY NAME. Coercion (v2.std.coercion) is their implicit-safe
+// subset: a crossing that is total, exact, semantics-preserving, unique, pure and consent-free is
+// admitted with no plan named. Any phase that requires proof, changes interpretation, may lose
+// information, needs a policy or has competing routes makes the implicit route refuse, and the
+// author proceeds only by naming one of these plans at the cast (`e as T via refine`) -- the
+// operator ruling of 2026-09-26 recorded in DESIGN section 4. A refinement's widening to its
+// declared carrier is subset inclusion, proof-free, and stays implicit; the opposite direction,
+// into a refinement, is a partial check and needs `refine`.
+//
+// EVERY PHASE STAYS REPRESENTED. Infer records the named plan's phases on the cast, a target's
+// realization consumes them and may refuse only to realize one; it never decides whether the
+// conversion is legal.
+
+type ConversionPhase
+  = Reinterpret { from: DeclarationRef, to: DeclarationRef }
+  | Unfold { unfolding: LiteralUnfolding }
+  | ProveRefinement
+
+type ConversionPlan {
+  identity: Symbol
+  phases: List<ConversionPhase>
+}
+
+// ONE refine plan, not one per refinement: its source and destination are read from the cast (the
+// operand's type must be the target refinement's declared carrier), and its single phase records a
+// RefinementObligation that v2.compiler.refinement_discharge decides through the one evaluator.
+data refine_plan: ConversionPlan = ConversionPlan {
+  identity: ^refine,
+  phases: Cons { head: ProveRefinement, tail: Empty }
+}
+
+// bool_indicator and the literal unfoldings are NOT rows yet: bool_indicator waits for a consumer
+// (DESIGN section 3c), and moving gunbc.structural_realization_bindings literal_homomorphism_rows here
+// as Unfold rows is the XL-0T lane's replacement migration, stacked after this module lands.
+data conversion_plans: List<ConversionPlan> = Cons { head: refine_plan, tail: Empty }
+
+type ConversionPlanLookup
+  = PlanFound { plan: ConversionPlan }
+  | PlanUnknown
+  | PlanDuplicated { count: Int }
+
+fn conversion_plan_for(plans: List<ConversionPlan>, identity: Symbol) -> ConversionPlanLookup {
+  let matching = fold(plans, init: Empty, f: fn(acc, p) {
+    if p.identity == identity { Cons { head: p, tail: acc } } else { acc }
+  })
+  match matching {
+    Empty => PlanUnknown
+    Cons { head: p, tail: Empty } => PlanFound { plan: p }
+    Cons { head: _, tail: _ } => PlanDuplicated { count: length(xs: matching) }
+  }
+}

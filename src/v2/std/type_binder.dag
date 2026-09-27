@@ -232,16 +232,104 @@ fn edge_is_cast_target(e: Edge) -> Bool {
   }
 }
 
-// THE ONE ACCESSOR: the cast target a Transform carries, Absent on any other node. A reader that
-// folds a Transform's children as operands must view it through this and
-// v2.std.node positional children -- the named edge is never an argument.
-fn cast_target_optional(n: Node) -> Optional<Node> {
+// THE EDGE THAT CARRIES A PLANNED CAST (`e as T via refine`). A cast that names a declared
+// conversion plan (v2.std.conversion_plan) carries THIS edge in place of <cast-target>, pointing at a
+// labeled Conj { target: T, plan: P }, where P is an atom naming the plan. It is a different label rather
+// than a second shape under <cast-target>, so one label keeps one meaning and a raw reader cannot confuse a
+// plan-less cast with a planned one; the Transform still carries exactly one named edge
+// (v2.std.node PositionalPlusOneNamedEdges). Unauthorable for the reason type_params_marker is.
+fn cast_conversion_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<cast-conversion>")
+}
+
+fn cast_conversion_target_field() -> Symbol {
+  symbol_intern_lexeme(lexeme: "target")
+}
+
+fn cast_conversion_plan_field() -> Symbol {
+  symbol_intern_lexeme(lexeme: "plan")
+}
+
+// THE ONE PRODUCER of the edge.
+fn cast_conversion_edge(target_type: Node, plan: Node) -> Edge {
+  Edge {
+    label: Named { name: cast_conversion_marker() },
+    target: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Named { name: cast_conversion_target_field() }, target: target_type },
+        Edge { label: Named { name: cast_conversion_plan_field() }, target: plan }
+      ]
+    )
+  }
+}
+
+fn edge_is_cast_conversion(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == cast_conversion_marker()
+    Positional => false
+  }
+}
+
+fn conj_named_field_optional(conj: Node, field: Symbol) -> Optional<Node> {
+  fold(conj.children, init: optional_absent(), f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } => if sym == field { optional_present(value: e.target) } else { acc }
+      Positional => acc
+    }
+  })
+}
+
+// WHETHER A <cast-conversion> TARGET HAS ITS SHAPE: a Conj with exactly the two named fields.
+fn cast_conversion_shape_conforms(spec: Node) -> Bool {
+  match spec.kind {
+    TypeNode { connective: Conj } =>
+      (count(spec.children) == 2)
+        && match conj_named_field_optional(conj: spec, field: cast_conversion_target_field()) {
+          Present { value: _ } => true
+          Absent => false
+        }
+        && match conj_named_field_optional(conj: spec, field: cast_conversion_plan_field()) {
+          Present { value: _ } => true
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+fn cast_conversion_spec_optional(n: Node) -> Optional<Node> {
   match n.kind {
     ComputationNode { behavior: Transform } =>
       fold(n.children, init: optional_absent(), f: fn(acc, e) {
-        if edge_is_cast_target(e: e) { optional_present(value: e.target) } else { acc }
+        if edge_is_cast_conversion(e: e) { optional_present(value: e.target) } else { acc }
       })
     _ => optional_absent()
+  }
+}
+
+// THE ONE ACCESSOR: the cast target a Transform carries -- read from <cast-target> on a plan-less cast
+// and from the target field of <cast-conversion> on a planned one -- Absent on any other node. A reader
+// that folds a Transform's children as operands must view it through this and v2.std.node positional
+// children: a named edge is never an argument.
+fn cast_target_optional(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match cast_conversion_spec_optional(n: n) {
+        Present { value: spec } => conj_named_field_optional(conj: spec, field: cast_conversion_target_field())
+        Absent =>
+          fold(n.children, init: optional_absent(), f: fn(acc, e) {
+            if edge_is_cast_target(e: e) { optional_present(value: e.target) } else { acc }
+          })
+      }
+    _ => optional_absent()
+  }
+}
+
+// THE PLAN a cast names, Absent on a plan-less cast and on any other node.
+fn cast_plan_optional(n: Node) -> Optional<Node> {
+  match cast_conversion_spec_optional(n: n) {
+    Present { value: spec } => conj_named_field_optional(conj: spec, field: cast_conversion_plan_field())
+    Absent => optional_absent()
   }
 }
 
@@ -285,17 +373,20 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
   }
 }
 
-// WHICH MARKER A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform or Bind
+// WHICH MARKERS A BEHAVIOR ADMITS. v2.std.node admits at most one Named edge on a Transform or Bind
 // by SHAPE (PositionalPlusOneNamedEdges); this is the label half, and it is asked of those two
-// behaviors ONLY: a Transform's cast target, a Bind's let annotation. Every other behavior's Named
-// edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge discipline
+// behaviors ONLY: a Transform's cast target -- <cast-target> on a plan-less cast, or <cast-conversion>
+// with its {target, plan} shape on a planned one -- and a Bind's let annotation. Every other behavior's
+// Named edges -- a Loop's bound and carrier -- are owned by its own v2.std.node edge discipline
 // (loop_behavior_edges_conform), and a second, blanket rule here refusing labels that authority
 // requires would fork it.
-fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
+fn behavior_named_label_admitted(b: Behavior, sym: Symbol, target: Node) -> Bool {
   match b {
-    Transform => optional_present(value: cast_target_marker())
-    Bind => optional_present(value: type_annotation_marker())
-    _ => optional_absent()
+    Transform =>
+      (sym == cast_target_marker())
+        || ((sym == cast_conversion_marker()) && cast_conversion_shape_conforms(spec: target))
+    Bind => sym == type_annotation_marker()
+    _ => false
   }
 }
 
@@ -303,11 +394,7 @@ fn computation_named_labels_conform(n: Node, b: Behavior) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } =>
-        acc && match behavior_marker_optional(b: b) {
-          Present { value: marker } => sym == marker
-          Absent => false
-        }
+      Named { name: sym } => acc && behavior_named_label_admitted(b: b, sym: sym, target: e.target)
     }
   })
 }

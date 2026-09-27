@@ -109,7 +109,7 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
-import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_params_edge }
+import v2.std.type_binder { cast_conversion_edge, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_params_edge }
 import v2.std.node_query {
   construct_node,
   construct_tag_optional,
@@ -4173,7 +4173,7 @@ fn body_lower_dotted_head_atom_optional(node: Node) -> Optional<Node> {
 // body_lowering_reason_type_annotation_not_carried located at it, never dropped.
 type PostfixStep
   = PostfixProjection { segment: Node, call_elem: Optional<Node> }
-  | PostfixCast { target: Node }
+  | PostfixCast { target: Node, plan: Optional<Node> }
 
 // THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
 // suffix slot is neither empty nor a paren call -- today the BRACE suffix, the module-qualified
@@ -4267,8 +4267,8 @@ fn body_lower_postfix_chain_acc_call_step(
 }
 
 // A cast closes a bare spine the way a call does: what follows it is a value, never a path segment.
-fn body_lower_postfix_chain_acc_cast_step(acc: PostfixChainAcc, target: Node) -> PostfixChainAcc {
-  let step = PostfixCast { target: target }
+fn body_lower_postfix_chain_acc_cast_step(acc: PostfixChainAcc, cast: PostfixCastSuffix) -> PostfixChainAcc {
+  let step = PostfixCast { target: cast.target, plan: cast.plan }
   match acc {
     PostfixChainAccBare { segments: segments } =>
       PostfixChainAccCalled {
@@ -4297,10 +4297,10 @@ fn body_lower_postfix_chain_steps_read(
       Absent => PostfixChainNotThisShape
       Present { value: repeat_elem } =>
         match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
-          Present { value: target } =>
+          Present { value: cast } =>
             body_lower_postfix_chain_steps_grow(
               repeat_capture: repeat_capture,
-              grown: body_lower_postfix_chain_acc_cast_step(acc: acc, target: target)
+              grown: body_lower_postfix_chain_acc_cast_step(acc: acc, cast: cast)
             )
           Absent =>
         match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
@@ -4438,7 +4438,7 @@ fn body_lower_postfix_chain_fold_step(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: state, diagnostics: ad } =>
       match step {
-        PostfixCast { target: target } =>
+        PostfixCast { target: target, plan: plan } =>
           match body_lower_type_expr_lowered_optional(node: target) {
             Absent => body_lower_postfix_cast_target_not_carried(at: target)
             Present { value: target_type } =>
@@ -4447,6 +4447,7 @@ fn body_lower_postfix_chain_fold_step(
                   node: body_lower_cast_node(
                     operand: body_lower_postfix_accum_node(acc: state, source: source),
                     target_type: target_type,
+                    plan: plan,
                     source: source
                   )
                 },
@@ -4613,7 +4614,7 @@ fn body_lower_postfix_chain_head_atom_for_steps(head_node: Node, steps: List<Pos
   match steps {
     Cons { head: first, tail: _ } =>
       match first {
-        PostfixCast { target: _ } => optional_absent()
+        PostfixCast { target: _, plan: _ } => optional_absent()
         PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_atom_optional(node: head_node)
       }
     Empty => body_lower_dotted_head_atom_optional(node: head_node)
@@ -4644,7 +4645,7 @@ fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
 fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
   fold(steps, init: false, f: fn(acc, step) {
     acc || match step {
-      PostfixCast { target: _ } => true
+      PostfixCast { target: _, plan: _ } => true
       PostfixProjection { segment: _, call_elem: _ } => false
     }
   })
@@ -4656,13 +4657,19 @@ fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
 // CanonicalOperation (v2.extdeps.languages.dag dag_surface_operator_canonicalization_lookup) and
 // binds T in type role. The named edge is never an operand: readers take a Transform's operands
 // through its positional children.
-fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
+// A cast that names a plan (`e as T via refine`) carries <cast-conversion> -> { target: T, plan: P }
+// in place of <cast-target>, P being an atom naming the plan (v2.std.type_binder cast_conversion_edge).
+fn body_lower_cast_node(operand: Node, target_type: Node, plan: Optional<Node>, source: Node) -> Node {
+  let target_edge = match plan {
+    Absent => cast_target_edge(target_type: target_type)
+    Present { value: p } => cast_conversion_edge(target_type: target_type, plan: p)
+  }
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_as } }, children: []) },
       Edge { label: Positional, target: operand },
-      cast_target_edge(target_type: target_type)
+      target_edge
     ]
   )
 }
@@ -7093,15 +7100,47 @@ fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
 }
 
 // as_suffix = seq(kw_as, type_expr): answers the type expression when the element is a cast.
-fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
+type PostfixCastSuffix {
+  target: Node
+  plan: Optional<Node>
+}
+
+// `as T` or `as T via plan`: the type capture, and the plan named after `via` as an atom, Absent when
+// the cast names none.
+fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<PostfixCastSuffix> {
   match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: repeat_elem)) {
     Absent => optional_absent()
     Present { value: pair } =>
       match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
         Present { value: id } =>
-          if id == ^dag_token_kw_as { optional_present(value: pair.right) } else { optional_absent() }
+          if id == ^dag_token_kw_as {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => optional_absent()
+              Present { value: rest } =>
+                optional_present(value: PostfixCastSuffix { target: rest.left, plan: body_lower_via_plan_optional(capture: rest.right) })
+            }
+          } else {
+            optional_absent()
+          }
         Absent => optional_absent()
       }
+  }
+}
+
+// The optional `via plan` capture: Absent when empty, else the plan's identifier as an atom.
+fn body_lower_via_plan_optional(capture: Node) -> Optional<Node> {
+  if is_empty_conj_root(n: capture) {
+    optional_absent()
+  } else {
+    match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: capture)) {
+      Absent => optional_absent()
+      Present { value: via_pair } =>
+        match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: via_pair.right)) {
+          Present { value: plan_id } =>
+            optional_present(value: node_synthetic(kind: TypeNode { connective: Atom { identity: plan_id } }, children: []))
+          Absent => optional_absent()
+        }
+    }
   }
 }
 

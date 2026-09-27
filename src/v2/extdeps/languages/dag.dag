@@ -1399,10 +1399,22 @@ fn dag_grammar_postfix_dot_suffix_expr() -> GrammarExpr {
   )
 }
 
+// `e as T` and `e as T via plan`. `via` is an exact-word terminal, not a keyword: it is an ordinary
+// identifier everywhere else (record fields and bindings named `via` stay writable), and it names a
+// declared conversion plan only in this position (v2.std.conversion_plan; DESIGN section 4's
+// coercion ruling -- a crossing that needs proof proceeds only through a named plan).
 fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_as),
-    right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+      right: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^via),
+          right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+        )
+      )
+    )
   )
 }
 
