@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.spark.v41_engram_differential_run {
-  V41OverlayProgram, V41OverlayProgramRead, V41OverlayProgramRefused, v41_overlay_program_of,
+  V41DifferentialImage, DifferentialImageBuilt, ImageLacksEngramOverlay, v41_differential_image,
   V41DifferentialOutcome, V41DifferentialRead, V41DifferentialRefused, v41_admit_differential, V41StoreKey,
   V41HostOccupancy, V41HostFree, V41HostOccupied, v41_judge_occupancy, v41_differential_argv,
 }
@@ -23,13 +23,13 @@ import std.nat { Nat }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE OVERLAY PROGRAM IS THE PATCH'S NEW FILE, and a patch that modifies a file refuses.
-test fn the_overlay_program_is_the_new_files_added_lines() -> Bool {
-  let patch = "diff --git a/x.py b/x.py\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/x.py\n@@ -0,0 +1,2 @@\n+import os\n+print(1)\n"
-  let modifying = "--- a/x.py\n+++ b/x.py\n@@ -1,1 +1,1 @@\n-a\n+b\n"
-  let read = match v41_overlay_program_of(patch: patch) { V41OverlayProgramRead { text: t } => t == "import os\nprint(1)\n"  V41OverlayProgramRefused { cause: _ } => false }
-  let refused = match v41_overlay_program_of(patch: modifying) { V41OverlayProgramRefused { cause: _ } => true  V41OverlayProgramRead { text: _ } => false }
-  read && refused
+// NO IMAGE CARRIES THE OVERLAY YET, so the binding is unbuilt and the mode refuses with its trigger named
+// (ImageLacksEngramOverlay) instead of running anything.
+test fn the_differential_image_is_unbuilt_until_an_image_carries_the_overlay() -> Bool {
+  match v41_differential_image {
+    ImageLacksEngramOverlay { trigger: t } => contains(t as String, "production V4.1 image")
+    DifferentialImageBuilt { config_digest: _, build_run: _ } => false
+  }
 }
 
 data w_owed: List<V41StoreKey> = [V41StoreKey { layer: 1, rank: 0 }, V41StoreKey { layer: 1, rank: 1 }]
@@ -117,11 +117,11 @@ test fn the_manifest_names_every_owed_store_and_refuses_a_gap_or_an_extra() -> B
   derived && gap && extra && unread
 }
 
-// THE COMMAND: bounded twice, labelled for this lane, memory-capped, the stores mounted read-only.
+// THE COMMAND: bounded twice, labelled for this lane, memory-capped, the stores mounted read-only, and
+// the overlay run as a module from the image with the manifest passed as its argument.
 test fn the_differential_runs_bounded_labelled_capped_with_read_only_stores() -> Bool {
-  let argv = join(v41_differential_argv(image: "sha256:ea39" as NonEmptyStr, claim: "c1" as NonEmptyStr, program: "print(1)", manifest: "{}"), " ")
+  let argv = join(v41_differential_argv(image: "sha256:ea39" as NonEmptyStr, claim: "c1" as NonEmptyStr, manifest: "{}"), " ")
   contains(argv, "timeout -k 30 1620 ")
-    && contains(argv, "/engram-row-stores:ro --label gunbc.lane=engram-differential --label gunbc.claim=c1 --memory 17179869184 --memory-swap 17179869184 --entrypoint timeout sha256:ea39 -k 30 1500 python3 -u -c")
-    && contains(argv, " --rows 4096 --tokens 2048")
+    && contains(argv, "/engram-row-stores:ro --label gunbc.lane=engram-differential --label gunbc.claim=c1 --memory 17179869184 --memory-swap 17179869184 --entrypoint timeout sha256:ea39 -k 30 1500 python3 -u -m vllm.models.deepseek_v4_1.nvidia.engram_file_backed --differential - --manifest-json {} --rows 4096 --tokens 2048")
 }
 

@@ -55,8 +55,9 @@ import product.placement_supply { HostIdentity }
 // the launch manifest names, sampled real records are placed in a compact upstream-layout table, and
 // upstream _engram_lookup_kernel and FileBackedLookup run over the same hash ids -- owned, below the
 // rank's range, above it, and on absent heads -- and must agree in every bit (torch.equal over the
-// bf16 bit patterns). The overlay program is the COMMITTED patch's own new file, extracted here at run
-// time, so what runs is what the image build applies; its `--differential` entry does the comparing.
+// bf16 bit patterns). The overlay program is
+// the image's own copy of the overlay (it runs as a module there), so what runs is what the image build
+// applied; its `--differential` entry does the comparing.
 //
 // WHERE AND UNDER WHAT BOUNDS. srv5 holds the stores; the run mounts their directory read-only at its
 // own path so the manifest's paths resolve, labels its container for this lane, caps it at 16 GiB with
@@ -66,35 +67,26 @@ import product.placement_supply { HostIdentity }
 // run that thrashes a host is worse than one that refuses. Occupancy admission moves to the fabric's
 // own reading when that lands (still-seal-656). The mode never writes a store or the served model.
 
-data v41_differential_overlay_patch_path: String = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch"
+// THE IMAGE MUST CARRY THIS OVERLAY: the differential runs the overlay's own `--differential` entry as a
+// module inside the image (python3 -m), against upstream's kernel from the same image, so an image built
+// before this overlay cannot answer and no program is shipped in beside it. The binding is the image's
+// config digest, taken from the build receipt of an image whose patch population includes this overlay;
+// until such an image is built (the production V4.1 image built from main after the cutover lands), the
+// binding is unbuilt and the mode refuses with ImageLacksEngramOverlay rather than running anything.
+// The design-B RED's evidence of record meanwhile is fleet-converge run 36254702828 (srv5, all eight
+// stores equal), taken before this form existed.
+type V41DifferentialImage
+  = DifferentialImageBuilt { config_digest: NonEmptyStr, build_run: NonEmptyStr }
+  | ImageLacksEngramOverlay { trigger: NonEmptyStr }
 
-// THE OVERLAY PROGRAM IS THE PATCH'S NEW FILE: every added line of a new-file diff, with its `+`
-// removed. A patch that is not a single new-file hunk is not the overlay, and refuses.
-type V41OverlayProgram
-  = V41OverlayProgramRead { text: String }
-  | V41OverlayProgramRefused { cause: NonEmptyStr }
-
-fn v41_overlay_program_of(patch: String) -> V41OverlayProgram {
-  let lines = split(s: patch, delimiter: "\n")
-  if length(filter(lines, l => l == "--- /dev/null")) != 1 || length(filter(lines, l => starts_with(s: l, prefix: "@@ "))) != 1 {
-    V41OverlayProgramRefused { cause: "the overlay patch is not one new-file hunk" as NonEmptyStr }
-  } else {
-    let added = flat_map(lines, l => if starts_with(s: l, prefix: "+") && !starts_with(s: l, prefix: "+++ ") { [substring(s: l, start: 1, end: string_length(s: l))] } else { [] as List<String> })
-    if length(added) == 0 {
-      V41OverlayProgramRefused { cause: "the overlay patch adds no lines" as NonEmptyStr }
-    } else {
-      V41OverlayProgramRead { text: concat(join(added, "\n"), "\n") }
-    }
-  }
+data v41_differential_image: V41DifferentialImage = ImageLacksEngramOverlay {
+  trigger: "the production V4.1 image built from main after the design-B cutover lands, whose patch population includes engram_file_backed.py.patch; bind its config digest and build run here from that build's receipt" as NonEmptyStr,
 }
 
-// THE IMAGE: the arm A runtime image by config digest (fleet-converge run 36207135528), which carries
-// upstream vLLM at d2d649e6 and so upstream's kernel at the revision the overlay patches. The run
-// refuses if the target's daemon does not hold it.
-data v41_differential_image: NonEmptyStr = "sha256:ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as NonEmptyStr
+data v41_differential_overlay_module: String = "vllm.models.deepseek_v4_1.nvidia.engram_file_backed"
 
 data v41_differential_lane_label: DockerLabel = DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "engram-differential" as NonEmptyStr }
-data v41_differential_process_pattern: NonEmptyStr = "gunbc_engram_file_backed" as NonEmptyStr
+data v41_differential_process_pattern: NonEmptyStr = "engram_file_backed --differential" as NonEmptyStr
 data v41_differential_memory_cap: ByteSize = byte_size(count: 17179869184)
 data v41_differential_min_available: ByteSize = byte_size(count: 34359738368)
 data v41_differential_time_bound: Second = second(count: 1500)
@@ -103,20 +95,7 @@ data v41_differential_kill_grace: Second = second(count: 30)
 data v41_differential_rows: Nat = 4096
 data v41_differential_tokens: Nat = 2048
 
-// The bootstrap writes the program and the manifest inside the container and runs the program's
-// `--differential` entry from its file (Triton reads kernel source from the file).
-//
-// 🟡 dissolve-on: v41_differential_bootstrap -- A SHORT PYTHON PROGRAM CARRIED AS TEXT (medium-as-string):
-// two file writes and one entry call. It exists because the only image on the stores' host predates
-// this overlay, so the overlay module is not importable there and must be shipped in, and Triton will
-// not compile a kernel whose source is not in a file. DISSOLVES WHEN the differential runs inside an
-// image built from this patch (the production V4.1 image built from main after the cutover lands),
-// where the module is importable: the argv becomes `python3 -m
-// vllm.models.deepseek_v4_1.nvidia.engram_file_backed --differential <manifest>` with the manifest
-// bind-mounted, and this string, v41_overlay_program_of and the program argument are deleted together.
-data v41_differential_bootstrap: String = "import sys, runpy; p = '/var/tmp/gunbc_engram_file_backed.py'; mpath = '/var/tmp/gunbc_engram_manifest.json'; open(p, 'w').write(sys.argv[1]); open(mpath, 'w').write(sys.argv[2]); sys.argv = [p, '--differential', mpath] + sys.argv[3:]; runpy.run_path(p, run_name='__main__')"
-
-fn v41_differential_argv(image: NonEmptyStr, claim: NonEmptyStr, program: String, manifest: String) -> List<String> {
+fn v41_differential_argv(image: NonEmptyStr, claim: NonEmptyStr, manifest: String) -> List<String> {
   concat(
     ["timeout", "-k", to_string(second_count(s: v41_differential_kill_grace)), to_string(second_count(s: v41_differential_client_bound))],
     argv_words(command: docker_run_ephemeral_command(
@@ -126,7 +105,7 @@ fn v41_differential_argv(image: NonEmptyStr, claim: NonEmptyStr, program: String
       labels: [v41_differential_lane_label, DockerLabel { key: "gunbc.claim" as NonEmptyStr, value: claim }],
       memory_limit: Present { value: v41_differential_memory_cap },
       entrypoint: "timeout" as NonEmptyStr,
-      argv: ["-k", to_string(second_count(s: v41_differential_kill_grace)), to_string(second_count(s: v41_differential_time_bound)), "python3", "-u", "-c", v41_differential_bootstrap, program, manifest, "--rows", to_string(v41_differential_rows), "--tokens", to_string(v41_differential_tokens)],
+      argv: ["-k", to_string(second_count(s: v41_differential_kill_grace)), to_string(second_count(s: v41_differential_time_bound)), "python3", "-u", "-m", v41_differential_overlay_module, "--differential", "-", "--manifest-json", manifest, "--rows", to_string(v41_differential_rows), "--tokens", to_string(v41_differential_tokens)],
     )),
   )
 }
@@ -283,8 +262,8 @@ fn v41_differential_remove_containers(ctx: SparkMaterializeContext) -> String? {
   }
 }
 
-fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, program: String, manifest: String, owed: List<V41StoreKey>) -> V41DifferentialOutcome {
-  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: v41_differential_image))) {
+fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, image: NonEmptyStr, manifest: String, owed: List<V41StoreKey>) -> V41DifferentialOutcome {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: image))) {
     RemoteUnreachable { cause: why } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
     RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
       if code != 0 {
@@ -297,7 +276,7 @@ fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, program
         match docker_image_inspect_id_from_stdout(stdout: inspect_stdout) {
           DockerImageInspectIdUnreadable { cause: why } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
           DockerImageInspectId { id: config_id } => {
-            let outcome = match spark_remote_run(ctx: ctx, argv: v41_differential_argv(image: config_id, claim: claim, program: program, manifest: manifest)) {
+            let outcome = match spark_remote_run(ctx: ctx, argv: v41_differential_argv(image: config_id, claim: claim, manifest: manifest)) {
               RemoteUnreachable { cause: why } => V41DifferentialRefused { step: "differential-run" as NonEmptyStr, cause: why }
               RemoteRan { exit_code: c, stdout: out, stderr: e } =>
                 if c == 0 || c == 1 {
@@ -344,34 +323,29 @@ fn v41_differential_receipt_exit(at: String, host: HostIdentity, executor: Strin
   }
 }
 
-// THE INPUTS ARE DERIVED BEFORE ANY HOST IS TOUCHED: the program from the committed patch, the
+// THE INPUTS ARE DERIVED BEFORE ANY HOST IS TOUCHED: the image from its binding (refusing while none carries the overlay), the
 // manifest from the row-store model; either refusing stops the run with nothing claimed.
 fn v41_engram_differential_ci_wet() -> ProcessExit
 {
   let now = clock_now_probed_at()
-  let patch = Filesystem.Read(path: v41_differential_overlay_patch_path)
-  if !patch.success {
-    exit_failure(reason: join(["the overlay patch could not be read: ", patch.error], ""))
-  } else {
-    match v41_overlay_program_of(patch: patch.content) {
-      V41OverlayProgramRefused { cause: why } => exit_failure(reason: why as String)
-      V41OverlayProgramRead { text: program } =>
-        match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
-          V41RowStoreSpecRefused { defects: d } => exit_failure(reason: join(["the row-store spec refused: ", join(map(d, x => x as String), "; ")], ""))
-          V41RowStoreSpecAdmitted { spec: spec } =>
-            match v41_engram_store_manifest(spec: spec, readings: v41_published_store_readings) {
-              V41StoreManifestRefused { causes: cs } => exit_failure(reason: join(["the store manifest refused: ", join(cs, "; ")], ""))
-              V41StoreManifestDerived { text: manifest, stores: _ } => {
-                let owed = flat_map(spec.layers, t => map(t.ranks, r => V41StoreKey { layer: t.layer, rank: r.rank }))
-                v41_differential_on_target(now_word: probed_at_word(reading: now) as String, program: program, manifest: manifest, owed: owed)
-              }
+  match v41_differential_image {
+    ImageLacksEngramOverlay { trigger: t } => exit_failure(reason: join(["ImageLacksEngramOverlay: no image carrying the file-backed Engram overlay is bound, so the differential cannot run its module; nothing was claimed or run. Waiting on: ", t as String], ""))
+    DifferentialImageBuilt { config_digest: image, build_run: _ } =>
+      match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+        V41RowStoreSpecRefused { defects: d } => exit_failure(reason: join(["the row-store spec refused: ", join(map(d, x => x as String), "; ")], ""))
+        V41RowStoreSpecAdmitted { spec: spec } =>
+          match v41_engram_store_manifest(spec: spec, readings: v41_published_store_readings) {
+            V41StoreManifestRefused { causes: cs } => exit_failure(reason: join(["the store manifest refused: ", join(cs, "; ")], ""))
+            V41StoreManifestDerived { text: manifest, stores: _ } => {
+              let owed = flat_map(spec.layers, t => map(t.ranks, r => V41StoreKey { layer: t.layer, rank: r.rank }))
+              v41_differential_on_target(now_word: probed_at_word(reading: now) as String, image: image, manifest: manifest, owed: owed)
             }
-        }
-    }
+          }
+      }
   }
 }
 
-fn v41_differential_on_target(now_word: String, program: String, manifest: String, owed: List<V41StoreKey>) -> ProcessExit {
+fn v41_differential_on_target(now_word: String, image: NonEmptyStr, manifest: String, owed: List<V41StoreKey>) -> ProcessExit {
   match spark_converge_target_selection(execute_apply: true) {
     SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
     SparkConvergeTargetAllObserveOnly =>
@@ -412,7 +386,7 @@ fn v41_differential_on_target(now_word: String, program: String, manifest: Strin
                                           host: target_host,
                                           executor: executor,
                                           anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
-                                          outcome: v41_differential_on(ctx: ctx, claim: handle.claim as NonEmptyStr, program: program, manifest: manifest, owed: owed),
+                                          outcome: v41_differential_on(ctx: ctx, claim: handle.claim as NonEmptyStr, image: image, manifest: manifest, owed: owed),
                                         ),
                                       )
                                   }

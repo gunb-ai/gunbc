@@ -1,9 +1,9 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..521c26e
+index 0000000..ed3e6e0
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,764 @@
+@@ -0,0 +1,774 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -413,7 +413,16 @@ index 0000000..521c26e
 +def load_manifest(path: str) -> RowStoreManifest:
 +    try:
 +        with open(path) as f:
-+            doc = json.load(f)
++            text = f.read()
++    except OSError as exc:
++        raise EngramRowStoreManifestInvalid(f"{path}: {type(exc).__name__}: {exc}") from exc
++    return parse_manifest(text, path)
++
++
++def parse_manifest(text: str, origin: str) -> RowStoreManifest:
++    path = origin
++    try:
++        doc = json.loads(text)
 +        magic = bytes.fromhex(doc["magic_hex"])
 +        record = int(doc["record_bytes"])
 +        weight = int(doc["weight_bytes"])
@@ -536,7 +545,7 @@ index 0000000..521c26e
 +
 +
 +# ── THE RED: A BYTE-IDENTICAL DIFFERENTIAL AGAINST UPSTREAM'S KERNEL ON REAL ROWS ──────────────────
-+def differential(manifest_path: str, rows: int, tokens: int, seed: int) -> int:
++def differential(m: RowStoreManifest, rows: int, tokens: int, seed: int) -> int:
 +    """For every (layer, rank) the manifest names: sample `rows` real records, place them in a compact
 +    upstream-layout table, and compare upstream _engram_lookup_kernel with FileBackedLookup over the
 +    same hash ids (owned, below and above the rank's range, and absent heads). One line per store;
@@ -544,7 +553,6 @@ index 0000000..521c26e
 +    import triton
 +    from vllm.models.deepseek_v4_1.common.engram import _engram_lookup_kernel
 +
-+    m = load_manifest(manifest_path)
 +    dim = m.weight_bytes
 +    block = dim // (m.record_bytes - m.weight_bytes)
 +    # Heads 18..23 are the last TP4 rank's slice; a total of 22 leaves heads 22 and 23 absent, so the
@@ -749,12 +757,14 @@ index 0000000..521c26e
 +        sys.exit(self_test(sys.argv[2] if len(sys.argv) > 2 else os.getcwd()))
 +    if len(sys.argv) >= 2 and sys.argv[1] == "--differential":
 +        dp = argparse.ArgumentParser(description="byte-identical differential against upstream _engram_lookup_kernel")
-+        dp.add_argument("--differential", dest="manifest", required=True)
++        dp.add_argument("--differential", dest="manifest", required=True, help="a manifest path, or - to take --manifest-json")
++        dp.add_argument("--manifest-json", default=None)
 +        dp.add_argument("--rows", type=int, default=4096)
 +        dp.add_argument("--tokens", type=int, default=2048)
 +        dp.add_argument("--seed", type=int, default=5)
 +        da = dp.parse_args()
-+        sys.exit(differential(da.manifest, da.rows, da.tokens, da.seed))
++        m = parse_manifest(da.manifest_json, "--manifest-json") if da.manifest == "-" else load_manifest(da.manifest)
++        sys.exit(differential(m, da.rows, da.tokens, da.seed))
 +    p = argparse.ArgumentParser(description="measure fetch_rows over a rank-local Engram row store")
 +    p.add_argument("--store", required=True)
 +    p.add_argument("--rank-digest-hex", required=True)
