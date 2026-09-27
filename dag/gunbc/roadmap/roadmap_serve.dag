@@ -5,10 +5,67 @@ import extdeps.tailscale.serve { ServeStatusUnreadable }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence,
+  SessionStandingInvalid,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy,
+  request_authentication_evidence_of_standing,
   ServeActionAssignIssue, ServeActionCommentIssue,
 }
+import gunbc.auth.session {
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
+  SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
+  SessionCookieIdParse, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
+  session_cookie_id_of_header,
+  AuthenticatedSession, SessionMinted, SessionRefused, SessionRefusalCause,
+  SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch,
+  SessionClientTrackerWeb,
+  mint_authenticated_session,
+  session_cookie_set_cookie_line, session_cookie_clear_line, session_cookie_standing_reason,
+}
+import gunbc.auth.session_store {
+  SessionStoreLayout, session_store_layout_for_instance, session_cookie_standing_of_lookup,
+  session_store_save, session_store_delete, session_store_purge_principal,
+  SessionStoreSaved, SessionStoreSaveRefused,
+  SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused,
+  SessionStorePurged, SessionStorePurgeRefused,
+}
+import gunbc.auth.oidc_deployment_config {
+  OidcDeploymentConfig, OidcDeploymentConfigRead, OidcDeploymentConfigLoaded, OidcDeploymentConfigUnavailable,
+  oidc_deployment_config_read,
+}
+import gunbc.auth.login_transaction_store {
+  LoginTransactionStoreLayout, login_transaction_store_layout_for_instance,
+  login_transaction_store_save, login_transaction_store_lookup, login_transaction_store_delete,
+  LoginTransactionSaved, LoginTransactionSaveRefused,
+  LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread,
+  LoginTransactionStoreEntryMalformed,
+  LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused,
+}
+import gunbc.auth.oidc_id_token_verification {
+  oidc_id_token_signature_verify, oidc_id_token_wire_decode,
+  OidcIdTokenWire, OidcIdTokenWireDecoded, OidcIdTokenWireRefused,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused,
+  OidcHostedDomain, oidc_id_token_refusal_reason,
+  OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
+  admit_login_return_path, RelativeReturnPathAdmission, ReturnPathAdmitted, ReturnPathRefused,
+  OidcIdTokenVerdictPolicy, login_transaction_expired,
+  OidcLoginScope, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label,
+}
+import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
+import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.entropy { Urandom }
+import extdeps.clock { Clock }
+import extdeps.http.client
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.languages.json.emit { json_bool }
+import extdeps.languages.json.parse {
+  parse_json_document, json_field_string,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
+}
+import std.encoding { base64_decode, base64_encode, UrlSafe, Standard }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
 }
@@ -55,6 +112,7 @@ import extdeps.http.server {
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
   RequestSecurityContext,
+  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
@@ -263,6 +321,10 @@ type RoadmapServeHandler
   | IssueDetailPageHandler
   | IssueAssignHandler
   | IssueCommentHandler
+  | AuthLoginHandler
+  | AuthGoogleCallbackHandler
+  | AuthLogoutHandler
+  | AuthSessionHandler
 
 // Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -351,6 +413,10 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/auth/login", handler: AuthLoginHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/auth/logout", handler: AuthLogoutHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
@@ -409,7 +475,14 @@ fn roadmap_serve_route_table_build() -> RoadmapServeTableBuild {
 }
 
 fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
-  ServeHttpResponse { status: status, content_type: content_type, body: body }
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: [] }
+}
+
+// THE HEADER-SETTING TWIN of serve_text_response: the auth routes' answers (redirects with
+// Location, session mutations with Set-Cookie) ride the same status/type/body authority with
+// the typed header list attached.
+fn serve_text_response_with_headers(status: HttpStatus, content_type: MediaType, body: String, headers: List<ServeResponseHeader>) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: headers }
 }
 
 // A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and
@@ -936,6 +1009,7 @@ fn authenticated_write_author_principal(security: RequestSecurityContext<Request
   match security.authentication {
     GoogleOidcSession { session } => Present { value: session.principal }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
+    SessionStandingInvalid { standing: _ } => none
     AuthAbsent => none
   }
 }
@@ -1293,6 +1367,10 @@ fn roadmap_serve_invoke_over(
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan, params: params, request: request)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    AuthLoginHandler => auth_login_response(instance: instance, request: request)
+    AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path)
+    AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
+    AuthSessionHandler => auth_session_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
@@ -1490,7 +1568,7 @@ fn roadmap_serve_selection_response_over(
         release_revision: release_revision,
       )
     SelectedStatic { route: r } =>
-      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body, headers: [] }
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
@@ -1534,14 +1612,20 @@ fn roadmap_serve_selection_response(
 // THE REQUEST-SECURITY CONTEXT, built at the one seam every route shares. The access path is
 // modeled from the instance bind and the tailnet header through the ACL and serve-route
 // authorities (a header alone mints no tailnet path — the readback does). The authentication
-// evidence is AuthAbsent at this seam because the serve runtime does not yet hand a session
-// standing across the socket seam (frontier: the session-cookie channel lands with the serve
-// runtime's security wiring) — so until then every write route refuses at the authentication
-// axis of gunbc.auth.request_authentication.human_write_admission, loudly, by construction, and
-// no request is authenticated by tailnet transport.
+// evidence arrives through THE COOKIE CHANNEL: the raw Cookie header crosses the socket seam as
+// the `cookie_header` argument (a defaulted parameter, so a socket runtime that does not yet
+// forward the header binds the empty default and every request reads as auth-absent — the same
+// fail-closed shape the tailnet header had before the runtime extracted it). The seam parses the
+// header (pure syntax), and only when a session id is present does it probe the clock and
+// resolve the id through the instance's session store (gunbc.auth.session_store): a live id
+// seats GoogleOidcSession evidence, and every non-valid standing — forged, expired, malformed,
+// or unread — seats SessionStandingInvalid, so the write law refuses each with its own located
+// cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT, and an absent cookie never pays the
+// store or the clock.
 fn roadmap_serve_request_security(
   instance: HostDashboardInstance,
   tailscale_identity: String,
+  cookie_header: String = "",
 ) -> RequestSecurityContext<RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: request_access_path_of(
@@ -1551,7 +1635,42 @@ fn roadmap_serve_request_security(
       serve_route: none,
       acl_policy: operator_tailscale_acl_policy,
     ),
-    authentication: AuthAbsent,
+    authentication: roadmap_serve_authentication_evidence(
+      instance: instance,
+      cookie_header: cookie_header,
+    ),
+  }
+}
+
+// THE COOKIE-CHANNEL DECODE, factored so the witness drives it: no header (or no session cookie
+// in it) is AuthAbsent — the answer an unauthenticated request has always gotten; a malformed
+// cookie is evidence that refuses at the syntax arm without touching the store or the clock; a
+// parseable id probes the clock once and asks the store for the standing. A clock the host will
+// not read refuses the whole channel (Unread), because an expiry decision without a reading is
+// not decidable and "cannot decide" never defaults to "valid".
+fn roadmap_serve_authentication_evidence(
+  instance: HostDashboardInstance,
+  cookie_header: String,
+) -> RequestAuthenticationEvidence {
+  match session_cookie_id_of_header(cookie_header: cookie_header) {
+    SessionCookieIdNotPresent => AuthAbsent
+    SessionCookieIdMalformed { detail: d } =>
+      SessionStandingInvalid { standing: SessionCookieMalformed { detail: d } }
+    SessionCookieIdParsed { session_id: id } =>
+      match clock_now_probed_at() {
+        Absent =>
+          SessionStandingInvalid {
+            standing: SessionCookieUnread { detail: "the clock reading refused, so session expiry cannot be decided" },
+          }
+        Present { value: now } =>
+          request_authentication_evidence_of_standing(
+            standing: session_cookie_standing_of_lookup(
+              layout: session_store_layout_for_instance(instance: instance),
+              session_id: id,
+              observed_at: now as String,
+            ),
+          )
+      }
   }
 }
 
@@ -1564,6 +1683,7 @@ fn roadmap_serve_respond_over(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
@@ -1598,6 +1718,7 @@ fn roadmap_serve_respond_over(
               security: roadmap_serve_request_security(
                 instance: instance,
                 tailscale_identity: tailscale_identity,
+                cookie_header: cookie_header,
               ),
             },
             release_revision: release_revision,
@@ -1613,6 +1734,7 @@ fn roadmap_serve_respond_for_instance(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
@@ -1623,6 +1745,7 @@ fn roadmap_serve_respond_for_instance(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1632,6 +1755,7 @@ fn roadmap_serve_respond(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
     instance: srv1_live_dashboard_instance(),
@@ -1640,6 +1764,7 @@ fn roadmap_serve_respond(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1684,6 +1809,7 @@ fn roadmap_serve_handle_over(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   serve_wire_response(r: roadmap_serve_respond_over(
     instance: instance,
@@ -1694,6 +1820,7 @@ fn roadmap_serve_handle_over(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   ))
 }
 
@@ -1703,6 +1830,7 @@ fn roadmap_serve_handle(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
@@ -1713,6 +1841,7 @@ fn roadmap_serve_handle(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1729,6 +1858,7 @@ fn roadmap_serve_handle_macbook_local(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
@@ -1739,6 +1869,7 @@ fn roadmap_serve_handle_macbook_local(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1748,6 +1879,7 @@ fn roadmap_serve_handle_srv1_lab(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
@@ -1758,6 +1890,7 @@ fn roadmap_serve_handle_srv1_lab(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1767,6 +1900,7 @@ fn roadmap_serve_handle_srv2_preview(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
@@ -1777,6 +1911,7 @@ fn roadmap_serve_handle_srv2_preview(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1789,6 +1924,7 @@ fn roadmap_serve_handle_srv2_deploy(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
@@ -1799,6 +1935,7 @@ fn roadmap_serve_handle_srv2_deploy(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
 }
 
@@ -1808,6 +1945,7 @@ fn roadmap_serve_handle_srv2_lab(
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
@@ -1818,5 +1956,696 @@ fn roadmap_serve_handle_srv2_lab(
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
+    cookie_header: cookie_header,
   )
+}
+
+// ── The auth routes ────────────────────────────────────────────────────────────────────────────
+// THE LOGIN SURFACE, four routes on the same table everything else serves: GET /auth/login
+// mints the transaction and redirects to Google; GET /auth/google/callback verifies state,
+// exchanges the code, verifies the ID token end to end, mints the session (rotation included),
+// and redirects to the admitted return path; POST /auth/logout deletes the server-side session
+// and clears the cookie; GET /auth/session renders the standing. All four sit behind the
+// deployment's path policy exactly as every other route does — the write law's fourth conjunct
+// is the authority, and these routes add no gate of their own.
+//
+// THE CONFIG SEAM IS HONEST AT EVERY STEP: no config → GET /auth/login refuses 503 naming the
+// located cause and nothing else breaks; the callback's token exchange is a real HTTPS POST to
+// Google (the http.Client form transport), refused loudly on failure; the browser-bound headers
+// (the redirect's Location, the session's Set-Cookie) ride the typed header carrier the wire
+// projection renders — a socket runtime that does not yet write response headers serves the
+// status and body without them, which is the one realization gap this module names rather than
+// papers over.
+
+// AN ENTROPY DRAW, the approval-provision idiom: 32 bytes from /dev/urandom ride base64 to the
+// model, and a short or empty read is a refusal, never a shorter draw — the octet count is
+// checked again after decoding, so a failed entropy read has no constructor.
+fn auth_entropy_draw() -> NonEmptyStr? {
+  match base64_decode(s: trim(Urandom.ReadBytes(count: 32).octets_b64), variant: Standard) {
+    Absent => none
+    Present { value: octets } =>
+      if count(octets) != 32 {
+        none
+      } else {
+        Present { value: auth_base64url_wire(octets: octets) as NonEmptyStr }
+      }
+  }
+}
+
+// THE BASE64URL WIRE FORM of an octet list, padding stripped: cookie values, state, nonce,
+// verifiers, and session ids all ride this alphabet, and the padding character has no place in
+// any of them.
+fn auth_base64url_wire(octets: List<UInt8>) -> String {
+  match split(s: base64_encode(octets: octets, variant: UrlSafe), delimiter: "=").first() {
+    Present { value: wire } => wire
+    Absent => ""
+  }
+}
+
+fn auth_hex_nibble(c: String) -> Int? {
+  let cp = code_point(c: c)
+  if cp >= 48 && cp <= 57 {
+    Present { value: cp - 48 }
+  } else if cp >= 97 && cp <= 102 {
+    Present { value: cp - 87 }
+  } else if cp >= 65 && cp <= 70 {
+    Present { value: cp - 55 }
+  } else {
+    none
+  }
+}
+
+fn auth_hex_byte(hi: String, lo: String) -> Int? {
+  match auth_hex_nibble(c: hi) {
+    Absent => none
+    Present { value: h } =>
+      match auth_hex_nibble(c: lo) {
+        Absent => none
+        Present { value: l } => Present { value: h * 16 + l }
+      }
+  }
+}
+
+fn auth_hex_bytes(s: String, i: Int, acc: List<UInt8>) -> List<UInt8>? {
+  if i >= string_length(s: s) {
+    Present { value: acc }
+  } else if i + 1 >= string_length(s: s) {
+    none
+  } else {
+    match auth_hex_byte(hi: char_at(s, i), lo: char_at(s, i + 1)) {
+      Absent => none
+      Present { value: b } => auth_hex_bytes(s: s, i: i + 2, acc: list_push(acc, b))
+    }
+  }
+}
+
+// THE PKCE CHALLENGE, S256 per RFC 7636: SHA-256 of the verifier (the substrate's stdin
+// digest), hex decoded to bytes, base64url-wired. A digest the substrate will not take is a
+// refusal, never a fabricated challenge — a challenge that does not answer the verifier would
+// refuse EVERY legitimate login at the token endpoint.
+fn auth_pkce_challenge_of_verifier(verifier: NonEmptyStr) -> NonEmptyStr? {
+  match sha256sum_stdin_digest_via_shell(content: verifier as String) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+    Sha256FileDigest { digest: d } =>
+      match auth_hex_bytes(s: d.hex as String, i: 0, acc: []) {
+        Absent => none
+        Present { value: octets } =>
+          if count(octets) != 32 {
+            none
+          } else {
+            Present { value: auth_base64url_wire(octets: octets) as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// THE GOOGLE CLIENT-ID WIRE ALPHABET: OAuth client ids ride [A-Za-z0-9_-] and ride the
+// authorization URL unencoded; an id outside that alphabet is a config error the login refuses
+// with located, never a broken URL.
+fn auth_client_id_wire_admitted(id: String) -> Bool {
+  auth_client_id_wire_admitted_from(id: id, i: 0, len: string_length(s: id))
+}
+
+fn auth_client_id_wire_admitted_from(id: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else {
+    let cp = code_point(c: char_at(id, i))
+    let alnum = (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+    (alnum || cp == 45 || cp == 95) && auth_client_id_wire_admitted_from(id: id, i: i + 1, len: len)
+  }
+}
+
+// THE ONE FORM-ENCODING SPELLING the flow needs: a query-or-form component percent-encoded by
+// the uri authority. An encoding refusal refuses the step that needed it, naming nothing it
+// cannot know — the cause stays the uri module's.
+fn auth_form_component(raw: NonEmptyStr) -> String? {
+  match uri_percent_encode_component(value: raw) {
+    UriPercentComponentEncoded(wire) => Present { value: wire as String }
+    UriPercentComponentRefused { cause: _ } => none
+  }
+}
+
+// ── GET /auth/login ────────────────────────────────────────────────────────────────────────────
+// THE LOGIN ROUTE, the ruling's shape: admit the return path (pure syntax, the oidc module's
+// fold), load the deployment config (absent → located refusal, the witness's control), draw
+// state/nonce/verifier, persist the bounded transaction, and answer 302 toward Google's
+// authorization endpoint with the PKCE challenge aboard. The login transaction is the one new
+// state the flow writes before the redirect, and it is short-lived by the config's bound.
+fn auth_login_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let return_to = uri_query_param(path: request.path, key: "return_to")
+  match admit_login_return_path(raw: if return_to == "" { "/" } else { return_to }) {
+    ReturnPathRefused { raw: _, reason: r } =>
+      serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: ", r, "\n"], ""))
+    ReturnPathAdmitted { path: return_path } =>
+      match oidc_deployment_config_read() {
+        OidcDeploymentConfigUnavailable { cause: c } => auth_login_config_refusal(cause: c)
+        OidcDeploymentConfigLoaded { config: config } =>
+          auth_login_response_loaded(instance: instance, config: config, return_path: return_path)
+      }
+  }
+}
+
+// THE CONFIG-REFUSAL ARM, factored pure: the 503 names the located cause — the env var unset,
+// the file absent, the member missing — so an unconfigured deployment is a login that says
+// exactly what to fix, never a silent disable and never a tree that fails elsewhere.
+fn auth_login_config_refusal(cause: String) -> ServeHttpResponse {
+  serve_text_response(
+    status: 503,
+    content_type: text_plain_utf8,
+    body: join(["login refused: the OIDC deployment config is unavailable: ", cause, "\n"], ""),
+  )
+}
+
+fn auth_login_response_loaded(instance: HostDashboardInstance, config: OidcDeploymentConfig, return_path: RelativeReturnPath) -> ServeHttpResponse {
+  if !auth_client_id_wire_admitted(id: config.client_id as String) {
+    auth_login_config_refusal(cause: "the config file's client_id member carries a character outside the admitted OAuth client-id alphabet")
+  } else {
+    match auth_entropy_draw() {
+      Absent =>
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the login state refused\n")
+      Present { value: state } =>
+        match auth_entropy_draw() {
+          Absent =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the login nonce refused\n")
+          Present { value: nonce } =>
+            match auth_entropy_draw() {
+              Absent =>
+                serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the PKCE verifier refused\n")
+              Present { value: verifier } =>
+                auth_login_transaction_step(
+                  instance: instance,
+                  config: config,
+                  return_path: return_path,
+                  state: state,
+                  nonce: nonce,
+                  verifier: verifier,
+                )
+            }
+        }
+    }
+  }
+}
+
+fn auth_login_transaction_step(
+  instance: HostDashboardInstance,
+  config: OidcDeploymentConfig,
+  return_path: RelativeReturnPath,
+  state: NonEmptyStr,
+  nonce: NonEmptyStr,
+  verifier: NonEmptyStr,
+) -> ServeHttpResponse {
+  let now_read = clock_now_probed_at()
+  match now_read {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the transaction lifetime cannot be bounded\n")
+    Present { value: now } =>
+      let expires = Clock.TimestampOffsetAhead(timestamp: now, offset: config.login_transaction_lifetime_seconds)
+      if expires == "" {
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the transaction lifetime refused\n")
+      } else {
+        let transaction = OidcLoginTransaction {
+          state: state,
+          nonce: nonce,
+          created_at: now,
+          expires_at: expires,
+          verifier: OidcPkceCodeVerifier { verifier: verifier },
+          return_path: return_path,
+        }
+        let layout = login_transaction_store_layout_for_instance(instance: instance)
+        match login_transaction_store_save(layout: layout, transaction: transaction) {
+          LoginTransactionSaveRefused { step: s, reason: r } =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be persisted (", s, "): ", r, "\n"], ""))
+          LoginTransactionSaved { state: _ } =>
+            auth_login_redirect_response(config: config, transaction: transaction)
+        }
+      }
+  }
+}
+
+// THE REDIRECT, factored pure over config + transaction so the witness drives it without
+// entropy, a store, or Google: the authorization endpoint with response_type=code, the ruling's
+// three login scopes (and only those — the closed coproduct is the wall), the exact-match
+// redirect URI, and the PKCE challenge. state and nonce ride the base64url alphabet
+// unencoded by construction; the redirect URI and scope are percent-encoded by the uri
+// authority.
+fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcLoginTransaction) -> ServeHttpResponse {
+  match auth_pkce_challenge_of_verifier(verifier: transaction.verifier.verifier) {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the PKCE challenge could not be computed\n")
+    Present { value: challenge } =>
+      match auth_form_component(raw: config.redirect_uri) {
+        Absent => auth_login_config_refusal(cause: "the config file's redirect_uri member refused percent-encoding")
+        Present { value: redirect_encoded } =>
+          serve_text_response_with_headers(
+            status: 302,
+            content_type: text_plain_utf8,
+            body: join(["redirecting to Google: ", transaction.return_path.path as String, "\n"], ""),
+            headers: [
+              ServeResponseHeaderLocation {
+                location: auth_login_redirect_location(
+                  config: config,
+                  transaction: transaction,
+                  redirect_encoded: redirect_encoded,
+                  challenge: challenge,
+                ) as NonEmptyStr,
+              },
+            ],
+          )
+      }
+  }
+}
+
+fn auth_login_redirect_location(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, redirect_encoded: String, challenge: NonEmptyStr) -> String {
+  join(
+    [
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=",
+      config.client_id as String,
+      "&response_type=code&scope=",
+      auth_login_scope_wire(),
+      "&redirect_uri=",
+      redirect_encoded,
+      "&state=",
+      transaction.state as String,
+      "&nonce=",
+      transaction.nonce as String,
+      "&code_challenge=",
+      challenge as String,
+      "&code_challenge_method=S256",
+    ],
+    "",
+  )
+}
+
+// THE SCOPE WIRE SPELLING, derived from the closed login-scope coproduct: the labels are the
+// coproduct's own [a-z]+ spellings — safe on the wire by construction, so they ride
+// unencoded — and the single space the RFC delimits with rides as %20. No other scope is
+// spellable here, which is the wall that matters.
+fn auth_login_scope_wire() -> String {
+  join(
+    [
+      oidc_login_scope_label(scope: OidcScopeOpenId) as String,
+      "%20",
+      oidc_login_scope_label(scope: OidcScopeEmail) as String,
+      "%20",
+      oidc_login_scope_label(scope: OidcScopeProfile) as String,
+    ],
+    "",
+  )
+}
+
+// ── GET /auth/google/callback ──────────────────────────────────────────────────────────────────
+// THE CALLBACK, where the login becomes a session: the state names the transaction (unknown
+// state refuses before any other read — the witness's wrong-state control), the transaction is
+// consumed on use (one transaction answers one callback, and an expired one is deleted as it
+// refuses), the code exchanges over a real HTTPS POST to Google's token endpoint, the ID token
+// verifies end to end through the JWKS realization, and the session mints through the sealed
+// boundary with rotation — every refusal a located status, never a silent anonymous session.
+fn auth_google_callback_response(instance: HostDashboardInstance, path: String) -> ServeHttpResponse {
+  let state = uri_query_param(path: path, key: "state")
+  if state == "" {
+    auth_callback_state_refusal()
+  } else {
+    let layout = login_transaction_store_layout_for_instance(instance: instance)
+    match login_transaction_store_lookup(layout: layout, state: state as NonEmptyStr) {
+      LoginTransactionStoreUnknown { state: _ } => auth_callback_state_refusal()
+      LoginTransactionStoreUnread { state: _, detail: d } =>
+        serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be read: ", d, "\n"], ""))
+      LoginTransactionStoreEntryMalformed { state: _, detail: d } =>
+        serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the login transaction is malformed: ", d, "\n"], ""))
+      LoginTransactionStoreFound { transaction: transaction } =>
+        auth_callback_transaction(instance: instance, layout: layout, transaction: transaction, path: path)
+    }
+  }
+}
+
+// THE WRONG-STATE REFUSAL, factored pure: a callback whose state names no live transaction is
+// refused before the code is read, the store is written, or Google is asked — a replayed or
+// forged state establishes nothing and costs nothing.
+fn auth_callback_state_refusal() -> ServeHttpResponse {
+  serve_text_response(
+    status: 400,
+    content_type: text_plain_utf8,
+    body: "login refused: the callback's state names no live login transaction (forged, consumed, or expired) — start the login again\n",
+  )
+}
+
+fn auth_callback_transaction(instance: HostDashboardInstance, layout: LoginTransactionStoreLayout, transaction: OidcLoginTransaction, path: String) -> ServeHttpResponse {
+  let now_read = clock_now_probed_at()
+  match now_read {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the login transaction cannot be checked\n")
+    Present { value: now } =>
+      if login_transaction_expired(t: transaction, observed_at: now) {
+        match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleteRefused { state: _, detail: _ } =>
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the login transaction is expired, and its consumption refused\n")
+          LoginTransactionDeleted { state: _ } =>
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the login transaction is expired; start the login again\n")
+          LoginTransactionNothingToDelete { state: _ } =>
+            serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the login transaction is expired; start the login again\n")
+        }
+      } else {
+        match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleteRefused { state: _, detail: d } =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the login transaction could not be consumed: ", d, " — refusing rather than risking a replay\n"], ""))
+          LoginTransactionDeleted { state: _ } =>
+            auth_callback_exchange(instance: instance, transaction: transaction, path: path)
+          LoginTransactionNothingToDelete { state: _ } =>
+            auth_callback_exchange(instance: instance, transaction: transaction, path: path)
+        }
+      }
+  }
+}
+
+// THE CODE EXCHANGE: the form (grant, code, redirect, client, secret, verifier) rides an
+// owner-only file — the client secret is never an argv word — and the POST is the http.Client
+// form transport against the token endpoint. A refused exchange is a 502 naming the step: the
+// transaction is already consumed, so the operator's remedy is to start the login again.
+fn auth_callback_exchange(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String) -> ServeHttpResponse {
+  match oidc_deployment_config_read() {
+    OidcDeploymentConfigUnavailable { cause: c } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the OIDC deployment config is unavailable at the callback: ", c, "\n"], ""))
+    OidcDeploymentConfigLoaded { config: config } =>
+      auth_callback_exchange_configured(instance: instance, transaction: transaction, path: path, config: config)
+  }
+}
+
+fn auth_callback_exchange_configured(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
+  let code = uri_query_param(path: path, key: "code")
+  if code == "" {
+    serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback carries no code\n")
+  } else {
+    match auth_token_request_form(config: config, transaction: transaction, code: code) {
+      Absent =>
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be encoded\n")
+      Present { value: form } =>
+        let layout = login_transaction_store_layout_for_instance(instance: instance)
+        let form_path = join([layout.root as String, "/", transaction.state as String, "-token.form"], "")
+        let written = Filesystem.WriteOwnerOnly(path: form_path, content: form)
+        if !written.success {
+          serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be staged\n")
+        } else {
+          let got = http.Client.PostFormFromFile(url: "https://oauth2.googleapis.com/token" as NonEmptyStr, request_body_file: form_path, max_seconds: "15" as NonEmptyStr)
+          let cleanup = Filesystem.Delete(path: form_path)
+          if !got.success {
+            serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["login refused: the code exchange refused: ", got.body, "\n"], ""))
+          } else {
+            auth_callback_id_token(instance: instance, transaction: transaction, config: config, exchange_body: got.body)
+          }
+        }
+    }
+  }
+}
+
+// THE TOKEN REQUEST FORM, one field per RFC 6749 section 4.1.3 + the PKCE verifier: the code
+// and redirect URI are percent-encoded, the client id rides the admitted alphabet, the secret
+// is encoded (its alphabet is the config's fact, never assumed), and the verifier rides the
+// base64url alphabet by construction.
+fn auth_token_request_form(config: OidcDeploymentConfig, transaction: OidcLoginTransaction, code: String) -> String? {
+  match auth_form_component(raw: code as NonEmptyStr) {
+    Absent => none
+    Present { value: code_encoded } =>
+      match auth_form_component(raw: config.redirect_uri) {
+        Absent => none
+        Present { value: redirect_encoded } =>
+          match auth_form_component(raw: (config.client_secret as String) as NonEmptyStr) {
+            Absent => none
+            Present { value: secret_encoded } =>
+              Present {
+                value: join(
+                  [
+                    "grant_type=authorization_code&code=",
+                    code_encoded,
+                    "&redirect_uri=",
+                    redirect_encoded,
+                    "&client_id=",
+                    config.client_id as String,
+                    "&client_secret=",
+                    secret_encoded,
+                    "&code_verifier=",
+                    transaction.verifier.verifier as String,
+                  ],
+                  "",
+                ),
+              }
+          }
+      }
+  }
+}
+
+fn auth_callback_id_token(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, exchange_body: String) -> ServeHttpResponse {
+  match parse_json_document(s: exchange_body) {
+    JsonDocumentUnreadable { gap: _ } =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the token endpoint's answer is not one JSON document\n")
+    JsonDocumentParsed { value: doc } =>
+      match json_field_string(obj: doc, key: "id_token") {
+        FieldAbsent =>
+          serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the token endpoint's answer carries no id_token\n")
+        FieldMalformed { cause: c } =>
+          serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["login refused: the token endpoint's id_token refused: ", c, "\n"], ""))
+        FieldRead { value: id_token } =>
+          if id_token == "" {
+            serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the token endpoint's id_token is empty\n")
+          } else {
+            auth_callback_verify(instance: instance, transaction: transaction, config: config, id_token: id_token as NonEmptyStr)
+          }
+      }
+  }
+}
+
+// THE VERIFICATION AND THE MINT: the producer's signature outcome feeds the landed verdict
+// policy (issuer, admitted audience roster, hd == the config's Workspace domain, the
+// transaction's nonce, the clock's epoch), and the verified verdict mints the session through
+// the sealed boundary — caller-named session id and CSRF from fresh draws, the bounded expiry
+// from the clock, and rotation: the principal's other sessions are purged before the new one
+// is saved, so a re-login is what invalidates what a stolen cookie could replay.
+fn auth_callback_verify(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, id_token: NonEmptyStr) -> ServeHttpResponse {
+  let epoch_read = Clock.UnixSecs()
+  match parse_int(s: trim(epoch_read.unix_secs)) {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock's epoch reading refused, so the verdict cannot be decided\n")
+    Present { value: epoch } =>
+      match auth_entropy_draw() {
+        Absent =>
+          serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the verification refused\n")
+        Present { value: verify_id } =>
+          auth_callback_verdict(
+            instance: instance,
+            transaction: transaction,
+            config: config,
+            id_token: id_token,
+            epoch: epoch,
+            verify_id: verify_id,
+          )
+      }
+  }
+}
+
+fn auth_callback_verdict(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, id_token: NonEmptyStr, epoch: Int, verify_id: NonEmptyStr) -> ServeHttpResponse {
+  let signature = oidc_id_token_signature_verify(instance: instance, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
+  match auth_callback_wire_claims(id_token: id_token) {
+    Absent =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the ID token's claims could not be decoded for the verdict\n")
+    Present { value: claims } =>
+      let verdict = verify_oidc_id_token(
+        claims: claims,
+        signature: signature,
+        policy: OidcIdTokenVerdictPolicy {
+          expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+          admitted_audiences: map(config.admitted_audiences, a => JwtBareString { value: a }),
+          expected_hosted_domain: OidcHostedDomain { domain: config.expected_hosted_domain },
+          expected_nonce: Present { value: transaction.nonce },
+          observed_at: NumericDateWholeSeconds { seconds: epoch },
+        },
+      )
+      match verdict {
+        OidcIdTokenRefused { cause: c } =>
+          serve_text_response(status: 403, content_type: text_plain_utf8, body: join(["login refused: ", oidc_id_token_refusal_reason(cause: c), "\n"], ""))
+        OidcIdTokenVerified { claims: _ } =>
+          auth_callback_mint(instance: instance, transaction: transaction, config: config, verdict: verdict)
+      }
+  }
+}
+
+// THE CLAIMS RE-DECODE for the verdict fold: the producer consumed the wire for its own reads,
+// and the verdict takes claims — the decode is pure, so the second read costs nothing and the
+// claims the policy decides over are the same claims the signature covered.
+fn auth_callback_wire_claims(id_token: NonEmptyStr) -> OidcIdTokenClaims? {
+  match oidc_id_token_wire_decode(token: id_token) {
+    OidcIdTokenWireRefused { reason: _ } => none
+    OidcIdTokenWireDecoded { claims: c, header: _, signing_input: _ } => Present { value: c }
+  }
+}
+
+// THE CLAIMS RE-DECODE for the verdict fold: the producer consumed the wire for its own reads,
+// and the verdict takes claims — the decode is pure, so the second read costs nothing and the
+// claims the policy decides over are the same claims the signature covered.
+fn auth_callback_mint(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, verdict: OidcIdTokenVerdict) -> ServeHttpResponse {
+  let now_read = clock_now_probed_at()
+  match now_read {
+    Absent =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the session lifetime cannot be bounded\n")
+    Present { value: now } =>
+      let expires = Clock.TimestampOffsetAhead(timestamp: now, offset: config.session_lifetime_seconds)
+      if expires == "" {
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the session lifetime refused\n")
+      } else {
+        match auth_entropy_draw() {
+          Absent =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the session refused\n")
+          Present { value: session_id } =>
+            match auth_entropy_draw() {
+              Absent =>
+                serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the entropy draw for the CSRF token refused\n")
+              Present { value: csrf } =>
+                auth_callback_mint_session(
+                  instance: instance,
+                  transaction: transaction,
+                  config: config,
+                  verdict: verdict,
+                  now: now,
+                  expires: expires,
+                  session_id: session_id,
+                  csrf: csrf,
+                )
+            }
+        }
+      }
+  }
+}
+
+fn auth_callback_mint_session(
+  instance: HostDashboardInstance,
+  transaction: OidcLoginTransaction,
+  config: OidcDeploymentConfig,
+  verdict: OidcIdTokenVerdict,
+  now: String,
+  expires: String,
+  session_id: NonEmptyStr,
+  csrf: NonEmptyStr,
+) -> ServeHttpResponse {
+  match mint_authenticated_session(
+    verdict: verdict,
+    transaction: transaction,
+    client: SessionClientTrackerWeb,
+    session_id: session_id,
+    authenticated_at: now,
+    expires_at: expires,
+    csrf_token_value: csrf,
+    observed_at: now,
+  ) {
+    SessionRefused { cause: c } =>
+      serve_text_response(status: 403, content_type: text_plain_utf8, body: join(["login refused: the session mint refused: ", session_refusal_reason(c: c), "\n"], ""))
+    SessionMinted { session: session } =>
+      auth_callback_seat_session(instance: instance, transaction: transaction, config: config, session: session)
+  }
+}
+
+// THE SEAT: rotation first (the principal's other sessions are purged, strict and fail-
+// closed), then the owner-only save, then the redirect to the transaction's admitted return
+// path with the session cookie — Secure, HttpOnly, SameSite=Lax, path-bound, the bounded
+// lifetime as Max-Age, exactly the ruling's spelled set.
+fn auth_callback_seat_session(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, session: AuthenticatedSession) -> ServeHttpResponse {
+  let layout = session_store_layout_for_instance(instance: instance)
+  match session_store_purge_principal(layout: layout, principal: session.principal, except_session_id: session.session_id) {
+    SessionStorePurgeRefused { step: s, reason: r } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the session rotation refused (", s, "): ", r, "\n"], ""))
+    SessionStorePurged { deleted: _ } =>
+      match session_store_save(layout: layout, session: session) {
+        SessionStoreSaveRefused { step: s, reason: r } =>
+          serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the session could not be persisted (", s, "): ", r, "\n"], ""))
+        SessionStoreSaved { session_id: _ } =>
+          serve_text_response_with_headers(
+            status: 302,
+            content_type: text_plain_utf8,
+            body: join(["login complete: redirecting to ", transaction.return_path.path as String, "\n"], ""),
+            headers: [
+              ServeResponseHeaderLocation { location: transaction.return_path.path },
+              ServeResponseHeaderSetCookie {
+                set_cookie: session_cookie_set_cookie_line(session_id: session.session_id, max_age_seconds: config.session_lifetime_seconds) as NonEmptyStr,
+              },
+            ],
+          )
+      }
+  }
+}
+
+fn session_refusal_reason(c: SessionRefusalCause) -> String {
+  match c {
+    SessionVerdictRefused { cause: v } => oidc_id_token_refusal_reason(cause: v)
+    SessionTransactionExpired { transaction: _, observed_at: _ } => "the login transaction is expired"
+    SessionTransactionNonceMismatch { transaction_nonce: _, token_nonce: _ } => "the ID token's nonce does not answer the login transaction"
+  }
+}
+
+// ── POST /auth/logout ──────────────────────────────────────────────────────────────────────────
+// THE LOGOUT: the server-side session named by the cookie is deleted (idempotent — an
+// already-reaped session is a success, the desired end state), and the answer always carries
+// the cookie-clearing Set-Cookie, so the browser drops the cookie whether or not the server
+// had anything to delete. The session cookie is SameSite=Lax, so a cross-site POST does not
+// carry it in the first place; a logout that arrives with no valid session has nothing to
+// mutate and says so.
+fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let deletion = match request.security.authentication {
+    GoogleOidcSession { session } =>
+      session_store_delete(layout: session_store_layout_for_instance(instance: instance), session_id: session.session_id)
+    _ => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
+  }
+  match deletion {
+    SessionStoreDeleted { session_id: _ } =>
+      serve_text_response_with_headers(
+        status: 200,
+        content_type: text_plain_utf8,
+        body: "logged out: the session is deleted\n",
+        headers: [ServeResponseHeaderSetCookie { set_cookie: session_cookie_clear_line() as NonEmptyStr }],
+      )
+    SessionStoreNothingToDelete { session_id: _ } =>
+      serve_text_response_with_headers(
+        status: 200,
+        content_type: text_plain_utf8,
+        body: "logged out: no live session was presented\n",
+        headers: [ServeResponseHeaderSetCookie { set_cookie: session_cookie_clear_line() as NonEmptyStr }],
+      )
+    SessionStoreDeleteRefused { session_id: _, detail: d } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["logout refused: the session could not be deleted: ", d, "\n"], ""))
+  }
+}
+
+// ── GET /auth/session ──────────────────────────────────────────────────────────────────────────
+// THE SESSION READ: the standing the seam decoded, rendered as JSON — the authenticated
+// principal's label and expiry for a live session, the invalid standing's reason for anything
+// else, anonymous for absence. A read renders; it never decides.
+fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  serve_text_response(
+    status: 200,
+    content_type: application_json_utf8,
+    body: auth_session_body(evidence: request.security.authentication),
+  )
+}
+
+fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
+  serialize_json(v: json_object(members: match evidence {
+    GoogleOidcSession { session } => [
+      json_kv(key: "authenticated", value: json_bool(b: true)),
+      json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
+      json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
+    SessionStandingInvalid { standing } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
+    AuthAbsent => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+  }))
 }

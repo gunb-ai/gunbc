@@ -4,7 +4,7 @@ import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.tailscale.serve { TailscaleServeRouteKey }
 import std.content_hash { ContentHash }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, HttpStatus, Port }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, HttpStatus, Port, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.uri_path {
@@ -259,17 +259,51 @@ type ServeHttpRequest<Authentication> {
   security: RequestSecurityContext<Authentication>
 }
 
+// THE HANDLER'S RESPONSE, the modeled authority a route returns: status, content type, body —
+// and the response HEADERS a route sets, as the typed carrier above. Headers live here rather
+// than on the wire projection because a redirect IS a Location header plus a status and a
+// session is a Set-Cookie header: they are the handler's answer, not the socket's. Handlers
+// that set none construct the empty list (serve_text_response); the wire projection renders
+// them to lines.
 type ServeHttpResponse {
   status: HttpStatus
   content_type: MediaType
   body: String
+  headers: List<ServeResponseHeader>
 }
 
 // The WIRE projection of ServeHttpResponse — the shape the host accept-loop seam reads back from the one .dag entry it calls (gunbc serve). Status is the bare Int and content type the wire label String so the seam never touches a modeled enum; the modeled ServeHttpResponse stays the authority and this record is its one-way projection (serve_wire_response), never authored directly by handlers.
+//
+// RESPONSE HEADERS RIDE THE WIRE AS RENDERED LINES, the redirect and cookie channels the auth
+// routes need: ServeHttpResponse stays header-free (a handler's body/status/type authority),
+// and the header carrier is built at the projection — a redirect IS a Location header plus a
+// status, and a session cookie IS a Set-Cookie header, so the headers are data the routes
+// construct honestly while the socket's willingness to write them is the realization's
+// contract. The list is in WRITE ORDER and each entry is one complete header line.
 type ServeWireResponse {
   status: Int
   content_type_label: String
   body: String
+  headers: List<String>
+}
+
+// THE ONE HEADER VOCABULARY THE SURFACES NEED, as a closed coproduct a handler matches rather
+// than a string it concatenates: the login redirect and the session cookie are the two
+// production arms, and a header outside this set is a new arm with its own construction rule,
+// never an unadmitted line.
+type ServeResponseHeader
+  = ServeResponseHeaderLocation { location: NonEmptyStr }
+  | ServeResponseHeaderSetCookie { set_cookie: NonEmptyStr }
+
+fn serve_response_header_wire(header: ServeResponseHeader) -> String {
+  match header {
+    ServeResponseHeaderLocation { location: l } => join(["Location: ", l as String], "")
+    ServeResponseHeaderSetCookie { set_cookie: c } => c as String
+  }
+}
+
+fn serve_response_headers_wire(headers: List<ServeResponseHeader>) -> List<String> {
+  map(headers, h => serve_response_header_wire(header: h))
 }
 
 fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
@@ -277,6 +311,19 @@ fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
     status: r.status,
     content_type_label: media_type_wire_label(m: r.content_type),
     body: r.body,
+    headers: [],
+  }
+}
+
+// THE PROJECTION WITH HEADERS: the same record with the header lines attached in the caller's
+// order; the no-header projection above is this fold at the empty list, so the two spellings
+// cannot drift.
+fn serve_wire_response_with_headers(r: ServeHttpResponse, headers: List<ServeResponseHeader>) -> ServeWireResponse {
+  ServeWireResponse {
+    status: r.status,
+    content_type_label: media_type_wire_label(m: r.content_type),
+    body: r.body,
+    headers: serve_response_headers_wire(headers: headers),
   }
 }
 

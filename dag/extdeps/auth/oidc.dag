@@ -19,7 +19,6 @@ import extdeps.auth.jwt {
   jwt_string_or_uri_wire,
   jwt_audience_values,
 }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -241,8 +240,19 @@ fn login_transaction_expired(t: OidcLoginTransaction, observed_at: Timestamp) ->
 // the JWKS fetch it requires), so the verdict fold below decides over the realization-supplied
 // cryptographic outcome rather than performing it. The verified arm names the JWKS key the
 // signature checked against — RFC 7517: a key is identified within one issuer's key set — so a
-// verdict carries WHICH key stood behind it, and the production producer of this value is the
-// named frontier below, not any caller holding a claim set.
+// verdict carries WHICH key stood behind it.
+//
+// THE PRODUCTION PRODUCER LANDED 2026-09-26 (the former oidc_jwks_verification_frontier row,
+// dissolved by its own criterion): gunbc.auth.oidc_id_token_verification fetches the Google
+// issuer JWKS with a bounded deadline and a one-hour file cache, assembles the announced RSA
+// key as an SPKI document in pure .dag, verifies the RS256 signature through the openssl
+// realization, and is the sole production producer of this value — the login callback
+// (gunbc.roadmap_serve.auth_google_callback_response) is its only production caller, and every
+// sub-refusal of the realization maps to OidcIdTokenSignatureRefused, so no production path
+// reaches the verified arm except a real signature check. What the realization itself cannot
+// check — that the bound openssl invocation actually performed RSASSA-PKCS1-v1_5 with SHA-256
+// over the exact signing input — is named at that seam, the same boundary
+// extdeps.crypto.signature draws.
 type JsonWebKeyRef {
   issuer: JwtStringOrUri
   key_id: NonEmptyStr
@@ -467,13 +477,3 @@ fn oidc_id_token_refusal_reason(cause: OidcIdTokenRefusal) -> String {
       concat("ID token hosted domain is not the admitted Workspace domain ", e.domain as String)
   }
 }
-
-// THE PRODUCTION JWKS REALIZATION IS THE FRONTIER, not a gap: no producer of
-// OidcIdTokenSignatureVerified exists in this tree today, so no production login can mint a
-// verified verdict yet — every production login refuses loud at the signature check until this
-// lands. NAMED CONSUMER: the serve/login realization that fetches the issuer JWKS, checks the
-// ID-token signature, and hands the outcome to verify_oidc_id_token. SUFFICIENT FOR deleting
-// this row: that producer is the sole production minter of the verified arm.
-data oidc_jwks_verification_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: the login request realization that fetches the Google issuer JWKS over HTTPS, verifies the ID-token signature against the announced key, and supplies OidcIdTokenSignature to verify_oidc_id_token as its sole production producer. SUFFICIENT FOR deleting this row: that realization exists and is the only production path to the verified arm. NOT satisfied by a witness constructing the input — supplied values discriminate the model, they are not the production wall",
-)
