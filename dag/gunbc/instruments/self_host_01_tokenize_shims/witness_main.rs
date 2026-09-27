@@ -2,7 +2,7 @@ use im::vector as vec;
 use std::rc::Rc;
 use v1_compiled::v2_compiler_tokenize as emitted;
 use v1_compiled::v2_std_compilers_lexing::{LexPattern, LexRule, LexRuleSet, LexRules, TokenStream};
-use v1_compiled::v2_std_diagnostic::Outcome;
+use v1_compiled::v2_std_diagnostic::{diagnostics_fatal_reason, Outcome};
 
 // NO SEED ORACLE, ON PURPOSE. This driver used to compare the prose constant
 // tokenize_module_authority_note against a hand copy in v1_compiler::v2_compiler_tokenize, which
@@ -45,11 +45,14 @@ fn main() {
             Outcome::Accepted { value, .. } => Some(value.all.len()),
             Outcome::Rejected { .. } => None,
         };
-        let refusal = match &*unmatched {
-            Outcome::Rejected { diagnostics } => format!("{diagnostics:?}"),
-            Outcome::Accepted { .. } => String::new(),
+        // The refusal cause is compared by EXACT equality on the emitted diagnostics_fatal_reason,
+        // never by a substring of formatted text.
+        let refused_as_unrecognized = match &*unmatched {
+            Outcome::Rejected { diagnostics } => {
+                diagnostics_fatal_reason(diagnostics.clone()) == "tokenize_lex_e1_unrecognized_char"
+            }
+            Outcome::Accepted { .. } => false,
         };
-        let refused_as_unrecognized = refusal.contains("tokenize_lex_e1_unrecognized_char");
         println!("tokenize matched source tokens={matched_tokens:?}");
         println!("tokenize unmatched char refused as unrecognized={refused_as_unrecognized}");
         matched_tokens == Some(2) && refused_as_unrecognized

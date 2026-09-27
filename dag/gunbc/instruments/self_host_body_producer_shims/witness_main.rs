@@ -1,6 +1,7 @@
 use im::vector as vec;
 use std::rc::Rc;
 use v1_compiled::v2_compiler_body_producer as emitted;
+use v1_compiled::v2_std_diagnostic::diagnostics_fatal_reason;
 use v1_compiled::v2_std_node::{node_synthetic, Behavior, Connective, Edge, EdgeLabel, Node, NodeKind};
 
 // NO SEED ORACLE, ON PURPOSE. This driver used to require the same verdicts from a hand copy in
@@ -14,12 +15,13 @@ fn accepted<T>(o: &Rc<emitted::Outcome<T>>) -> bool {
     matches!(&**o, emitted::Outcome::Accepted { .. })
 }
 
-// The refusal is asserted EXACTLY: rejected with body_producer_reason_resolved_shape, not merely
-// "not accepted", so a refusal that loses its cause does not pass as this one.
+// The refusal is asserted EXACTLY: the emitted diagnostics_fatal_reason EQUALS
+// body_producer_reason_resolved_shape -- not "not accepted", and not a substring match on formatted
+// text, which a renamed reason sharing the prefix would satisfy.
 fn refused_as_resolved_shape<T>(o: &Rc<emitted::Outcome<T>>) -> bool {
     match &**o {
         emitted::Outcome::Rejected { diagnostics } => {
-            format!("{diagnostics:?}").contains("body_producer_reason_resolved_shape")
+            diagnostics_fatal_reason(diagnostics.clone()) == "body_producer_reason_resolved_shape"
         }
         emitted::Outcome::Accepted { .. } => false,
     }
