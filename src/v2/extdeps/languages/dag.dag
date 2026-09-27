@@ -3740,15 +3740,26 @@ fn dag_symbol_literal_node(name: Node, occurrence_id: NodeOccurrenceIdentity) ->
   }
 }
 
+fn dag_symbol_literal_name_edge_target_optional(edge: Edge) -> Optional<Node> {
+  match edge.label {
+    Named { name: field } =>
+      if field == ^symbol_literal_name_field {
+        optional_present(value: edge.target)
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
 fn dag_symbol_literal_name_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Absent => optional_absent()
     Present { value: id } =>
       if (id == ^dag_token_caret) && (length(xs: node.children) == 1) {
         match list_at_optional(xs: node.children, index: 0) {
-          Present { value: Edge { label: Named { name: field }, target: name } } =>
-            if field == ^symbol_literal_name_field { optional_present(value: name) } else { optional_absent() }
-          _ => optional_absent()
+          Present { value: edge } => dag_symbol_literal_name_edge_target_optional(edge: edge)
+          Absent => optional_absent()
         }
       } else {
         optional_absent()
