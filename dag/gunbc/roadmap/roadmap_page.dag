@@ -221,81 +221,64 @@ fn theme_toggle_control() -> Fragment {
 
 data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH (operator ruling 2026-09-24, superseding the 2026-08-02 centered-measure frame): the page takes the full viewport like the issue-tracker model — the measure_page cap and auto-centering are retired from .header-inner, .roadmap, and .daily-workspace. The header element keeps its full-width surface and border — it is a chassis edge — and its content in .header-inner now flows edge to edge with the same side padding the content containers carry. measure_page survives only on the sandbox audition surfaces, which are deliberately narrow."
 
-// THE HEADER ACCOUNT AREA (owner ask 2026-09-26: "sign in button -> google pfp picture in the top
-// right of the issue tracker"; the idiom follows the Buganizer capture — /home/briansrls/
-// chromium-565764076/ detail capture — whose top bar carries the signed-in account avatar at the
-// FAR RIGHT, beside the app controls; ours keeps the sound/theme chips and adds the account area
-// rightmost). TWO STATES, derived from the request's authenticated viewer label — the page layer's
-// existing seam, so no serve change is needed: a label that parses as a principal spelling means a
-// Google OIDC session sat on the request (avatar + display name + sign out); anything else —
-// absent, or fabric service evidence, which is a machine caller and never a human account claim —
-// renders the Sign-in affordance. THE AVATAR rides the never-blocks law: initials today, the
-// /avatar/<principal> image when that endpoint lands.
-type HeaderAccountState
-  = HeaderSignedOut
-  | HeaderSession { principal: EventPrincipal }
-
-fn header_account_of_viewer(viewer: String) -> HeaderAccountState {
-  if viewer == "" {
-    HeaderSignedOut
-  } else {
-    match principal_ref_parse_label(s: viewer) {
-      Present { value: ref } => HeaderSession { principal: EventPrincipalAuthenticated { ref: ref } }
-      Absent => HeaderSignedOut
-    }
-  }
+// THE HEADER ACCOUNT AREA (owner ask 2026-09-26, DYNAMIC since the pre-rendered-body defect
+// 2026-09-27: the main page body is the belt's pre-rendered static body, so a statically rendered
+// account area could never reflect the per-request session — it showed Sign in forever after a
+// successful login). ONE AUTHORITY NOW: the static markup ALWAYS renders the Sign-in affordance
+// plus a HIDDEN session target (empty avatar/name fields), and the emitted client program fetches
+// GET /auth/session on load and swaps the target in when the response says authenticated — name
+// and avatar render from the SESSION RESPONSE alone; a 401, an absent flag, or a failed fetch
+// leaves Sign in, never an identity claim from a failed fetch. THE AVATAR rides the never-blocks
+// law: initials computed client-side, the /avatar/<principal> image when that endpoint lands.
+// Sign out is the target's native form POSTing /auth/logout: the page reloads, the fetch re-runs,
+// Sign in returns.
+fn header_account_nodes() -> List<Fragment> {
+  let signin = el_attrs("a", [
+    attr(name: "class", value: "header-account header-account-signin" ),
+    attr(name: "href", value: "/auth/login" ),
+    attr(name: "data-account-signin", value: "" ),
+    attr(name: "title", value: "sign in with Google" ),
+  ], [ txt("Sign in") ])
+  let avatar = el_attrs("span", [
+    attr(name: "class", value: "issue-avatar" ),
+    attr(name: "data-account-avatar", value: "" ),
+    attr(name: "data-avatar", value: "absent" ),
+  ], [])
+  let name = el_attrs("span", [
+    attr(name: "class", value: "header-account-name" ),
+    attr(name: "data-account-name", value: "" ),
+  ], [])
+  let signout_btn = el_attrs("button", [
+    attr(name: "class", value: "header-account-signout-btn" ),
+    attr(name: "type", value: "submit" ),
+  ], [ txt("Sign out") ])
+  let signout_form = el_attrs("form", [
+    attr(name: "class", value: "header-account-signout" ),
+    attr(name: "method", value: "post" ),
+    attr(name: "action", value: "/auth/logout" ),
+  ], [ signout_btn ])
+  let session = el_attrs("span", [
+    attr(name: "class", value: "header-account header-account-session" ),
+    attr(name: "data-account-session", value: "" ),
+    attr(name: "hidden", value: "" ),
+  ], [ avatar, name, signout_form ])
+  [ el_class("span", "header-account-slot", [ signin, session ]) ]
 }
 
-// THE ACCOUNT AREA'S NODES. UNAUTHENTICATED: a Sign-in link to GET /auth/login (agent-68's route;
-// it refuses with a located cause until the OAuth config lands — the tooltip says so, the button
-// is honest about the pending setup). AUTHENTICATED: the principal's avatar chip beside the
-// display name, and a small menu that is one honest form: Sign out POSTs /auth/logout natively
-// (no-JS honest). NO AUTH EVIDENCE, NO IDENTITY CLAIM: the derivation above refuses to mint an
-// avatar from a non-session label.
-fn header_account_nodes(account: HeaderAccountState) -> List<Fragment> {
-  match account {
-    HeaderSignedOut =>
-      [ el_attrs("a", [
-          attr(name: "class", value: "header-account header-account-signin" ),
-          attr(name: "href", value: "/auth/login" ),
-          attr(name: "title", value: "sign in with Google — the login route refuses with a located cause until the OAuth config lands" ),
-        ], [ txt("Sign in") ]) ]
-    HeaderSession { principal } =>
-      let display = event_principal_display(p: principal)
-      [ el_class("span", "header-account header-account-session", concat(
-          [ issue_avatar_chip_node(display: display, workflow: false) ],
-          concat(
-            [ el_class("span", "header-account-name", [ txt(display.name) ]) ],
-            [ el_attrs("form", [
-                attr(name: "class", value: "header-account-signout" ),
-                attr(name: "method", value: "post" ),
-                attr(name: "action", value: "/auth/logout" ),
-              ], [ el_attrs("button", [
-                  attr(name: "class", value: "header-account-signout-btn" ),
-                  attr(name: "type", value: "submit" ),
-                ], [ txt("Sign out") ]) ]) ]))) ]
-  }
-}
-
-// THE SHARED HEADER. Pages without a request-time viewer (the pre-rendered daily workspace body,
-// the sandbox surfaces) call the plain wrapper and render the Sign-in affordance — the named gap:
-// the pre-rendered body cannot know the request's auth state until the observation storage grows
-// a per-request render seam. The detail page passes its viewer and gets the stateful account area.
+// THE SHARED HEADER. Every page renders the same static account area (Sign in + the hidden
+// session target); the client swap personalizes it per request where a session exists.
 fn roadmap_header(page: String) -> Fragment {
-  roadmap_header_accounted(page: page, viewer: "")
-}
-
-fn roadmap_header_accounted(page: String, viewer: String) -> Fragment {
   el("header", [
-    el_class("div", "header-inner", [
-      el_class("span", "wordmark", [ txt("gunbc") ]),
-      el("h1", [ txt(page) ]),
-      header_surface_link(label: "workspace", href: "/"),
-      header_surface_link(label: "fleet", href: "/fleet"),
-      sound_toggle_control(),
-      theme_toggle_control(),
-      el_class("span", "header-account-slot", header_account_nodes(account: header_account_of_viewer(viewer: viewer))),
-    ]),
+    el_class("div", "header-inner", concat(
+      [
+        el_class("span", "wordmark", [ txt("gunbc") ]),
+        el("h1", [ txt(page) ]),
+        header_surface_link(label: "workspace", href: "/"),
+        header_surface_link(label: "fleet", href: "/fleet"),
+        sound_toggle_control(),
+        theme_toggle_control(),
+      ],
+      header_account_nodes())),
   ])
 }
 
@@ -2380,7 +2363,7 @@ fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observatio
         el("title", [ txt(join(["gunbc — issue ", view.node_id], "")) ]),
       ]),
       el("body", [
-        roadmap_header_accounted(page: "issue", viewer: viewer),
+        roadmap_header(page: "issue"),
         issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision),
         dispatch_client_script(),
       ]),
@@ -2471,7 +2454,7 @@ fn issue_detail_not_found_page(node_id: String, viewer: String) -> Fragment {
         el("title", [ txt("gunbc — issue not found") ]),
       ]),
       el("body", [
-        roadmap_header_accounted(page: "issue", viewer: viewer),
+        roadmap_header(page: "issue"),
         el_class("main", "issue-detail", [
           el_class("p", "issue-not-found", [ txt(join(["no issue named ", node_id, " is declared in the roadmap authority"], "")) ]),
         ]),

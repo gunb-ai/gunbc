@@ -3543,6 +3543,74 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
   ]
 }
 
+
+// THE ACCOUNT SWAP (owner defect 2026-09-27: the main page body is the belt's pre-rendered
+// static body, so the account area can only personalize CLIENT-SIDE): on load, fetch
+// GET /auth/session; an authenticated response swaps the hidden session target in — avatar
+// initials and the display name render from the SESSION RESPONSE ALONE (the principal's short
+// form: the session wire carries viewer + principal, and the profile projection with the display
+// name is the follow-up) — anything else (401, absent flag, fetch failure) leaves Sign in:
+// never an identity claim from a failed fetch. Sign out is the target's native form POSTing
+// /auth/logout; the reload re-runs this fetch and Sign in returns.
+fn account_query_expr(selector: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+    args: [ts_lit_str(value: selector)])
+}
+
+fn account_swap_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "gunbcAccountSlot", value: account_query_expr(selector: "[data-account-session]")),
+    ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
+    ts_if(
+      cond: ts_binop(left: js_b_member(name: "gunbcAccountSlot"), op: "&&", right: js_b_member(name: "gunbcAccountSignin")),
+      then: ts_expr_stmt(expr: ts_call(
+        callee: ts_member(
+          object: ts_call(
+            callee: ts_member(
+              object: ts_call(
+                callee: ts_ident(name: "fetch"),
+                args: [ts_lit_str(value: "/auth/session")]),
+              property: "then"),
+            args: [ts_arrow(params: ["r"], body: ts_return(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "r"), property: "json"),
+              args: [])))]),
+          property: "then"),
+        args: [ts_arrow(params: ["s"], body: ts_if(
+          cond: ts_binop(
+            left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
+            op: "&&",
+            right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
+          then: ts_block(stmts: [
+            ts_const(name: "gunbcViewer", value: ts_binop(
+              left: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal")),
+              op: "||",
+              right: ts_lit_str(value: ""))),
+            ts_const(name: "gunbcShort", value: ts_call(
+              callee: ts_member(
+                object: ts_call(
+                  callee: ts_member(object: ts_ident(name: "gunbcViewer"), property: "split"),
+                  args: [ts_lit_str(value: "/")]),
+                property: "pop"),
+              args: [])),
+            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSignin"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
+            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]), property: "textContent"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "gunbcShort"), property: "substring"),
+                args: [ts_lit_str(value: "0"), ts_lit_str(value: "1")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-name]")]), property: "textContent"),
+              op: "=",
+              right: ts_ident(name: "gunbcShort"))),
+          ]),
+          else_stmt: none))])),
+      else_stmt: none),
+  ]
+}
+
 fn dispatch_client_program_for(
   selector: String,
   url_expr: TsExpr,
@@ -3577,8 +3645,10 @@ fn dispatch_client_program_for(
                       concat(
                         row_selection_bind_statements(),
                         concat(
-                          concat(issue_filter_bind_statements(), concat(issue_sort_bind_statements(), inline_assignment_bind_statements())),
-                          instance_statements))))))))))))),
+                          issue_filter_bind_statements(),
+                          concat(
+                          account_swap_statements(),
+                          instance_statements)))))))))))))),
   }
 }
 

@@ -2320,67 +2320,38 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
   }
 }
 
-// THE HEADER ACCOUNT AREA (owner ask 2026-09-26), witnessed in BOTH STATES through the page's
-// viewer seam. SIGNED OUT: the rightmost slot renders a Sign-in link to GET /auth/login — the
-// landed route refuses with a located cause until the OAuth config lands, and the button's
-// tooltip says so — with no avatar and no identity claim anywhere in the header.
-test fn witness_header_account_renders_signin_when_signed_out() -> Bool {
-  match try_serialize_html_source(node: issue_detail_page_launch(
-    view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
-    observation: gunbc.roadmap_presentation.ObservationsNominal,
-    attempts: [],
-    events: [],
-    viewer: "",
-    recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
-      occurrence_count(s: body, pattern: "<a class=\"header-account header-account-signin\" href=\"/auth/login\"") == 1
-        && string_contains(s: body, pattern: "sign in with Google — the login route refuses with a located cause until the OAuth config lands")
-        && occurrence_count(s: body, pattern: "Sign in") == 1
-        && occurrence_count(s: body, pattern: "header-account-session") == 0
-        && occurrence_count(s: body, pattern: "Sign out") == 0
-  }
-}
-
-// AUTHENTICATED: the session state's principal label yields the avatar chip (initials under the
-// never-blocks law), the display name, and the small menu — one honest form, Sign out POSTing
-// /auth/logout natively.
-test fn witness_header_account_renders_avatar_name_and_signout_when_session() -> Bool {
+// THE HEADER ACCOUNT AREA, DYNAMIC CONTRACT (owner defect 2026-09-27: the main page body is the
+// belt's pre-rendered static body, so the account area personalizes client-side). THE STATIC
+// BODY always renders the Sign-in link plus a HIDDEN, EMPTY session target — witnessed here: the
+// Sign-in href is /auth/login, the session span carries hidden with EMPTY avatar and name fields
+// (no identity claim in the static bytes), and the sign-out form posts /auth/logout natively.
+test fn witness_header_account_static_body_carries_signin_and_hidden_target() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
-      occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\">") == 1
-        && string_contains(s: body, pattern: "class=\"issue-avatar\" data-avatar=\"absent\">s</span><span class=\"header-account-name\">principal:google-oidc/accounts/sub-viewer</span>")
+      occurrence_count(s: body, pattern: "<a class=\"header-account header-account-signin\" href=\"/auth/login\" data-account-signin=\"\"") == 1
+        && occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\" data-account-session=\"\" hidden=\"\">") == 1
+        && occurrence_count(s: body, pattern: "<span class=\"issue-avatar\" data-account-avatar=\"\" data-avatar=\"absent\"></span>") == 1
+        && occurrence_count(s: body, pattern: "<span class=\"header-account-name\" data-account-name=\"\"></span>") == 1
         && string_contains(s: body, pattern: "<form class=\"header-account-signout\" method=\"post\" action=\"/auth/logout\">")
-        && occurrence_count(s: body, pattern: "header-account-signout-btn") == 1
+        && string_contains(s: roadmap_css(), pattern: ".header-account-session[hidden] { display: none }")
   }
 }
 
-// NO AUTH EVIDENCE, NO IDENTITY CLAIM: a viewer string that is NOT a principal spelling — the
-// fabric display alias is exactly what fabric service evidence yields, a machine caller — renders
-// the SIGNED-OUT affordance, never an avatar claiming a human.
-test fn witness_header_account_claims_no_identity_without_a_session() -> Bool {
-  match try_serialize_html_source(node: issue_detail_page_launch(
-    view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
-    observation: gunbc.roadmap_presentation.ObservationsNominal,
-    attempts: [],
-    events: [],
-    viewer: "fabric@gunb.ai",
-    recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
-      occurrence_count(s: body, pattern: "header-account-session") == 0
-        && occurrence_count(s: body, pattern: "header-account-signin") == 1
-  }
+// THE SWAP TABLE (the client program's contract): fetch('/auth/session') on load; an
+// authenticated response (s && s.authenticated === true) hides Sign in, unhides the session
+// target, and writes the principal's short form (viewer split on '/'), initials in the avatar
+// (substring 0..1) — the name and avatar ride the SESSION RESPONSE alone; unauthenticated,
+// absent, or a FAILED fetch leaves Sign in (never an identity claim from a failed fetch).
+test fn witness_header_account_swap_table() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "fetch('/auth/session')")
+    && string_contains(s: js, pattern: "s && s.authenticated && s.authenticated === true")
+    && string_contains(s: js, pattern: "gunbcAccountSignin.hidden = true")
+    && string_contains(s: js, pattern: "gunbcAccountSlot.hidden = false")
+    && string_contains(s: js, pattern: "s.viewer || s.principal")
 }
-
 // THE RAIL-FIT LAW (owner polish 2026-09-26: the Assign button clipped the rail's right edge):
 // the input flexes with min-width 0 — it shrinks below its default intrinsic size instead of
 // overflowing — and the form wraps as the belt-and-braces, so the input+button row's declared

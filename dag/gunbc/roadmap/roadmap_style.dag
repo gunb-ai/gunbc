@@ -1472,6 +1472,9 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
+    StaticRule { selector: RawSelector { text: ".header-account-session[hidden]" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
     StaticRule { selector: ClassSelector { name: "header-account-signin" }, decls: [
       decl(prop: Color, value: "var(--issue-action)"),
       decl(prop: TextDecoration, value: "none"),
