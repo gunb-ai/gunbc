@@ -72,7 +72,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
-  SmproReading, BootParam5Reading, BootParam5NotTaken, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaHandedOff, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
+  SmproReading, BootParam5Reading, BootParam5NotTaken, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
   PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
 }
 import std.dissolution { dissolution_description }
@@ -1106,7 +1106,14 @@ fn mtcollins1_boot_handoff_when_media_ready(
             selection: selection,
           )
           let after = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "after-handoff")
-          MediaGatedHandoff { outcome: handed, media: HandoffMediaHandedOff { before: before, after: after } }
+          MediaGatedHandoff {
+            outcome: handed,
+            media: HandoffMediaAttempted {
+              before: before,
+              handoff: match handed { ExitSuccess => HandoffConfirmed  ExitFailure { code: _, reason: r } => HandoffAttemptedUnconfirmed { reason: r } },
+              after: after,
+            },
+          }
         }
         _ =>
           MediaGatedHandoff {
@@ -1172,10 +1179,10 @@ fn mtcollins1_boot_actuate(
         }
         other => ActuationWatch { outcome: other, stage: ActuationNotPoweredOn { reason: "the attach or the handoff refused, so power on was never observed" } }
       }
-      let end_media = match gated.media {
-        HandoffMediaHandedOff { before: _, after: _ } =>
-          EndMediaObserved { look: mtcollins1_observe_presentation(proof: proof, image_name: subject.image_name, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
-        _ => EndMediaNotTaken { reason: "the handoff was not made, so the medium was never delivered to the host" }
+      let end_media = if end_media_is_owed(media: media) {
+        EndMediaObserved { look: mtcollins1_observe_presentation(proof: proof, image_name: subject.image_name, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+      } else {
+        EndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
       }
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let power_after = mtcollins1_boot_power_after_poll(

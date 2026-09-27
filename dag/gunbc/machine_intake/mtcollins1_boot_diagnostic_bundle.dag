@@ -68,8 +68,10 @@ import gunbc.machine_intake_megarac_media_attach {
   RouteReplaced,
   MegaRacWriteAnswer,
   WriteAccepted,
-  WriteAnsweredFailure,
+  WriteNotIssued,
+  WriteAnsweredHttpError,
   WriteEffectUncertain,
+  MegaRacRawRead,
   SessionRelease,
   SessionReleased,
   SessionReleaseNotAttempted,
@@ -422,6 +424,14 @@ fn cd_reading_text(r: CdErrorReading) -> String {
   }
 }
 
+fn raw_read_text(r: MegaRacRawRead) -> String {
+  join([
+    if r.answered { "answered" } else { "UNANSWERED" },
+    " at ", match r.observed_at { Present { value: t } => to_string(t)  Absent => "clock-unreadable" },
+    ": ", r.body,
+  ], "")
+}
+
 fn optional_text(v: String?) -> String {
   match v {
     Present { value: x } => x
@@ -432,8 +442,9 @@ fn optional_text(v: String?) -> String {
 fn write_answer_text(a: MegaRacWriteAnswer) -> String {
   match a {
     WriteAccepted { body: b } => concat("accepted: ", b)
-    WriteAnsweredFailure { body: b, stderr: e } => concat("answered FAILURE: ", concat(b, concat(" / ", e)))
-    WriteEffectUncertain { stderr: e } => concat("EFFECT UNCERTAIN (no HTTP answer): ", e)
+    WriteNotIssued { reason: r } => concat("NOT ISSUED: ", r as String)
+    WriteAnsweredHttpError { body: b, stderr: e } => concat("answered an HTTP error (complete response): ", concat(b, concat(" / ", e)))
+    WriteEffectUncertain { partial_body: b, stderr: e } => concat("EFFECT UNCERTAIN (no complete answer; bytes received: '", concat(b, concat("'): ", e)))
   }
 }
 
@@ -454,6 +465,7 @@ fn detach_evidence_text(detach: MegaRacDetachEvidence) -> String {
     "; stop-media ", write_answer_text(a: detach.command),
     "; configurations read-back ", if detach.readback_read { "read" } else { "UNREAD" }, ": ", detach.readback,
     "; cd_error_code after the stop: ", cd_reading_text(r: detach.cd_after_stop),
+    "; general settings after the stop ", raw_read_text(r: detach.general_after_stop),
   ], "")
 }
 
@@ -465,6 +477,7 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
     " established_at=", to_string(e.established_at), " looks=", to_string(e.looks),
     " cd_error_code before any write=", cd_reading_text(r: e.cd_before_any_write),
     " at ready=", cd_reading_text(r: e.cd_at_ready),
+    " general settings at ready ", raw_read_text(r: e.general_at_ready),
   ], "")
 }
 
@@ -506,7 +519,7 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
         e.server_address as String, ":", e.source_path as String, " over ", megarac_share_type_wire(t: e.share_type), " with mount_cd 1, observed ",
         o.server_address, ":", o.source_path, " over ", o.share_type, " with mount_cd ", o.mount_cd,
       ], "") }
-    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _ } =>
+    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _, general: _, configurations: _ } =>
       Present { value: "a read-only presentation observation reached an attach decision; observations never attach and never open the handoff" }
     MegaRacShareUnreadable { detail: d } =>
       Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
@@ -530,8 +543,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
-    MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca } =>
-      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), ". Its meaning is unresolved, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
+    MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
+      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). Its meaning is unresolved, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
       Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
     MegaRacReadinessClockIncoherent { image_name: n, route: rt, opened_at: o, previous: p, look: l, looks: k } =>
@@ -587,18 +600,28 @@ fn media_attach_findings(record: MtCollins1MediaAttachRecord) -> List<String> {
 // the look just after. A re-read narrows the window between readiness and handoff; it cannot close
 // it, so the loss AT or AFTER the handoff is an observed, recorded outcome rather than an assumption
 // that a ready medium stays ready.
+// THE HANDOFF CALL IS RECORDED AS WHAT IT ESTABLISHED, NOT AS "HANDED OFF" (side-chat review
+// 5332343434). gunbc.machine_intake_oob_boot_handoff returns success only after a chassis read-back
+// observed the power transition, so success is a confirmed handoff; any other return is a handoff
+// that was attempted and did not confirm, kept with its reason.
+type HandoffCallResult
+  = HandoffConfirmed
+  | HandoffAttemptedUnconfirmed { reason: String }
+
 type MtCollins1HandoffMedia
   = HandoffMediaNotReached { reason: NonEmptyStr }
   | HandoffMediaWithheldAtRecheck { before: MegaRacAttachResult }
-  | HandoffMediaHandedOff { before: MegaRacAttachResult, after: MegaRacAttachResult }
+  | HandoffMediaAttempted { before: MegaRacAttachResult, handoff: HandoffCallResult, after: MegaRacAttachResult }
 
 fn observation_text(r: MegaRacAttachResult) -> String {
   match r.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd } =>
+    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd, general: g, configurations: c } =>
       join([
         "share ", match sh { ShareBound => "bound"  ShareMismatch { observed: o } => concat("MISMATCH ", concat(o.server_address, concat(":", o.source_path)))  ShareUnreadable { detail: d } => concat("UNREADABLE ", d) },
         "; row ", readiness_reading_text(r: rd),
         "; cd_error_code ", cd_reading_text(r: cd),
+        "; general settings ", raw_read_text(r: g),
+        "; configurations ", raw_read_text(r: c),
         "; session ", session_release_text(standing: r.session_release),
       ], "")
     other => match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" }
@@ -609,7 +632,7 @@ fn handoff_media_text(h: MtCollins1HandoffMedia) -> String {
   match h {
     HandoffMediaNotReached { reason: r } => concat("not reached: ", r as String)
     HandoffMediaWithheldAtRecheck { before: b } => concat("WITHHELD at the pre-handoff recheck: ", observation_text(r: b))
-    HandoffMediaHandedOff { before: b, after: a } => concat("before handoff: ", concat(observation_text(r: b), concat(" | after handoff: ", observation_text(r: a))))
+    HandoffMediaAttempted { before: b, handoff: hc, after: a } => join(["before handoff: ", observation_text(r: b), " | handoff: ", match hc { HandoffConfirmed => "confirmed by chassis read-back"  HandoffAttemptedUnconfirmed { reason: r } => concat("ATTEMPTED, NOT CONFIRMED: ", r) }, " | after handoff: ", observation_text(r: a)], "")
   }
 }
 
@@ -631,7 +654,8 @@ fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
     HandoffMediaNotReached { reason: _ } => []
     HandoffMediaWithheldAtRecheck { before: b } =>
       [concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))]
-    HandoffMediaHandedOff { before: _, after: a } =>
+    HandoffMediaAttempted { before: _, handoff: hc, after: a } =>
+      concat(match hc { HandoffConfirmed => []  HandoffAttemptedUnconfirmed { reason: r } => [concat("the boot-device and power handoff was attempted and not confirmed: ", r)] },
       match presentation_still_served(result: a) {
         PresentationStillReady => []
         PresentationNoLongerReady { reason: why } => [concat("the presentation was LOST at or after the boot-device and power handoff (", concat(why as String, concat("): ", observation_text(r: a))))]
@@ -639,15 +663,29 @@ fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
         PresentationStateUnestablished { cd_error: c } => [concat("after the handoff the presentation read Started but cd_error_code was ", concat(cd_reading_text(r: c), concat(", so its state is unestablished: ", observation_text(r: a))))]
         PresentationReadyButSessionHeld { held: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
       }
+      })
   }
 }
 
-// THE MEDIUM AT THE END OF THE ATTEMPT: one read-only look after the terminal watch, still under
-// the hold, so the cd_error_code experiment records whether the code appears once the host has used
-// -- or lost -- the medium, beside the watch's own data-delivery evidence (the census markers).
+// THE MEDIUM AT THE END OF THE ATTEMPT: one read-only look, still under the hold, taken whenever the
+// media attach was attempted -- whether or not the handoff was made -- so an experiment that stopped
+// and restarted media and was then withheld still records its final state (side-chat review
+// 5332343434). No power action is taken to obtain it. The census markers are the watch's own
+// evidence of what the host did; neither they nor this look independently verify that the full
+// image was delivered, and a persisting nonzero code does not by itself prove an active fault or a
+// historical-only one.
 type MtCollins1EndMedia
   = EndMediaNotTaken { reason: NonEmptyStr }
   | EndMediaObserved { look: MegaRacAttachResult }
+
+// PURE: the end look is owed exactly when the media attach was attempted -- a session was opened
+// against the controller, so any stop, start or presentation it reached is this attempt's to observe.
+fn end_media_is_owed(media: MtCollins1MediaAttachRecord) -> Bool {
+  match media {
+    MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, result: _ } => true
+    MediaAttachNotAttempted { reason: _ } => false
+  }
+}
 
 fn end_media_text(e: MtCollins1EndMedia) -> String {
   match e {

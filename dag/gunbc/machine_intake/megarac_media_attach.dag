@@ -125,7 +125,7 @@ type MegaRacAttachResult {
 type MegaRacAttachOutcome
   = MegaRacPresentationReady { route: MegaRacAttachRoute, evidence: MegaRacPresentationEvidence }
   | MegaRacReadinessTimedOut { image_name: NonEmptyStr, route: MegaRacAttachRoute, last: ReadinessLook, deadline: EpochMs, looks: Int, cd_before_any_write: CdErrorReading, cd_at_refusal: CdErrorReading }
-  | MegaRacMediaStateUnestablished { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_ready: CdErrorReading }
+  | MegaRacMediaStateUnestablished { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_ready: CdErrorReading, general_at_ready: MegaRacRawRead }
   | MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: CdErrorReading, reason: NonEmptyStr }
   | MegaRacReadinessRefused { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_refusal: CdErrorReading }
   | MegaRacReadinessClockUnreadable { image_name: NonEmptyStr, route: MegaRacAttachRoute, detail: String }
@@ -133,7 +133,7 @@ type MegaRacAttachOutcome
   | MegaRacConfigurationsUnreadable { detail: String }
   | MegaRacShareMismatch { expected: MegaRacShareBinding, observed: MegaRacObservedShare }
   | MegaRacShareUnreadable { detail: String }
-  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading }
+  | MegaRacPresentationObserved { share: ShareBindingStanding, readiness: AttachReadiness, cd_error: CdErrorReading, general: MegaRacRawRead, configurations: MegaRacRawRead }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
   | MegaRacImagesUnreadable { detail: String }
@@ -168,6 +168,7 @@ type MegaRacPresentationEvidence {
   looks: Int
   cd_before_any_write: CdErrorReading
   cd_at_ready: CdErrorReading
+  general_at_ready: MegaRacRawRead
 }
 
 // THE STOP COMMAND'S ANSWER AND THE READ-BACK ARE TWO FACTS AND BOTH ARE KEPT. This firmware has
@@ -175,23 +176,29 @@ type MegaRacPresentationEvidence {
 // read image '' and status 0: the read-back establishes the detach, and the error is retained
 // beside it rather than discarded. A success whose read-back still presents the image, or cannot be
 // read, establishes nothing.
-// WHAT A WRITE'S OWN ANSWER ESTABLISHES, and it is never the effect. Accepted: curl exited 0.
-// Answered failure: the controller returned an error body (this build has returned such bodies for
-// writes that took effect). Effect uncertain: no HTTP answer at all -- a timeout or transport failure,
-// named on stderr -- so the controller may or may not have applied it. In every case the read-back
-// decides; this is kept so the record says which of the three the controller gave.
+// WHAT A WRITE'S OWN ANSWER ESTABLISHES, and it is never the effect (side-chat review 5332343434).
+// Four facts, not folded together:
+//   not issued        -- no command ran; the reason says why;
+//   accepted          -- curl exited 0 with the controller's body;
+//   HTTP error answer -- curl's --fail-with-body reported (22): the controller sent a COMPLETE error
+//                        response, kept verbatim (this build has answered such bodies to writes that
+//                        took effect);
+//   effect uncertain  -- anything else: a timeout (28), a transport failure, an abort -- with every
+//                        byte that did arrive kept as partial_body, never read as a complete answer.
+// In every case the read-back decides the effect.
 type MegaRacWriteAnswer
-  = WriteAccepted { body: String }
-  | WriteAnsweredFailure { body: String, stderr: String }
-  | WriteEffectUncertain { stderr: String }
+  = WriteNotIssued { reason: NonEmptyStr }
+  | WriteAccepted { body: String }
+  | WriteAnsweredHttpError { body: String, stderr: String }
+  | WriteEffectUncertain { partial_body: String, stderr: String }
 
 fn megarac_write_answer(success: Bool, body: String, stderr: String) -> MegaRacWriteAnswer {
   if success {
     WriteAccepted { body: body }
-  } else if body == "" {
-    WriteEffectUncertain { stderr: stderr }
+  } else if string_contains(s: stderr, pattern: "curl: (22)") {
+    WriteAnsweredHttpError { body: body, stderr: stderr }
   } else {
-    WriteAnsweredFailure { body: body, stderr: stderr }
+    WriteEffectUncertain { partial_body: body, stderr: stderr }
   }
 }
 
@@ -202,6 +209,7 @@ type MegaRacDetachEvidence {
   readback_read: Bool
   readback: String
   cd_after_stop: CdErrorReading
+  general_after_stop: MegaRacRawRead
 }
 
 // WHICH PRESENTED IMAGES THIS ATTACH MAY REPLACE, AND WHETHER IT MAY WRITE ANYTHING DESTRUCTIVE
@@ -372,7 +380,12 @@ fn json_number_member(doc: JsonValue, key: String) -> String? {
   }
 }
 
-// THE INDEX OF A NAMED IMAGE, AND ITS UNIQUENESS. A listing that names the image twice is ambiguous
+// THE INDEX OF A NAMED IMAGE, AND ITS UNIQUENESS, OVER AN ADMITTED POPULATION (side-chat review
+// 5332343434). Every offered row's identity -- one string image_name -- is read BEFORE candidates
+// are counted: a row whose image_name is missing, duplicated or not a string could itself be the
+// image, so it is not "some other image" but an unread member, and the whole listing is unread.
+// Only then is the name counted, and a count above one is ambiguous. Unrelated optional members are
+// not required. A listing that names the image twice is ambiguous
 // and refuses (side-chat review 5331991982): taking the first match would let the controller's
 // enumeration order choose which file is attached.
 type ImageIndexLookup
@@ -382,17 +395,22 @@ type ImageIndexLookup
   | ImageIndexUnreadable
 
 fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageIndexLookup {
-  let named = elements |> filter(e => match json_string_member(doc: e, key: "image_name") { Present { value: n } => n == image_name  Absent => false })
-  if (named |> count) > 1 {
-    ImageIndexAmbiguous { count: named |> count }
+  let unread = elements |> filter(e => match json_string_member(doc: e, key: "image_name") { Present { value: _ } => false  Absent => true })
+  if (unread |> count) > 0 {
+    ImageIndexUnreadable
   } else {
-    match named.first() {
-      Absent => ImageIndexAbsent
-      Present { value: e } =>
-        match json_number_member(doc: e, key: "image_index") {
-          Present { value: idx } => ImageIndexUnique { image_index: idx }
-          Absent => ImageIndexUnreadable
-        }
+    let named = elements |> filter(e => match json_string_member(doc: e, key: "image_name") { Present { value: n } => n == image_name  Absent => false })
+    if (named |> count) > 1 {
+      ImageIndexAmbiguous { count: named |> count }
+    } else {
+      match named.first() {
+        Absent => ImageIndexAbsent
+        Present { value: e } =>
+          match json_number_member(doc: e, key: "image_index") {
+            Present { value: idx } => ImageIndexUnique { image_index: idx }
+            Absent => ImageIndexUnreadable
+          }
+      }
     }
   }
 }
@@ -733,6 +751,37 @@ fn megarac_attach_with_token(
 // THE BASELINE IS THE TWO READS TAKEN BEFORE ANY WRITE, kept verbatim in the result whatever
 // follows, so every attempt -- and the cd_error_code experiment in particular -- retains what the
 // controller said before this attempt touched it.
+// ONE READ AS OBSERVED: whether it was answered, the bytes verbatim, and the clock beside it (absent
+// when the clock itself could not be read). The cd_error_code experiment is interpreted in time --
+// when the code was 16, when 0 -- so every settings read after the baseline keeps its raw bytes and
+// its instant rather than only the decoded code (side-chat review 5332343434).
+type MegaRacRawRead {
+  answered: Bool
+  body: String
+  observed_at: EpochMs?
+}
+
+fn megarac_clock_at() -> EpochMs? {
+  match clock_unix_millis_read() {
+    ClockUnixMillisObserved { millis: m } => Present { value: m }
+    ClockUnixMillisRefused { detail: _ } => none
+  }
+}
+
+fn megarac_raw_general(bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr) -> MegaRacRawRead {
+  let g = megarac.Media.GetMediaGeneral(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  MegaRacRawRead { answered: g.success, body: g.body, observed_at: megarac_clock_at() }
+}
+
+fn cd_error_of_raw(r: MegaRacRawRead) -> CdErrorReading {
+  if r.answered { cd_error_reading(body: r.body) } else { CdErrorUnread { detail: r.body } }
+}
+
 type MegaRacMediaBaseline {
   general_read: Bool
   general: String
@@ -882,10 +931,11 @@ fn megarac_detach_then_attach(
       detach: MegaRacDetachEvidence {
         stale_image: stale.image_name,
         media_index: "",
-        command: WriteAnsweredFailure { body: "not sent: no stop-media body could name the device", stderr: "" },
+        command: WriteNotIssued { reason: "no stop-media body could name the device, so no stop was sent" },
         readback_read: false,
         readback: "",
         cd_after_stop: CdErrorUnread { detail: "no stop was sent" },
+        general_after_stop: MegaRacRawRead { answered: false, body: "not read: no stop was sent", observed_at: none },
       },
       reason: "the presenting row carries no media_index, so no stop-media body can name its device; nothing was written",
     }
@@ -903,19 +953,15 @@ fn megarac_detach_then_attach(
     csrf_token: csrf_token,
     max_time: megarac_media_read_max_time_operand(),
   )
-  let general_after = megarac.Media.GetMediaGeneral(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-    max_time: megarac_media_read_max_time_operand(),
-  )
+  let general_after = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
   let evidence = MegaRacDetachEvidence {
     stale_image: stale.image_name,
     media_index: media_index,
     command: megarac_write_answer(success: stopped.success, body: stopped.body, stderr: stopped.stderr),
     readback_read: after.success,
     readback: after.body,
-    cd_after_stop: if general_after.success { cd_error_reading(body: general_after.body) } else { CdErrorUnread { detail: general_after.body } },
+    cd_after_stop: cd_error_of_raw(r: general_after),
+    general_after_stop: general_after,
   }
   return match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stem: policy.replaceable_seeded_stem) {
     DetachNotEstablished { reason: why } => MegaRacStaleDetachUnconfirmed { detach: evidence, reason: why }
@@ -1173,7 +1219,7 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
               ImageIndexAbsent => ImagesListingLacks
               ImageIndexUnique { image_index: idx } => ImagesListingOffers { image_index: idx }
               ImageIndexAmbiguous { count: _ } => ImagesListingUnparseable { detail: concat("the listing names the image more than once, so its index is ambiguous: ", body) }
-              ImageIndexUnreadable => ImagesListingUnparseable { detail: concat("the listing names the image without a numeric image_index: ", body) }
+              ImageIndexUnreadable => ImagesListingUnparseable { detail: concat("the listing has a row without one readable string image_name, or names the image without a numeric image_index: ", body) }
             }
           }
       }
@@ -1718,19 +1764,14 @@ fn megarac_readiness_outcome(
         previous: none,
         looks: 0,
       )
-      let general = megarac.Media.GetMediaGeneral(
-        bmc_host: bmc_host,
-        cookie_jar: cookie_jar,
-        csrf_token: csrf_token,
-        max_time: megarac_media_read_max_time_operand(),
-      )
+      let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
       readiness_wait_outcome(
         wait: wait,
         image_name: image_name,
         firmware: firmware,
         route: route,
         cd_before: cd_before,
-        cd_at_end: if general.success { cd_error_reading(body: general.body) } else { CdErrorUnread { detail: general.body } },
+        general_at_end: general,
       )
     }
   }
@@ -1747,8 +1788,9 @@ fn readiness_wait_outcome(
   firmware: BmcFirmwareReleaseIdentity,
   route: MegaRacAttachRoute,
   cd_before: CdErrorReading,
-  cd_at_end: CdErrorReading,
+  general_at_end: MegaRacRawRead,
 ) -> MegaRacAttachOutcome {
+  let cd_at_end = cd_error_of_raw(r: general_at_end)
   match wait {
     ReadinessWaitClockUnreadable { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
     ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => MegaRacReadinessClockIncoherent { image_name: image_name, route: route, opened_at: o, previous: p, look: l, looks: n }
@@ -1771,9 +1813,10 @@ fn readiness_wait_outcome(
               looks: n,
               cd_before_any_write: cd_before,
               cd_at_ready: cd_at_end,
+              general_at_ready: general_at_end,
             },
           }
-            _ => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end }
+            _ => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
           }
         _ => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       }
@@ -1795,22 +1838,20 @@ fn megarac_observe_with_token(
   share: MegaRacShareBinding,
 ) -> MegaRacAttachOutcome
 {
-  let general = megarac.Media.GetMediaGeneral(
+  let general = megarac_raw_general(bmc_host: bmc_host, cookie_jar: cookie_jar, csrf_token: csrf_token)
+  let c = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
     max_time: megarac_media_read_max_time_operand(),
   )
-  let configurations = megarac.Media.GetRemoteConfigurations(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-    max_time: megarac_media_read_max_time_operand(),
-  )
+  let configurations = MegaRacRawRead { answered: c.success, body: c.body, observed_at: megarac_clock_at() }
   return MegaRacPresentationObserved {
-    share: if general.success { share_binding_standing(body: general.body, expected: share) } else { ShareUnreadable { detail: general.body } },
-    readiness: attach_readiness(answered: configurations.success, body: configurations.body, image_name: image_name, firmware: firmware),
-    cd_error: if general.success { cd_error_reading(body: general.body) } else { CdErrorUnread { detail: general.body } },
+    share: if general.answered { share_binding_standing(body: general.body, expected: share) } else { ShareUnreadable { detail: general.body } },
+    readiness: attach_readiness(answered: configurations.answered, body: configurations.body, image_name: image_name, firmware: firmware),
+    cd_error: cd_error_of_raw(r: general),
+    general: general,
+    configurations: configurations,
   }
 }
 
@@ -1832,7 +1873,7 @@ type PresentationStillServed
 
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
   match result.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd } =>
+    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd, general: _, configurations: _ } =>
       match sh {
         ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
         ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
