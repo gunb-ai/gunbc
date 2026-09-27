@@ -7,7 +7,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 
 import v2.extdeps.languages.rust {
-  rust_target_model,
   rust_add_declared_inhabitants_root,
   rust_add_serialize_source_node,
   rust_binding_spellings,
@@ -2756,10 +2755,13 @@ fn rust_identity_cast_runtime_row() -> TargetEmitHostRuntimeRow {
   )
 }
 
-// The PRODUCTION Rust model, with only its runtime row replaced: the emitted text under test is the
-// one rust_target_model produced on the source route, and this model only runs it.
+// A RUNNER-ONLY model: the emitted text under test was produced by rust_target_model on the source
+// route, and this model only runs it. v2.compiler.emit_host reads a model's runtime row to build and
+// run, and copies the model into the receipt; it translates nothing, so the minimal model carries
+// every field but the row. Deriving it from rust_target_model instead measured ~75k eval steps of
+// grammar-bundle construction per claim for fields the run never reads.
 fn rust_identity_cast_target_model() -> TargetModel {
-  let base = rust_target_model()
+  let base = rust_minimal_target_model_staging()
   TargetModel {
     produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
