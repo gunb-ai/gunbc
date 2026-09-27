@@ -2164,14 +2164,14 @@ fn auth_login_transaction_step(
       serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the transaction lifetime cannot be bounded\n")
     Present { value: now } =>
       let expires = Clock.TimestampOffsetAhead(timestamp: now, offset: config.login_transaction_lifetime_seconds)
-      if expires == "" {
+      if expires.result == "" {
         serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the transaction lifetime refused\n")
       } else {
         let transaction = OidcLoginTransaction {
           state: state,
           nonce: nonce,
-          created_at: now,
-          expires_at: expires,
+          created_at: now as String,
+          expires_at: expires.result,
           verifier: OidcPkceCodeVerifier { verifier: verifier },
           return_path: return_path,
         }
@@ -2491,7 +2491,7 @@ fn auth_callback_mint(instance: HostDashboardInstance, transaction: OidcLoginTra
       serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the session lifetime cannot be bounded\n")
     Present { value: now } =>
       let expires = Clock.TimestampOffsetAhead(timestamp: now, offset: config.session_lifetime_seconds)
-      if expires == "" {
+      if expires.result == "" {
         serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the session lifetime refused\n")
       } else {
         match auth_entropy_draw() {
@@ -2507,8 +2507,8 @@ fn auth_callback_mint(instance: HostDashboardInstance, transaction: OidcLoginTra
                   transaction: transaction,
                   config: config,
                   verdict: verdict,
-                  now: now,
-                  expires: expires,
+                  now: now as String,
+                  expires: expires.result,
                   session_id: session_id,
                   csrf: csrf,
                 )
