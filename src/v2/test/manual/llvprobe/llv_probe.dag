@@ -1,0 +1,74 @@
+module v2.test.manual.llvprobe.llv_probe
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data llv_calls_source: String = "module v2.test.llv_calls\n\nimport v2.std.logic { Bool }\n\nfn llv_id(p: Bool) -> Bool { p }\n\nfn llv_probe(llv_a: Bool, llv_b: Bool) -> List<Bool> { [llv_id(p: llv_a), llv_id(p: llv_b)] }\n"
+
+data llv_nested_source: String = "module v2.test.llv_nested\n\nimport v2.std.logic { Bool }\n\nfn llv_probe(llv_c: Bool, llv_d: Bool, llv_e: Bool) -> List<List<Bool>> { [[llv_c], [llv_d, llv_e]] }\n"
+
+data llv_empty_arg_source: String = "module v2.test.llv_empty_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(p: Bool) -> Bool { llv_take(xs: []) }\n"
+
+data llv_long_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+
+data llv_arg_source: String = "module v2.test.llv_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_f: Bool, llv_g: Bool, llv_h: Bool) -> Bool { llv_take(xs: [llv_f, llv_g, llv_h]) }\n"
+
+data llv_self_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n\ndata llv_self_none: LlvBit = []\n"
+
+data llv_self_missing_source: String = "module std.algebra\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n"
+
+fn p_ingest(source: String) -> SourceRootIngest {
+  Cons { head: DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^p_art, file_path: "src/v2/test/fixture/p.dag" },
+    compilation_unit: ^p_cu,
+    source_root: DagTree
+  }, tail: Empty }
+}
+
+fn p_run(source: String) -> ProcessExit {
+  match module_roots_from_source_root_ingest(ingest: p_ingest(source: source), lm: dag_language_model()) {
+    Accepted { value: _, diagnostics: _ } => exit_failure(reason: "accepted")
+    Rejected { diagnostics: _ } => exit_failure(reason: "rejected")
+  }
+}
+
+fn probe_calls() -> ProcessExit { p_run(source: llv_calls_source) }
+
+fn probe_nested() -> ProcessExit { p_run(source: llv_nested_source) }
+
+fn probe_empty_arg() -> ProcessExit { p_run(source: llv_empty_arg_source) }
+
+fn probe_long() -> ProcessExit { p_run(source: llv_long_source) }
+
+fn probe_arg() -> ProcessExit { p_run(source: llv_arg_source) }
+
+fn probe_self() -> ProcessExit { p_run(source: llv_self_source) }
+
+fn probe_self_missing() -> ProcessExit { p_run(source: llv_self_missing_source) }
+data llv_len10_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+
+fn probe_len10() -> ProcessExit { p_run(source: llv_len10_source) }
+
+data llv_len20_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+
+fn probe_len20() -> ProcessExit { p_run(source: llv_len20_source) }
+
+data llv_len40_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+
+fn probe_len40() -> ProcessExit { p_run(source: llv_len40_source) }
+
+data llv_len80_source: String = "module v2.test.llv_long\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_x: Bool) -> Bool { llv_take(xs: [llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x, llv_x]) }\n"
+
+fn probe_len80() -> ProcessExit { p_run(source: llv_len80_source) }
+
+fn probe_noop() -> ProcessExit { exit_failure(reason: "noop") }
