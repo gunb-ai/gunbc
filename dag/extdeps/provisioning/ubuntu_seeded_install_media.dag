@@ -160,7 +160,7 @@ fn ubuntu_seeded_install_media_name_digest_prefix(image_stem: NonEmptyStr, image
     none
   } else if starts_with(s: image_name, prefix: head) == false {
     none
-  } else if ends_with(s: image_name, suffix: tail) == false {
+  } else if substring(s: image_name, start: expected - tail.length(), end: expected) != tail {
     none
   } else {
     let digits = substring(s: image_name, start: head.length(), end: head.length() + seeded_install_media_name_digest_width)
