@@ -1484,6 +1484,10 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     String,
 > {
     let entry_file = phase_label;
+    index
+        .module_graph_facts
+        .selection
+        .admit_pool_names(|| reference_pool_names_for_index(index))?;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in front of the
     // opt-in cross-process store. `install_cross_process_materialization_hit` can populate this
@@ -2506,6 +2510,57 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
+impl ReferencePoolNames {
+    /// THE ONE NAME DERIVATION, over declaration heads in pool-precedence order: a module name
+    /// already claimed does not re-contribute (first-root-wins, as `build_module_path_index`).
+    /// Both acquisitions below feed it, so the index is one function of the heads reading and not
+    /// two walks that agree by care.
+    fn from_heads_modules<'a>(
+        modules: impl IntoIterator<Item = (String, &'a Rc<crate::v1_std_core::Node>)>,
+    ) -> Self {
+        let mut decl_index: HashMap<String, BTreeSet<String>> = HashMap::new();
+        let mut module_names: HashSet<String> = HashSet::new();
+        for (module_name, tree) in modules {
+            if !module_names.insert(module_name.clone()) {
+                continue;
+            }
+            for name in collect_module_decl_names(tree) {
+                decl_index
+                    .entry(name)
+                    .or_default()
+                    .insert(module_name.clone());
+            }
+        }
+        ReferencePoolNames {
+            decl_index,
+            module_names,
+        }
+    }
+}
+
+/// The name index from the POOL CENSUS'S OWN heads reading (`pool_parse`), which every resolve
+/// through this index already forces for its qualified fill and bare census. A resolve therefore
+/// reads the pool's heads once, not once for the census and again for reference edges.
+pub(crate) fn reference_pool_names_for_index(
+    index: &MultiEntryIndex,
+) -> Result<Rc<ReferencePoolNames>, String> {
+    let pool = pool_parse(index)?;
+    let started = std::time::Instant::now();
+    let names = Rc::new(ReferencePoolNames::from_heads_modules(
+        pool.nodes_by_file
+            .iter()
+            .map(|(_, node)| (node.name.clone(), node)),
+    ));
+    super::pre_entry_phase::record(
+        "reference_pool_names_from_census",
+        super::pre_entry_phase::PhaseScale::Tree,
+        started.elapsed(),
+    );
+    Ok(names)
+}
+
+/// The name index for a consumer that holds no resolve index (the whole-pool selection tier's
+/// affected-set demand): its own heads walk over the roots, into the same derivation.
 pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNames> {
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let key = abs_pool_roots.join("\u{1e}");
@@ -2513,8 +2568,7 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         return hit;
     }
     let started = std::time::Instant::now();
-    let mut decl_index: HashMap<String, BTreeSet<String>> = HashMap::new();
-    let mut module_names: HashSet<String> = HashSet::new();
+    let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
     for root in &abs_pool_roots {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
@@ -2531,27 +2585,15 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
             let Some(module_name) = extract_module_path(&content) else {
                 continue;
             };
-            // Precedence: a module name already claimed by an earlier root does not re-contribute
-            // exported names (first-root-wins, as `build_module_path_index`).
-            if module_names.contains(&module_name) {
-                continue;
-            }
             let Some(tree) = parse_module_heads_tolerant(&rel, &content) else {
                 continue;
             };
-            module_names.insert(module_name.clone());
-            for name in collect_module_decl_names(&tree) {
-                decl_index
-                    .entry(name)
-                    .or_default()
-                    .insert(module_name.clone());
-            }
+            heads.push((module_name, tree));
         }
     }
-    let names = Rc::new(ReferencePoolNames {
-        decl_index,
-        module_names,
-    });
+    let names = Rc::new(ReferencePoolNames::from_heads_modules(
+        heads.iter().map(|(m, t)| (m.clone(), t)),
+    ));
     super::pre_entry_phase::record(
         "reference_pool_names_heads",
         super::pre_entry_phase::PhaseScale::Tree,
@@ -2598,6 +2640,7 @@ pub struct ReferenceSelectionTier {
     module_to_path: HashMap<String, String>,
     whole: std::cell::OnceCell<(HashMap<String, Vec<String>>, HashSet<String>)>,
     per_file: RefCell<HashMap<String, Vec<String>>>,
+    names: std::cell::OnceCell<Rc<ReferencePoolNames>>,
 }
 
 impl ReferenceSelectionTier {
@@ -2617,6 +2660,7 @@ impl ReferenceSelectionTier {
             module_to_path,
             whole: std::cell::OnceCell::new(),
             per_file: RefCell::new(HashMap::new()),
+            names: std::cell::OnceCell::new(),
         }
     }
 
@@ -2664,6 +2708,20 @@ impl ReferenceSelectionTier {
         &self.whole().1
     }
 
+    /// Admit the pool name index a resolve index already derives from its census reading
+    /// (`reference_pool_names_for_index`), before any per-file demand. Called at the head of
+    /// every resolve through an index, where a census refusal can still refuse the resolve.
+    pub(crate) fn admit_pool_names(
+        &self,
+        produce: impl FnOnce() -> Result<Rc<ReferencePoolNames>, String>,
+    ) -> Result<(), String> {
+        if self.whole.get().is_some() || self.names.get().is_some() {
+            return Ok(());
+        }
+        let _ = self.names.set(produce()?);
+        Ok(())
+    }
+
     /// Strict-tier reference targets of ONE file, as workspace-relative paths. When the whole
     /// tier has already been produced it is read; otherwise only this file is.
     pub(crate) fn strict_reference_targets(&self, file_rel: &str) -> Vec<String> {
@@ -2697,7 +2755,12 @@ impl ReferenceSelectionTier {
             return Vec::new();
         }
         let content = std::fs::read_to_string(&abs).ok();
-        let names = reference_pool_names(&self.roots);
+        // The resolve path admitted the census-derived index; a consumer that reached here without
+        // one walks the roots itself, into the same derivation.
+        let names = match self.names.get() {
+            Some(n) => n.clone(),
+            None => reference_pool_names(&self.roots),
+        };
         let FileReferenceEdges::Edges(edges) =
             reference_edges_for_file(file_rel, content.as_deref(), &names)
         else {
