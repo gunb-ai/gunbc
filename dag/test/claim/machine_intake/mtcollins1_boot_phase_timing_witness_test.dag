@@ -3,6 +3,7 @@ module test.claim.machine_intake.mtcollins1_boot_phase_timing_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter, skip }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
 import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
@@ -98,7 +99,7 @@ fn end_of(s: MtCollins1BootPhaseSpan) -> Int {
 }
 
 fn span_at(xs: List<MtCollins1BootPhaseSpan>, index: Int) -> MtCollins1BootPhaseSpan {
-  match get(xs: xs, index: index) {
+  match xs.skip(n: index).first() {
     Present { value: s } => s
     Absent => PhaseNotRan { phase: PhaseHandoff, reason: "index out of range" }
   }
