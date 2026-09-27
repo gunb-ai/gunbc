@@ -21,9 +21,9 @@ type Fci1BoundedExecutionContextEmission
 // emit, which is the tell DESIGN section 6 names, admitted as an interim only because the trigger
 // below names the capability that actually replaces it.
 //
-// dissolve-on: [C1 typed-argv-leaf] (v2.std.orchestration Run.command is a String), [C2
-// scope-exit-cleanup] (trap ... EXIT) and [C3 shell-options] (set -euo pipefail) land and this
-// runner is re-expressed as emitted orchestration intent over them, or as typed host_effect_apply
+// dissolve-on: this runner is built as v2.extdeps.languages.bash_build nodes and emitted by
+// v2.workflow.bash_emit bash_emit_stmts (a route available today; the migration is unauthored, not
+// blocked), or as typed host_effect_apply
 // -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
 // tools/fabric_ci_fci1_live_instrument.sh.
 //

@@ -21,7 +21,7 @@ data ci_release_build_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_release_build_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN [C1 typed-argv-leaf] (v2.std.orchestration Run.command is a String, so every emitted leaf is medium-as-string; needs a typed argv command carrier and a bash grammar row quoting each word) lands and this runner is re-expressed as emitted orchestration intent over it")
+data ci_release_build_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; the orch-emitted EAGAIN retry core stays the v2.std.orchestration Retry it already is")
 
 fn ci_release_build_script() -> String {
   concat(

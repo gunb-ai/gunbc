@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # FCI-1 reservation instrument. It starts no Work command.
-# SCAFFOLD - dissolve-on: [C1 typed-argv-leaf] (v2.std.orchestration Run.command is a String),
-# [C2 scope-exit-cleanup] (trap ... EXIT) and [C3 shell-options] (set -euo pipefail) and
-# [C4 exported-binding] (export NAME=...) land in the orchestration-to-bash fold and this
-# runner is re-expressed as emitted orchestration intent over them, or as typed host_effect_apply.
+# SCAFFOLD - dissolve-on: this runner is emitted from v2.extdeps.languages.bash_build nodes by
+# v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (set -euo pipefail, trap, export
+# and every argv here are ordinary commands on it), so the migration is unauthored, not blocked --
+# or it becomes typed host_effect_apply.
 # That capability -- .dag-to-bash emission for a foreign executor -- is what replaces a hand-shell
 # carrier; modeled lifecycle actuation alone would
 # sequence the gate and still leave this transport hand-authored.
