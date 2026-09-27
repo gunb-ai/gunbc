@@ -1490,6 +1490,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
       module_name: scope.module_name
     )]
   }
+  else if nominal_coproduct_applied_argument_conflict(
+      declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if coproduct_payload_where_parent_required(
       formal: declared, actual: produced, scope: scope) {
     [type_mismatch_error(
@@ -4290,6 +4299,60 @@ fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope
         n: decl, env: scope.type_env, module_name: scope.module_name)
       if peeled.connective == Conj && (peeled.children |> count) > 0 { name } else { "" }
     Absent => ""
+  }
+}
+
+// THE GENERIC-COPRODUCT HALF OF THE INHABITANCE DEFECT, filed beside
+// nominal_product_inhabitance_refusal and closed here by consuming the same authorities. A fn
+// declared `-> Outcome<Node>` whose body produced `Outcome<ResolvedTree>` fell through every arm
+// above -- the product arm abstains on a coproduct head, the payload arm on a generic one -- and
+// reached the ground-only fallback, which admits every non-ground pair; so the argument was never
+// compared (gunbc#12432: ~35 helpers). The constructor test is the product arm's own
+// (nominal_product_head_names_agree), and the argument test is applied_type_arguments_conflict,
+// the same fail-open per-argument relation: a type variable, an optional, a callable or a nested
+// application argument is never read as a disagreement. Only two applications of one declared
+// coproduct constructor whose resolved arguments are both established and differ refuse.
+fn nominal_coproduct_applied_argument_conflict(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let declared_head = nominal_coproduct_application_head_name(n: declared, scope: scope)
+  let produced_head = nominal_coproduct_application_head_name(n: produced, scope: scope)
+  if declared_head == "" || produced_head == "" {
+    false
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+    false
+  } else {
+    applied_type_arguments_conflict(declared: declared, produced: produced, scope: scope)
+  }
+}
+
+fn nominal_coproduct_application_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || (n.children |> count) == 0
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        let representative = transparent_alias_representative(
+          index: scope.type_env.symbol_index, name: name)
+        match lookup_type_by_name(env: scope.type_env, name: representative) {
+          Present { value: decl } =>
+            let peeled = peel_nominal_alias_identity(
+              n: decl, env: scope.type_env, module_name: scope.module_name)
+            if peeled.connective == Disj { name } else { "" }
+          Absent => ""
+        }
+      _ => ""
+    }
   }
 }
 
