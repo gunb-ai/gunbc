@@ -383,6 +383,23 @@ fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
   else { none } } } } } }
 }
 
+// WHAT `systemctl is-active` MEANS BY ITS EXIT CODE, distinct from the state word it prints.
+// systemctl(1) at systemd v255 (the Sparks' recorded major, 255.4-1ubuntu8), EXIT STATUS: 0 "unit is
+// active", 3 "unit is not active", 4 "no such unit". A unit that is not loaded -- srv8 carries the pair
+// worker unit but not the head unit, which lives on srv6 -- exits 4, and that is a definite answer
+// (nothing by that name exists to run), not a failed read. Every other code is not one this table
+// assigns to is-active, so it decodes to nothing and the caller refuses it as unread.
+type SystemctlIsActiveExit
+  = IsActiveStateReported
+  | IsActiveNoSuchUnit
+
+fn systemctl_is_active_exit(code: Int) -> SystemctlIsActiveExit? {
+  if code == 0 { Present { value: IsActiveStateReported } }
+  else { if code == 3 { Present { value: IsActiveStateReported } }
+  else { if code == 4 { Present { value: IsActiveNoSuchUnit } }
+  else { none } } }
+}
+
 fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
   match s {
     Active => "active"
