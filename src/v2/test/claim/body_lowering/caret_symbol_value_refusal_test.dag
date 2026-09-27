@@ -1,0 +1,156 @@
+module v2.test.claim.body_lowering.caret_symbol_value_refusal
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal_reason, NonEmptyDiagnostics }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+// A CARET SYMBOL IN VALUE POSITION REFUSES AT THE CARET; IT NEVER LOWERS TO ITS `^` TOKEN.
+//
+// THE SUBJECT IS normalize over one declaration's source, the producers called directly
+// (tokenize -> parse -> normalize). v2.compiler.body_lowering_fold has no lowered form for `^name`
+// yet (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form). Measured on main b1b7aea9aa7
+// by a seed-interpreted probe, all ten value positions below normalized ACCEPTED with the caret
+// lowered to a bare `^dag_token_caret` and its symbol gone: body_lower_primary_expr's first-atom
+// fallback answered each caret with its `^` token. That fallback now refuses the caret shape with
+// body_lowering_reason_caret_symbol_not_lowered, anchored at the `^` token, and each position below
+// must say exactly that -- the cause AND the anchor, so a refusal for some other reason, or one
+// located elsewhere, reds.
+//
+// THE if-CONDITION SPECIMEN is v2.std.compilers.target_model ordering_predicate_from_wire_symbol,
+// taken from main and trimmed to its first two arms: the declaration whose two conditions lowered
+// to one node. Its control is the same declaration with int literals in place of the carets, which
+// must still normalize, so the refusal is the caret's and not the if-chain's.
+//
+// THE BARE OPERAND KEEPS ITS OWN CAUSE. `binding == ^grammar_free_name_slot` as a whole body
+// (v2.std.grammar formal_binding_is_free_name_slot) never reaches the fallback: the operator reader
+// refuses its right operand first, as body_lowering_reason_operator_operand_unread, on main and
+// here. It is pinned so a change that unifies the two causes has to say so.
+data caret_if_condition_source: String = "module chunk\n\nfn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {\n  if id == ^ordering_predicate_is_less {\n    optional_present(value: IsLess)\n  } else {\n    if id == ^ordering_predicate_is_less_or_equal {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
+
+data int_if_condition_control_source: String = "module chunk\n\nfn ordering_predicate_from_wire_int(id: Int) -> Optional<OrderingPredicate> {\n  if id == 1 {\n    optional_present(value: IsLess)\n  } else {\n    if id == 2 {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
+
+data caret_bare_operand_source: String = "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"
+
+data caret_named_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^pos_named_argument)\n}\n"
+
+data caret_positional_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(^pos_positional_argument)\n}\n"
+
+data caret_let_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_value\n  s\n}\n"
+
+data caret_whole_body_source: String = "module chunk\n\nfn f() -> Symbol {\n  ^pos_whole_body\n}\n"
+
+data caret_data_initializer_source: String = "module chunk\n\ndata d: Symbol = ^pos_data_initializer\n"
+
+data caret_field_initializer_source: String = "module chunk\n\ntype R { s: Symbol }\n\nfn f() -> R {\n  R { s: ^pos_field_initializer }\n}\n"
+
+data caret_match_arm_body_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  match b {\n    true => ^pos_match_arm_body\n    false => ^pos_match_arm_body_two\n  }\n}\n"
+
+data caret_match_scrutinee_source: String = "module chunk\n\nfn f() -> Bool {\n  match ^pos_match_scrutinee {\n    _ => true\n  }\n}\n"
+
+data caret_if_branch_value_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  if b { ^pos_if_branch_value } else { ^pos_if_branch_value_two }\n}\n"
+
+data caret_list_item_source: String = "module chunk\n\nfn f() -> List<Symbol> {\n  [^pos_list_item]\n}\n"
+
+// The normalize verdict: the fatal cause and the atom identity of the node its first diagnostic is
+// anchored at. A tokenize or parse refusal, or an acceptance, answers its own marker, so none of
+// them can be read as the expected refusal.
+type CaretRefusalVerdict {
+  cause: Symbol
+  anchor: Symbol
+}
+
+fn caret_refusal_anchor(d: NonEmptyDiagnostics) -> Symbol {
+  match d.head.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => id
+        Absent => ^caret_refusal_anchor_not_an_atom
+      }
+    _ => ^caret_refusal_anchor_not_a_node
+  }
+}
+
+fn caret_refusal_marker(marker: Symbol) -> CaretRefusalVerdict {
+  CaretRefusalVerdict { cause: marker, anchor: marker }
+}
+
+fn caret_refusal_normalize_verdict(src: String) -> CaretRefusalVerdict {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^caret_symbol_value_refusal_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => caret_refusal_marker(marker: ^caret_refusal_tokenize_refused)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => caret_refusal_marker(marker: ^caret_refusal_parse_refused)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } =>
+              CaretRefusalVerdict { cause: diagnostics_fatal_reason(d: d), anchor: caret_refusal_anchor(d: d) }
+            Accepted { value: _, diagnostics: _ } => caret_refusal_marker(marker: ^caret_refusal_accepted)
+          }
+      }
+  }
+}
+
+fn refuses_at_the_caret(src: String) -> Bool {
+  let v = caret_refusal_normalize_verdict(src: src)
+  v.cause == ^body_lowering_reason_caret_symbol_not_lowered && v.anchor == ^dag_token_caret
+}
+
+test fn a_caret_symbol_if_condition_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_if_condition_source)
+}
+
+test fn an_int_literal_if_condition_still_normalizes() -> Bool {
+  caret_refusal_normalize_verdict(src: int_if_condition_control_source).cause == ^caret_refusal_accepted
+}
+
+test fn a_bare_caret_operand_keeps_the_operator_operand_cause() -> Bool {
+  caret_refusal_normalize_verdict(src: caret_bare_operand_source).cause == ^body_lowering_reason_operator_operand_unread
+}
+
+test fn a_caret_symbol_named_argument_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_named_argument_source)
+}
+
+test fn a_caret_symbol_positional_argument_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_positional_argument_source)
+}
+
+test fn a_caret_symbol_let_value_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_let_value_source)
+}
+
+test fn a_caret_symbol_whole_body_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_whole_body_source)
+}
+
+test fn a_caret_symbol_data_initializer_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_data_initializer_source)
+}
+
+test fn a_caret_symbol_field_initializer_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_field_initializer_source)
+}
+
+test fn a_caret_symbol_match_arm_body_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_match_arm_body_source)
+}
+
+test fn a_caret_symbol_match_scrutinee_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_match_scrutinee_source)
+}
+
+test fn a_caret_symbol_if_branch_value_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_if_branch_value_source)
+}
+
+test fn a_caret_symbol_list_item_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(src: caret_list_item_source)
+}
