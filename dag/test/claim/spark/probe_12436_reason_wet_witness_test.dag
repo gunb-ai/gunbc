@@ -1,0 +1,52 @@
+module test.claim.spark.probe_12436_reason_wet_witness
+
+import std.logic { Bool }
+import std.types { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DO NOT MERGE. A throwaway probe for gunbc#12436's two spark wet reds: the wet lane logs only
+// observed=failed, so each claim below asserts ONE property of fabric_capacity_standing's failure
+// text, and the floor's per-identity verdicts show which branch the instrument took on the runner.
+
+fn probe_reason() -> String {
+  match fabric_capacity_standing() {
+    ExitSuccess => "EXIT-SUCCESS"
+    ExitFailure { code: _, reason: r } => r
+  }
+}
+
+test fn probe_the_expected_serving_authority_text_is_present() -> Bool {
+  string_contains(s: probe_reason(), pattern: "group-a: serving authority could not be read at ")
+}
+
+test fn probe_it_refuses_with_no_dashboard_instance_declared_for_the_host() -> Bool {
+  string_contains(s: probe_reason(), pattern: "no dashboard instance is declared for host")
+}
+
+test fn probe_the_executor_reach_or_clock_refusal_is_the_whole_answer() -> Bool {
+  string_contains(s: probe_reason(), pattern: "fabric capacity standing: ")
+}
+
+test fn probe_the_clock_could_not_be_read() -> Bool {
+  string_contains(s: probe_reason(), pattern: "could not be read as epoch seconds")
+}
+
+test fn probe_no_serving_group_is_claimed() -> Bool {
+  string_contains(s: probe_reason(), pattern: "no serving group is claimed")
+}
+
+test fn probe_the_instrument_exited_successfully() -> Bool {
+  probe_reason() == "EXIT-SUCCESS"
+}
+
+test fn probe_group_a_appears_at_all() -> Bool {
+  string_contains(s: probe_reason(), pattern: "group-a")
+}
+
+test fn probe_the_answer_is_single_line() -> Bool {
+  string_contains(s: probe_reason(), pattern: "\n") == false
+}

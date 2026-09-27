@@ -1046,6 +1046,54 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_the_expected_serving_authority_text_is_present" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_the_expected_serving_authority_text_is_present",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_it_refuses_with_no_dashboard_instance_declared_for_the_host" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_it_refuses_with_no_dashboard_instance_declared_for_the_host",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_the_executor_reach_or_clock_refusal_is_the_whole_answer" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_the_executor_reach_or_clock_refusal_is_the_whole_answer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_the_clock_could_not_be_read" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_the_clock_could_not_be_read",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_no_serving_group_is_claimed" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_no_serving_group_is_claimed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_the_instrument_exited_successfully" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_the_instrument_exited_successfully",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_group_a_appears_at_all" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_group_a_appears_at_all",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.probe_12436_reason_wet_witness", function: "probe_the_answer_is_single_line" },
+      entry: "dag/test/claim/spark/probe_12436_reason_wet_witness_test.dag",
+      function: "probe_the_answer_is_single_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet" },
       entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
       function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet",
