@@ -195,17 +195,18 @@ fn mtcollins1_observe_presentation(
 ) -> MegaRacAttachResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 media observe") {
-    Present { value: why } => return MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: why }, session_release: SessionReleaseNotAttempted }
+    Present { value: why } => return MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: why }, session_release: SessionReleaseNotAttempted, baseline: none }
     Absent => {}
   }
   match mtcollins1_media_username {
-    Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "BMC is not BmcSecured; no account to observe with" }, session_release: SessionReleaseNotAttempted }
+    Absent => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "BMC is not BmcSecured; no account to observe with" }, session_release: SessionReleaseNotAttempted, baseline: none }
     Present { value: username } =>
       if password_file == "" || attempt == "" {
-        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted }
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
       } else {
         megarac_attach_remote_image(
           bmc_host: mtcollins1_endpoint.host,

@@ -114,6 +114,7 @@ type SessionRelease
 type MegaRacAttachResult {
   outcome: MegaRacAttachOutcome
   session_release: SessionRelease
+  baseline: MegaRacMediaBaseline?
 }
 
 // THE ONE SUCCESS IS A READY PRESENTATION, AND IT CARRIES HOW IT WAS REACHED AND WHAT WAS SEEN.
@@ -124,8 +125,11 @@ type MegaRacAttachResult {
 type MegaRacAttachOutcome
   = MegaRacPresentationReady { route: MegaRacAttachRoute, evidence: MegaRacPresentationEvidence }
   | MegaRacReadinessTimedOut { image_name: NonEmptyStr, route: MegaRacAttachRoute, last: ReadinessLook, deadline: EpochMs, looks: Int, cd_before_any_write: CdErrorReading, cd_at_refusal: CdErrorReading }
+  | MegaRacMediaStateUnestablished { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_ready: CdErrorReading }
+  | MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: CdErrorReading, reason: NonEmptyStr }
   | MegaRacReadinessRefused { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_refusal: CdErrorReading }
   | MegaRacReadinessClockUnreadable { image_name: NonEmptyStr, route: MegaRacAttachRoute, detail: String }
+  | MegaRacReadinessClockIncoherent { image_name: NonEmptyStr, route: MegaRacAttachRoute, opened_at: EpochMs, previous: EpochMs?, look: ReadinessLook, looks: Int }
   | MegaRacConfigurationsUnreadable { detail: String }
   | MegaRacShareMismatch { expected: MegaRacShareBinding, observed: MegaRacObservedShare }
   | MegaRacShareUnreadable { detail: String }
@@ -141,7 +145,8 @@ type MegaRacAttachOutcome
   | MegaRacStaleDetachNotAdmitted { stale_image: String, reason: NonEmptyStr }
   | MegaRacStaleDetachUnconfirmed { detach: MegaRacDetachEvidence, reason: NonEmptyStr }
   | MegaRacRedirectionUncatalogued { image_name: String, wire: Int, configurations: String }
-  | MegaRacRefreshClockUnreadable { detail: String }
+  | MegaRacRefreshClockUnreadable { detail: String, detach: MegaRacDetachEvidence }
+  | MegaRacListingUnparseableAfterDetach { detail: String, detach: MegaRacDetachEvidence }
   | MegaRacNotEnumeratedAfterRefresh { image_name: NonEmptyStr, detach: MegaRacDetachEvidence, standing: RemoteMediaMountStanding }
 
 // THREE INDICES, THREE CONCEPTS, NEVER JOINED. image_list_index is the image's position in
@@ -161,7 +166,6 @@ type MegaRacPresentationEvidence {
   redirection_wire: Int
   established_at: EpochMs
   looks: Int
-  cd_error: MegaRacCdErrorStanding
   cd_before_any_write: CdErrorReading
   cd_at_ready: CdErrorReading
 }
@@ -250,36 +254,22 @@ type ShareBindingStanding
   | ShareMismatch { observed: MegaRacObservedShare }
   | ShareUnreadable { detail: String }
 
-// THE CD ERROR CODE IS ITS OWN OBSERVATION, AND IT BEHAVES AS A LATCHED LAST ERROR, NOT CURRENT
-// STATE. settings/media/general carries cd_error_code beside the presentation rows. On 2026-09-27 it
-// read 0 at ~15:40Z, 16 after boot run 36330382023, and STILL 16 at 18:37Z although the re-attached
-// image then read redirection_status 1 with session_index 0. So a nonzero code is judged WITH the
-// current presentation (operator direction on gunbc#12425): nonzero beside a healthy presentation
-// (Started, bound session, the intended image on the bound share) is historical, recorded and not
-// blocking; nonzero beside an unhealthy one is carried into that presentation's refusal. What CLEARS
-// it is not known -- a detach and re-attach, a new web session, or only a controller reset -- and is
-// carried as BmcUnknownSemantics, never guessed. Every attempt records the code before any write,
-// after a stop, and at readiness, so the first boot under a live hold with power observed off
-// measures the clearing behaviour and its bundle is the receipt. Whether the settings' 16 and the
-// row's redirection_status 16 are one fact is NOT established; they are read from different members.
-type MegaRacCdErrorSemantics
-  = BmcUnknownSemantics
-
-type MegaRacCdErrorStanding
-  = CdErrorClean
-  | CdErrorLatchedWhileServed { wire: Int, semantics: MegaRacCdErrorSemantics }
-  | CdErrorUnreadWhileServed { detail: String }
-
-// PURE: the standing of the code beside a presentation already judged healthy by the readiness
-// fold. It never refuses; an unhealthy presentation refuses in the fold, with the code carried there.
-fn cd_error_standing_while_served(reading: CdErrorReading) -> MegaRacCdErrorStanding {
-  match reading {
-    CdErrorRead { code: CdErrorNone } => CdErrorClean
-    CdErrorRead { code: CdErrorUncatalogued { wire: w } } => CdErrorLatchedWhileServed { wire: w, semantics: BmcUnknownSemantics }
-    CdErrorUnread { detail: d } => CdErrorUnreadWhileServed { detail: d }
-  }
-}
-
+// THE CD ERROR CODE IS ITS OWN OBSERVATION, AND WHILE ITS MEANING IS UNRESOLVED A NONZERO VALUE
+// WITHHOLDS (operator decision on gunbc#12425, option A). settings/media/general carries
+// cd_error_code beside the presentation rows. On 2026-09-27 it read 0 at ~15:40Z, 16 after boot run
+// 36330382023, and STILL 16 at 18:37Z although the re-attached image then read redirection_status 1
+// with session_index 0. Whether it is a latched last error, a live fault, or both, is not known: its
+// producer, what sets it, what clears it and its scope are unestablished. So a nonzero or unread
+// code is a KNOWLEDGE refusal -- this attempt cannot establish the media state -- not a verdict that
+// the controller is broken, and nothing here writes merely to make it read 0.
+//
+// THE NEXT ATTEMPT IS THE EXPERIMENT, and every step keeps its receipt. With a nonzero code before
+// any write and a detach admitted (live hold, power observed off), the recovery action is a fresh
+// presentation: the presented image -- the desired one included -- is stopped and read back, the
+// code is re-read, the image is attached fresh, and the code is read again at readiness. The
+// baseline (MegaRacMediaBaseline), the code after the stop and at readiness, and the boot's own data-
+// delivery evidence (the census markers of the actuation) are what later decide the permanent
+// policy. Whether the settings' 16 and the row's redirection_status 16 are one fact is NOT asserted.
 type MegaRacCdErrorCode
   = CdErrorNone
   | CdErrorUncatalogued { wire: Int }
@@ -547,6 +537,7 @@ fn megarac_attach_remote_image(
     return MegaRacAttachResult {
       outcome: MegaRacSessionRefused { detail: session.body },
       session_release: SessionReleaseNotAttempted,
+      baseline: none,
     }
   }
 
@@ -596,6 +587,7 @@ fn megarac_release_unreadable_session(
   return MegaRacAttachResult {
     outcome: MegaRacSessionTokenUnreadable { detail: session_body },
     session_release: megarac_sentinel_csrf_release_refusal,
+    baseline: none,
   }
 }
 
@@ -611,9 +603,9 @@ fn megarac_attach_then_release(
   task: MegaRacSessionTask,
 ) -> MegaRacAttachResult
 {
-  let outcome = match task {
-    MegaRacConverge { policy: policy } =>
-      megarac_attach_with_token(
+  let converged = match task {
+    MegaRacConverge { policy: policy } => {
+      let c = megarac_attach_with_token(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
         csrf_token: csrf_token,
@@ -621,19 +613,26 @@ fn megarac_attach_then_release(
         firmware: firmware,
         policy: policy,
       )
+      MegaRacConvergence { baseline: c.baseline, outcome: c.outcome }
+    }
     MegaRacObserve { share: share } =>
-      megarac_observe_with_token(
+      MegaRacConvergence { baseline: MegaRacMediaBaseline { general_read: false, general: "", configurations_read: false, configurations: "" }, outcome: megarac_observe_with_token(
         bmc_host: bmc_host,
         cookie_jar: cookie_jar,
         csrf_token: csrf_token,
         image_name: image_name,
         firmware: firmware,
         share: share,
-      )
+      ) }
   }
 
+  let baseline = match task {
+    MegaRacConverge { policy: _ } => Present { value: converged.baseline }
+    MegaRacObserve { share: _ } => none
+  }
   return MegaRacAttachResult {
-    outcome: outcome,
+    outcome: converged.outcome,
+    baseline: baseline,
     session_release: megarac_close_and_reobserve(
       bmc_host: bmc_host,
       cookie_jar: cookie_jar,
@@ -671,7 +670,7 @@ fn megarac_attach_with_token(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
   policy: MegaRacReplacementPolicy,
-) -> MegaRacAttachOutcome
+) -> MegaRacConvergence
 {
   let general = megarac.Media.GetMediaGeneral(
     bmc_host: bmc_host,
@@ -679,30 +678,80 @@ fn megarac_attach_with_token(
     csrf_token: csrf_token,
     max_time: megarac_media_read_max_time_operand(),
   )
-  if general.success == false {
-    return MegaRacShareUnreadable { detail: general.body }
-  }
-  match share_binding_standing(body: general.body, expected: policy.share) {
-    ShareUnreadable { detail: d } => return MegaRacShareUnreadable { detail: d }
-    ShareMismatch { observed: o } => return MegaRacShareMismatch { expected: policy.share, observed: o }
-    ShareBound => none
-  }
-  let cd_before = cd_error_reading(body: general.body)
-  presented = megarac.Media.GetRemoteConfigurations(
+  let presented = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
     max_time: megarac_media_read_max_time_operand(),
   )
-  if presented.success == false {
-    return MegaRacConfigurationsUnreadable { detail: presented.body }
+  return MegaRacConvergence {
+    baseline: MegaRacMediaBaseline {
+      general_read: general.success,
+      general: general.body,
+      configurations_read: presented.success,
+      configurations: presented.body,
+    },
+    outcome: megarac_converge_from_baseline(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: csrf_token,
+      image_name: image_name,
+      firmware: firmware,
+      policy: policy,
+      general_read: general.success,
+      general: general.body,
+      configurations_read: presented.success,
+      configurations: presented.body,
+    ),
+  }
+}
+
+// THE BASELINE IS THE TWO READS TAKEN BEFORE ANY WRITE, kept verbatim in the result whatever
+// follows, so every attempt -- and the cd_error_code experiment in particular -- retains what the
+// controller said before this attempt touched it.
+type MegaRacMediaBaseline {
+  general_read: Bool
+  general: String
+  configurations_read: Bool
+  configurations: String
+}
+
+type MegaRacConvergence {
+  baseline: MegaRacMediaBaseline
+  outcome: MegaRacAttachOutcome
+}
+
+fn megarac_converge_from_baseline(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  image_name: NonEmptyStr,
+  firmware: BmcFirmwareReleaseIdentity,
+  policy: MegaRacReplacementPolicy,
+  general_read: Bool,
+  general: String,
+  configurations_read: Bool,
+  configurations: String,
+) -> MegaRacAttachOutcome
+{
+  if general_read == false {
+    return MegaRacShareUnreadable { detail: general }
+  }
+  match share_binding_standing(body: general, expected: policy.share) {
+    ShareUnreadable { detail: d } => return MegaRacShareUnreadable { detail: d }
+    ShareMismatch { observed: o } => return MegaRacShareMismatch { expected: policy.share, observed: o }
+    ShareBound => none
+  }
+  let cd_before = cd_error_reading(body: general)
+  if configurations_read == false {
+    return MegaRacConfigurationsUnreadable { detail: configurations }
   }
   let convergence = presented_convergence(
-    presented: presented_media(body: presented.body, image_name: image_name, firmware: firmware),
+    presented: presented_media(body: configurations, image_name: image_name, firmware: firmware),
     image_name: image_name,
     replaceable_seeded_stem: policy.replaceable_seeded_stem,
   )
-  return match megarac_convergence_step(convergence: convergence, detach: policy.detach, configurations: presented.body) {
+  return match megarac_convergence_step(convergence: convergence, detach: policy.detach, configurations: configurations, cd_before: cd_before) {
     ConvergeStepRefuse { outcome: o } => o
     ConvergeStepAwaitReadiness =>
       megarac_readiness_outcome(
@@ -884,6 +933,10 @@ fn detach_verdict(
   }
 }
 
+// AN EXECUTED DETACH IS A FACT OF THIS ATTEMPT AND IS NEVER DISCARDED BY A LATER ERROR: every
+// outcome reachable after the stop carries its MegaRacDetachEvidence, through its route or its own
+// field (side-chat review 5331738657).
+//
 // STOP-MEDIA IS THE RE-ENUMERATION. Measured on mtcollins1 2026-09-27 with the host off: after
 // stop-media cleared the stale presentation, /remote/images listed the newly published census image
 // within 15s, while PUT /api/settings/media/general with mount_cd 0 and then 1 was REFUSED both
@@ -901,7 +954,7 @@ fn megarac_enumerate_then_attach(
 ) -> MegaRacAttachOutcome
 {
   return match clock_unix_millis_read() {
-    ClockUnixMillisRefused { detail: d } => MegaRacRefreshClockUnreadable { detail: d }
+    ClockUnixMillisRefused { detail: d } => MegaRacRefreshClockUnreadable { detail: d, detach: detach }
     ClockUnixMillisObserved { millis: requested_at } =>
       match megarac_await_enumeration(
         bmc_host: bmc_host,
@@ -912,8 +965,8 @@ fn megarac_enumerate_then_attach(
         observations: [],
         remaining: megarac_refresh_enumeration_ticks(),
       ) {
-        EnumerationClockUnreadable { detail: d } => MegaRacRefreshClockUnreadable { detail: d }
-        EnumerationUnparseable { detail: d } => MegaRacImageListingUnparseable { detail: d }
+        EnumerationClockUnreadable { detail: d } => MegaRacRefreshClockUnreadable { detail: d, detach: detach }
+        EnumerationUnparseable { detail: d } => MegaRacListingUnparseableAfterDetach { detail: d, detach: detach }
         NotEnumeratedAfterRefresh { standing: st } => MegaRacNotEnumeratedAfterRefresh { image_name: image_name, detach: detach, standing: st }
         EnumeratedAfterRefresh { image_index: idx } =>
           megarac_start_then_readiness(
@@ -1117,12 +1170,14 @@ type PresentingRow {
 // unrelated concepts joined because they share a coincidence and half a name — and it would have
 // started refusing the moment a controller offered a second slot, with a message blaming the image.
 //
-// EVERY PRESENTING ROW IS READ, NOT ONLY THE ONE NAMING THE DESIRED IMAGE, because convergence
-// decides over what else is presented. A named row whose status is unparseable, uncatalogued for
-// the firmware, or uncatalogued on the wire is unread — not "not presenting" — and the whole
-// document is then unreadable, so neither a stop nor a start is licensed over it. A row that names
-// no image and is not presenting is an idle device. A non-CD row naming the desired image is
-// unreadable; a non-CD row naming anything else is outside this CD lane.
+// EVERY ROW IS READ, NOT ONLY THE ONE NAMING THE DESIRED IMAGE, AND ONLY A WELL-FORMED ROW IS IDLE
+// (side-chat review 5331738657). A row is idle exactly when it carries one string image_name, one
+// numeric media_type and one numeric redirection_status, and is either a known-stopped CD row or a
+// non-CD row naming some other image. Anything else -- `{}`, a missing, duplicated or wrongly typed
+// member, an uncatalogued status whether or not the row names an image -- is unread, and one unread
+// row makes the whole document unreadable, so a valid Started row beside it establishes neither
+// readiness nor a detach. The observed cleared rows (image_name "", status 0) are well-formed and
+// idle, which is what lets a real stop establish.
 type ConfigurationRowReading
   = ConfigurationRowUnreadable { detail: String }
   | ConfigurationRowUncatalogued { image_name: String, wire: Int }
@@ -1134,54 +1189,50 @@ fn configuration_row_reading(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> ConfigurationRowReading {
-  let name = match json_string_member(doc: row, key: "image_name") {
-    Present { value: n } => n
-    Absent => ""
-  }
-  match json_number_member(doc: row, key: "media_type") {
-    Absent =>
-      if name == "" { ConfigurationRowIdle } else { ConfigurationRowUnreadable { detail: concat("media_type missing on a row that names ", name) } }
-    Present { value: mt } =>
-      if mt != "1" {
-        if name == (image_name as String) {
-          ConfigurationRowUnreadable { detail: "a row names the image but is not CD media_type 1" }
-        } else {
-          ConfigurationRowIdle
-        }
-      } else {
-        match json_number_member(doc: row, key: "redirection_status") {
-          Absent =>
-            if name == "" { ConfigurationRowIdle } else { ConfigurationRowUnreadable { detail: concat("redirection_status missing on a row that names ", name) } }
-          Present { value: st } =>
-            match parse_int(s: st) {
-              Absent => ConfigurationRowUnreadable { detail: concat("redirection_status is not an integer: ", st) }
-              Present { value: wire } =>
-                match megarac_redirection_status_of_wire(firmware: firmware, wire: wire) {
-                  RedirectionStatusFirmwareUncatalogued { firmware: _, wire: w } =>
-                    if name == "" { ConfigurationRowIdle } else { ConfigurationRowUncatalogued { image_name: name, wire: w } }
-                  RedirectionStatusKnown { firmware: _, status: status } =>
-                    match status {
-                      RedirectionStopped => ConfigurationRowIdle
-                      RedirectionWireUncatalogued { wire: w } =>
-                        if name == "" { ConfigurationRowIdle } else { ConfigurationRowUncatalogued { image_name: name, wire: w } }
-                      _ =>
-                        if name == "" {
-                          ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
-                        } else {
-                          ConfigurationRowPresenting {
-                            row: PresentingRow {
-                              image_name: name,
-                              media_index: json_number_member(doc: row, key: "media_index"),
-                              session_index: json_number_member(doc: row, key: "session_index"),
-                              redirection_wire: wire,
-                              redirection: status,
-                            },
-                          }
+  match json_string_member(doc: row, key: "image_name") {
+    Absent => ConfigurationRowUnreadable { detail: "a configurations row has no single string image_name (missing, duplicated or not a string)" }
+    Present { value: name } =>
+      match json_number_member(doc: row, key: "media_type") {
+        Absent => ConfigurationRowUnreadable { detail: concat("a configurations row has no single numeric media_type; image_name '", concat(name, "'")) }
+        Present { value: mt } =>
+          match json_number_member(doc: row, key: "redirection_status") {
+            Absent => ConfigurationRowUnreadable { detail: concat("a configurations row has no single numeric redirection_status; image_name '", concat(name, "'")) }
+            Present { value: st } =>
+              match parse_int(s: st) {
+                Absent => ConfigurationRowUnreadable { detail: concat("redirection_status is not an integer: ", st) }
+                Present { value: wire } =>
+                  if mt != "1" {
+                    if name == (image_name as String) {
+                      ConfigurationRowUnreadable { detail: "a row names the image but is not CD media_type 1" }
+                    } else {
+                      ConfigurationRowIdle
+                    }
+                  } else {
+                    match megarac_redirection_status_of_wire(firmware: firmware, wire: wire) {
+                      RedirectionStatusFirmwareUncatalogued { firmware: _, wire: w } => ConfigurationRowUncatalogued { image_name: name, wire: w }
+                      RedirectionStatusKnown { firmware: _, status: status } =>
+                        match status {
+                          RedirectionStopped => ConfigurationRowIdle
+                          RedirectionWireUncatalogued { wire: w } => ConfigurationRowUncatalogued { image_name: name, wire: w }
+                          _ =>
+                            if name == "" {
+                              ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
+                            } else {
+                              ConfigurationRowPresenting {
+                                row: PresentingRow {
+                                  image_name: name,
+                                  media_index: json_number_member(doc: row, key: "media_index"),
+                                  session_index: json_number_member(doc: row, key: "session_index"),
+                                  redirection_wire: wire,
+                                  redirection: status,
+                                },
+                              }
+                            }
                         }
                     }
-                }
-            }
-        }
+                  }
+              }
+          }
       }
   }
 }
@@ -1227,7 +1278,7 @@ fn presented_media(
 type PresentedConvergence
   = ConvergeUnreadable { detail: String }
   | ConvergeUncatalogued { image_name: String, wire: Int }
-  | ConvergeDesiredPresented
+  | ConvergeDesiredPresented { row: PresentingRow }
   | ConvergeNothingPresented
   | ConvergeStalePresented { row: PresentingRow }
   | ConvergeForeignPresented { image_name: String }
@@ -1242,9 +1293,9 @@ fn presented_convergence(
     PresentedMediaDocumentUnreadable { detail: d } => ConvergeUnreadable { detail: d }
     PresentedMediaUncatalogued { image_name: n, wire: w } => ConvergeUncatalogued { image_name: n, wire: w }
     PresentedMediaRead { presenting: ps } =>
-      if ps |> any(r => r.image_name == (image_name as String)) {
-        ConvergeDesiredPresented
-      } else {
+      match (ps |> filter(r => r.image_name == (image_name as String))).first() {
+        Present { value: desired } => ConvergeDesiredPresented { row: desired }
+        Absent =>
         fold(ps, init: ConvergeNothingPresented, f: (acc, r) =>
           match acc {
             ConvergeForeignPresented { image_name: _ } => acc
@@ -1277,11 +1328,24 @@ fn megarac_convergence_step(
   convergence: PresentedConvergence,
   detach: MegaRacDetachAdmission,
   configurations: String,
+  cd_before: CdErrorReading,
 ) -> ConvergenceStep {
   match convergence {
     ConvergeUnreadable { detail: d } => ConvergeStepRefuse { outcome: MegaRacConfigurationsUnreadable { detail: d } }
     ConvergeUncatalogued { image_name: n, wire: w } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: configurations } }
-    ConvergeDesiredPresented => ConvergeStepAwaitReadiness
+    ConvergeDesiredPresented { row: r } =>
+      match cd_before {
+        CdErrorRead { code: CdErrorNone } => ConvergeStepAwaitReadiness
+        _ =>
+          match detach {
+            MegaRacDetachAdmitted => ConvergeStepDetachStale { row: r }
+            MegaRacDetachNotAdmitted { reason: why } =>
+              ConvergeStepRefuse { outcome: MegaRacMediaStateUnestablishedBeforeWrite {
+                cd_before_any_write: cd_before,
+                reason: concat("the desired image is presented but cd_error_code is not 0, and the fresh-presentation recovery was not admitted: ", why as String) as NonEmptyStr,
+              } }
+          }
+      }
     ConvergeNothingPresented => ConvergeStepAttachFromListing
     ConvergeForeignPresented { image_name: n } => ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: configurations } }
     ConvergeSeveralPresented => ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: configurations } }
@@ -1448,25 +1512,42 @@ type ReadinessVerdict
   | ReadinessLookAgain
   | ReadinessWindowClosed { last: ReadinessLook, deadline: EpochMs, looks: Int }
   | ReadinessRefusedVerdict { look: ReadinessLook, looks: Int }
+  | ReadinessClockIncoherent { opened_at: EpochMs, previous: EpochMs?, look: ReadinessLook, looks: Int }
 
-// THE WINDOW IS HALF-OPEN AND DECLARED BEFORE THE FIRST LOOK: opened_at <= observed_at < deadline.
-// A Started look at or past the deadline does not establish readiness — it is outside the window
-// the policy was declared over — and a refusal reading refuses whenever it is seen.
+// THE WINDOW IS HALF-OPEN AND DECLARED BEFORE THE FIRST LOOK: opened_at <= observed_at < deadline,
+// and it is ENFORCED at both ends (side-chat review 5331738657). A look stamped before the window
+// opened, or not strictly after the previous look (the wait sleeps between looks, so an equal or
+// earlier reading is a stalled or backward clock), is a clock that cannot bound this wait: it is
+// ReadinessClockIncoherent, kept with its readings, never judged as ready or pending. The look count
+// is an independent bound, so a clock that never advances cannot hold the wait open either. A
+// Started look at or past the deadline is outside the window and does not establish readiness; a
+// refusal reading refuses whenever it is seen inside a coherent clock.
 fn readiness_verdict(
   opened_at: EpochMs,
   budget: Milliseconds,
+  previous: EpochMs?,
   look: ReadinessLook,
   phase: ReadinessPhase,
   looks: Int,
 ) -> ReadinessVerdict {
   let deadline = opened_at + budget
-  match readiness_standing(look: look, phase: phase) {
-    ReadinessRefusedAt { look: l } => ReadinessRefusedVerdict { look: l, looks: looks }
-    ReadinessEstablished { look: l } =>
-      if l.observed_at < deadline { ReadinessReady { look: l, looks: looks } } else { ReadinessWindowClosed { last: l, deadline: deadline, looks: looks } }
-    ReadinessPending =>
-      if look.observed_at < deadline { ReadinessLookAgain } else { ReadinessWindowClosed { last: look, deadline: deadline, looks: looks } }
+  let backward = match previous { Present { value: p } => look.observed_at <= p  Absent => false }
+  if look.observed_at < opened_at || backward {
+    ReadinessClockIncoherent { opened_at: opened_at, previous: previous, look: look, looks: looks }
+  } else {
+    match readiness_standing(look: look, phase: phase) {
+      ReadinessRefusedAt { look: l } => ReadinessRefusedVerdict { look: l, looks: looks }
+      ReadinessEstablished { look: l } =>
+        if l.observed_at < deadline { ReadinessReady { look: l, looks: looks } } else { ReadinessWindowClosed { last: l, deadline: deadline, looks: looks } }
+      ReadinessPending =>
+        if look.observed_at < deadline && looks < megarac_readiness_max_looks() { ReadinessLookAgain } else { ReadinessWindowClosed { last: look, deadline: deadline, looks: looks } }
+    }
   }
+}
+
+// The window's looks at the pacing interval, plus the look that reaches the deadline.
+fn megarac_readiness_max_looks() -> Int {
+  (second_count(s: megarac_readiness_budget) as Int) / (second_count(s: megarac_readiness_interval) as Int) + 1
 }
 
 data megarac_readiness_budget: Second = second(count: 30)
@@ -1482,6 +1563,7 @@ type ReadinessWait
   | ReadinessWaitClosed { last: ReadinessLook, deadline: EpochMs, looks: Int }
   | ReadinessWaitRefused { look: ReadinessLook, looks: Int }
   | ReadinessWaitClockUnreadable { detail: String }
+  | ReadinessWaitClockIncoherent { opened_at: EpochMs, previous: EpochMs?, look: ReadinessLook, looks: Int }
 
 // THE WAIT: read at once, and pace only between looks that were pending. The window is judged by the
 // clock read beside each look; each look's GET is bounded by --max-time, so no single call can hold
@@ -1494,6 +1576,7 @@ fn megarac_await_readiness(
   firmware: BmcFirmwareReleaseIdentity,
   phase: ReadinessPhase,
   opened_at: EpochMs,
+  previous: EpochMs?,
   looks: Int,
 ) -> ReadinessWait
 {
@@ -1507,10 +1590,11 @@ fn megarac_await_readiness(
     ClockUnixMillisRefused { detail: d } => ReadinessWaitClockUnreadable { detail: d }
     ClockUnixMillisObserved { millis: now } => {
       let look = ReadinessLook { observed_at: now, reading: attach_readiness(answered: got.success, body: got.body, image_name: image_name, firmware: firmware) }
-      match readiness_verdict(opened_at: opened_at, budget: megarac_readiness_budget_ms(), look: look, phase: phase, looks: looks + 1) {
+      match readiness_verdict(opened_at: opened_at, budget: megarac_readiness_budget_ms(), previous: previous, look: look, phase: phase, looks: looks + 1) {
         ReadinessReady { look: l, looks: n } => ReadinessWaitReady { look: l, looks: n }
         ReadinessWindowClosed { last: l, deadline: d, looks: n } => ReadinessWaitClosed { last: l, deadline: d, looks: n }
         ReadinessRefusedVerdict { look: l, looks: n } => ReadinessWaitRefused { look: l, looks: n }
+        ReadinessClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n }
         ReadinessLookAgain => {
           let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_readiness_interval)
           megarac_await_readiness(
@@ -1521,6 +1605,7 @@ fn megarac_await_readiness(
             firmware: firmware,
             phase: phase,
             opened_at: opened_at,
+            previous: Present { value: now },
             looks: looks + 1,
           )
         }
@@ -1551,6 +1636,7 @@ fn megarac_readiness_outcome(
         firmware: firmware,
         phase: phase,
         opened_at: opened_at,
+        previous: none,
         looks: 0,
       )
       let general = megarac.Media.GetMediaGeneral(
@@ -1586,11 +1672,14 @@ fn readiness_wait_outcome(
 ) -> MegaRacAttachOutcome {
   match wait {
     ReadinessWaitClockUnreadable { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
+    ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => MegaRacReadinessClockIncoherent { image_name: image_name, route: route, opened_at: o, previous: p, look: l, looks: n }
     ReadinessWaitClosed { last: l, deadline: d, looks: n } => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitRefused { look: l, looks: n } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitReady { look: l, looks: n } =>
       match l.reading {
         ReadinessStarted { row: r } =>
+          match cd_at_end {
+            CdErrorRead { code: CdErrorNone } =>
           MegaRacPresentationReady {
             route: route,
             evidence: MegaRacPresentationEvidence {
@@ -1601,10 +1690,11 @@ fn readiness_wait_outcome(
               redirection_wire: r.redirection_wire,
               established_at: l.observed_at,
               looks: n,
-              cd_error: cd_error_standing_while_served(reading: cd_at_end),
               cd_before_any_write: cd_before,
               cd_at_ready: cd_at_end,
             },
+          }
+            _ => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end }
           }
         _ => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       }
@@ -1645,25 +1735,46 @@ fn megarac_observe_with_token(
   }
 }
 
+// FOUR ANSWERS, BECAUSE THEY ARE FOUR DIFFERENT FACTS (side-chat review 5331738657). Affirmed:
+// the look was taken and the medium is not being served (a withdrawn or non-Started row, a share
+// mismatch). Unobserved: the look itself failed (session, transport, an unread member), which says
+// nothing about the medium. Unestablished: the look was taken and the medium looked healthy, but the
+// general settings carry a nonzero cd_error_code whose meaning is unresolved, so this attempt cannot
+// establish the media state (operator decision, option A: a knowledge refusal, not a BMC verdict).
+// And the look's own session must be released: a ready medium observed through a session the
+// controller still holds is a cleanup obligation unmet, exactly as at the initial gate. Only
+// PresentationStillReady admits a handoff; each other answer withholds and says which it was.
 type PresentationStillServed
   = PresentationStillReady
+  | PresentationReadyButSessionHeld { release: SessionRelease }
   | PresentationNoLongerReady { reason: NonEmptyStr }
+  | PresentationStateUnestablished { cd_error: CdErrorReading }
+  | PresentationUnobserved { reason: NonEmptyStr }
 
-// PURE: still ready exactly when the share is bound with no CD error AND the row is Started with a
-// bound session. A session refusal, an unanswered read or any other arm is not ready: an unobserved
-// presentation is not a served one.
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
   match result.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: _ } =>
+    MegaRacPresentationObserved { share: sh, readiness: r, cd_error: cd } =>
       match sh {
+        ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
+        ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
         ShareBound =>
           match r {
-            ReadinessStarted { row: _ } => PresentationStillReady
+            ReadinessUnanswered { detail: _ } => PresentationUnobserved { reason: "the configurations read was not answered" }
+            ReadinessMalformed { detail: _ } => PresentationUnobserved { reason: "the configurations document could not be read" }
+            ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => PresentationUnobserved { reason: "a configurations row carries an uncatalogued status" }
+            ReadinessStarted { row: _ } =>
+              match cd {
+                CdErrorRead { code: CdErrorNone } =>
+                  match result.session_release {
+                    SessionReleased => PresentationStillReady
+                    other => PresentationReadyButSessionHeld { release: other }
+                  }
+                CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
+                other => PresentationStateUnestablished { cd_error: other }
+              }
             _ => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
           }
-        ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
-        ShareUnreadable { detail: _ } => PresentationNoLongerReady { reason: "the general settings could not be read" }
       }
-    _ => PresentationNoLongerReady { reason: "the presentation could not be observed (session or transport refused)" }
+    _ => PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
   }
 }

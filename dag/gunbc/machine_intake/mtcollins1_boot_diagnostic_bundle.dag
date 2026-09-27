@@ -80,6 +80,7 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacPresentationObserved,
   PresentationStillReady,
   PresentationNoLongerReady,
+  PresentationStillServed,
   presentation_still_served,
   ShareBound,
   ShareMismatch,
@@ -89,10 +90,6 @@ import gunbc.machine_intake_megarac_media_attach {
   CdErrorUnread,
   CdErrorNone,
   CdErrorUncatalogued,
-  CdErrorClean,
-  CdErrorLatchedWhileServed,
-  CdErrorUnreadWhileServed,
-  MegaRacCdErrorStanding,
   megarac_share_type_wire,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
@@ -106,6 +103,13 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacStaleDetachUnconfirmed,
   MegaRacRedirectionUncatalogued,
   MegaRacRefreshClockUnreadable,
+  MegaRacListingUnparseableAfterDetach,
+  MegaRacMediaStateUnestablished,
+  MegaRacMediaStateUnestablishedBeforeWrite,
+  MegaRacReadinessClockIncoherent,
+  PresentationReadyButSessionHeld,
+  PresentationStateUnestablished,
+  PresentationUnobserved,
   MegaRacNotEnumeratedAfterRefresh,
   ReadinessStarted,
   ReadinessConnecting,
@@ -414,16 +418,6 @@ fn cd_reading_text(r: CdErrorReading) -> String {
   }
 }
 
-// A nonzero code beside a healthy presentation is historical and non-blocking, and its clearing
-// action is not known: the text says both, so a reader of the receipt can see what was measured.
-fn cd_standing_text(s: MegaRacCdErrorStanding) -> String {
-  match s {
-    CdErrorClean => "clean"
-    CdErrorLatchedWhileServed { wire: w, semantics: _ } => concat("LATCHED ", concat(to_string(w), " beside a healthy presentation (historical, non-blocking; clearing action unknown)"))
-    CdErrorUnreadWhileServed { detail: d } => concat("unread beside a healthy presentation: ", d)
-  }
-}
-
 fn optional_text(v: String?) -> String {
   match v {
     Present { value: x } => x
@@ -455,7 +449,7 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
     " redirection_status=", to_string(e.redirection_wire),
     " established_at=", to_string(e.established_at), " looks=", to_string(e.looks),
     " cd_error_code before any write=", cd_reading_text(r: e.cd_before_any_write),
-    " at ready=", cd_reading_text(r: e.cd_at_ready), " (", cd_standing_text(s: e.cd_error), ")",
+    " at ready=", cd_reading_text(r: e.cd_at_ready),
   ], "")
 }
 
@@ -519,7 +513,14 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
     MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: c } =>
       Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
-    MegaRacRefreshClockUnreadable { detail: d } => Present { value: concat("the clock could not be read, so the re-enumeration window could not be declared or judged: ", d) }
+    MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
+    MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
+    MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca } =>
+      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), ". Its meaning is unresolved, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
+    MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
+      Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
+    MegaRacReadinessClockIncoherent { image_name: n, route: _, opened_at: o, previous: p, look: l, looks: k } =>
+      Present { value: join(["the clock cannot bound the readiness wait for '", n as String, "': window opened at ", to_string(o), ", previous look at ", match p { Present { value: v } => to_string(v)  Absent => "none" }, ", this look ", readiness_look_text(l: l), " after ", to_string(k), " looks. No boot-device or power handoff was made"], "") }
     MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _ } =>
       Present { value: join(["NotEnumeratedAfterRefresh: after the stale image was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file"], "") }
   }
@@ -597,19 +598,51 @@ fn handoff_media_text(h: MtCollins1HandoffMedia) -> String {
   }
 }
 
+fn recheck_text(v: PresentationStillServed) -> String {
+  match v {
+    PresentationStillReady => "served"
+    PresentationReadyButSessionHeld { release: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
+    PresentationNoLongerReady { reason: why } => concat("AFFIRMED not served: ", why as String)
+    PresentationStateUnestablished { cd_error: c } => concat("UNESTABLISHED: cd_error_code ", cd_reading_text(r: c))
+    PresentationUnobserved { reason: why } => concat("UNOBSERVED (indeterminate, not a withdrawal): ", why as String)
+  }
+}
+
+// AFFIRMED LOSS AND AN UNOBSERVED LOOK ARE DIFFERENT EVIDENCE (side-chat review 5331738657). Both
+// withhold before the handoff, but the bundle says which it was: "LOST" only when a look was taken
+// and showed the medium not served; a failed look is indeterminate and is reported as such.
 fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
   match h {
     HandoffMediaNotReached { reason: _ } => []
-    HandoffMediaWithheldAtRecheck { before: b } => [concat("media was ready at the gate but not at the pre-handoff recheck, so no boot-device or power write was made: ", observation_text(r: b))]
+    HandoffMediaWithheldAtRecheck { before: b } =>
+      [concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))]
     HandoffMediaHandedOff { before: _, after: a } =>
       match presentation_still_served(result: a) {
         PresentationStillReady => []
         PresentationNoLongerReady { reason: why } => [concat("the presentation was LOST at or after the boot-device and power handoff (", concat(why as String, concat("): ", observation_text(r: a))))]
+        PresentationUnobserved { reason: why } => [concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", concat(why as String, concat("): ", observation_text(r: a))))]
+        PresentationStateUnestablished { cd_error: c } => [concat("after the handoff the presentation read Started but cd_error_code was ", concat(cd_reading_text(r: c), concat(", so its state is unestablished: ", observation_text(r: a))))]
+        PresentationReadyButSessionHeld { release: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
       }
   }
 }
 
+// THE MEDIUM AT THE END OF THE ATTEMPT: one read-only look after the terminal watch, still under
+// the hold, so the cd_error_code experiment records whether the code appears once the host has used
+// -- or lost -- the medium, beside the watch's own data-delivery evidence (the census markers).
+type MtCollins1EndMedia
+  = EndMediaNotTaken { reason: NonEmptyStr }
+  | EndMediaObserved { look: MegaRacAttachResult }
+
+fn end_media_text(e: MtCollins1EndMedia) -> String {
+  match e {
+    EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
+    EndMediaObserved { look: l } => observation_text(r: l)
+  }
+}
+
 type MtCollins1BootRunRecord {
+  end_media: MtCollins1EndMedia
   handoff_media: MtCollins1HandoffMedia
   media: MtCollins1MediaAttachRecord
   smpro_power_on: SmproReading
@@ -622,6 +655,7 @@ type MtCollins1BootRunRecord {
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
   MtCollins1BootRunRecord {
+    end_media: EndMediaNotTaken { reason: reason },
     handoff_media: HandoffMediaNotReached { reason: reason },
     media: MediaAttachNotAttempted { reason: reason },
     smpro_power_on: SmproNotTaken { reason: reason },
@@ -743,6 +777,7 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   join([
     concat("media=", media_attach_text(record: r.media)),
     concat("handoff_media=", handoff_media_text(h: r.handoff_media)),
+    concat("end_media=", end_media_text(e: r.end_media)),
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
     boot_param5_text(label: "before", r: r.override_before),
