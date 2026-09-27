@@ -1,6 +1,6 @@
 module gunbc.spark.native_serving_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, Port }
 import std.algebra { trim }
 import v2.std.algebra { zip_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.optional { Present, Absent }
@@ -47,10 +47,10 @@ import gunbc.spark.pair_serving_apply {
 }
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
-  glm_native_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name,
-  glm_native_head_log_path, glm_native_rank_log_path,
+  glm_native_all_unit_renders, glm_native_ranked_hosts,
+  ArmUnitIdentity, glm_native_arm_units, arm_unit_log_path_for,
 }
-import gunbc.spark.serving_arm_launch { glm_native_container_name, ArmNodeLaunch, arm_rail_gid_selection }
+import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection }
 import gunbc.spark.serving_rank_observe {
   ObservedRankSubject, observed_rank_subject,
   RankInspectReading, RankInspected, RankInspectRefused, observe_rank_container,
@@ -66,7 +66,7 @@ import gunbc.spark.serving_relaunch_transaction {
 }
 import extdeps.nvidia.nccl { NcclTransportReading, NcclTransportIbVerbs, NcclTransportSocket }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli }
-import gunbc.spark.serving_arm { glm_native_concurrent_profile }
+import gunbc.spark.serving_arm { glm_native_concurrent_profile, ServingLaunchProfile }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines, glm_native_master_endpoint }
 import std.nat { Nat }
 
@@ -138,8 +138,8 @@ data spark_native_apply_attempt_raw: String = "spark-native-apply"
 // routes on how a remote step is expressed, which is the DESIGN section 3 fork this PR spent its
 // length removing from the launch. That is the reason this change declares the marker rather than
 // rewriting the bodies: the rewrite belongs with the pair route, not beside it.
-fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr, unit_text: String) -> String {
-  let ctr = glm_native_container_name as String
+fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr, unit_text: String, container_name: NonEmptyStr) -> String {
+  let ctr = container_name as String
   join([
     "set -e\n",
     "install -d -m 755 /var/log/gunbc\n",
@@ -593,8 +593,8 @@ fn spark_native_preflight_script(unit_name: NonEmptyStr, unit_text: String, spec
 // THIS STAGE DOES NOT MUTATE THE SERVING ARM. The active unit and the running container are untouched;
 // everything written is this transaction's own. That is what lets a failure here refuse rather than
 // roll back, which is the difference between reporting a problem and reloading 328 GB of weights.
-fn spark_native_preserve_script(unit_name: NonEmptyStr, transaction_id: String) -> String {
-  let ctr = glm_native_container_name as String
+fn spark_native_preserve_script(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
+  let ctr = container_name as String
   let u = spark_native_unit_path(unit_name: unit_name)
   join([
     "set -e\n",
@@ -706,8 +706,8 @@ fn spark_native_commit_script(unit_name: NonEmptyStr, transaction_id: String) ->
 //
 // THE REMOVE BRANCH MAY CLEAR, because its evidence is stronger and is an ABSENCE: the unit is gone and
 // the daemon reports no container by that name. There is no unverified running thing left to adopt.
-fn spark_native_rollback_script(unit_name: NonEmptyStr, transaction_id: String) -> String {
-  let ctr = glm_native_container_name as String
+fn spark_native_rollback_script(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
+  let ctr = container_name as String
   let u = spark_native_unit_path(unit_name: unit_name)
   join([
     "set -e\n",
@@ -733,8 +733,11 @@ fn spark_native_rollback_script(unit_name: NonEmptyStr, transaction_id: String) 
 
 // ── THE PER-STAGE PLANS, ONE PER HOST, IN THE ARM'S OWN RANK ORDER ────────────────────────────
 
-fn spark_native_is_head_unit(name: NonEmptyStr) -> Bool {
-  (name as String) == (glm_native_head_unit_name as String)
+// THE HEAD IS RANK ZERO OF THE PLAN, read off the step's own launch rather than by comparing a unit
+// name against one deployment's head-unit constant -- which made every other deployment's head
+// unrecognisable to this module.
+fn spark_native_step_is_head(st: SparkNativeHostStep) -> Bool {
+  st.launch.node.node_rank == 0
 }
 
 // ONE ROW PER HOST CARRYING EVERYTHING EVERY STAGE NEEDS, so a stage is a projection of the arm rather
@@ -743,14 +746,17 @@ type SparkNativeHostStep sole_constructor {
   host: HostIdentity
   unit_name: NonEmptyStr
   unit_text: String
+  log_path: NonEmptyStr
   launch: ArmNodeLaunch
+  serve_port: Port
+  served_alias: NonEmptyStr
 }
 
 type SparkNativeArmSteps
   = NativeArmSteps { steps: List<SparkNativeHostStep>, master_endpoint: NonEmptyStr }
   | NativeArmStepsRefused { cause: NonEmptyStr }
 
-fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender) -> SparkNativeHostStep? {
+fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender, units: ArmUnitIdentity, profile: ServingLaunchProfile) -> SparkNativeHostStep? {
   match render {
     GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => none
     GlmNativeUnitRendered { unit_name: name, text: text } =>
@@ -758,7 +764,10 @@ fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender) -> S
         host: launch.node.host,
         unit_name: name,
         unit_text: text,
+        log_path: arm_unit_log_path_for(units: units, launch: launch),
         launch: launch,
+        serve_port: profile.serve_port,
+        served_alias: profile.served_alias,
       } }
   }
 }
@@ -767,12 +776,23 @@ fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender) -> S
 // tensor-parallel degree is a property of the arm -- so one unrendered unit refuses the transaction
 // before any credential is materialized, let alone any host touched.
 fn spark_native_arm_steps() -> SparkNativeArmSteps {
-  let launches = glm_native_launch_lines()
-  let renders = glm_native_all_unit_renders()
-  match glm_native_master_endpoint() {
+  spark_native_arm_steps_of(
+    launches: glm_native_launch_lines(),
+    renders: glm_native_all_unit_renders(),
+    master_endpoint: glm_native_master_endpoint(),
+    units: glm_native_arm_units,
+    profile: glm_native_concurrent_profile,
+  )
+}
+
+// THE SAME WHOLE-OR-NOTHING PLANNING FOR ANY ARM, given that arm's launch lines, its rendered units and
+// the names and profile it deploys under. Group B's arm is one call; the V4.1 arm on Group A is another
+// (gunbc.spark.v41_group_a_launch), and the stage scripts below are shared by both.
+fn spark_native_arm_steps_of(launches: List<ArmNodeLaunch>, renders: List<GlmNativeUnitRender>, master_endpoint: NonEmptyStr?, units: ArmUnitIdentity, profile: ServingLaunchProfile) -> SparkNativeArmSteps {
+  match master_endpoint {
     Absent => NativeArmStepsRefused { cause: "the arm's rendezvous endpoint is unknown, so nothing could be verified after a restart" as NonEmptyStr }
     Present { value: endpoint } => {
-      let steps = flat_map(zip_map(a: launches, b: renders, f: fn(l, r) { spark_native_step_of(launch: l, render: r) }),
+      let steps = flat_map(zip_map(a: launches, b: renders, f: fn(l, r) { spark_native_step_of(launch: l, render: r, units: units, profile: profile) }),
         o => match o { Absent => [] as List<SparkNativeHostStep>  Present { value: v } => [v] })
       if count(steps) == count(launches) && count(steps) > 0 {
         NativeArmSteps { steps: steps, master_endpoint: endpoint }
@@ -794,14 +814,15 @@ fn spark_native_preflight_plans(steps: List<SparkNativeHostStep>) -> List<SparkP
 }
 
 fn spark_native_preserve_plans(steps: List<SparkNativeHostStep>, transaction_id: String) -> List<SparkPairHostApplyPlan> {
-  map(steps, st => spark_native_plan_of(step: st, script: spark_native_preserve_script(unit_name: st.unit_name, transaction_id: transaction_id)))
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_preserve_script(unit_name: st.unit_name, transaction_id: transaction_id, container_name: st.launch.container.name)))
 }
 
 fn spark_native_apply_stage_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
   map(steps, st => spark_native_plan_of(step: st, script: spark_native_host_apply_script(
     unit_name: st.unit_name,
-    log_path: if spark_native_is_head_unit(name: st.unit_name) { glm_native_head_log_path } else { glm_native_rank_log_path },
-    unit_text: st.unit_text)))
+    log_path: st.log_path,
+    unit_text: st.unit_text,
+    container_name: st.launch.container.name)))
 }
 
 // THE ONLY SHELL LEG LEFT IN THE READBACK IS THE HEAD'S FRONT DOOR, and it runs on the head alone
@@ -810,10 +831,10 @@ fn spark_native_apply_stage_plans(steps: List<SparkNativeHostStep>) -> List<Spar
 // below and is not a script at all.
 fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
   flat_map(steps, st =>
-    if spark_native_is_head_unit(name: st.unit_name) {
+    if spark_native_step_is_head(st: st) {
       [spark_native_plan_of(step: st, script: spark_native_front_door_script(
-        port_text: to_string(glm_native_concurrent_profile.serve_port),
-        served_alias: glm_native_concurrent_profile.served_alias))]
+        port_text: to_string(st.serve_port),
+        served_alias: st.served_alias))]
     } else {
       [] as List<SparkPairHostApplyPlan>
     })
@@ -828,7 +849,7 @@ fn spark_native_commit_plans(steps: List<SparkNativeHostStep>, transaction_id: S
 }
 
 fn spark_native_rollback_plans(steps: List<SparkNativeHostStep>, transaction_id: String) -> List<SparkPairHostApplyPlan> {
-  map(steps, st => spark_native_plan_of(step: st, script: spark_native_rollback_script(unit_name: st.unit_name, transaction_id: transaction_id)))
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_rollback_script(unit_name: st.unit_name, transaction_id: transaction_id, container_name: st.launch.container.name)))
 }
 
 // ── RUNNING ONE STAGE ─────────────────────────────────────────────────────────────────────────

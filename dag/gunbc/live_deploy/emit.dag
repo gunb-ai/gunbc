@@ -13,7 +13,11 @@ import gunbc.managed_directory {
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_mode_octal,
   attempt_state_directory_at,
+  EntriesUnmanaged, EntriesReadableByDependents,
+  managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
+import extdeps.tools.chmod { chmod_binary_path }
+import extdeps.access.posix { PosixUser }
 import extdeps.tailscale.serve {
   tailscale_serve_enable_argv,
   tailscale_serve_off_argv,
@@ -96,7 +100,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
   microvm_slot_controller_receipt_dir,
 }
-import extdeps.tools.findutils { find_program, xargs_program }
+import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
@@ -1418,7 +1422,9 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredHostDirectory { path, owner } => [
       deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
     ]
-    EnsuredManagedHostDirectory { admission } => [deploy_raw(command: ensure_managed_directory_command(admission: admission))]
+    EnsuredManagedHostDirectory { admission } =>
+      concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
+        map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
   }
 }
 
@@ -1451,6 +1457,43 @@ fn install_d_managed_command(dir: ManagedDirectory) -> String {
     group: dir.group_principal.name,
     path: dir.path as String,
   )
+}
+
+// THE REPAIR IS ITS OWN STEP, never text glued to the install: the deploy's pipeline already
+// sequences steps and fails the apply at the first one that refuses, so a second command is a
+// second step rather than a shell `&&` spelled in a string. A refused admission repairs nothing --
+// its install step is already the poison marker.
+fn managed_directory_entry_repair_commands(admission: ManagedDirectoryAdmission) -> List<String> {
+  match admission {
+    ManagedDirectoryRefused { member: _, path: _, writer: _ } => []
+    ManagedDirectoryAdmitted { dir } =>
+      match dir.entries {
+        EntriesUnmanaged => []
+        EntriesReadableByDependents { repaired_by } => [managed_directory_entry_repair_command(dir: dir, repaired_by: repaired_by)]
+      }
+  }
+}
+
+// THE ENTRIES' REPAIR RIDES THE SAME ENSURE AS THE DIRECTORY, so the next apply converges entries
+// published before their mode was declared (the fabric store's CI-written 0600 objects and heads)
+// with no one-off step. It adds exactly the derived read bits (chmod's additive symbolic form, so
+// nothing anyone set is removed and a second run is a no-op), and it runs UNPRIVILEGED as the
+// principal the apply runs as, over the entries that principal owns: those are the only ones it can
+// chmod, and they are the ones the umask narrowed. A refused derivation lowers to the poison marker,
+// never to a wider chmod.
+data managed_directory_entry_mode_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ managed host directory entries NOT REPAIRED: gunbc.managed_directory managed_directory_entry_mode refused. member="
+
+fn managed_directory_entry_repair_command(dir: ManagedDirectory, repaired_by: PosixUser) -> String {
+  match managed_directory_entry_mode(d: dir) {
+    ManagedEntryModeRefused { member, path, reason } =>
+      join([managed_directory_entry_mode_refused_poison, member as String, " path=", path as String, " reason=", reason as String], "")
+    ManagedEntryModeDerived { mode } =>
+      shell_command_text_of_argv(argv: find_owned_regular_files_exec_argv(
+        dir: dir.path as String,
+        owner: repaired_by.name as String,
+        command: [chmod_binary_path as String, entry_mode_add_read_symbolic(mode: mode)],
+      ))
+  }
 }
 
 // THE PUBLICATION PRINCIPAL EXISTS BEFORE ANY MEMBER NAMES IT. Creation is idempotent at the shell
