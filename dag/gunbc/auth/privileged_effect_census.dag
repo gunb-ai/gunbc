@@ -433,6 +433,12 @@ data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
 // host in process, every other host through the served door -- and the store verifies no grant for
 // the operation. The rows below carry what each writer's selection asks for, so the door that
 // verifies it has a derived answer per writer rather than one grant vocabulary for all of them.
+// D0's door does gate on an approval before it writes, but the effect a row counts is the STORE
+// write, and the store does not see that approval: any writer reaching the DB performs the same
+// advance without it, so D0's row realizes RealizedUnauthorized like the rest (review 71933).
+// THE DISSOLUTION IS UNBOUND ON PURPOSE. d0_store_operation_wall is not retired when the capability
+// lands -- it is flipped to StoreOperationWallRestored -- so retires_dissolution over it would fire
+// on the row's deletion, an artifact, while the capability stayed dead (§4b(3)).
 data fabric_store_write_unverified: DivergenceReason = DivergenceReason {
   statement: "the fabric DB admits an advance of a pair-serving authority partition, the host-placement partition or a D0 consent slot on the writer's host access alone: the placed host writes in process (FabricStorageLocalFiles) and the served door carries no grant, so the pattern selected for this writer is not the one the store enforces" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- the capability gunbc.spark.pair_serving_d0 d0_store_operation_wall names" as NonEmptyStr),
@@ -832,8 +838,8 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
     },
-    realized: RealizedApprovalCapability,
-    divergence_reason: none,
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.host_commitment", decl_name: "claim_host_effect_live"),
