@@ -11,7 +11,8 @@ import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, cens
 // bare reference resolves through) lost its name. The repair asks the one authority
 // (`heads_stream_starts_item`: the syntax spec's item forms plus `leads_with_test_marker`).
 //
-// The probes reference the fixture's two test functions by BARE name from an import-less module,
+// The probes reference the fixture's two test data values by BARE name (data, not functions, so
+// no effect-summary join stands between the reference and the census) from an import-less module,
 // so the only route to the provider is the pool name census the heads reading feeds. The
 // after-data row is red on the old reading (the name is undeclared in the census, so the reference
 // is a blocking diagnostic) and green on the repaired one. The before-data row was already green
@@ -21,11 +22,11 @@ import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, cens
 // read as measured-nothing. dissolve-on: never -- permanent regression control for the heads
 // reading's item boundary.
 
-data heads_after_data_probe_source: String = "module heads_after_data_probe_mod\n\ntest fn heads_after_data_consumer() -> Bool \{\n  heads_after_data_marked_probe()\n}\n"
+data heads_after_data_probe_source: String = "module heads_after_data_probe_mod\n\ntest fn heads_after_data_consumer() -> Bool \{\n  heads_after_data_marked_probe\n}\n"
 
-data heads_before_data_probe_source: String = "module heads_before_data_probe_mod\n\ntest fn heads_before_data_consumer() -> Bool \{\n  heads_before_data_marked_probe()\n}\n"
+data heads_before_data_probe_source: String = "module heads_before_data_probe_mod\n\ntest fn heads_before_data_consumer() -> Bool \{\n  heads_before_data_marked_probe\n}\n"
 
-data heads_unknown_name_probe_source: String = "module heads_unknown_name_probe_mod\n\ntest fn heads_unknown_name_consumer() -> Bool \{\n  heads_reading_name_nobody_declares()\n}\n"
+data heads_unknown_name_probe_source: String = "module heads_unknown_name_probe_mod\n\ntest fn heads_unknown_name_consumer() -> Bool \{\n  heads_reading_name_nobody_declares\n}\n"
 
 fn heads_probe_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

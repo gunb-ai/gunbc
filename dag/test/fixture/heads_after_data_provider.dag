@@ -8,12 +8,8 @@ module test.fixture.heads_after_data_provider
 // kept it: it is the row that stops the claim being satisfied by a census that answers for any
 // name.
 
-test fn heads_before_data_marked_probe() -> Bool {
-  true
-}
+test data heads_before_data_marked_probe: Bool = true
 
 data heads_after_data_seed: Int = 1
 
-test fn heads_after_data_marked_probe() -> Bool {
-  true
-}
+test data heads_after_data_marked_probe: Bool = true
