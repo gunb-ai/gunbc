@@ -32,7 +32,7 @@ fn anonymous_param_label_prefix() -> String {
   "<anonymous-parameter-"
 }
 
-// THE ONE MINT. Consumed by anonymous_binder_mint_domain, the only producer of a domain carrying
+// THE ONE MINT. Consumed by anonymous_binder_mint_parameter_list, the only producer of a domain carrying
 // minted slots.
 fn anonymous_param_label(slot: Int) -> Symbol {
   symbol_intern_lexeme(
@@ -50,25 +50,44 @@ fn is_anonymous_param_label(sym: Symbol) -> Bool {
 type AnonymousBinderMint {
   slot: Int
   edges: List<Edge>
+  order: List<Symbol>
 }
 
-// THE ONE PRODUCER of a domain's anonymous slots: every edge the author spelled `_` is relabelled
-// with its slot's minted binder; every other edge is unchanged. This is the only place the authored
-// spelling `_` is read for a parameter, and it is read once, at the source boundary. The fold
-// conses and reverses once, so the mint is linear in the parameter count.
-fn anonymous_binder_mint_domain(edges: List<Edge>) -> List<Edge> {
-  let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: Empty }, f: fn(acc, e) {
+// A DECLARED PARAMETER LIST, MINTED ONCE: the domain's edges and the declared order of their labels.
+// The domain is a Conj, which is LabeledEdges and sorted by label for identity, so its edge sequence
+// cannot carry the order the author wrote; `order` does, and positional binding reads it and nothing
+// else (v2.std.node arrow_signature_order_edge). Both come out of ONE fold over the authored list, so
+// a domain whose order disagrees with its labels has no producer here; the Arrow wall
+// (v2.std.node arrow_signature_order_conforms) refuses one built anywhere else.
+//
+// ORDER IS NEVER READ FROM A LABEL'S SPELLING. The minted `<anonymous-parameter-N>` labels sort as
+// text, so slot 10 sorts before slot 2; reading positional order from the sorted domain bound a
+// function with ten or more anonymous slots wrongly and silently. With order carried here, N in a
+// minted label need only make that label unique.
+type DeclaredParameterList {
+  edges: List<Edge>
+  order: List<Symbol>
+}
+
+// THE ONE PRODUCER of a domain's anonymous slots and of its declared order: every edge the author
+// spelled `_` is relabelled with its slot's minted binder; every other edge is unchanged; every
+// Named edge's (possibly minted) label is appended to the order in authored position. This is the
+// only place the authored spelling `_` is read for a parameter, and it is read once, at the source
+// boundary. The fold conses and reverses once, so the mint is linear in the parameter count.
+fn anonymous_binder_mint_parameter_list(edges: List<Edge>) -> DeclaredParameterList {
+  let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: Empty, order: Empty }, f: fn(acc, e) {
     let slot = acc.slot + 1
-    let relabelled = match e.label {
+    match e.label {
       Named { name: sym } =>
-        if sym == pattern_wildcard_name() {
-          Edge { label: Named { name: anonymous_param_label(slot: slot) }, target: e.target }
-        } else {
-          e
+        let label = if sym == pattern_wildcard_name() { anonymous_param_label(slot: slot) } else { sym }
+        AnonymousBinderMint {
+          slot: slot,
+          edges: Cons { head: Edge { label: Named { name: label }, target: e.target }, tail: acc.edges },
+          order: Cons { head: label, tail: acc.order }
         }
-      Positional => e
+      Positional =>
+        AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
     }
-    AnonymousBinderMint { slot: slot, edges: Cons { head: relabelled, tail: acc.edges } }
   })
-  list_reverse(xs: minted.edges)
+  DeclaredParameterList { edges: list_reverse(xs: minted.edges), order: list_reverse(xs: minted.order) }
 }
