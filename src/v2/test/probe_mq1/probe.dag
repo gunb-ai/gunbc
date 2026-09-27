@@ -72,3 +72,63 @@ test fn q_ordering_has_generic_ident() -> Bool { probe_has(xs: probe_one(src: pr
 test fn q_ordering_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_ordering_source), id: ^dag_token_caret) }
 test fn q_ordering_keeps_ordering_predicate_is_less() -> Bool { probe_has(xs: probe_one(src: probe_ordering_source), id: ^ordering_predicate_is_less) }
 test fn q_ordering_keeps_ordering_predicate_is_less_or_equal() -> Bool { probe_has(xs: probe_one(src: probe_ordering_source), id: ^ordering_predicate_is_less_or_equal) }
+
+data probe_arg_named_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^pos_arg_named)\n}\n"
+test fn q_arg_named_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_arg_named_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_arg_named_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_arg_named_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_arg_named_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_arg_named_source), id: ^dag_token_caret) }
+test fn q_arg_named_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_arg_named_source), id: ^pos_arg_named) }
+
+data probe_arg_positional_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(^pos_arg_positional)\n}\n"
+test fn q_arg_positional_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_arg_positional_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_arg_positional_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_arg_positional_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_arg_positional_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_arg_positional_source), id: ^dag_token_caret) }
+test fn q_arg_positional_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_arg_positional_source), id: ^pos_arg_positional) }
+
+data probe_let_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_value\n  s\n}\n"
+test fn q_let_value_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_let_value_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_let_value_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_let_value_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_let_value_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_let_value_source), id: ^dag_token_caret) }
+test fn q_let_value_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_let_value_source), id: ^pos_let_value) }
+
+data probe_body_whole_source: String = "module chunk\n\nfn f() -> Symbol {\n  ^pos_body_whole\n}\n"
+test fn q_body_whole_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_body_whole_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_body_whole_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_body_whole_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_body_whole_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_body_whole_source), id: ^dag_token_caret) }
+test fn q_body_whole_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_body_whole_source), id: ^pos_body_whole) }
+
+data probe_data_init_source: String = "module chunk\n\ndata d: Symbol = ^pos_data_init\n"
+test fn q_data_init_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_data_init_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_data_init_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_data_init_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_data_init_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_data_init_source), id: ^dag_token_caret) }
+test fn q_data_init_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_data_init_source), id: ^pos_data_init) }
+
+data probe_field_init_source: String = "module chunk\n\ntype R { s: Symbol }\n\nfn f() -> R {\n  R { s: ^pos_field_init }\n}\n"
+test fn q_field_init_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_field_init_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_field_init_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_field_init_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_field_init_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_field_init_source), id: ^dag_token_caret) }
+test fn q_field_init_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_field_init_source), id: ^pos_field_init) }
+
+data probe_match_arm_body_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  match b {\n    true => ^pos_match_arm_body\n    false => ^pos_match_arm_body_two\n  }\n}\n"
+test fn q_match_arm_body_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_match_arm_body_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_match_arm_body_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_match_arm_body_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_match_arm_body_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_match_arm_body_source), id: ^dag_token_caret) }
+test fn q_match_arm_body_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_match_arm_body_source), id: ^pos_match_arm_body) }
+
+data probe_match_scrutinee_source: String = "module chunk\n\nfn f() -> Bool {\n  match ^pos_match_scrutinee {\n    _ => true\n  }\n}\n"
+test fn q_match_scrutinee_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_match_scrutinee_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_match_scrutinee_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_match_scrutinee_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_match_scrutinee_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_match_scrutinee_source), id: ^dag_token_caret) }
+test fn q_match_scrutinee_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_match_scrutinee_source), id: ^pos_match_scrutinee) }
+
+data probe_if_branch_value_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  if b { ^pos_if_branch_value } else { ^pos_if_branch_value_two }\n}\n"
+test fn q_if_branch_value_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_if_branch_value_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_if_branch_value_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_if_branch_value_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_if_branch_value_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_if_branch_value_source), id: ^dag_token_caret) }
+test fn q_if_branch_value_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_if_branch_value_source), id: ^pos_if_branch_value) }
+
+data probe_list_item_source: String = "module chunk\n\nfn f() -> List<Symbol> {\n  [^pos_list_item]\n}\n"
+test fn q_list_item_normalize_refused() -> Bool { probe_has(xs: probe_one(src: probe_list_item_source), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_list_item_parse_refused() -> Bool { probe_has(xs: probe_one(src: probe_list_item_source), id: ^PROBE_PARSE_REFUSED) }
+test fn q_list_item_has_caret_token() -> Bool { probe_has(xs: probe_one(src: probe_list_item_source), id: ^dag_token_caret) }
+test fn q_list_item_keeps_symbol() -> Bool { probe_has(xs: probe_one(src: probe_list_item_source), id: ^pos_list_item) }
