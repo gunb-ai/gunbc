@@ -100,59 +100,96 @@ fn caret_refusal_normalize_verdict(src: String) -> CaretRefusalVerdict {
   }
 }
 
-fn refuses_at_the_caret(src: String) -> Bool {
-  let v = caret_refusal_normalize_verdict(src: src)
+// ONE PRODUCER, EVERY VERDICT. Each fixture's normalize is a full front-end run, so the thirteen
+// verdicts are computed once here and each claim reads its own field; the producer is pure over
+// this module's data and is enrolled warm in v2.workflow.floor_pure_producer_share, as
+// v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes is.
+type CaretRefusalVerdicts {
+  if_condition: CaretRefusalVerdict
+  int_control: CaretRefusalVerdict
+  bare_operand: CaretRefusalVerdict
+  named_argument: CaretRefusalVerdict
+  positional_argument: CaretRefusalVerdict
+  let_value: CaretRefusalVerdict
+  whole_body: CaretRefusalVerdict
+  data_initializer: CaretRefusalVerdict
+  field_initializer: CaretRefusalVerdict
+  match_arm_body: CaretRefusalVerdict
+  match_scrutinee: CaretRefusalVerdict
+  if_branch_value: CaretRefusalVerdict
+  list_item: CaretRefusalVerdict
+}
+
+fn csv_verdicts() -> CaretRefusalVerdicts {
+  CaretRefusalVerdicts {
+    if_condition: caret_refusal_normalize_verdict(src: caret_if_condition_source),
+    int_control: caret_refusal_normalize_verdict(src: int_if_condition_control_source),
+    bare_operand: caret_refusal_normalize_verdict(src: caret_bare_operand_source),
+    named_argument: caret_refusal_normalize_verdict(src: caret_named_argument_source),
+    positional_argument: caret_refusal_normalize_verdict(src: caret_positional_argument_source),
+    let_value: caret_refusal_normalize_verdict(src: caret_let_value_source),
+    whole_body: caret_refusal_normalize_verdict(src: caret_whole_body_source),
+    data_initializer: caret_refusal_normalize_verdict(src: caret_data_initializer_source),
+    field_initializer: caret_refusal_normalize_verdict(src: caret_field_initializer_source),
+    match_arm_body: caret_refusal_normalize_verdict(src: caret_match_arm_body_source),
+    match_scrutinee: caret_refusal_normalize_verdict(src: caret_match_scrutinee_source),
+    if_branch_value: caret_refusal_normalize_verdict(src: caret_if_branch_value_source),
+    list_item: caret_refusal_normalize_verdict(src: caret_list_item_source)
+  }
+}
+
+fn refuses_at_the_caret(v: CaretRefusalVerdict) -> Bool {
   v.cause == ^body_lowering_reason_caret_symbol_not_lowered && v.anchor == ^dag_token_caret
 }
 
 test fn a_caret_symbol_if_condition_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_if_condition_source)
+  refuses_at_the_caret(v: csv_verdicts().if_condition)
 }
 
 test fn an_int_literal_if_condition_still_normalizes() -> Bool {
-  caret_refusal_normalize_verdict(src: int_if_condition_control_source).cause == ^caret_refusal_accepted
+  csv_verdicts().int_control.cause == ^caret_refusal_accepted
 }
 
 test fn a_bare_caret_operand_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_bare_operand_source)
+  refuses_at_the_caret(v: csv_verdicts().bare_operand)
 }
 
 test fn a_caret_symbol_named_argument_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_named_argument_source)
+  refuses_at_the_caret(v: csv_verdicts().named_argument)
 }
 
 test fn a_caret_symbol_positional_argument_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_positional_argument_source)
+  refuses_at_the_caret(v: csv_verdicts().positional_argument)
 }
 
 test fn a_caret_symbol_let_value_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_let_value_source)
+  refuses_at_the_caret(v: csv_verdicts().let_value)
 }
 
 test fn a_caret_symbol_whole_body_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_whole_body_source)
+  refuses_at_the_caret(v: csv_verdicts().whole_body)
 }
 
 test fn a_caret_symbol_data_initializer_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_data_initializer_source)
+  refuses_at_the_caret(v: csv_verdicts().data_initializer)
 }
 
 test fn a_caret_symbol_field_initializer_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_field_initializer_source)
+  refuses_at_the_caret(v: csv_verdicts().field_initializer)
 }
 
 test fn a_caret_symbol_match_arm_body_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_match_arm_body_source)
+  refuses_at_the_caret(v: csv_verdicts().match_arm_body)
 }
 
 test fn a_caret_symbol_match_scrutinee_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_match_scrutinee_source)
+  refuses_at_the_caret(v: csv_verdicts().match_scrutinee)
 }
 
 test fn a_caret_symbol_if_branch_value_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_if_branch_value_source)
+  refuses_at_the_caret(v: csv_verdicts().if_branch_value)
 }
 
 test fn a_caret_symbol_list_item_refuses_at_the_caret() -> Bool {
-  refuses_at_the_caret(src: caret_list_item_source)
+  refuses_at_the_caret(v: csv_verdicts().list_item)
 }
