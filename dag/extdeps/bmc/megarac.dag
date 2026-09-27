@@ -112,7 +112,7 @@ data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/settings/media/remote/stop-media",
-  contract_note: "counterpart of start-media, same body shape",
+  contract_note: "counterpart of start-media, same body shape; stopping a presented image re-enumerates the share, so a file published to the export after the mount is offered by /remote/images within one retry interval of the stop (Foxconn Mt. Collins build, 2026-09-27, host off; PUT media/general with mount_cd 0 then 1 was refused with code 16425 and changed nothing); a stop is established only by the configurations listing no longer presenting the image (this build has answered HTTP 500 code 1411 to a stop that took effect)",
 }
 
 data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {

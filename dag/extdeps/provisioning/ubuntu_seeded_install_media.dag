@@ -1,7 +1,14 @@
 module extdeps.provisioning.ubuntu_seeded_install_media
 
 import std.types { Int, List, NonEmptyStr, String }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+  content_hash_validate_lower_hex_length,
+  content_hash_validate_lower_hex_syntax,
+}
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -137,6 +144,32 @@ fn ubuntu_seeded_install_media_image_name(image_stem: NonEmptyStr, output_digest
     substring(s: output_digest as String, start: 0, end: seeded_install_media_name_digest_width),
     ".iso",
   ) as NonEmptyStr
+}
+
+// THE INVERSE OF THE NAME, so "is this one of that stem's images" is answered by the naming
+// authority rather than by a caller's prefix test. A name is of the stem exactly when it is what
+// ubuntu_seeded_install_media_image_name would produce for SOME output digest: the stem, a hyphen,
+// seeded_install_media_name_digest_width lower-hex digits, ".iso". The digest prefix is returned so
+// a consumer can report WHICH build it recognised; a bare prefix match would also admit
+// "<stem>-old-backup.iso", which no build of this stem ever published.
+fn ubuntu_seeded_install_media_name_digest_prefix(image_stem: NonEmptyStr, image_name: String) -> String? {
+  let head = concat(image_stem as String, "-")
+  let tail = ".iso"
+  let expected = head.length() + seeded_install_media_name_digest_width + tail.length()
+  if image_name.length() != expected {
+    none
+  } else if starts_with(s: image_name, prefix: head) == false {
+    none
+  } else if ends_with(s: image_name, suffix: tail) == false {
+    none
+  } else {
+    let digits = substring(s: image_name, start: head.length(), end: head.length() + seeded_install_media_name_digest_width)
+    if content_hash_validate_lower_hex_length(text: digits, expected_hex_digits: seeded_install_media_name_digest_width) && content_hash_validate_lower_hex_syntax(text: digits) {
+      Present { value: digits }
+    } else {
+      none
+    }
+  }
 }
 
 fn ubuntu_seeded_install_media_built(input: UbuntuSeededInstallMediaBuildInput, output_digest: NonEmptyStr) -> UbuntuSeededInstallMediaBuilt {

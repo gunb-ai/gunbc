@@ -1070,6 +1070,7 @@ fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> 
 fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
   ]
 {
   let r = diagnostic.ipmi.Tool.ChassisStatus(

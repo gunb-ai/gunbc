@@ -1,0 +1,202 @@
+module test.claim.machine_intake.megarac_media_convergence_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, EpochMs, NonEmptyStr, String }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.machine_intake_mount_establishment {
+  MediaImageAbsentFromListing,
+  MountEvaluationBoundary,
+  RemoteMediaListingObservation,
+  RemoteMediaMountWindow,
+  mount_standing_as_of,
+}
+import gunbc.machine_intake_megarac_media_attach {
+  ConvergeStepAlreadyAttached,
+  ConvergeStepAttachFromListing,
+  ConvergeStepDetachStale,
+  ConvergeStepRefuse,
+  ConvergenceStep,
+  EnumerationDecided,
+  EnumerationLookAgain,
+  ImagesListingLacks,
+  MegaRacDetachAdmission,
+  MegaRacDetachAdmitted,
+  MegaRacDetachNotAdmitted,
+  MegaRacForeignImagePresented,
+  MegaRacStaleDetachNotAdmitted,
+  NotEnumeratedAfterRefresh,
+  MegaRacRedirectionUncatalogued,
+  ReadinessPending,
+  ReadinessReady,
+  ReadinessUncatalogued,
+  attach_readiness,
+  enumeration_decision,
+  megarac_convergence_step,
+  presented_convergence,
+  presented_media,
+  stop_media_body,
+  PresentingRow,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TWO NAMES OF THE 2026-09-27 REFUSAL (boot run 36328950865), derived from the naming
+// authority rather than typed: the image the controller still presented and the one it did not offer.
+data stale_census: NonEmptyStr = ubuntu_seeded_install_media_image_name(image_stem: mtcollins1_census_image_stem, output_digest: "6455b3b9ae11214d00")
+data desired_census: NonEmptyStr = ubuntu_seeded_install_media_image_name(image_stem: mtcollins1_census_image_stem, output_digest: "30ca88d43f891399ff")
+
+fn presenting_in(name: String, status: String, session: String) -> String {
+  concat("[{\"media_type\":1,\"image_name\":\"", concat(name, concat("\",\"redirection_status\":", concat(status, concat(",\"media_index\":0,\"session_index\":", concat(session, "}]"))))))
+}
+
+fn presenting(name: String, status: String) -> String {
+  presenting_in(name: name, status: status, session: "0")
+}
+
+data host_off: MegaRacDetachAdmission = MegaRacDetachAdmitted
+data host_on: MegaRacDetachAdmission = MegaRacDetachNotAdmitted { reason: "the host is powered on" }
+
+fn step(configurations: String, detach: MegaRacDetachAdmission) -> ConvergenceStep {
+  megarac_convergence_step(
+    convergence: presented_convergence(
+      presented: presented_media(body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
+      image_name: desired_census,
+      replaceable_seeded_stem: mtcollins1_census_image_stem,
+    ),
+    detach: detach,
+    configurations: configurations,
+  )
+}
+
+// THE RECOGNIZER IS THE NAME AUTHORITY RUN BACKWARDS: both census names are of the stem, and a
+// name that merely starts with the stem is not.
+test fn census_names_are_recognised_by_the_naming_inverse() -> Bool {
+  ubuntu_seeded_install_media_name_digest_prefix(image_stem: mtcollins1_census_image_stem, image_name: stale_census as String) == Present { value: "6455b3b9ae11214d" }
+    && ubuntu_seeded_install_media_name_digest_prefix(image_stem: mtcollins1_census_image_stem, image_name: desired_census as String) == Present { value: "30ca88d43f891399" }
+}
+
+test fn a_stem_prefixed_name_that_no_build_produces_is_not_recognised() -> Bool {
+  match ubuntu_seeded_install_media_name_digest_prefix(image_stem: mtcollins1_census_image_stem, image_name: concat(mtcollins1_census_image_stem as String, "-old-backup1.iso")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CONTROL 1: the refused run's own state — stale census presented, host off — detaches that row.
+test fn stale_census_presented_with_the_host_off_detaches_it() -> Bool {
+  match step(configurations: presenting(name: stale_census as String, status: "1"), detach: host_off) {
+    ConvergeStepDetachStale { row: r } => r.image_name == (stale_census as String)
+    _ => false
+  }
+}
+
+test fn the_stop_body_names_the_stale_image_and_its_device() -> Bool {
+  stop_media_body(row: PresentingRow { image_name: stale_census as String, media_index: Present { value: "0" }, session_index: Present { value: "0" } }) as String
+    == concat("{\"image_name\":\"", concat(stale_census as String, "\",\"image_type\":1,\"image_index\":0,\"image_redirection\":1}"))
+}
+
+// CONTROL 2: a presented image outside the stem refuses, host off or not.
+test fn a_foreign_image_presented_refuses() -> Bool {
+  match step(configurations: presenting(name: "memtest86-5.31b.iso", status: "1"), detach: host_off) {
+    ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n } } => n == "memtest86-5.31b.iso"
+    _ => false
+  }
+}
+
+// CONTROL 3: the host on refuses the detach.
+test fn stale_census_presented_with_the_host_on_refuses() -> Bool {
+  match step(configurations: presenting(name: stale_census as String, status: "100"), detach: host_on) {
+    ConvergeStepRefuse { outcome: MegaRacStaleDetachNotAdmitted { stale_image: n, reason: _ } } => n == (stale_census as String)
+    _ => false
+  }
+}
+
+// CONTROL 5: the desired image presented is a no-op, and the admission is not consulted.
+test fn the_desired_image_presented_is_a_no_op_even_with_the_host_on() -> Bool {
+  match step(configurations: presenting(name: desired_census as String, status: "1"), detach: host_on) {
+    ConvergeStepAlreadyAttached => true
+    _ => false
+  }
+}
+
+test fn a_stopped_row_is_nothing_presented() -> Bool {
+  match step(configurations: presenting(name: stale_census as String, status: "0"), detach: host_on) {
+    ConvergeStepAttachFromListing => true
+    _ => false
+  }
+}
+
+test fn an_uncatalogued_status_on_a_named_row_refuses_keeping_the_wire() -> Bool {
+  match step(configurations: presenting(name: desired_census as String, status: "16"), detach: host_off) {
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, wire: w } } => w == 16
+    _ => false
+  }
+}
+
+// THE READINESS GATE BEFORE POWER, on boot run 36330382023's own after-state: status 16 with
+// session_index 255 refuses with the wire; started with a bound session is ready; connecting with
+// session 255 is not yet ready and waits rather than powering on.
+test fn status_16_after_start_refuses_before_power_keeping_the_wire() -> Bool {
+  match attach_readiness(body: presenting_in(name: desired_census as String, status: "16", session: "255"), image_name: desired_census, firmware: megarac_firmware_0_32) {
+    ReadinessUncatalogued { image_name: _, wire: w } => w == 16
+    _ => false
+  }
+}
+
+test fn started_with_a_bound_session_is_ready() -> Bool {
+  match attach_readiness(body: presenting_in(name: desired_census as String, status: "1", session: "0"), image_name: desired_census, firmware: megarac_firmware_0_32) {
+    ReadinessReady => true
+    _ => false
+  }
+}
+
+test fn connecting_without_a_bound_session_is_pending() -> Bool {
+  match attach_readiness(body: presenting_in(name: desired_census as String, status: "100", session: "255"), image_name: desired_census, firmware: megarac_firmware_0_32) {
+    ReadinessPending { configurations: _ } => true
+    _ => false
+  }
+}
+
+test fn a_stopped_row_after_start_is_pending() -> Bool {
+  match attach_readiness(body: presenting_in(name: desired_census as String, status: "0", session: "255"), image_name: desired_census, firmware: megarac_firmware_0_32) {
+    ReadinessPending { configurations: _ } => true
+    _ => false
+  }
+}
+
+// CONTROL 4: still absent after the refresh. The listing lacked the name at a look that reached
+// the declared deadline, so the establishment fold closes TimedOut and the answer is
+// NotEnumeratedAfterRefresh — not another look.
+data refresh_window: RemoteMediaMountWindow = RemoteMediaMountWindow { requested_at: 1000, budget: 90000 }
+data lacks_bytes: ContentHash = content_hash_of_value(value: "images-listing-without-desired")
+
+fn absent_at(at: EpochMs) -> RemoteMediaListingObservation {
+  RemoteMediaListingObservation { observed_at: at, listing: MediaImageAbsentFromListing, raw_response: lacks_bytes }
+}
+
+test fn absent_at_the_deadline_is_not_enumerated_after_refresh() -> Bool {
+  let standing = mount_standing_as_of(
+    window: refresh_window,
+    observations: [absent_at(at: 50000), absent_at(at: 91000)],
+    boundary: MountEvaluationBoundary { observed_through: 91000, clock_evidence: lacks_bytes },
+  )
+  match enumeration_decision(standing: standing, reading: ImagesListingLacks, remaining: 5) {
+    EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: _ } } => true
+    _ => false
+  }
+}
+
+test fn absent_inside_the_window_looks_again() -> Bool {
+  let standing = mount_standing_as_of(
+    window: refresh_window,
+    observations: [absent_at(at: 50000)],
+    boundary: MountEvaluationBoundary { observed_through: 50000, clock_evidence: lacks_bytes },
+  )
+  match enumeration_decision(standing: standing, reading: ImagesListingLacks, remaining: 5) {
+    EnumerationLookAgain => true
+    _ => false
+  }
+}

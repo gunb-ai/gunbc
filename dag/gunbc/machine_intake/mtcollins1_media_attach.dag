@@ -9,8 +9,23 @@ import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secur
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject, mtcollins1_boot_medium, mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256,
 }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_chassis_power }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation_text }
 import gunbc.machine_intake_megarac_media_attach {
   MegaRacAttachOutcome,
+  MegaRacDetachAdmission,
+  MegaRacDetachAdmitted,
+  MegaRacDetachNotAdmitted,
+  MegaRacReplacementPolicy,
+  MegaRacRefreshedAndAttached,
+  MegaRacForeignImagePresented,
+  MegaRacSeveralImagesPresented,
+  MegaRacStaleDetachNotAdmitted,
+  MegaRacStaleDetachUnconfirmed,
+  MegaRacRedirectionUncatalogued,
+  MegaRacRefreshClockUnreadable,
+  MegaRacNotEnumeratedAfterRefresh,
   MegaRacAttachResult,
   SessionRelease,
   SessionReleaseNotAttempted,
@@ -80,11 +95,26 @@ fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
     MegaRacImagesUnreadable { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: images listing unreadable: ", d))
     MegaRacImageListingEmpty =>
-      exit_failure(reason: "mtcollins1 media attach: the image is not presented AND the controller offers no image available to attach; check that the export is reachable from the controller and holds the file. Do NOT toggle mount_cd to 'refresh' this — it works by detaching every presented image, so on a host booted from that medium it withdraws what the running system is reading from")
+      exit_failure(reason: "mtcollins1 media attach: the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file")
     MegaRacImageListingUnparseable { detail: d } =>
       exit_failure(reason: concat("mtcollins1 media attach: the images listing was not valid JSON, which is a protocol failure rather than the stale-cache case above: ", d))
     MegaRacImageNotEnumerated { image_name: n } =>
-      exit_failure(reason: concat("mtcollins1 media attach: the image is not presented, and the controller offers other images but not '", n as String, "' — so it is absent from the share as the controller sees it, rather than already in use"))
+      exit_failure(reason: concat("mtcollins1 media attach: the image is not presented, and the controller offers other images but not '", n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file"))
+    MegaRacRefreshedAndAttached { image_name: _, image_index: _, detached: _ } => ExitSuccess
+    MegaRacForeignImagePresented { image_name: n } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the controller is presenting '", n, "', which is not a census image of this lane; it is not this workflow's to stop, so nothing was written"))
+    MegaRacSeveralImagesPresented { configurations: c } =>
+      exit_failure(reason: concat("mtcollins1 media attach: more than one census image is presented at once, a state never observed on this single-CD unit; nothing was written: ", c))
+    MegaRacStaleDetachNotAdmitted { stale_image: n, reason: why } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))))
+    MegaRacStaleDetachUnconfirmed { stale_image: n, configurations: c } =>
+      exit_failure(reason: concat("mtcollins1 media attach: stop-media was sent for the stale census image '", concat(n, concat("' but the configurations read-back does not show it gone, so nothing was attached: ", c))))
+    MegaRacRedirectionUncatalogued { image_name: n, wire: w } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the row presenting '", concat(n, concat("' reports redirection_status ", concat(to_string(w), ", which is uncatalogued for this firmware; refusing before any power action (boot run 36330382023 powered on over status 16 and fell to the UEFI shell)")))))
+    MegaRacRefreshClockUnreadable { detail: d } =>
+      exit_failure(reason: concat("mtcollins1 media attach: the clock could not be read, so the re-enumeration window could not be declared or judged: ", d))
+    MegaRacNotEnumeratedAfterRefresh { image_name: n, standing: _ } =>
+      exit_failure(reason: concat("mtcollins1 media attach: NotEnumeratedAfterRefresh: the stale image was stopped and '", concat(n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file")))
     MegaRacAttachUnconfirmed { image_name: n, configurations: c } =>
       exit_failure(reason: concat("mtcollins1 media attach: start-media was accepted but configurations does not yet name '", n as String, "'; the mount daemon is asynchronous so this may be pending: ", c))
   }
@@ -145,10 +175,38 @@ fn mtcollins1_attach_diskless_image(
               cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
               image_name: subject.image_name,
               firmware: mtcollins1_firmware,
+              policy: MegaRacReplacementPolicy {
+                replaceable_seeded_stem: mtcollins1_census_image_stem,
+                detach: mtcollins1_detach_admission(
+                  power: mtcollins1_boot_chassis_power(username: username, password_file: password_file as NonEmptyStr),
+                ),
+              },
             )
           )
         }
     }
+  }
+}
+
+// THE DETACH ADMISSION IS ESTABLISHED HERE, from the two facts only this layer holds. The hold:
+// this function refuses above unless its UnitHoldProof names the unit's live hold, and the generic
+// operation is admit_callers-sealed to this function, so no admission reaches the controller from
+// a caller that does not hold the unit. The power: read over IPMI before the session, and only an
+// observed OFF admits. On, undecodable and unreadable all refuse, because stop-media
+// withdraws the medium a running host reads its root from. Under the hold nothing else
+// may power the unit, which is what lets one reading taken before the session stand for the
+// session. The reading is consumed only if a destructive step is needed: the desired image already
+// presented is a no-op whatever the power.
+fn mtcollins1_detach_admission(power: ChassisPowerObservation) -> MegaRacDetachAdmission {
+  match power {
+    ChassisPowerRead { power_on: on } =>
+      if on {
+        MegaRacDetachNotAdmitted { reason: "the host is powered on; stopping the medium would withdraw what it may be running from" }
+      } else {
+        MegaRacDetachAdmitted
+      }
+    other =>
+      MegaRacDetachNotAdmitted { reason: concat("chassis power was not observed off: ", chassis_observation_text(observation: other)) as NonEmptyStr }
   }
 }
 

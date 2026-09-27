@@ -20,7 +20,7 @@ import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_drive_handoff, mtcol
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff, oob_power_action_after_confirmed_selection, oob_power_actuate_and_read_back, OobPowerUp }
-import gunbc.machine_intake_megarac_media_attach { megarac_attach_remote_image }
+import gunbc.machine_intake_megarac_media_attach { MegaRacDetachAdmitted, MegaRacReplacementPolicy, megarac_attach_remote_image }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
 
 fn forged_proof() -> UnitHoldProof {
@@ -78,7 +78,7 @@ fn bundle_chassis_read_from_outside_the_hold() -> String {
 }
 
 fn attach_through_the_generic_megarac_route_from_outside() -> String {
-  let _x = megarac_attach_remote_image(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", cookie_jar: "/tmp/jar", image_name: "x.iso", firmware: mtcollins1_firmware)
+  let _x = megarac_attach_remote_image(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", cookie_jar: "/tmp/jar", image_name: "x.iso", firmware: mtcollins1_firmware, policy: MegaRacReplacementPolicy { replaceable_seeded_stem: "x", detach: MegaRacDetachAdmitted })
   ""
 }
 
