@@ -54,7 +54,7 @@ import extdeps.auth.oidc {
   OidcLoginScope, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label,
 }
 import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
-import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.uri { uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import extdeps.entropy { Urandom }
 import extdeps.clock { Clock }
 import extdeps.http.client
@@ -2336,7 +2336,7 @@ fn auth_callback_exchange(instance: HostDashboardInstance, transaction: OidcLogi
 }
 
 fn auth_callback_exchange_configured(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
-  let code = uri_query_param(path: path, key: "code")
+  let code = uri_percent_decode_component(value: uri_query_param(path: path, key: "code"))
   if code == "" {
     serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback carries no code\n")
   } else {
