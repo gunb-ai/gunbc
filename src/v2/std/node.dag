@@ -240,6 +240,8 @@ type EdgeDiscipline
 
   | PositionalPrefixThenLabeledEdges
 
+  | PositionalPlusOneNamedEdges
+
 // 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
 // ^dag_token_int_literal via ^integer_literal_magnitude_field) —
 // atom_connective_edge_discipline(child_count) is the single authority (NoEdges when
@@ -753,6 +755,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
     PositionalPrefixThenLabeledEdges => positional_prefix_then_labeled_conform(children: children)
+    PositionalPlusOneNamedEdges => (count(children) - positional_child_count(children: children)) <= 1
   }
 }
 
@@ -844,7 +847,7 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
-      edges_conform(children: children, d: PositionalPrefixThenLabeledEdges) && (positional_child_count(children: children) == 3)
+      edges_conform(children: children, d: PositionalPlusOneNamedEdges) && (positional_child_count(children: children) == 3)
     Match =>
       edges_conform(children: children, d: PositionalEdges)
         && (positional_child_count(children: children) >= 2)
@@ -884,7 +887,7 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
     Transform => PositionalPrefixThenLabeledEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
-    Bind => PositionalPrefixThenLabeledEdges
+    Bind => PositionalPlusOneNamedEdges
     Match => PositionalEdges
   }
 }
@@ -969,10 +972,12 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
 }
 
 // A TRANSFORM'S OR BIND'S CANONICAL ORDER: its positional children in order, then its named edges
-// sorted by label. A Transform's named edges are either one v2.std.type_binder marker (a cast's
-// target) or an application's named actuals; a Bind's is at most its let annotation
-// (positional_prefix_then_labeled_conform states the shape; v2.std.type_binder
-// type_binder_labels_conform states which labels, and forbids a Transform mixing marker and actuals).
+// sorted by label. Their SHAPES differ, because their contracts do. A Transform's named edges are
+// either one v2.std.type_binder marker (a cast's target) or an application's named actuals, and an
+// application's positional order carries meaning, so no positional edge may follow a named one
+// (positional_prefix_then_labeled_conform). A Bind carries at most one named edge, its let
+// annotation, and where it stands is free (PositionalPlusOneNamedEdges): a marker has no slot to
+// misplace. v2.std.type_binder type_binder_labels_conform states which labels each admits.
 // Positional order is identity-bearing, so it is kept; named edges bind by label, so where a producer
 // placed them cannot move the content hash: f(a: 1, b: 2) and f(b: 2, a: 1) are one node, and
 // f(1, 2) and f(2, 1) stay two.
@@ -1015,6 +1020,7 @@ fn canonicalize_labeled_for_content_hash<T>(
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
     PositionalPrefixThenLabeledEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
+    PositionalPlusOneNamedEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
   }
 }
 

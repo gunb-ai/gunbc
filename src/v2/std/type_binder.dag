@@ -286,8 +286,8 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
 }
 
 // A BIND'S NAMED EDGE IS ITS LET ANNOTATION AND NOTHING ELSE: every Named edge on a Bind carries the
-// <type-annotation> marker, and v2.std.node's shape (distinct labels after the positionals) makes that
-// at most one.
+// <type-annotation> marker, and v2.std.node's shape for a Bind (PositionalPlusOneNamedEdges) makes that
+// at most one, wherever it stands.
 fn bind_named_labels_conform(n: Node) -> Bool {
   fold(n.children, init: true, f: fn(acc, e) {
     match e.label {
