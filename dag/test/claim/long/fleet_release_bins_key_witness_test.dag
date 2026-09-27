@@ -1,0 +1,347 @@
+module test.claim.long.fleet_release_bins_key_witness
+
+import std.types { String, List, Bool }
+import v2.std.node { Node }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.output_policy { ExpectFailure }
+import gunbc.ci_release_bins { ci_floor_required_artifact_names }
+import gunbc.fleet_release_bins_key {
+  lit, var, words, cmd, cmdl, assign_sub, test_words, seq,
+  release_bins_emitted, release_bins_transport,
+  release_bins_key_statements, release_bins_pack_statements, release_bins_outcome_statements,
+  release_bins_consumer_statements, release_bins_main_lookup_ref, lookup_decode_statements,
+  release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
+  release_bins_preimage_name,
+}
+import gunbc.ci_spec { ci_release_bins_archive_name }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign, bash_build_with_redir_to_file, bash_build_and_then, bash_build_word_cmdsubst,
+  bash_build_if_else, bash_build_stmt_list_from_nodes,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RETAINED EXECUTING CONTROLS for gunbc.fleet_release_bins_key (review 5332304117). Each claim runs
+// the SAME runner statements the fleet-converge workflow runs -- emitted by v2.workflow.bash_emit and
+// handed to bash through release_bins_transport -- after a hermetic fixture: a temporary git checkout,
+// fake rustc/cargo/cc/ld/ldd on PATH, and fake pack members. Nothing downloaded is executed and
+// nothing outside the fixture's temporary directory is written. Each refusal claim is paired with a
+// positive over the same fixture, and asserts the refusal BY NAME, so a claim cannot go green through
+// a different refusal than the one it exists to exercise. Offline-local (test/claim/long), not the
+// per-PR floor: the claims execute bash, tar, git, jq and sha256sum on the host.
+
+fn fx(t: String) -> Node { lit(t: t) }
+
+fn in_t(path: String) -> Node { words(ws: [var(n: "T"), lit(t: path)]) }
+
+fn write_file(path: Node, lines: List<String>) -> Node {
+  bash_build_with_redir_to_file(inner: cmd(ws: concat([fx(t: "printf"), fx(t: "%s\\n")], map(lines, l => fx(t: l)))), path: path)
+}
+
+fn fake_tool(name: String, lines: List<String>) -> List<Node> {
+  [
+    write_file(path: in_t(path: join(["/bin/", name], "")), lines: concat(["#!/bin/sh"], lines)),
+    cmd(ws: [fx(t: "chmod"), fx(t: "+x"), in_t(path: join(["/bin/", name], ""))]),
+  ]
+}
+
+// The fixture: every variable the runners read, refused-override names cleared so the host running
+// the claim cannot leak them in, and a committed tree with fake members in target/release.
+fn fixture() -> List<Node> {
+  seq(parts: [
+    [
+      assign_sub(name: "T", body: cmdl(ls: ["mktemp", "-d"])),
+      cmdl(ls: ["unset", "RUSTC", "RUSTC_WORKSPACE_WRAPPER", "RUSTC_WRAPPER", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"]),
+      cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/bin"), in_t(path: "/rt"), in_t(path: "/ws/target/release")]),
+      cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RUNNER_TEMP="), in_t(path: "/rt")])]),
+      cmd(ws: [fx(t: "export"), words(ws: [fx(t: "GITHUB_OUTPUT="), in_t(path: "/rt/output")])]),
+      cmd(ws: [fx(t: "export"), words(ws: [fx(t: "GITHUB_ENV="), in_t(path: "/rt/env")])]),
+      cmd(ws: [fx(t: "touch"), in_t(path: "/rt/output"), in_t(path: "/rt/env")]),
+      cmdl(ls: ["export", "GITHUB_REF=refs/heads/main", "GITHUB_RUN_ID=1", "GITHUB_RUN_ATTEMPT=1"]),
+      cmd(ws: [fx(t: "export"), words(ws: [fx(t: "CARGO_BIN="), in_t(path: "/bin/cargo")])]),
+      cmd(ws: [fx(t: "export"), words(ws: [fx(t: "PATH="), in_t(path: "/bin:"), var(n: "PATH")])]),
+    ],
+    fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (fixture)'", "echo 'host: aarch64-unknown-linux-gnu'"]),
+    fake_tool(name: "cargo", lines: ["echo 'cargo 1.93.0 (fixture)'"]),
+    fake_tool(name: "cc", lines: ["echo 'cc (fixture) 14'"]),
+    fake_tool(name: "ld", lines: ["echo 'GNU ld (fixture) 2.44'"]),
+    fake_tool(name: "ldd", lines: ["echo 'ldd (fixture) 2.41'"]),
+    [
+      cmd(ws: [fx(t: "cd"), in_t(path: "/ws")]),
+      cmdl(ls: ["git", "init", "-q"]),
+      write_file(path: fx(t: "src.txt"), lines: ["fixture source"]),
+      cmdl(ls: ["git", "add", "src.txt"]),
+      cmdl(ls: ["git", "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture", "commit", "-qm", "fixture"]),
+    ],
+    seq(parts: map(ci_floor_required_artifact_names(), m => [
+      write_file(path: fx(t: join(["target/release/", m], "")), lines: ["#!/bin/sh", join(["# fixture member ", m], ""), "exit 0"]),
+      cmd(ws: [fx(t: "chmod"), fx(t: "+x"), fx(t: join(["target/release/", m], ""))]),
+    ])),
+  ])
+}
+
+fn export_key() -> Node {
+  bash_build_and_then(
+    left: bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key")),
+    right: cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RELEASE_BINS_KEY="), bash_build_word_cmdsubst_file(path: in_t(path: "/key"))])]),
+  )
+}
+
+fn bash_build_word_cmdsubst_file(path: Node) -> Node {
+  bash_build_word_cmdsubst(body: cmd(ws: [fx(t: "cat"), path]))
+}
+
+// Produce: key, then pack the fixture members, then keep the entry as the store.
+fn produced_store() -> List<Node> {
+  seq(parts: [
+    fixture(),
+    release_bins_key_statements(),
+    [export_key()],
+    release_bins_pack_statements(),
+    [cmd(ws: [fx(t: "cp"), fx(t: "-r"), fx(t: release_bins_staging_dir), in_t(path: "/store")])],
+  ])
+}
+
+// Repack the stored archive after `edit` (statements run with the members extracted in $T/re).
+fn repack(edit: List<Node>, names: List<String>) -> List<Node> {
+  seq(parts: [
+    [
+      cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/re")]),
+      cmd(ws: [fx(t: "tar"), fx(t: "-xzf"), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: "-C"), in_t(path: "/re")]),
+    ],
+    edit,
+    [cmd(ws: concat([fx(t: "tar"), fx(t: "-czf"), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: "-C"), in_t(path: "/re")], map(names, n => fx(t: n))))],
+  ])
+}
+
+fn restore_after(mutation: List<Node>) -> List<Node> {
+  seq(parts: [
+    produced_store(),
+    mutation,
+    [
+      cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: release_bins_staging_dir), fx(t: "target")]),
+      cmd(ws: [fx(t: "cp"), fx(t: "-r"), in_t(path: "/store"), fx(t: release_bins_staging_dir)]),
+      cmdl(ls: ["export", "LOOKUP_STANDING=present", "LOOKUP_ENTRY=fixture", "CACHE_HIT=true"]),
+    ],
+    release_bins_outcome_statements(),
+  ])
+}
+
+fn consume_after(mutation: List<Node>) -> List<Node> {
+  seq(parts: [
+    produced_store(),
+    mutation,
+    [
+      cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: "target")]),
+      cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: ".")]),
+    ],
+    release_bins_consumer_statements(),
+  ])
+}
+
+fn run_script(statements: List<Node>) -> ShellRun {
+  match release_bins_transport(outcome: release_bins_emitted(statements: statements)) {
+    Present { value: script } => {
+      let r = shell.Exec.Run(script: script, expect: ExpectFailure)
+      ShellRun { ran: true, success: r.success, stdout: r.stdout }
+    }
+    Absent => ShellRun { ran: false, success: false, stdout: "" }
+  }
+}
+
+type ShellRun { ran: Bool, success: Bool, stdout: String }
+
+fn refused_as(statements: List<Node>, refusal: String) -> Bool {
+  let r = run_script(statements: statements)
+  r.ran && !r.success && string_contains(s: r.stdout, pattern: join(["title=release-bins ", refusal, "::"], ""))
+}
+
+fn succeeded_with(statements: List<Node>, marker: String) -> Bool {
+  let r = run_script(statements: statements)
+  r.ran && r.success && string_contains(s: r.stdout, pattern: marker)
+}
+
+// ── P1-1: a malformed manifest line cannot hide an altered member ──────────────────────────────
+data malformed_gunbc_line_edit: String = "s/^[0-9a-f]{64}  gunbc$/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  gunbc/"
+
+fn malformed_line_and_altered_gunbc() -> List<Node> {
+  concat(
+    [cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), fx(t: malformed_gunbc_line_edit), in_t(path: join(["/store/", release_bins_manifest_name], ""))])],
+    repack(edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])], names: ci_floor_required_artifact_names()),
+  )
+}
+
+test fn release_bins_restore_positive_promotes_verified_members() -> Bool {
+  succeeded_with(statements: restore_after(mutation: []), marker: "ReleaseBinsReuseReceipt")
+}
+
+test fn release_bins_consumer_positive_promotes_verified_members() -> Bool {
+  succeeded_with(statements: consume_after(mutation: []), marker: "")
+}
+
+test fn release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses() -> Bool {
+  refused_as(statements: restore_after(mutation: malformed_line_and_altered_gunbc()), refusal: "ManifestMalformed")
+}
+
+test fn release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses() -> Bool {
+  refused_as(statements: consume_after(mutation: malformed_line_and_altered_gunbc()), refusal: "ManifestMalformed")
+}
+
+test fn release_bins_RED_restore_altered_member_with_valid_manifest_refuses() -> Bool {
+  refused_as(
+    statements: restore_after(mutation: repack(edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])], names: ci_floor_required_artifact_names())),
+    refusal: "MemberDigestMismatch",
+  )
+}
+
+// ── P1-2: the pack is exactly the roster of self-contained executable regular files ─────────────
+fn symlinked_gunbc_with_matching_digest() -> List<Node> {
+  concat(
+    repack(
+      edit: [
+        write_file(path: in_t(path: "/outside"), lines: ["outside the pack"]),
+        cmd(ws: [fx(t: "rm"), in_t(path: "/re/gunbc")]),
+        cmd(ws: [fx(t: "ln"), fx(t: "-s"), in_t(path: "/outside"), in_t(path: "/re/gunbc")]),
+      ],
+      names: ci_floor_required_artifact_names(),
+    ),
+    [
+      bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sha256sum"), in_t(path: "/outside")]), path: in_t(path: "/outside.sum")),
+      assign_sub(name: "OUTSIDE_SUM", body: cmd(ws: [fx(t: "cut"), fx(t: "-c"), fx(t: "1-64"), in_t(path: "/outside.sum")])),
+      cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), words(ws: [fx(t: "s/^[0-9a-f]{64}  gunbc$/"), var(n: "OUTSIDE_SUM"), fx(t: "  gunbc/")]), in_t(path: join(["/store/", release_bins_manifest_name], ""))]),
+    ],
+  )
+}
+
+test fn release_bins_RED_restore_symlink_member_refuses() -> Bool {
+  refused_as(statements: restore_after(mutation: symlinked_gunbc_with_matching_digest()), refusal: "MemberNotRegularFile")
+}
+
+test fn release_bins_RED_consumer_symlink_member_refuses() -> Bool {
+  refused_as(statements: consume_after(mutation: symlinked_gunbc_with_matching_digest()), refusal: "MemberNotRegularFile")
+}
+
+fn extra_member() -> List<Node> {
+  repack(
+    edit: [write_file(path: in_t(path: "/re/extra"), lines: ["#!/bin/sh"]), cmd(ws: [fx(t: "chmod"), fx(t: "+x"), in_t(path: "/re/extra")])],
+    names: concat(ci_floor_required_artifact_names(), ["extra"]),
+  )
+}
+
+fn duplicate_member() -> List<Node> {
+  repack(edit: [], names: concat(ci_floor_required_artifact_names(), ["gunbc"]))
+}
+
+test fn release_bins_RED_restore_extra_member_refuses() -> Bool {
+  refused_as(statements: restore_after(mutation: extra_member()), refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_consumer_extra_member_refuses() -> Bool {
+  refused_as(statements: consume_after(mutation: extra_member()), refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_restore_duplicate_member_refuses() -> Bool {
+  refused_as(statements: restore_after(mutation: duplicate_member()), refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_consumer_duplicate_member_refuses() -> Bool {
+  refused_as(statements: consume_after(mutation: duplicate_member()), refusal: "PackListingNotRoster")
+}
+
+// ── P2-3: only a complete, admitted-shape cache-API answer decides standing ─────────────────────
+fn decode_main_answer(body: String) -> List<Node> {
+  seq(parts: [
+    fixture(),
+    release_bins_key_statements(),
+    [export_key()],
+    [
+      cmdl(ls: ["export", "STANDING=absent", "ENTRY=none"]),
+      bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", body]), path: fx(t: release_bins_lookup_file(r: release_bins_main_lookup_ref()))),
+    ],
+    lookup_decode_statements(r: release_bins_main_lookup_ref()),
+    [cmd(ws: [fx(t: "echo"), words(ws: [fx(t: "decoded standing="), var(n: "STANDING")])])],
+  ])
+}
+
+
+test fn release_bins_lookup_valid_empty_answer_is_absence() -> Bool {
+  succeeded_with(statements: decode_main_answer(body: "{\"total_count\":0,\"actions_caches\":[]}"), marker: "decoded standing=absent")
+}
+
+test fn release_bins_RED_lookup_count_without_rows_refuses() -> Bool {
+  refused_as(statements: decode_main_answer(body: "{\"total_count\": 1}"), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_truncated_answer_refuses() -> Bool {
+  refused_as(statements: decode_main_answer(body: "{\"total_count\": 1,"), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_count_disagreeing_with_rows_refuses() -> Bool {
+  refused_as(statements: decode_main_answer(body: "{\"total_count\": 1, \"actions_caches\": []}"), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_wrong_shape_row_refuses() -> Bool {
+  refused_as(statements: decode_main_answer(body: "{\"total_count\":1,\"actions_caches\":[{\"x\":{\"key\":\"k\"},\"key\":5,\"ref\":\"refs/heads/main\"}]}"), refusal: "LookupAnswerUnusable")
+}
+
+// ── P2-4: the effective build environment is keyed or refused ──────────────────────────────────
+fn key_twice(first: List<Node>, second: List<Node>) -> List<Node> {
+  seq(parts: [
+    fixture(),
+    first,
+    release_bins_key_statements(),
+    [bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key1"))],
+    [cmd(ws: [fx(t: "cp"), fx(t: "/dev/null"), var(n: "GITHUB_OUTPUT")])],
+    second,
+    release_bins_key_statements(),
+    [bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key2"))],
+    [bash_build_if_else_cmp()],
+  ])
+}
+
+fn bash_build_if_else_cmp() -> Node {
+  bash_build_if_else(
+    cond: cmd(ws: [fx(t: "cmp"), fx(t: "-s"), in_t(path: "/key1"), in_t(path: "/key2")]),
+    then_body: bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: ["echo", "keys equal"])]),
+    else_body: bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: ["echo", "keys differ"])]),
+  )
+}
+
+test fn release_bins_unchanged_inputs_key_equally() -> Bool {
+  succeeded_with(statements: key_twice(first: [], second: []), marker: "keys equal")
+}
+
+test fn release_bins_release_opt_level_override_changes_the_key() -> Bool {
+  succeeded_with(
+    statements: key_twice(
+      first: [cmdl(ls: ["export", "CARGO_PROFILE_RELEASE_OPT_LEVEL=0"])],
+      second: [cmdl(ls: ["export", "CARGO_PROFILE_RELEASE_OPT_LEVEL=3"])],
+    ),
+    marker: "keys differ",
+  )
+}
+
+test fn release_bins_RED_compiler_override_refuses() -> Bool {
+  refused_as(statements: concat(fixture(), concat([cmdl(ls: ["export", "RUSTC=/usr/bin/rustc"])], release_bins_key_statements())), refusal: "BuildOverrideNotAdmitted")
+}
+
+test fn release_bins_RED_ancestor_cargo_config_refuses() -> Bool {
+  refused_as(
+    statements: concat(fixture(), concat([
+      cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/.cargo")]),
+      cmd(ws: [fx(t: "touch"), in_t(path: "/.cargo/config.toml")]),
+    ], release_bins_key_statements())),
+    refusal: "AncestorCargoConfigPresent",
+  )
+}
+
+// ── Producer status: a producer that prints part of its output and then fails stops the key ────
+test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() -> Bool {
+  let r = run_script(statements: seq(parts: [
+    fixture(),
+    fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (partial'", "exit 1"]),
+    release_bins_key_statements(),
+  ]))
+  r.ran && !r.success && !string_contains(s: r.stdout, pattern: "release-bins request key")
+}

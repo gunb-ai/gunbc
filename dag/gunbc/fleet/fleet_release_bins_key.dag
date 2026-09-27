@@ -4,6 +4,8 @@ import std.types { String, List, Bool, Int, list_length }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
+import extdeps.shell.exec { TransportScript, transport_script_seal }
+import v2.std.optional { Present, Absent }
 import std.algebra { Empty }
 import extdeps.tools.jq {
   JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,
@@ -774,13 +776,17 @@ type ReleaseBinsLookupRef {
   jq_ref_expression: String
 }
 
+fn release_bins_main_lookup_ref() -> ReleaseBinsLookupRef {
+  ReleaseBinsLookupRef {
+    tag: "main",
+    url_ref: lit(t: release_bins_admitted_producer_ref),
+    jq_ref_expression: join(["\"", release_bins_admitted_producer_ref, "\""], ""),
+  }
+}
+
 fn release_bins_lookup_refs() -> List<ReleaseBinsLookupRef> {
   [
-    ReleaseBinsLookupRef {
-      tag: "main",
-      url_ref: lit(t: release_bins_admitted_producer_ref),
-      jq_ref_expression: join(["\"", release_bins_admitted_producer_ref, "\""], ""),
-    },
+    release_bins_main_lookup_ref(),
     ReleaseBinsLookupRef { tag: "dispatch", url_ref: var(n: "GITHUB_REF"), jq_ref_expression: "$ENV.GITHUB_REF" },
   ]
 }
@@ -805,7 +811,10 @@ fn release_bins_script_accepted_plan(plan: Outcome<JqAdmittedProcessPlan>) -> Bo
 }
 
 fn lookup_ref_statements(r: ReleaseBinsLookupRef) -> List<Node> {
-  [
+  concat([lookup_fetch_statement(r: r)], lookup_decode_statements(r: r))
+}
+
+fn lookup_fetch_statement(r: ReleaseBinsLookupRef) -> Node {
     or_refuse(
       check: cmd(ws: [
         lit(t: "curl"), lit(t: "-sSf"),
@@ -819,7 +828,13 @@ fn lookup_ref_statements(r: ReleaseBinsLookupRef) -> List<Node> {
         lit(t: "-o"), rooted(file: release_bins_lookup_file(r: r)),
       ]),
       r: LookupTransportFailed,
-    ),
+    )
+}
+
+// The decode half reads the answer file the fetch wrote; it is split out so the retained controls
+// run the emitted decoder against fixture answers with no network.
+fn lookup_decode_statements(r: ReleaseBinsLookupRef) -> List<Node> {
+  [
     or_refuse(
       check: bash_build_with_redir_to_file(
         inner: cmd(ws: release_bins_jq_words(plan: release_bins_lookup_plan(r: r))),
@@ -968,6 +983,17 @@ fn release_bins_consumer_statements() -> List<Node> {
 // no script.
 fn release_bins_emitted(statements: List<Node>) -> Outcome<String> {
   bash_emit_stmts(statements: statements, set_e: true)
+}
+
+// THE ONE ROUTE FROM A RELEASE-BINS RUNNER TO A TransportScript, admitted by name in
+// extdeps.shell.exec transport_script_seal. It takes the fold's Outcome, so only text bash_emit
+// actually produced can reach a shell through it, and a refusal is Absent, never an empty script.
+// Its consumer is the retained executing controls, which run the same runners the workflow runs.
+fn release_bins_transport(outcome: Outcome<String>) -> TransportScript? {
+  match outcome {
+    Accepted { value: v, diagnostics: _ } => Present { value: transport_script_seal(body: v) }
+    Rejected { diagnostics: _ } => Absent
+  }
 }
 
 fn release_bins_script_text(outcome: Outcome<String>) -> String {
