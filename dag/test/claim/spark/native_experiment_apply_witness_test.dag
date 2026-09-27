@@ -9,6 +9,7 @@ import gunbc.spark.native_experiment_apply {
   spark_native_experiment_actuation_dry, spark_native_experiment_profile_anchor,
   spark_native_experiment_rank_profile_anchor,
   spark_churn_window_seconds, spark_allocator_sample_cadence_seconds, spark_seat_window_tokens,
+  spark_active_workload_variant, spark_workload_mode_wire,
 }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.serving_arm {
@@ -184,7 +185,7 @@ test fn w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures() -
       match workload {
         Absent => false
         Present { value: phase } =>
-          let seat_count = length(arm_experiment_kvplan_v2_2026_09_26_workload().cold_sequence_budgets)
+          let seat_count = phase.variant.seat_count
           let context_window = token_count_value(t: arm_experiment_kvplan_v2_2026_09_26_policy_profile().max_model_len)
           let seat_window = match spark_seat_window_tokens(context_window: context_window) {
             Present { value: w } => w
@@ -205,6 +206,8 @@ test fn w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures() -
             && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: admitted)
             && phase.sample_cadence_seconds == spark_allocator_sample_cadence_seconds
             && admitted == arm_memory_experiment_runtime_seconds()
+            && (phase.variant.name as String) == (spark_active_workload_variant as String)
+            && string_contains(s: spark_native_experiment_actuation_dry(), pattern: join(["variant=", phase.variant.name as String, " seats=", to_string(phase.variant.seat_count)], ""))
       }
   }
 }

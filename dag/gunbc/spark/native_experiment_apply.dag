@@ -257,40 +257,115 @@ fn spark_seat_window_tokens(context_window: Nat) -> Nat? {
   }
 }
 
+// ── THE WORKLOAD VARIANTS, from the liveness matrix ──────────────────────────────────────────────
+//
+// THE REPRO MATRIX'S EXECUTABLE FORM. gunbc.spark.arm_memory_experiment_observed
+// arm_experiment_2026_09_27_liveness_repro_matrix names five variants discriminating the axes of
+// the sixth-seat hang; the registry below is that table's structured spelling — every value quoted
+// from the matrix row or the interim runbook, pinned by the witnesses against the rows themselves,
+// never a parallel authority. The axes: seat count (six the intent, five the interim occupancy the
+// 2026-09-27 run proved safe), the targeted prefill window (the full 262144, or 65536 separating
+// length from occupancy), the execution mode (concurrent, or sequential separating concurrency
+// from occupancy), and the stall watchdog (variant e, which the matrix says must ride every
+// hanging run). WHICH VARIANT RUNS is the operator's per-run call, spelled as one named row the
+// parent flips between wet runs; the default is variant a, the deterministic repro the parent runs
+// on landing. The budget arithmetic never reads the variant: window, cadence, and bounds are the
+// plan's own, unchanged by which axis the run discriminates.
+type SparkWorkloadExecutionMode
+  = SparkSeatsConcurrent
+  | SparkSeatsSequential
+
+type SparkWorkloadVariant {
+  name: NonEmptyStr
+  seat_count: Nat
+  window_tokens: Nat
+  mode: SparkWorkloadExecutionMode
+  watchdog: Bool
+}
+
+data spark_workload_variants: List<SparkWorkloadVariant> = [
+  SparkWorkloadVariant {
+    name: "a-repro-six-full-window" as NonEmptyStr,
+    seat_count: 6,
+    window_tokens: 262144,
+    mode: SparkSeatsConcurrent,
+    watchdog: false,
+  },
+  SparkWorkloadVariant {
+    name: "b-five-concurrent-full-window" as NonEmptyStr,
+    seat_count: 5,
+    window_tokens: 262144,
+    mode: SparkSeatsConcurrent,
+    watchdog: false,
+  },
+  SparkWorkloadVariant {
+    name: "c-six-concurrent-short-window" as NonEmptyStr,
+    seat_count: 6,
+    window_tokens: 65536,
+    mode: SparkSeatsConcurrent,
+    watchdog: false,
+  },
+  SparkWorkloadVariant {
+    name: "d-six-sequential-full-window" as NonEmptyStr,
+    seat_count: 6,
+    window_tokens: 262144,
+    mode: SparkSeatsSequential,
+    watchdog: false,
+  },
+  SparkWorkloadVariant {
+    name: "e-stall-captured-six-full-window" as NonEmptyStr,
+    seat_count: 6,
+    window_tokens: 262144,
+    mode: SparkSeatsConcurrent,
+    watchdog: true,
+  },
+]
+
+// THE ACTIVE VARIANT, one named row the parent flips per wet run; default a, the repro.
+data spark_active_workload_variant: NonEmptyStr = "a-repro-six-full-window" as NonEmptyStr
+
+fn spark_workload_variant_named(name: NonEmptyStr) -> SparkWorkloadVariant? {
+  first(filter(spark_workload_variants, v => v.name == name))
+}
+
+fn spark_active_workload_variant_value() -> SparkWorkloadVariant? {
+  spark_workload_variant_named(name: spark_active_workload_variant)
+}
+
 // THE SEAT WINDOW ADMISSION, at the actuation's plan wall: a memory-profile plan never builds
 // seats, so it is ready with the raw window and the value goes unread below the gate; a
-// fragmentation plan must show a window that holds the margin, and refuses with the arithmetic
-// named when it cannot.
+// fragmentation plan must show a variant window that holds the margin, and refuses with the
+// arithmetic named when it cannot.
 type SparkSeatWindowAdmission
   = SparkSeatWindowReady { seat_window: Nat }
   | SparkSeatWindowRefused { cause: NonEmptyStr }
 
-fn spark_experiment_seat_window(plan: ArmMemoryExperimentPlan) -> SparkSeatWindowAdmission {
+fn spark_experiment_seat_window(plan: ArmMemoryExperimentPlan, variant: SparkWorkloadVariant) -> SparkSeatWindowAdmission {
   if !spark_plan_targets_fragmentation(plan: plan) {
     SparkSeatWindowReady { seat_window: token_count_value(t: plan.profile.max_model_len) }
   } else {
-    let context_window = token_count_value(t: plan.profile.max_model_len)
-    match spark_seat_window_tokens(context_window: context_window) {
+    match spark_seat_window_tokens(context_window: variant.window_tokens) {
       Present { value: w } => SparkSeatWindowReady { seat_window: w }
       Absent =>
         SparkSeatWindowRefused {
           cause: join([
-            "the experiment plan's context window (", to_string(context_window),
-            " tokens) cannot hold one full-window seat: the prefill construction keeps a one-scheduler-block margin (",
+            "the active workload variant '", variant.name as String, "' targets ", to_string(variant.window_tokens),
+            " tokens, which cannot hold one seat: the prefill construction keeps a one-scheduler-block margin (",
             to_string(spark_seat_window_margin_tokens),
-            " tokens) below the window so tokenizer drift can never push a seat past the engine's limit, and this window does not span the margin",
+            " tokens) below the targeted window so tokenizer drift can never push a seat past the engine's limit, and this window does not span the margin",
           ], "") as NonEmptyStr,
         }
     }
   }
 }
 
+
 // THE WORKLOAD PHASE, PLANNED. Present only when the plan targets the fragmentation allowance;
 // every leg runs on the head member (the engine's endpoint is the head's loopback), and each leg's
 // script renders through the realization's own renderer, so the dry entry shows the legs the
 // realization inhabits. Absent everywhere else: the bracket for a memory-profile plan is the bracket
 // that has always run.
-fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionMember>, plan: ArmMemoryExperimentPlan, seat_window: Nat) -> SparkExperimentWorkloadPhase? {
+fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionMember>, plan: ArmMemoryExperimentPlan, variant: SparkWorkloadVariant, seat_window: Nat) -> SparkExperimentWorkloadPhase? {
   if !spark_plan_targets_fragmentation(plan: plan) {
     none
   } else {
@@ -298,10 +373,10 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
       Absent => none
       Present { value: head } =>
         let window = spark_churn_window_seconds(admitted_seconds: plan.max_runtime_seconds)
-        let seats = length(plan.workload.cold_sequence_budgets)
         let context_window = token_count_value(t: plan.profile.max_model_len)
         let alias = plan.profile.served_alias
         Present { value: SparkExperimentWorkloadPhase {
+          variant: variant,
           readiness_gate: SparkExperimentWorkloadLeg {
             member: head,
             plan: SparkPairHostApplyPlan {
@@ -315,7 +390,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: seats, seat_window: seat_window, context_window: context_window),
+              script: systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: match variant.mode { SparkSeatsConcurrent => false  SparkSeatsSequential => true }, watchdog: variant.watchdog),
             },
           },
           churn: SparkExperimentWorkloadLeg {
@@ -323,7 +398,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: seats, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: spark_churn_request_timeout_seconds),
+              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: spark_churn_request_timeout_seconds),
             },
           },
           sampling: SparkExperimentWorkloadLeg {
@@ -402,6 +477,7 @@ type SparkExperimentWorkloadLeg {
 // and cadence ride beside the legs so the dry entry renders the bounds and the witness asserts them
 // without re-deriving.
 type SparkExperimentWorkloadPhase {
+  variant: SparkWorkloadVariant
   readiness_gate: SparkExperimentWorkloadLeg
   prefill_seats: SparkExperimentWorkloadLeg
   churn: SparkExperimentWorkloadLeg
@@ -532,7 +608,10 @@ fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecution
   match spark_head_readback_leg(cohort: cohort, admitted_seconds: plan.max_runtime_seconds) {
     Absent => ArmExperimentActuationRefused { cause: "the cohort admitted no head member, so no head readback leg could be planned: the convergence witness needs the head's log" as NonEmptyStr }
     Present { value: head_readback } =>
-      match spark_experiment_seat_window(plan: plan) {
+      match spark_active_workload_variant_value() {
+        Absent => ArmExperimentActuationRefused { cause: join(["the active workload variant '", spark_active_workload_variant as String, "' is not in the variant registry: the liveness matrix's variants are the only legal spellings, and an unknown name would run a workload nothing discriminates"], "") as NonEmptyStr }
+        Present { value: variant } =>
+      match spark_experiment_seat_window(plan: plan, variant: variant) {
         SparkSeatWindowRefused { cause: c } => ArmExperimentActuationRefused { cause: c }
         SparkSeatWindowReady { seat_window: seat_window } =>
       ArmExperimentActuationAdmitted {
@@ -542,9 +621,10 @@ fn spark_experiment_actuation_admit(cohort: ExecutionCellCohort<SystemdExecution
         activation_actuations: activation_actuations,
         head_readback: head_readback,
         rank_readbacks: spark_rank_readback_legs(cohort: cohort, admitted_seconds: plan.max_runtime_seconds),
-        workload_phase: spark_experiment_workload_phase(cohort: cohort, plan: plan, seat_window: seat_window),
+        workload_phase: spark_experiment_workload_phase(cohort: cohort, plan: plan, variant: variant, seat_window: seat_window),
         stop_legs: map(cohort.members, m => spark_stop_plan_of_member(member: m)),
         admitted_seconds: plan.max_runtime_seconds,
+      }
       }
       }
   }
@@ -808,11 +888,18 @@ fn spark_dry_actuation_line(a: ExecutionCellActuation<SystemdExecutionMember>) -
 // allowance, the workload phase: the prefill seats, the churn driver with its rendered bounds, and
 // the allocator sampler with its cadence, each leg rendered in full so the review reads the exact
 // scripts the wet run would execute. The deterministic stop closes the cell either way.
+fn spark_workload_mode_wire(mode: SparkWorkloadExecutionMode) -> String {
+  match mode {
+    SparkSeatsConcurrent => "concurrent"
+    SparkSeatsSequential => "sequential"
+  }
+}
+
 fn spark_workload_dry_lines(phase: SparkExperimentWorkloadPhase) -> String {
   join([
     "WORKLOAD PHASE (fragmentation-targeted plan: endpoint readiness, cold full-window prefill seats, bounded churn, allocator sampling at the runbook cadence)\n",
     "WORKLOAD ENDPOINT READINESS ", phase.readiness_gate.member.host as String, " ", phase.readiness_gate.plan.unit_name as String, " bounded_seconds=", to_string(phase.readiness_bounded_seconds), "\n", phase.readiness_gate.plan.script, "\n",
-    "WORKLOAD PREFILL SEATS ", phase.prefill_seats.member.host as String, " ", phase.prefill_seats.plan.unit_name as String, "\n", phase.prefill_seats.plan.script, "\n",
+    "WORKLOAD PREFILL SEATS ", phase.prefill_seats.member.host as String, " ", phase.prefill_seats.plan.unit_name as String, " variant=", phase.variant.name as String, " seats=", to_string(phase.variant.seat_count), " window_tokens=", to_string(phase.variant.window_tokens), " mode=", spark_workload_mode_wire(mode: phase.variant.mode), " watchdog=", if phase.variant.watchdog { "armed" } else { "off" }, "\n", phase.prefill_seats.plan.script, "\n",
     "WORKLOAD CHURN ", phase.churn.member.host as String, " ", phase.churn.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " requests_per_client=", to_string(spark_churn_requests_per_seat), " band_floor_tokens=", to_string(spark_churn_band_floor_tokens), "\n", phase.churn.plan.script, "\n",
     "WORKLOAD ALLOCATOR SAMPLING ", phase.sampling.member.host as String, " ", phase.sampling.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " cadence_seconds=", to_string(phase.sample_cadence_seconds), "\n", phase.sampling.plan.script, "\n",
   ], "")
