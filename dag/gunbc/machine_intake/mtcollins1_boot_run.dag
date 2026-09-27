@@ -5,6 +5,7 @@ import std.decl_ref { decl_ref }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
+  LeasePortForeign,
   LeaseAbsent,
   LeaseRunningExpected,
   LeaseRunningStale,
@@ -62,6 +63,7 @@ import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes, mtcollins1_smpro_probe_count }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
@@ -71,6 +73,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   SmproReading, BootParam5Reading, BootParam5NotTaken, MtCollins1BootRunRecord, run_record_not_taken, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
+  BmcReachability, bmc_reachability_text, mtcollins1_boot_bmc_reachability,
   PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
 }
 import std.dissolution { dissolution_description }
@@ -865,17 +868,131 @@ fn mtcollins1_boot_terminal_refusal_text(causes: List<MtCollins1BootTerminalCaus
   concat("mtcollins1 boot: host qualification REFUSED (", join(map(causes, c => mtcollins1_boot_terminal_cause_text(cause: c)), "; "), "); capture preserved; claim will abort, not complete")
 }
 
+// THE CHANNEL THE WATCH READS THROUGH IS ITSELF AN OBSERVATION. The capture file outlives its
+// collector: a dead `ipmitool sol activate` leaves a readable file that simply stops growing, and a
+// watch that reads only the file cannot tell "the host has printed nothing yet" from "nothing is
+// listening any more" -- runs 36333687404 and 36335369059 waited out the whole deadline on a session
+// the BMC had closed about twelve seconds into Linux, then reported "no begin marker". So every tick
+// reads the collector lease we hold (mtcollins1_sol_observed_from_pid_path) and the session's own
+// close line in the capture, and either loss is a typed reading, never a pending one.
+type SolChannelLoss
+  = SolCollectorNotHeld { observed: HeldLeaseObservedState }
+  | SolSessionClosed
+
+type SolChannelReading
+  = SolChannelLive
+  | SolChannelLost { loss: SolChannelLoss }
+
+// ipmitool prints this line when the controller ends the session (upstream lanplus
+// ipmi_sol_red_pill, "SOL session closed by BMC"); the collector exits right after it, but the
+// line can land a poll before the pid does.
+data sol_session_closed_line: String = "SOL session closed"
+
+fn sol_channel_reading(observed: HeldLeaseObservedState, capture: String) -> SolChannelReading {
+  match observed {
+    LeaseRunningExpected =>
+      if string_contains(s: capture, pattern: sol_session_closed_line) {
+        SolChannelLost { loss: SolSessionClosed }
+      } else {
+        SolChannelLive
+      }
+    other => SolChannelLost { loss: SolCollectorNotHeld { observed: other } }
+  }
+}
+
+fn held_lease_observed_text(observed: HeldLeaseObservedState) -> String {
+  match observed {
+    LeaseAbsent => "no collector pid is recorded"
+    LeaseRunningExpected => "the collector is held"
+    LeaseRunningStale => "the recorded collector pid is no longer an ipmitool process"
+    LeasePortForeign => "a foreign process holds the collector's resource"
+    LeaseInaccessible => "the collector pid path is unset"
+  }
+}
+
+fn sol_channel_loss_text(loss: SolChannelLoss) -> String {
+  match loss {
+    SolCollectorNotHeld { observed: o } => concat("SOL collector exited (", held_lease_observed_text(observed: o), ")")
+    SolSessionClosed => "the BMC closed the SOL session"
+  }
+}
+
+// ONE TICK'S DECISION, PURE. The capture's own terminal wins: an accepted or refused envelope is
+// evidence the host produced, and a session closed after it (the census image powers off at END)
+// does not unmake it. Only a PENDING capture is qualified by the channel -- pending over a lost
+// channel is not "still waiting", it is ObservationChannelLost, and the watch stops on it at once.
+type WatchTick
+  = WatchAccepted
+  | WatchRefused { causes: List<MtCollins1BootTerminalCause> }
+  | WatchChannelLost { loss: SolChannelLoss, last: String }
+  | WatchContinue { reason: String }
+
+fn watch_tick(verdict: MtCollins1BootTerminalVerdict, channel: SolChannelReading) -> WatchTick {
+  match verdict {
+    TerminalPending { reason: why } =>
+      match channel {
+        SolChannelLive => WatchContinue { reason: why }
+        SolChannelLost { loss: l } => WatchChannelLost { loss: l, last: why }
+      }
+    TerminalAccepted { run: _, threads: _ } => WatchAccepted
+    TerminalRefused { causes: cs } => WatchRefused { causes: cs }
+  }
+}
+
+// THE LOSS, WITH THE TWO FACTS IT DOES NOT ESTABLISH READ FRESH AND SEPARATELY. Whether the
+// controller still answers and whether the chassis is powered are independent of why the channel
+// went; each is its own read at the moment of loss, never inferred from the other or from the loss.
+type ChannelLostReads
+  = ChannelLostReadsTaken { bmc: BmcReachability, power: ChassisPowerObservation }
+  | ChannelLostReadsNotTaken { reason: NonEmptyStr }
+
+type ObservationChannelLost {
+  loss: SolChannelLoss
+  last: String
+  reads: ChannelLostReads
+}
+
+fn observation_channel_lost_text(lost: ObservationChannelLost) -> String {
+  concat("mtcollins1 boot: ObservationChannelLost: ", sol_channel_loss_text(loss: lost.loss),
+    "; last capture observation: ", lost.last,
+    "; ", match lost.reads {
+      ChannelLostReadsTaken { bmc: b, power: p } => concat(bmc_reachability_text(reading: b), "; chassis power: ", chassis_observation_text(observation: p) as String)
+      ChannelLostReadsNotTaken { reason: r } => concat("BMC reachability and chassis power not read: ", r as String)
+    },
+    "; capture preserved; claim will abort, not complete")
+}
+
+fn mtcollins1_boot_channel_lost(loss: SolChannelLoss, last: String, password_file: String) -> ObservationChannelLost {
+  match mtcollins1_bmc_username {
+    Absent => ObservationChannelLost {
+      loss: loss,
+      last: last,
+      reads: ChannelLostReadsNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" as NonEmptyStr },
+    }
+    Present { value: user } => ObservationChannelLost {
+      loss: loss,
+      last: last,
+      reads: ChannelLostReadsTaken {
+        bmc: mtcollins1_boot_bmc_reachability(username: user, password_file: password_file as NonEmptyStr),
+        power: mtcollins1_boot_chassis_power(username: user, password_file: password_file as NonEmptyStr),
+      },
+    }
+  }
+}
+
 // THE DEADLINE REPORTS WHAT WAS LAST OBSERVED, never a bare "timed out": the final poll's Pending
 // reason -- an unrecognised firmware statement, a loader still trying, a banner, nothing -- is the
 // evidence the run has, and a timeout that discards it is the conflation this verdict exists to end.
 fn mtcollins1_boot_await_capture_terminal(
   remaining: Int,
   capture_path: String,
+  pid_path: String,
   subject: MtCollins1BootSubject,
   password_file: String,
   smpro_census: SmproReading,
 ) -> TerminalWatch {
   let capture = Filesystem.Read(path: capture_path)
+  let channel = sol_channel_reading(observed: mtcollins1_sol_observed_from_pid_path(pid_path: pid_path), capture: if capture.success { capture.content } else { "" })
   let phase = if capture.success { mtcollins1_census_phase(capture: capture.content, subject: subject) } else { CensusPhaseUnread }
   let census_pass = match smpro_census {
     SmproNotTaken { reason: _ } => match phase {
@@ -886,10 +1003,12 @@ fn mtcollins1_boot_await_capture_terminal(
   }
   let ended = match phase { CensusEnded => true _ => false }
   let verdict = if capture.success { mtcollins1_boot_terminal_verdict(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) } else { TerminalPending { reason: "capture unreadable" } }
-  match verdict {
-    TerminalAccepted { run: _, threads: _ } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: census_pass }
-    TerminalRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: census_pass }
-    TerminalPending { reason: why } =>
+  match watch_tick(verdict: verdict, channel: channel) {
+    WatchAccepted => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: census_pass }
+    WatchRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: census_pass }
+    WatchChannelLost { loss: l, last: why } =>
+      TerminalWatch { outcome: exit_failure(reason: observation_channel_lost_text(lost: mtcollins1_boot_channel_lost(loss: l, last: why, password_file: password_file))), census_ended: ended, smpro_census: census_pass }
+    WatchContinue { reason: why } =>
       if remaining <= 0 {
         TerminalWatch { outcome: exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete")), census_ended: ended, smpro_census: census_pass }
       } else {
@@ -897,6 +1016,7 @@ fn mtcollins1_boot_await_capture_terminal(
         mtcollins1_boot_await_capture_terminal(
           remaining: remaining - 1,
           capture_path: capture_path,
+          pid_path: pid_path,
           subject: subject,
           password_file: password_file,
           smpro_census: census_pass,
@@ -942,7 +1062,8 @@ fn mtcollins1_boot_smpro_pass(password_file: String) -> SmproReading {
 
 // THE READS PAID INSIDE THE ACTUATION, beside the terminal ticks rather than out of them, so the step
 // timeout carries them explicitly. Every one runs under the coreutils bound: the two in-run SMpro
-// passes, the two boot parameter 5 reads, and the final-power poll (its samples plus the waits
+// passes, the two boot parameter 5 reads, the two fresh reads a lost SOL channel takes (mc info and
+// chassis status), and the final-power poll (its samples plus the waits
 // between them).
 data mtcollins1_boot_power_after_samples: Int = 6
 
@@ -950,7 +1071,7 @@ data mtcollins1_boot_power_after_interval: Second = second(count: 5)
 
 fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
   let read = (second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)
-  second(count: (2 * mtcollins1_smpro_probe_count() + 2 + mtcollins1_boot_power_after_samples) * read
+  second(count: (2 * mtcollins1_smpro_probe_count() + 2 + 2 + mtcollins1_boot_power_after_samples) * read
     + mtcollins1_boot_power_after_samples * (second_count(s: mtcollins1_boot_power_after_interval) as Int))
 }
 
@@ -1097,6 +1218,7 @@ fn mtcollins1_boot_actuate(
           let watch = mtcollins1_boot_await_capture_terminal(
             remaining: mtcollins1_boot_terminal_tick_budget(),
             capture_path: sol_capture_path,
+            pid_path: sol_pid_path,
             subject: subject,
             password_file: password_file,
             smpro_census: SmproNotTaken { reason: "no poll saw the census envelope open: it never began, or began and ended between polls" },

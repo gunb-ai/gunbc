@@ -25,7 +25,10 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
   HardwareThreadCountMismatch, WorkloadWriteFailed,
   mtcollins1_boot_medium_refusal,
+  SolChannelReading, SolChannelLive, SolChannelLost, SolCollectorNotHeld, SolSessionClosed, sol_channel_reading,
+  WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick,
 }
+import v2.std.operation_argv { operation_argv_tokens_or_refusal_label, operation_argv_bind_text }
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_one_socket_milestone, mtcollins1_boot_topology_expectation, mtcollins1_dual_socket_workload }
 import gunbc.machine_intake_host_capture_envelope { host_capture_workload_total_bytes }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
@@ -38,7 +41,7 @@ import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted,
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
 import std.temporal_effect {
-  LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
+  LeaseAbsent, LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
@@ -785,4 +788,77 @@ test fn an_open_workload_section_refuses_only_on_what_it_has_proven() -> Bool {
     && refused_naming(v: open_verdict(subject: subject, medium: census_medium, lines: "workload-bytes=68719476736\n"), prefix: "workload footprint 68719476736 bytes")
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: closed_no_caps), subject: subject, medium: census_medium),
       texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free unreported, MemAvailable unreported"])
+}
+
+// THE COLLECTOR'S STDIN SUPPLIES ZERO BYTES AND NEVER EOFS, read off the argv the operation
+// materializes -- the one spelling of the hold. /dev/zero typed NULs at the host for every boot it
+// watched; /dev/null exits the client at EOF seconds after activation. Neither may be the collector's
+// stdin; an unlinked read-write fifo held only by ipmitool may. At the parent of this change the
+// first conjunct is red: the argv redirected `< /dev/zero`.
+fn sol_hold_script() -> String {
+  join(operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      "dag/gunbc/machine_intake/sol_hold.dag",
+      "gunbc.machine_intake.sol_hold",
+      "ActivateHeld",
+      [
+        operation_argv_bind_text(name: "bmc_host", text: "bmc"),
+        operation_argv_bind_text(name: "username", text: "user"),
+        operation_argv_bind_text(name: "password_file", text: "/run/pw"),
+        operation_argv_bind_text(name: "capture_path", text: "/run/sol.out"),
+        operation_argv_bind_text(name: "pid_path", text: "/run/sol.pid"),
+      ]
+    )
+  ), "\n")
+}
+
+test fn the_sol_collector_stdin_is_an_open_pipe_that_supplies_zero_bytes() -> Bool {
+  let script = sol_hold_script()
+  !string_contains(s: script, pattern: "/dev/zero")
+    && !string_contains(s: script, pattern: "/dev/null")
+    && string_contains(s: script, pattern: "mkfifo -m 600")
+    && string_contains(s: script, pattern: "exec 3<>")
+    && string_contains(s: script, pattern: "rm -f")
+    && string_contains(s: script, pattern: "sol activate >> \"$4\" 2>&1 <&3 3<&- &")
+}
+
+fn is_channel_lost(t: WatchTick) -> Bool {
+  match t { WatchChannelLost { loss: _, last: _ } => true  _ => false }
+}
+
+// THE COLLECTOR DIES MID-WATCH: the pid it recorded is no longer ipmitool (stale), or no pid is
+// recorded (absent). A pending capture over either is ObservationChannelLost at once, never pending.
+// The BMC closing the session is the same verdict even in the poll before the pid goes.
+test fn a_dead_collector_under_a_pending_capture_is_channel_lost_not_pending() -> Bool {
+  let pending = TerminalPending { reason: "no begin marker for this machine yet" }
+  is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(observed: LeaseRunningStale, capture: "")))
+    && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(observed: LeaseAbsent, capture: "")))
+    && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(observed: LeaseInaccessible, capture: "")))
+    && (match sol_channel_reading(observed: LeaseRunningExpected, capture: "[SOL Session operational.]\nSOL session closed by BMC\n") {
+      SolChannelLost { loss: SolSessionClosed } => true
+      _ => false
+    })
+    && (match watch_tick(verdict: pending, channel: sol_channel_reading(observed: LeaseRunningStale, capture: "")) {
+      WatchChannelLost { loss: SolCollectorNotHeld { observed: LeaseRunningStale }, last: l } => l == "no begin marker for this machine yet"
+      _ => false
+    })
+}
+
+// A LIVE COLLECTOR WITH NO OUTPUT IS PENDING: silence over a held channel is still waiting.
+test fn a_live_collector_with_no_output_is_pending() -> Bool {
+  (match sol_channel_reading(observed: LeaseRunningExpected, capture: "") { SolChannelLive => true  _ => false })
+    && (match watch_tick(verdict: TerminalPending { reason: "capture empty" }, channel: SolChannelLive) {
+      WatchContinue { reason: r } => r == "capture empty"
+      _ => false
+    })
+}
+
+// THE CAPTURE'S OWN TERMINAL STANDS OVER A LOST CHANNEL: the census powers off at END, so a session
+// closed after a refused or accepted envelope does not turn the verdict into a channel loss.
+test fn a_decided_capture_is_not_unmade_by_a_later_channel_loss() -> Bool {
+  let lost = SolChannelLost { loss: SolSessionClosed }
+  (match watch_tick(verdict: TerminalRefused { causes: [WorkloadWriteFailed { rc: "1" }] }, channel: lost) {
+    WatchRefused { causes: _ } => true
+    _ => false
+  })
 }
