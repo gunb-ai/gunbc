@@ -109,6 +109,8 @@ import v2.std.node {
   fold_node,
   match_arm_body,
   match_arm_pattern,
+  arrow_signature_order_label,
+  edge_label_of,
   node_with_occurrence_id,
   well_formed,
 }
@@ -1726,6 +1728,11 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 
 // The Arrow's own <T> binders are checked from the OUTER context: the frame they open must not
 // answer for them, or every binder would read as shadowing itself.
+// THE DECLARED ORDER IS LABELS, NOT REFERENCES. The ^arrow_signature_order_edge's atoms name the
+// domain's binders (v2.std.compilers.body_lowering signature_order_edge); walking them
+// under scope_body would resolve each against a parameter or, spelled like a free name, against the
+// enclosing scope, and a minted anonymous label against nothing. It is carried unwalked; the Arrow
+// wall (v2.std.node arrow_signature_order_conforms) is its check.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
@@ -1736,6 +1743,8 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
       Named { name: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
+        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
             w: acc,
