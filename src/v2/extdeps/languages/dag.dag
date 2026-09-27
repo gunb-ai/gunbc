@@ -2933,20 +2933,8 @@ fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol>
   }
 }
 
-fn dag_surface_sugar_symbol_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
-  grammar_symbol_list_put(
-    m: m,
-    xs: [
-      ^dag_c3_surface_sugar_service,
-      ^dag_c3_surface_sugar_fn,
-      ^dag_c3_surface_sugar_type,
-      ^dag_c3_surface_sugar_operation
-    ]
-  )
-}
-
 fn dag_language_model_surface_prelude_map() -> Map<Symbol, Bool> {
-  dag_surface_sugar_symbol_map(m: lex_rule_set_token_class_map(rules: dag_lex_rules()))
+  lex_rule_set_token_class_map(rules: dag_lex_rules())
 }
 
 fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
@@ -2986,11 +2974,9 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // PointwisePower closure at the consumer; that closure is not the stored value.
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
-    m: dag_surface_sugar_symbol_map(
-      m: lex_rule_set_insert_token_classes(
-        m: grammar_carried_symbol_map(grammar: dag_grammar()),
-        rules: dag_lex_rules()
-      )
+    m: lex_rule_set_insert_token_classes(
+      m: grammar_carried_symbol_map(grammar: dag_grammar()),
+      rules: dag_lex_rules()
     )
   )
 }
