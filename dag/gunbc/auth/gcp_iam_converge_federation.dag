@@ -1,0 +1,67 @@
+module gunbc.auth.gcp_iam_converge_federation
+
+import std.types { List, Map, NonEmptyStr, String }
+import v2.std.optional { Present }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPool, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+
+// ── THE GCP IAM CONVERGE JOB'S OBSERVE FEDERATION ────────────────────────────────────────────
+// The plan must read before anyone approves, so the job needs a credential of its own; it gets the
+// Mt. Collins boot's construction (gunbc.auth.mtcollins1_boot_federation) for the same reasons -- a
+// DEDICATED POOL WITH ONE PROVIDER, the job pinned by its `environment` claim beside the workflow
+// file at main and a dispatch on main, never the repo-wide pool whose principals every job in the
+// repository can become. The accounts it reaches are iam-observe, which reads policies and changes
+// nothing, and iam-converge, which the job impersonates only after a live approval.
+//
+// THIS POOL'S PRINCIPAL SET IS ALSO THE ONE PATH TO iam-converge (operator decision B, 2026-09-25):
+// the bootstrap binds workloadIdentityUser for this set on iam-converge's own policy and on
+// iam-observe's, and on nothing else. Approval-necessity is enforced by the job's reviewed code
+// (gunbc.auth.gcp_iam_converge_run), not by this credential boundary -- the census states that rung
+// (gunbc.auth.privileged_effect_census gcp_iam_approval_enforced_in_reviewed_code). Because the set is
+// the whole pool (`/*`), a second provider in this pool would admit new identities into it, so the
+// pool and its provider are bootstrap-only and outside every population iam-converge can write or
+// create in (gunbc.auth.gcp_iam_converge iam_converge_reach_excludes_its_own_trust).
+
+data gcp_iam_converge_environment: NonEmptyStr = "gcp-iam-converge"
+
+data gcp_iam_observe_wif_pool_id: NonEmptyStr = "github-gcp-iam-converge"
+
+// Under the 32-character ceiling createWorkloadIdentityPool enforces.
+data gcp_iam_observe_wif_pool_display_name: NonEmptyStr = "GCP IAM converge (observe job)"
+
+data gcp_iam_observe_wif_provider_id: NonEmptyStr = "github-gcp-iam-converge-oidc"
+
+fn gcp_iam_observe_claim_pins() -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: gcp_iam_converge_environment)
+}
+
+fn gcp_iam_observe_wif_attribute_condition() -> String {
+  claim_pins_attribute_condition(pins: gcp_iam_observe_claim_pins())
+}
+
+data gcp_iam_observe_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+data gcp_iam_observe_wif_provider: WifProvider = WifProvider {
+  name: gcp_iam_observe_wif_provider_id
+  pool: gcp_iam_observe_wif_pool_id
+  issuer_uri: github_wif_issuer_uri
+  attribute_mapping: Present { value: gcp_iam_observe_wif_attribute_mapping }
+  attribute_condition: Present { value: gcp_iam_observe_wif_attribute_condition() }
+}
+
+fn gcp_iam_observe_wif_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: gcp_iam_observe_wif_provider)
+}
+
+fn gcp_iam_observe_wif_principal_set() -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: gcp_iam_observe_wif_pool_id as String),
+    "/*"
+  ], "")
+}

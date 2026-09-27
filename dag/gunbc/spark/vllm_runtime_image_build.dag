@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import std.nat { Nat }
-import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Second, second, ByteSize, byte_size, byte_size_count }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Second, second, ByteSize, byte_size, byte_size_count, Kibibyte, kibibyte }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -219,6 +219,12 @@ data vllm_build_host_purpose: NonEmptyStr = "a vLLM source build, which occupies
 // three hours is the term after which an unreleased claim (a crashed lane) reads OVERDUE. It
 // still fences until released: the release is the observation that the host is quiet.
 data vllm_build_host_effect_term: Second = second(count: 10800)
+
+// THE MEMORY THE BUILD DECLARES IT NEEDS, which occupancy admission (gunbc.spark.host_occupancy_admission)
+// compares against the host's MemAvailable. A DECLARED BET, NOT A MEASUREMENT: 48 GiB is six nvcc jobs
+// (v41_build_max_jobs) at up to 8 GiB each. READ OBLIGATION: the peak memory of an executed build on a
+// GB10, which replaces this figure when a run records it.
+data vllm_build_host_memory_need: Kibibyte = kibibyte(count: 50331648)
 
 // WHAT THE BUILD LEAVES IF IT DID NOT FINISH: every leg -- the clone, the fetch, the checkout, the
 // docker build with its --file and context under the source dir -- carries the source directory
