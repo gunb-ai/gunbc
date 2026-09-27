@@ -2540,7 +2540,17 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
             if module_names.contains(&module_name) {
                 continue;
             }
-            let Some(tree) = parse_module_heads_tolerant(&rel, &content) else {
+            let heads = parse_module_heads_tolerant(&rel, &content);
+            let full = parse_module_node_tolerant(&rel, &content);
+            {
+                let h = heads.as_ref().map(|t| collect_module_decl_names(t));
+                let f = full.as_ref().map(|t| collect_module_decl_names(t));
+                if h != f {
+                    eprintln!("[dbg] NAMEDIFF {rel} heads={h:?} full={f:?}");
+                }
+            }
+            let chosen = if std::env::var("DBG_FULLNAMES").is_ok() { full } else { heads };
+            let Some(tree) = chosen else {
                 continue;
             };
             module_names.insert(module_name.clone());
