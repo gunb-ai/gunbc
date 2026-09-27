@@ -122,6 +122,8 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
   }
 }
 
+// `first()` is an Optional: the count guards make its Absent arms unreachable, and each answers the
+// guard's own verdict rather than a fabricated batch.
 fn schedule_lens_verdict_for_ci_floor_ordinary(
   plan: RealizationPlan<Runnable>,
   compile_gate_fn: String,
@@ -136,8 +138,6 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
       diagnostic: schedule_lens_violation_diagnostic(kind: SingleBatchOnly)
     }
   } else {
-    // `first()` is an Optional; the count guards above make Absent unreachable, and it answers the
-    // guard's own verdict rather than a fabricated batch.
     match plan.schedule.first() {
       Absent => Violation { diagnostic: schedule_lens_violation_diagnostic(kind: EmptySchedule) }
       Present { value: batch0 } =>
