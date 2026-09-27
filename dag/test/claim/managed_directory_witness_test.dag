@@ -20,6 +20,10 @@ import gunbc.managed_directory {
   managed_directory_mode_octal,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_admit,
+  EntriesUnmanaged,
+  entry_class_of,
+  managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
+  entry_mode_add_read_symbolic,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -62,6 +66,7 @@ fn dir_with(dependents: List<DirectoryDependent>) -> ManagedDirectory {
     group_principal: owner_user(),
     dependents: dependents,
     ownership: Owned,
+    entries: EntriesUnmanaged,
   }
 }
 
@@ -211,6 +216,7 @@ fn writers_dir(group: PosixUser) -> ManagedDirectory {
       DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
     ],
     ownership: Owned,
+    entries: EntriesUnmanaged,
   }
 }
 
@@ -234,4 +240,70 @@ test fn witness_uncovered_writer_refuses_naming_it() -> Bool {
 
 test fn witness_uncovered_writer_would_have_derived_world_write() -> Bool {
   managed_directory_permissions(d: writers_dir(group: owner_user())).mode.other.write
+}
+
+// ── ENTRY MODE ───────────────────────────────────────────────────────────────────────────────
+//
+// writers_dir(group: stranger_user()) is the two-writer store shape: the owner and a second writer
+// whose own group is the directory's (setgid). An entry the SECOND writer creates is theirs, in their
+// group, so the directory's owner -- not a member of that group -- can read it only through OTHER.
+// The derivation must say so (0444), must say it only because a declared reader needs it (a
+// single-writer directory derives owner-read alone), and must REFUSE the moment the directory lets
+// other traverse, because the same o+r would then reach every account.
+
+fn entry_mode_octal_or_refused(d: ManagedDirectory) -> String {
+  match managed_directory_entry_mode(d: d) {
+    ManagedEntryModeDerived { mode } => file_mode_octal(mode: mode)
+    ManagedEntryModeRefused { member: _, path: _, reason: _ } => "refused"
+  }
+}
+
+test fn witness_owner_reads_second_writers_entry_through_other() -> Bool {
+  class_label(c: entry_class_of(d: writers_dir(group: stranger_user()), writer: stranger_user(), reader: owner_user())) == "other"
+}
+
+test fn witness_second_writer_reads_owners_entry_through_group() -> Bool {
+  class_label(c: entry_class_of(d: writers_dir(group: stranger_user()), writer: owner_user(), reader: stranger_user())) == "group"
+}
+
+test fn witness_two_writer_store_entries_derive_0444() -> Bool {
+  entry_mode_octal_or_refused(d: writers_dir(group: stranger_user())) == "0444"
+}
+
+test fn witness_entry_repair_adds_exactly_the_derived_read_bits() -> Bool {
+  match managed_directory_entry_mode(d: writers_dir(group: stranger_user())) {
+    ManagedEntryModeDerived { mode } => entry_mode_add_read_symbolic(mode: mode) == "u+r,g+r,o+r"
+    ManagedEntryModeRefused { member: _, path: _, reason: _ } => false
+  }
+}
+
+test fn witness_single_writer_entries_derive_owner_read_only() -> Bool {
+  entry_mode_octal_or_refused(d: dir_with(dependents: [DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] }])) == "0400"
+}
+
+// THE RED. Same store, plus one principal outside owner and group that needs only to TRAVERSE: the
+// directory now derives o+x, so the entries' o+r would publish them to that principal and to every
+// other account. The derivation must refuse, and the control above is the same store without it.
+fn store_other_can_traverse() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "synthetic-store",
+    path: "/synthetic/store",
+    owner: owner_user(),
+    group_principal: stranger_user(),
+    dependents: [
+      DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: PosixUser { name: "third", uid: 4003, gid: 4003, shell: LoginShellUnobserved }, needs: [Execute] },
+    ],
+    ownership: Owned,
+    entries: EntriesUnmanaged,
+  }
+}
+
+test fn witness_other_traverse_directory_grants_o_x() -> Bool {
+  managed_directory_permissions(d: store_other_can_traverse()).mode.other.execute
+}
+
+test fn witness_entry_other_read_refuses_when_other_can_traverse() -> Bool {
+  entry_mode_octal_or_refused(d: store_other_can_traverse()) == "refused"
 }
