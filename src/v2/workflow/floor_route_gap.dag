@@ -1645,12 +1645,19 @@ fn floor_route_gap_expectation_chunk_22() -> List<FloorRouteGapExpectation> {
 
 // test.claim.compute.manager_unaskable_wet_witness: its first shell operation on the hermetic route
 // is the manager probe shell.PosixCommandV Check, which declares no mock_response, so the nominal
-// floor refuses there and the identity is held; the local-repo wet schedule carries it.
+// floor refuses there and the identity is held; the local-repo wet schedule carries it. The two
+// test.claim.spark fleet-relation wet witnesses read the executor's hostname through
+// shell.Exec.RunArgv, which has no mock_response; their subject is which host runs them, so the
+// local-repo wet schedule carries them too.
 fn floor_route_gap_expectation_chunk_23() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.manager_unaskable_wet_witness.a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting", operation: "Check", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.fabric_capacity_standing_wet_witness.the_live_entry_reads_the_authority_before_judging_on_and_off_the_fleet", operation: "RunArgv", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_serving_apply_wet_witness.the_apply_seam_reads_the_authority_before_planning_on_and_off_the_fleet", operation: "RunArgv", ground: NoMockResponse {} },
     tail: Empty {}
-  }
+  }  }  }
 }
 
 // The six test.claim.live_deploy.approval_broker_helper_readback_real_execution identities: the approval broker helper
