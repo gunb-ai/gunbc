@@ -208,6 +208,22 @@ fn node_subtree_nodes(root: Node) -> List<Node> {
   )
 }
 
+// THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's
+// declared-order edge (arrow_signature_order_label). That edge carries parameter LABELS, not values;
+// v2.compiler.infer declines its subtree (infer_arrow_signature_order_edge) and carries the order as
+// the Arrow's own evidence. Every stage that asks infer for a node's facts -- v2.compiler.program_partition's
+// closure, a census over derived products -- walks THIS set, so none of them demands facts infer was
+// never asked to produce.
+fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { [self] },
+      step: fn(acc, edge, sub) { if edge.label == arrow_signature_order_label { acc } else { concat(acc, sub) } }
+    }
+  )
+}
+
 fn node_subtree_count(n: Node) -> Int {
   fold_node(
     n: n,

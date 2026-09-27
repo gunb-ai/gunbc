@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -11,6 +12,9 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import v2.std.optional { Present }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
+import gunbc.machine_intake_oob_boot_handoff { BootReadbackConfirmed, boot_readback_verdict }
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
@@ -222,8 +226,9 @@ type SensorReading
   | SensorsUnread { cause: BmcReadCause }
   | SensorsNotTaken { reason: NonEmptyStr }
 
-// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_mtcollins1_smpro_observation), taken after the
-// attempt. Its probes are kept whole, every one with its raw observation, including when none of
+// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_mtcollins1_smpro_observation). The bundle's own
+// pass is taken after the attempt; the run record below carries the two passes taken while power
+// was established on. Its probes are kept whole, every one with its raw observation, including when none of
 // them was answered: the dossier is rendered for any outcome list.
 type SmproReading
   = SmproProbed { outcomes: List<SmproProbeOutcome> }
@@ -278,6 +283,188 @@ data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagn
 
 data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
 
+// ── THE ATTEMPT'S OWN RUN RECORD ─────────────────────────────────────────────────────────────
+//
+// WHAT THIS ATTEMPT DID TO THE UNIT'S POWER AND ITS ONE-SHOT OVERRIDE, AND WHAT THE SOCKETS SAID
+// WHILE THEY WERE POWERED. Three facts that the post-attempt reads above cannot establish:
+//
+// SOCKET-LOCAL READS NEED POWER. The census image ends with `poweroff -f`
+// (gunbc.machine_intake_mtcollins1_census_image mtcollins1_census_halt_command), so by the time the
+// bundle's own reads run the SMpro may be unpowered and every probe answers nothing. The run takes a
+// pass right after the handoff observed power on (gunbc.machine_intake_oob_boot_handoff
+// BootControlIssued now carries an observed transition, not an exit code) and a second the first
+// time a poll saw the census envelope open. Both are read-only and fold-sequenced exactly as the
+// post-attempt pass (mtcollins1_smpro_sequenced).
+//
+// WHETHER THE OVERRIDE WAS CONSUMED BY THIS ATTEMPT. The IPMI boot override is one-shot: the
+// controller clears boot parameter 5's valid flag when a boot consumes it, and on its own timeout.
+// The handoff verifies the override was set; parameter 5 is read again before the set and after the
+// attempt, so an override still pending (the host never booted through it) and one ALREADY pending
+// before this attempt set it are told apart from one no longer pending -- and "consumed" is claimed
+// only beside the census END marker (boot_override_consumption).
+//
+// A POWER-OFF AFTER THE CENSUS END MARKER IS THE IMAGE WORKING. Chassis power is read after the
+// attempt; off after the END marker is recorded as expected, and the post-attempt SMpro pass is not
+// sent at a socket the census deliberately powered down.
+type BootParam5Reading
+  = BootParam5Read { readback: String, at: NonEmptyStr }
+  | BootParam5Unread { cause: BmcReadCause }
+  | BootParam5NotTaken { reason: NonEmptyStr }
+
+type BootOverrideConsumption
+  = OverrideConsumedByCensusBoot
+  | OverrideNoLongerPendingAfterAttempt
+  | OverridePendingBeforeAttempt
+  | OverrideStillPendingAfterAttempt
+  | OverrideNotHandedOff { reason: NonEmptyStr }
+  | OverrideConsumptionUnread { reason: NonEmptyStr }
+
+type PowerAfterAttempt
+  = PoweredOffAfterCensusEnd
+  | PoweredOffWithoutCensusEnd
+  | PoweredOnAfterAttempt
+  | PowerAfterUnobserved { observation: ChassisPowerObservation }
+  | PowerAfterNotTaken { reason: NonEmptyStr }
+
+type MtCollins1BootRunRecord {
+  smpro_power_on: SmproReading
+  smpro_census: SmproReading
+  override_before: BootParam5Reading
+  override_after: BootParam5Reading
+  override: BootOverrideConsumption
+  power_after: PowerAfterAttempt
+}
+
+fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
+  MtCollins1BootRunRecord {
+    smpro_power_on: SmproNotTaken { reason: reason },
+    smpro_census: SmproNotTaken { reason: reason },
+    override_before: BootParam5NotTaken { reason: reason },
+    override_after: BootParam5NotTaken { reason: reason },
+    override: OverrideNotHandedOff { reason: reason },
+    power_after: PowerAfterNotTaken { reason: reason },
+  }
+}
+
+// PENDING MEANS THIS ATTEMPT'S OVERRIDE, READ THROUGH THE HANDOFF'S OWN VERDICT. The same
+// boot_readback_verdict that confirmed the set decides "still pending" here, so the two can never
+// disagree about what the controller's rendering means.
+fn boot_override_pending(readback: String, selection: IpmiBootSelection) -> Bool {
+  match boot_readback_verdict(readback: readback, selection: selection) {
+    BootReadbackConfirmed => true
+    _ => false
+  }
+}
+
+fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr? {
+  match r {
+    BootParam5Read { readback: _, at: _ } => none
+    BootParam5Unread { cause: c } => Present { value: concat("boot parameter 5 ", which, " was not read (", bmc_read_cause_kind(cause: c), ")") as NonEmptyStr }
+    BootParam5NotTaken { reason: why } => Present { value: concat("boot parameter 5 ", which, " was not taken: ", why as String) as NonEmptyStr }
+  }
+}
+
+// ORDER IS THE ARGUMENT, AND "CONSUMED" NEEDS A DISCRIMINATOR (DESIGN §4d; review 71115). An
+// override already pending before this attempt set it cannot be attributed; one still pending after
+// was not consumed. One NO LONGER pending is only that: the BMC also clears the valid bit on its own
+// (the IPMI boot-flag valid-bit timeout), a power-off or another writer can clear it, and a changed
+// rendering can stop matching. So consumption by this attempt is minted only beside an observation
+// that only a boot through the override's device produces: the census END marker, which only the
+// census image on the attached virtual CD prints, for this machine and this run. Without it the
+// verdict records what was observed and says consumption is not established.
+fn boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, selection: IpmiBootSelection, booted_through_override_device: Bool) -> BootOverrideConsumption {
+  match before {
+    BootParam5Read { readback: b, at: _ } =>
+      if boot_override_pending(readback: b, selection: selection) {
+        OverridePendingBeforeAttempt
+      } else {
+        match after {
+          BootParam5Read { readback: a, at: _ } =>
+            if boot_override_pending(readback: a, selection: selection) {
+              OverrideStillPendingAfterAttempt
+            } else if booted_through_override_device {
+              OverrideConsumedByCensusBoot
+            } else {
+              OverrideNoLongerPendingAfterAttempt
+            }
+          other => match boot_param5_unread_reason(r: other, which: "after the attempt") {
+            Present { value: why } => OverrideConsumptionUnread { reason: why }
+            Absent => OverrideConsumptionUnread { reason: "boot parameter 5 after the attempt was not read" }
+          }
+        }
+      }
+    other => match boot_param5_unread_reason(r: other, which: "before the attempt") {
+      Present { value: why } => OverrideConsumptionUnread { reason: why }
+      Absent => OverrideConsumptionUnread { reason: "boot parameter 5 before the attempt was not read" }
+    }
+  }
+}
+
+fn power_after_attempt(observation: ChassisPowerObservation, census_ended: Bool) -> PowerAfterAttempt {
+  match observation {
+    ChassisPowerRead { power_on: on } =>
+      if on { PoweredOnAfterAttempt } else if census_ended { PoweredOffAfterCensusEnd } else { PoweredOffWithoutCensusEnd }
+    _ => PowerAfterUnobserved { observation: observation }
+  }
+}
+
+fn override_findings(c: BootOverrideConsumption) -> List<String> {
+  match c {
+    OverrideStillPendingAfterAttempt => ["the one-shot boot override was still pending after the attempt: the host did not boot through it"]
+    OverridePendingBeforeAttempt => ["a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"]
+    _ => []
+  }
+}
+
+fn power_after_findings(p: PowerAfterAttempt) -> List<String> {
+  match p {
+    PoweredOffWithoutCensusEnd => ["the host was powered off after the attempt without the census END marker"]
+    _ => []
+  }
+}
+
+fn override_consumption_text(c: BootOverrideConsumption) -> String {
+  match c {
+    OverrideConsumedByCensusBoot => "consumed by this attempt: cleared after a census END marker, which only a boot of the override's device prints"
+    OverrideNoLongerPendingAfterAttempt => "no longer pending after the attempt, but no boot through the override's device was observed, so consumption by this attempt is not established"
+    OverridePendingBeforeAttempt => "ALREADY PENDING before this attempt set it; consumption not attributable"
+    OverrideStillPendingAfterAttempt => "STILL PENDING after the attempt; not consumed"
+    OverrideNotHandedOff { reason: r } => concat("not handed off: ", r as String)
+    OverrideConsumptionUnread { reason: r } => concat("undetermined: ", r as String)
+  }
+}
+
+fn power_after_text(p: PowerAfterAttempt) -> String {
+  match p {
+    PoweredOffAfterCensusEnd => "off after the census END marker (expected: the census image ends with poweroff -f)"
+    PoweredOffWithoutCensusEnd => "OFF without the census END marker"
+    PoweredOnAfterAttempt => "on"
+    PowerAfterUnobserved { observation: o } => concat("unobserved: ", chassis_observation_text(observation: o) as String)
+    PowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
+  }
+}
+
+fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
+  match r {
+    BootParam5Read { readback: rb, at: at } => concat("boot parameter 5 ", label, " (", at as String, "):\n", rb)
+    BootParam5Unread { cause: c } => concat("boot parameter 5 ", label, ": UNREAD: ", bmc_read_cause_text(cause: c))
+    BootParam5NotTaken { reason: why } => concat("boot parameter 5 ", label, ": NOT TAKEN: ", why as String)
+  }
+}
+
+fn run_record_text(r: MtCollins1BootRunRecord) -> String {
+  join([
+    concat("override=", override_consumption_text(c: r.override)),
+    concat("power_after=", power_after_text(p: r.power_after)),
+    boot_param5_text(label: "before", r: r.override_before),
+    boot_param5_text(label: "after", r: r.override_after),
+    "-- smpro pass at power on --",
+    smpro_text(s: r.smpro_power_on),
+    "-- smpro pass while the census ran --",
+    smpro_text(s: r.smpro_census),
+  ], "\n")
+}
+
 type MtCollins1BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -288,6 +475,7 @@ type MtCollins1BootDiagnosticBundle {
   smpro: SmproReading
   inventory: InventoryReading
   console: ConsoleReading
+  run: MtCollins1BootRunRecord
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -571,6 +759,8 @@ fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelR
       SensorsNotTaken { reason: _ } => BmcChannelNotAttempted
     } },
     smpro_channel(s: bundle.smpro),
+    smpro_channel(s: bundle.run.smpro_power_on),
+    smpro_channel(s: bundle.run.smpro_census),
     members_channel(channel: "redfish memory", m: bundle.inventory.memory),
     members_channel(channel: "redfish processors", m: bundle.inventory.processors),
   ]
@@ -602,7 +792,7 @@ fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> Li
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),
-    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(console_findings(c: bundle.console), shred)))))))
+    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(smpro_findings(s: bundle.run.smpro_power_on), concat(smpro_findings(s: bundle.run.smpro_census), concat(override_findings(c: bundle.run.override), concat(power_after_findings(p: bundle.run.power_after), concat(console_findings(c: bundle.console), shred)))))))))))
 }
 
 // THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a
@@ -744,7 +934,10 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     sel_raw_text(label: "after", s: bundle.sel_after),
     "== bmc sensors (ipmi sdr elist) ==",
     sensors_text(s: bundle.sensors),
+    "== this attempt: power, one-shot override, in-run smpro passes ==",
+    run_record_text(r: bundle.run),
     "== smpro boot stage (ipmi master write-read) ==",
+    "-- pass after the attempt --",
     smpro_text(s: bundle.smpro),
     "== bmc inventory (redfish) ==",
     concat("system=", if bundle.inventory.system_id == "" { "not-read" } else { bundle.inventory.system_id }),
@@ -776,9 +969,12 @@ data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
-// The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the plan can
-// send (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run
-// under the same coreutils bound.
+// The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the post-attempt
+// pass can send
+// (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run under
+// the same coreutils bound. The reads taken under the unit hold -- the two in-run SMpro passes, the
+// two boot parameter 5 reads and the final-power poll -- are paid inside the actuation, and their
+// allowance is gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_in_run_smpro_allowance.
 fn mtcollins1_boot_ipmi_read_count() -> Int {
   4 + mtcollins1_smpro_probe_count()
 }
@@ -848,6 +1044,42 @@ fn mtcollins1_boot_sensors(username: NonEmptyStr, password_file: NonEmptyStr, sd
     SdrCacheUnread { cause: c } => SensorsNotTaken { reason: concat("no SDR cache was dumped (", bmc_read_cause_kind(cause: c), "), and an uncached sdr elist is not made") as NonEmptyStr }
     SdrCacheNotTaken { reason: why } => SensorsNotTaken { reason: why }
   }
+}
+
+fn mtcollins1_boot_param5(username: NonEmptyStr, password_file: NonEmptyStr) -> BootParam5Reading
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_param5_under_hold"),
+  ]
+{
+  let at = clock_now_probed_at_or_unknown()
+  let r = diagnostic.ipmi.Tool.ChassisBootParamGet(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    parameter: "5",
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    BootParam5Read { readback: r.stdout, at: at }
+  } else {
+    BootParam5Unread { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
+  ]
+{
+  let r = diagnostic.ipmi.Tool.ChassisStatus(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  chassis_observation(success: r.success, stdout: r.stdout)
 }
 
 fn sel_snapshot_of_read(at: NonEmptyStr, success: Bool, stdout: String, exit_code: Int, stderr: String) -> SelSnapshotReading {

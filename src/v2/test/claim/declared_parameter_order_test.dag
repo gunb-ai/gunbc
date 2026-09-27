@@ -66,7 +66,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `<anonymous-parameter-10>` before `<anonymous-parameter-2>` in label order.
 //
 // MUTATION RECEIPT: infer_application_formals returning the domain's stored formals (the pre-change
-// fold) reds (3) and (4) through their canonical-domain arm; eval_param_labels_in_declared_order
+// fold) reds (3) and (4) through their canonical-domain arm; application_binding_plan (which eval binds through)
 // returning domain.children reds (6) the same way; resolve walking the order edge reds (7).
 
 data dpo_artifact: Artifact = Artifact {

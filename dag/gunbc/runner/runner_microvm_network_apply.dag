@@ -28,7 +28,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal, converge_typed_remote_file,
 }
 import gunbc.runner_host_deploy {
-  RunnerHostDeploy, runner_host_deploy_for, runner_index_seq,
+  RunnerHostDeploy, runner_host_deploy_for, runner_slot_identities_of,
   RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
 }
 import gunbc.runner_host_grants { bootstrap_principal_is_not_the_grantee }
@@ -204,7 +204,7 @@ fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: Stri
             host: host,
             target: runner_microvm_administrator_target(host: host),
             revision: revision,
-            slots: map(runner_index_seq(n: d.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i }),
+            slots: runner_slot_identities_of(deploy: d),
             tap_owner: d.job_user,
           },
         }
