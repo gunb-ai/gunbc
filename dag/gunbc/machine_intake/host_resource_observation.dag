@@ -148,13 +148,13 @@ fn has_duplicate(xs: List<Nat>) -> Bool {
   ).found
 }
 
+// One pass: each candidate line is parsed once into an attempt that carries either its node or a
+// refusal naming the line verbatim, so the diagnostic names the offending record.
 fn observe_numa(numa: List<String>?) -> ObservationAttempt<List<NumaNode>, ResourceUnread> {
   match numa {
     Absent => ObservationRefused { cause: SectionAbsent { section: "numa" } }
     Present { value: out } => {
       let lines = filter(non_blank(out: out), l => is_node_cpus_line(line: l))
-      // One pass: each candidate line is parsed once into an attempt that carries either its node or
-      // a refusal naming the line verbatim, so the diagnostic names the offending record.
       let attempts = map(lines, l => numa_record_attempt(line: l))
       let malformed = flat_map(attempts, a => numa_record_refusal(a: a))
       if count(lines) == 0 {
