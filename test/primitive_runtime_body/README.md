@@ -8,12 +8,13 @@ No workflow job or CLI flag was added.
 `gunbc.witness_floor_workflow.witness_floor_triggers` runs that lane on pull
 requests targeting main (opened, synchronize, reopened), `merge_group`, and
 `workflow_dispatch`. The runtime phase uses the parse sweep's three-root universe
-in an isolated child of the required dispatcher, using its already-built sibling
+plus its explicit producer root in an isolated child of the required dispatcher, using its already-built sibling
 `gunbc`. The child exits before `floor`, releasing the additional preparation
 caches rather than retaining another corpus pool in the floor process. It does not widen the ordinary floor subject,
 whose exclusion of src/v1 protects it from the documented name collisions.
 
-The producer integration lives under `src/v1`, outside the ordinary floor roots;
+The producer integration lives under `test/primitive_runtime_body`, outside both
+the ordinary floor roots and the v1-only stage0 regeneration sweep;
 its reusable census and mutation predicate remain under `dag`. The phase calls
 `v1.compiler.primitive_runtime_body.check`. That door reads the current
 `rt_function_registry` and `rust_runtime_source()` declarations, derives body rows
@@ -39,7 +40,8 @@ memory bound:
 
 ```sh
 gunbc run --source-root dag --source-root src/v2 --source-root src/v1 \
-  --entry src/v1/primitive_runtime_body.dag --function check
+  --source-root test/primitive_runtime_body \
+  --entry test/primitive_runtime_body/producer.dag --function check
 ```
 
 Required-regen is complementary. Its host `compare_generated_surfaces` compares
@@ -77,6 +79,10 @@ Scope: presence of file-level function bodies in the scanner's supported Rust
 syntax. Signatures, visibility, cfg-specific availability and behavior are not
 proved by this join. In particular, this does not substitute for the emitted
 clock specimen. The check is now required for merge admission; it is not yet a
-per-invocation compiler diagnostic. The two producer witnesses in this directory
-remain useful direct controls, while the phase itself always executes the live
-producer and its permanent negative control.
+per-invocation compiler diagnostic. The producer controls in this directory execute inside the phase, which always
+checks the live producer and its permanent negative control.
+
+The merge-group build lane also qualifies this placement: putting the producer under
+`src/v1` made stage0 regeneration import its v2 scanner dependencies into a v1-only
+source sweep. The explicit phase root preserves runtime enforcement without
+widening that separate compilation subject.

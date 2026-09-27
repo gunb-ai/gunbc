@@ -1639,9 +1639,13 @@ fn run_required_primitive_runtime_body() -> bool {
     for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
         command.args(["--source-root", root]);
     }
+    // The producer spans v1 and v2. Keep it outside both default floor roots and
+    // the v1-only stage0 regeneration sweep; enroll its root only in this phase.
     command.args([
+        "--source-root",
+        "test/primitive_runtime_body",
         "--entry",
-        "src/v1/primitive_runtime_body.dag",
+        "test/primitive_runtime_body/producer.dag",
         "--function",
         "check",
     ]);
