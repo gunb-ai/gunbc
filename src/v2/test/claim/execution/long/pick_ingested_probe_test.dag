@@ -155,10 +155,14 @@ test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool {
 }
 
 test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
-  pick_probe_module_arm_has_magnitude_child_holds(
-    module_outcome: pick_ingested_normalized_module_from_source(source: pick_ingested_source),
-    arm_index: 1
-  )
+  match pick_ingested_normalized_module_from_source(source: pick_ingested_source) {
+    Accepted { value: normalized, diagnostics: diagnostics } =>
+      pick_probe_module_arm_has_magnitude_child_holds(
+        module_outcome: Accepted { value: normalized.root, diagnostics: diagnostics },
+        arm_index: 1
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn pick_probe_parsed_then_arm_has_magnitude_child_holds() -> Bool {
