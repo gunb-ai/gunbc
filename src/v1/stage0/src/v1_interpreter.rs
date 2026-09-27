@@ -995,8 +995,25 @@ impl Value {
     }
 }
 
+// TEST-ONLY WORK OBSERVATION: how many times structural equality ran. The memo's verification
+// equality (`value_fast_eq`) is a cost contract, not only a result contract -- a top-level-only
+// shortcut followed by `==` returns the same answers while walking every shared part -- so its
+// control must observe the WORK, and this counter is that observation. Compiled only under
+// cfg(test): production equality pays nothing.
+#[cfg(test)]
+thread_local! {
+    static VALUE_EQ_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn value_eq_calls() -> u64 {
+    VALUE_EQ_CALLS.with(|c| c.get())
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        #[cfg(test)]
+        VALUE_EQ_CALLS.with(|c| c.set(c.get() + 1));
         match (self, other) {
             (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
@@ -26290,6 +26307,19 @@ mod push_hash_extension_tests {
             &ctx,
             vec![("entries", shared.clone()), ("hits", Value::Int(2))],
         );
+        // WORK: two records rebuilt around the SAME 512-entry map must be compared in O(changed)
+        // structural-equality calls (the one small field), never by walking the shared map. A
+        // top-level-only shortcut followed by `==` returns the same answer and fails here: the
+        // derived walk recurses into every entry.
+        for other in [&t1_rebuilt, &t2_rebuilt] {
+            let before = value_eq_calls();
+            let _ = value_fast_eq(&t1, other);
+            let work = value_eq_calls() - before;
+            assert!(
+                work <= 4,
+                "verification walked shared structure: {work} Value::eq calls"
+            );
+        }
         assert!(value_fast_eq(&t1, &t1_rebuilt));
         assert_eq!(value_fast_eq(&t1, &t1_rebuilt), t1 == t1_rebuilt);
         assert!(!value_fast_eq(&t1, &t2_rebuilt));
