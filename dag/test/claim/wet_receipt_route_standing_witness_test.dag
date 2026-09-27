@@ -48,15 +48,15 @@ test fn wet_receipt_fault_marker_refuses_a_malformed_pass_marker() -> Bool {
     && wet_receipt_expected_fault_marker_for_module(module_path: "src/v2/compiler/not_a_module.dag") == ""
 }
 
-// THE TWO UNAVAILABLE CAUSES ARE DERIVED FROM THE KNOWN-RED AUTHORITY, NOT AUTHORED. parse_engine_hooks
+// THE TWO UNAVAILABLE CAUSES ARE DERIVED FROM THE KNOWN-RED AUTHORITY, NOT AUTHORED. use_site_verdict
 // is an ExecutionWitnessKind known_red row on gunbc.explicit_witness_admission; 00_compile is not.
 // Both lack a binding, so a single unavailable arm would render them identically -- which is exactly
 // the collapse this type exists to prevent.
 test fn known_red_receipt_derives_revoked_on_measured_red() -> Bool {
   match wet_receipt_standing_for(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
-      function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+      entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+      function: "self_host_use_site_verdict_behavioral_receipt_holds"
     }
   ) {
     Absent => false
