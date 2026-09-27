@@ -6621,10 +6621,6 @@ mod regen_convergence_host_instrument_tests {
             .collect()
     }
 
-    /// RED: the dependent mirror imports a symbol only the sibling introduces. On main the
-    /// planner installed the GenerationInput file alone, then `rebuild_from_installed` failed
-    /// E0432. After the fix both files are in the install set and the mock rustc-shaped check
-    /// sees them together; rebuild runs once.
     #[test]
     fn a_test_that_panics_after_creating_the_fixture_leaves_no_root_behind() {
         let (root_tx, root_rx) = std::sync::mpsc::channel();
@@ -6644,6 +6640,10 @@ mod regen_convergence_host_instrument_tests {
         assert!(!root.exists(), "leaked fixture root {}", root.display());
     }
 
+    /// RED: the dependent mirror imports a symbol only the sibling introduces. On main the
+    /// planner installed the GenerationInput file alone, then `rebuild_from_installed` failed
+    /// E0432. After the fix both files are in the install set and the mock rustc-shaped check
+    /// sees them together; rebuild runs once.
     #[test]
     fn mixed_role_two_mirror_candidate_installs_all_then_rebuilds_once() {
         require_measurable_host_budget();
