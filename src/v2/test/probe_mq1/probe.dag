@@ -1,0 +1,76 @@
+module v2.test.probe_mq1.probe
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.optional { Absent, Present }
+import v2.std.node { Node, Symbol }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+fn probe_atoms(n: Node, acc: FreeMonoid<Symbol>) -> FreeMonoid<Symbol> {
+  let here = match node_atom_identity_optional(node: n) {
+    Present { value: id } => Cons { head: id, tail: acc }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { probe_atoms(n: e.target, acc: a) })
+}
+
+fn probe_one(src: String) -> FreeMonoid<Symbol> {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^probe_mq1_file, rules: lm.lex) {
+    Rejected { diagnostics: d } => Cons { head: ^PROBE_TOKENIZE_REFUSED, tail: Cons { head: diagnostics_fatal_reason(d: d), tail: Empty } }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Cons { head: ^PROBE_PARSE_REFUSED, tail: Cons { head: diagnostics_fatal_reason(d: d), tail: Empty } }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => Cons { head: ^PROBE_NORMALIZE_REFUSED, tail: Cons { head: diagnostics_fatal_reason(d: d), tail: Empty } }
+            Accepted { value: t, diagnostics: _ } => probe_atoms(n: t.root, acc: Empty)
+          }
+      }
+  }
+}
+
+
+fn probe_has(xs: FreeMonoid<Symbol>, id: Symbol) -> Bool {
+  match xs { Empty => false  Cons { head: h, tail: t } => h == id || probe_has(xs: t, id: id) }
+}
+test fn q_c00411_refused() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_c00411_unread() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^body_lowering_reason_operator_operand_unread) }
+test fn q_c00411_ident() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^dag_token_ident) }
+test fn q_c00411_caret() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^dag_token_caret) }
+test fn q_c00411_sym_grammar_free_name_slot() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^grammar_free_name_slot) }
+test fn q_c00411_sym_a() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^a) }
+test fn q_c00411_sym_b() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^b) }
+test fn q_c00411_sym_probe_let_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^probe_let_sym) }
+test fn q_c00411_sym_probe_arg_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"), id: ^probe_arg_sym) }
+test fn q_c08585_refused() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_c08585_unread() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^body_lowering_reason_operator_operand_unread) }
+test fn q_c08585_ident() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^dag_token_ident) }
+test fn q_c08585_caret() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^dag_token_caret) }
+test fn q_c08585_sym_grammar_free_name_slot() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^grammar_free_name_slot) }
+test fn q_c08585_sym_a() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^a) }
+test fn q_c08585_sym_b() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^b) }
+test fn q_c08585_sym_probe_let_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^probe_let_sym) }
+test fn q_c08585_sym_probe_arg_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f(n: Symbol) -> Bool {\n  n == ^a || n == ^b\n}\n"), id: ^probe_arg_sym) }
+test fn q_let_refused() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_let_unread() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^body_lowering_reason_operator_operand_unread) }
+test fn q_let_ident() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^dag_token_ident) }
+test fn q_let_caret() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^dag_token_caret) }
+test fn q_let_sym_grammar_free_name_slot() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^grammar_free_name_slot) }
+test fn q_let_sym_a() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^a) }
+test fn q_let_sym_b() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^b) }
+test fn q_let_sym_probe_let_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^probe_let_sym) }
+test fn q_let_sym_probe_arg_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn f() -> Symbol {\n  let s = ^probe_let_sym\n  s\n}\n"), id: ^probe_arg_sym) }
+test fn q_arg_refused() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^PROBE_NORMALIZE_REFUSED) }
+test fn q_arg_unread() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^body_lowering_reason_operator_operand_unread) }
+test fn q_arg_ident() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^dag_token_ident) }
+test fn q_arg_caret() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^dag_token_caret) }
+test fn q_arg_sym_grammar_free_name_slot() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^grammar_free_name_slot) }
+test fn q_arg_sym_a() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^a) }
+test fn q_arg_sym_b() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^b) }
+test fn q_arg_sym_probe_let_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^probe_let_sym) }
+test fn q_arg_sym_probe_arg_sym() -> Bool { probe_has(xs: probe_one(src: "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^probe_arg_sym)\n}\n"), id: ^probe_arg_sym) }
