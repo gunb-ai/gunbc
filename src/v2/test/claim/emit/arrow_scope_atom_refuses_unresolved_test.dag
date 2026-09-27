@@ -234,3 +234,25 @@ test fn loop_body_bound_param_projects_through_the_call_route() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+// THE LOOP BODY SHARES THE CANONICAL-PARAMETER AND PICK-TABLE ROWS OF THE ARROW-SCOPE ROUTE. A
+// canonical parameter name that no domain here declares refuses located inside `loop` (the deleted
+// canonical-parameter table may not admit it). A pick-table atom still projects through the one
+// literal ladder.
+data probe_loop_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
+
+test fn loop_body_out_of_scope_canonical_param_refuses_located() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_loop_out_of_scope_param_atom)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_loop_out_of_scope_param_atom)
+  }
+}
+
+test fn loop_body_pick_table_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_rec_lit_nine))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
