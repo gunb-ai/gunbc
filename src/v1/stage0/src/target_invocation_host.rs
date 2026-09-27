@@ -509,9 +509,10 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
         };
     }
     let mut message = format!(
-        "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+        "heads-reading-differential: compared={} divergent={} occurrence_identity_only={} narrowed={} regressed={} both_refused={}",
         d.modules_compared,
         d.divergent.len(),
+        d.occurrence_identity_only.len(),
         d.narrowed.len(),
         d.regressed.len(),
         d.both_refused.len(),
