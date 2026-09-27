@@ -1,0 +1,150 @@
+module v2.test.emit.loop_body_atom_refuses_unresolved
+
+import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.dag { dag_value_expression_projection }
+import v2.extdeps.languages.typescript { ts_binding_spellings, ts_source_text_authority, ts_fn_add_lex_rules }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal, node_locus }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Loop,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  TargetValueExpression,
+  target_model_emit_transforms_empty,
+  target_operator_realizations_catalog_node,
+  target_project_arrow_body_to_value_expression,
+  value_expr_projection_bundle_node
+}
+import v2.std.compilers.lexing { ModeledLexRules }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS A LOOP BODY'S ATOM (v2.std.compilers.target_model target_project_loop). Before this
+// change the loop projected that atom through a literal-only wrapper whose no-literal arm
+// (target_value_expr_mint_unscoped_atom) minted it as a symbol_identity, or as a binding for a
+// canonical parameter name it never scope-checked -- an unresolved name emitted as if it resolved
+// (DESIGN §5, absorbing fallback). The loop now shares the arrow-scope projection: a name resolves
+// through the enclosing arrow's scope or refuses `body_scope_binding_invalid` LOCATED AT THE ATOM,
+// and a genuine literal still projects. Restoring the mint makes both refusal rows false.
+fn probe_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn probe_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn probe_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn probe_loop_arrow(loop_atom: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      probe_positional(
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [probe_named(name: ^fold_call_param_xs, target: probe_atom(id: ^fold_call_type_int))]
+        )
+      ),
+      probe_positional(target: probe_atom(id: ^fold_call_type_int)),
+      probe_named(
+        name: ^arrow_body_edge,
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Loop },
+          children: [probe_positional(target: loop_atom)]
+        )
+      )
+    ]
+  )
+}
+
+fn probe_target_model() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        probe_named(
+          name: ^target_model_edge_value_expression_projection,
+          target: value_expr_projection_bundle_node(projection: dag_value_expression_projection())
+        ),
+        probe_named(
+          name: ^target_model_edge_operator_realizations,
+          target: target_operator_realizations_catalog_node(rows: [])
+        )
+      ]
+    ),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
+    binding_spellings: ts_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: ts_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn probe_project_loop(loop_atom: Node) -> Outcome<TargetValueExpression> {
+  target_project_arrow_body_to_value_expression(
+    arrow: probe_loop_arrow(loop_atom: loop_atom),
+    target: probe_target_model(),
+    source_bool_form: dag_value_expression_projection().bool_literal_form,
+    handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+  )
+}
+
+data probe_loop_unbound_atom: Node = probe_atom(id: ^arrow_scope_probe_unbound_name)
+
+// THE WALL: the loop body names nothing in scope, so the projection refuses at that atom.
+test fn loop_body_unresolved_atom_refuses_located() -> Bool {
+  match probe_project_loop(loop_atom: probe_loop_unbound_atom) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_loop_unbound_atom)
+  }
+}
+
+data probe_loop_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
+
+// A CANONICAL PARAMETER NAME IN A LOOP BODY IS A NAME: `^dag_binding_param_x` is in no domain of this
+// fixture, so it refuses located rather than binding through a table that never checked scope.
+test fn loop_body_out_of_scope_canonical_param_refuses_located() -> Bool {
+  match probe_project_loop(loop_atom: probe_loop_out_of_scope_param_atom) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_loop_out_of_scope_param_atom)
+  }
+}
+
+// THE POSITIVE CONTROLS ON THE SAME ROUTE: a bool literal and a pick-table literal still project.
+test fn loop_body_bool_literal_atom_still_projects() -> Bool {
+  match probe_project_loop(loop_atom: probe_atom(id: ^dag_token_kw_true)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_body_pick_table_atom_still_projects() -> Bool {
+  match probe_project_loop(loop_atom: probe_atom(id: ^dag_rec_lit_nine)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

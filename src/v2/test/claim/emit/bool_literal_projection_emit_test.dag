@@ -40,7 +40,7 @@ import v2.std.compilers.target_model {
   target_value_expression_bool_literal,
   target_value_expr_bool_literal_value_from_source_symbol,
   target_value_expr_is_bool_literal_expression,
-  target_value_expr_project_pick_literal_atom,
+  target_value_expr_project_pick_literal_atom_or,
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -245,9 +245,10 @@ test fn rust_spelling_token_is_not_dag_source_bool_literal() -> Bool {
 }
 
 test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
-  match target_value_expr_project_pick_literal_atom(
+  match target_value_expr_project_pick_literal_atom_or(
     id: ^dag_token_kw_true,
-    source_bool_form: blp_dag_source_bool_form()
+    source_bool_form: blp_dag_source_bool_form(),
+    on_no_literal: fn(_) { Rejected { diagnostics: None } }
   ) {
     Accepted { value: expr, diagnostics: _ } =>
       target_value_expr_is_bool_literal_expression(

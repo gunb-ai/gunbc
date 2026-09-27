@@ -163,8 +163,8 @@ test fn arrow_scope_pick_table_atom_still_projects() -> Bool {
 data probe_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
 
 // A CANONICAL PARAMETER NAME IS A NAME, NOT A LITERAL: `^dag_binding_param_x` is in no domain of this
-// fixture, so it must refuse located at the atom -- the historical canonical-parameter table
-// (target_value_expr_binding_ref_for_canonical_param_atom) may not admit it past a scope miss.
+// fixture, so it must refuse located at the atom: no canonical-parameter table admits a name past a
+// scope miss.
 test fn arrow_scope_out_of_scope_canonical_param_refuses_located() -> Bool {
   match probe_project(closure_body: probe_out_of_scope_param_atom) {
     Accepted { value: _, diagnostics: _ } => false
