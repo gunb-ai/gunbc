@@ -17,7 +17,7 @@ import gunbc.spark.v41_source_patch_converge {
   v41_source_patch_decision, v41_source_patch_reconcile, v41_sha256_of_bytes,
   v41_patch_member_read, v41_source_tree_read, v41_source_patch_plan,
   v41_observed_source_identity_of, v41_patched_source_receipt_line, v41_patched_source_converged,
-  v41_needs_content_ownership,
+  v41_needs_content_ownership, v41_known_patch_sets, V41KnownPatchSet, V41KnownPatchMember,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -350,4 +350,44 @@ test fn patched_source_receipt_names_the_observed_tree_not_a_clean_vanilla_check
     && refused.contains("patched source REFUSED")
     && v41_patched_source_converged(c: V41PatchedSourceConverged { patches_already_on_tree: false, observed: obs })
     && !v41_patched_source_converged(c: V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: "git apply refused" })
+}
+
+// srv8's arm A tree, refused as not ours (run 36326156975): the pin d2d649e6 with the set main
+// 77193e6a carried staged -- that set's bytes are last written by 034aef01 -- whose git diff
+// --binary HEAD is 0f979787aa2a52e0fb831221df84a3e259f2a2b773256c78812607f83b32b0dc (re-derived:
+// git apply --index of these two blobs onto a clean pin reproduces it). The history derivation
+// enumerated 034aef01 but read its blobs through git.Core.Show, whose stdout is trailing-trimmed;
+// engram_storage_backed.patch there ends in two blank context lines, the re-appended newline
+// left the hunk short, git apply refused it as corrupt and the set contributed no digest. The
+// two hex literals are the git blob contents at that commit (sha256 of git show 034aef01:<path>).
+data w_arm_a_revision: String = "034aef01ad1768c977bfef9d4e6848cb9ae05177"
+
+fn w_member_digest_is(m: V41KnownPatchMember, hex: String) -> Bool {
+  match v41_sha256_of_bytes(content: m.bytes) {
+    Absent => false
+    Present { value: d } => (d.hex as String) == hex
+  }
+}
+
+test fn red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history() -> Bool {
+  match v41_storage_backed_patch_population() {
+    V41PatchesObserved { patches: ps, partition: _ } =>
+      match get(xs: filter(v41_known_patch_sets(patches: ps), k => k.revision == w_arm_a_revision), index: 0) {
+        Absent => false
+        Present { value: k } =>
+          length(k.members) == 2
+            && match get(xs: k.members, index: 0) {
+              Absent => false
+              Present { value: overlay } => w_member_digest_is(m: overlay, hex: "7e18f751cde9fd03feada25f6720822463d4ab4e7125621e5f94c4da3c9a9151")
+            }
+            && match get(xs: k.members, index: 1) {
+              Absent => false
+              Present { value: hook } =>
+                hook.bytes.ends_with(suffix: "(__name__)\n \n \n")
+                  && w_member_digest_is(m: hook, hex: "4a526ba9874b4045c73a43a8775c3cec54de2bcef4b6591543528af7f87da22b")
+            }
+      }
+    V41PatchesAbsentByObservation => false
+    V41PatchesUnestablished { obligation: _ } => false
+  }
 }
