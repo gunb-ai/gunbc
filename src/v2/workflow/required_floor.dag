@@ -316,6 +316,7 @@ fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRos
         DeclinedOutsideGateClosure => CostDebtOutsideThisRunsUniverse {}
         DeclinedDiscoveryExcluded { matched_substring: _ } => CostDebtOutsideThisRunsUniverse {}
         Planned => CostDebtDeclaredButNotWithheld {}
+        PlannedAsReachConsumer => CostDebtDeclaredButNotWithheld {}
         DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedOutsideRequiredGate => CostDebtDeclaredButNotWithheld {}

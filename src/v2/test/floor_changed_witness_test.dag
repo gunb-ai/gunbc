@@ -25,7 +25,7 @@ import v2.workflow.floor_changed_witness {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
+  Planned, PlannedAsChangedWitness, PlannedAsReachConsumer, DeclinedLongModule, DeclinedFixtureMember,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   DeclinedCostDebt,
   required_floor_disposition_with_changed_selection,
@@ -185,6 +185,7 @@ test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm()
     selected_as_changed_witness: true,
   ) {
     PlannedAsChangedWitness => true
+    PlannedAsReachConsumer => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
@@ -203,6 +204,7 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
     DeclinedOutsideGateClosure => true
     Planned => false
     PlannedAsChangedWitness => false
+    PlannedAsReachConsumer => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
