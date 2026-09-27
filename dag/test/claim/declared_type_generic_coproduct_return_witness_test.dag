@@ -39,3 +39,12 @@ test fn w_matching_and_type_variable_arguments_at_return_are_admitted() -> Bool 
   mismatch_count(source: return_argument_positive_source)
     == mismatch_count(source: return_argument_type_variable_source)
 }
+
+// The reverse direction of the same pair, the shape #12432 hit at runtime: a declared record
+// argument whose body produced the other argument.
+data return_argument_reverse_red_source: String = "module probe_generic_coproduct_return_rev\nimport std.types { Int, String }\ntype Alpha { a: Int }\ntype Beta { b: String }\ntype Result<T> = Good { value: T } | Bad { reason: String }\nfn make_alpha() -> Result<Alpha> { Good { value: Alpha { a: 1 } } }\nfn probe() -> Result<Beta> { make_alpha() }\n"
+
+test fn w_reverse_distinct_argument_at_return_refuses() -> Bool {
+  let ok = mismatch_count(source: return_argument_positive_source)
+  ok >= 0 && mismatch_count(source: return_argument_reverse_red_source) > ok
+}
