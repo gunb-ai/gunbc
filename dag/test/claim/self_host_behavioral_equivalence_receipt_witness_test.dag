@@ -1,0 +1,147 @@
+module test.claim.self_host_behavioral_equivalence_receipt_witness
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
+import v2.std.algebra { any }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.self_host_module_behavioral_transport_roster { ModuleBehavioralTransportConfig }
+import gunbc.self_host_behavioral_equivalence_receipt {
+  BehavioralRowVerdict,
+  BehavioralRowHeld,
+  BehavioralRowRefuted,
+  BehavioralRowNoVerdict,
+  BehavioralEquivalenceRow,
+  BehavioralEquivalenceReceipt,
+  BehavioralEquivalenceStanding,
+  BehavioralEquivalenceSeriesEmpty,
+  BehavioralEquivalenceSeriesInvalid,
+  BehavioralEquivalenceLatest,
+  behavioral_equivalence_standing,
+  current_behavioral_equivalence_standing,
+}
+import gunbc.compiler_frontend_program_interlock { SelfHostBehavioralEquivalenceReestablished }
+import gunbc.compiler_frontend_program_status {
+  ClassClear,
+  ClassOutstanding,
+  milestone_status,
+  standing_class,
+  standing_class_label,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The fold is judged over SUPPLIED receipts and a supplied two-module roster (DESIGN section 3: a
+// witness discriminates at one interface), so no claim here runs the wet emit-and-drive a real
+// receipt records. The last claim is the inhabitance claim for the real route: the live milestone
+// reads the persisted series through the same standing, and is no longer NotDerivable.
+
+data fixture_roster: List<ModuleBehavioralTransportConfig> = [
+  ModuleBehavioralTransportConfig { module_path: "a.dag", driver_rel: "a_main.rs", pass_marker: "A: PASS", claim_runs: [] },
+  ModuleBehavioralTransportConfig { module_path: "b.dag", driver_rel: "b_main.rs", pass_marker: "B: PASS", claim_runs: [] },
+]
+
+fn row(module_path: String, verdict: BehavioralRowVerdict) -> BehavioralEquivalenceRow {
+  BehavioralEquivalenceRow { module_path: module_path, verdict: verdict }
+}
+
+fn receipt(sequence: Int, rows: List<BehavioralEquivalenceRow>) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    sequence: sequence,
+    main_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha,
+    instrument: "//gunbc/instruments:self-host-behavioral-equivalence" as NonEmptyStr,
+    observed_at: "2026-09-27T00:00:00Z" as NonEmptyStr,
+    rows: rows
+  }
+}
+
+fn all_held(sequence: Int) -> BehavioralEquivalenceReceipt {
+  receipt(sequence: sequence, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowHeld)])
+}
+
+fn b_refuted(sequence: Int) -> BehavioralEquivalenceReceipt {
+  receipt(sequence: sequence, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowRefuted)])
+}
+
+fn outstanding_of(s: BehavioralEquivalenceStanding) -> List<String> {
+  match s {
+    BehavioralEquivalenceLatest { latest: _, outstanding } => outstanding
+    BehavioralEquivalenceSeriesEmpty => ["<empty>"]
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => ["<invalid>"]
+  }
+}
+
+fn is_latest(s: BehavioralEquivalenceStanding) -> Bool {
+  match s {
+    BehavioralEquivalenceLatest { latest: _, outstanding: _ } => true
+    BehavioralEquivalenceSeriesEmpty => false
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => false
+  }
+}
+
+fn standing(series: List<BehavioralEquivalenceReceipt>) -> BehavioralEquivalenceStanding {
+  behavioral_equivalence_standing(series: series, roster: fixture_roster)
+}
+
+fn mentions(xs: List<String>, needle: String) -> Bool {
+  xs |> any(x => string_contains(s: x, pattern: needle))
+}
+
+test fn an_empty_series_is_its_own_standing() -> Bool {
+  match standing(series: []) {
+    BehavioralEquivalenceSeriesEmpty => true
+    BehavioralEquivalenceLatest { latest: _, outstanding: _ } => false
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => false
+  }
+}
+
+// Positive control: exactly the roster, every row held, reads Clear (no outstanding).
+test fn a_complete_all_held_receipt_has_nothing_outstanding() -> Bool {
+  let s = standing(series: [all_held(sequence: 1)])
+  is_latest(s: s) && count(outstanding_of(s: s)) == 0
+}
+
+// The discriminating red: one refuted row is outstanding, and names its module.
+test fn a_refuted_row_is_outstanding_and_named() -> Bool {
+  let o = outstanding_of(s: standing(series: [b_refuted(sequence: 1)]))
+  count(o) == 1 && mentions(xs: o, needle: "b.dag") && !mentions(xs: o, needle: "a.dag")
+}
+
+test fn a_row_with_no_verdict_is_outstanding_not_held() -> Bool {
+  let r = receipt(sequence: 1, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowNoVerdict { cause: "never ran" })])
+  let o = outstanding_of(s: standing(series: [r]))
+  count(o) == 1 && mentions(xs: o, needle: "never ran")
+}
+
+// Completeness is an identity join: a missing roster module, and a row naming no roster module,
+// are each outstanding even when every present row held.
+test fn a_missing_and_an_unrostered_row_are_each_outstanding() -> Bool {
+  let r = receipt(sequence: 1, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "z.dag", verdict: BehavioralRowHeld)])
+  let o = outstanding_of(s: standing(series: [r]))
+  count(o) == 2 && mentions(xs: o, needle: "b.dag") && mentions(xs: o, needle: "z.dag")
+}
+
+test fn a_duplicated_row_is_outstanding() -> Bool {
+  let r = receipt(sequence: 1, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowHeld)])
+  count(outstanding_of(s: standing(series: [r]))) == 1
+}
+
+// Only the latest receipt speaks: a repair clears, and a later failure is not masked by an earlier pass.
+test fn the_latest_receipt_decides_in_both_directions() -> Bool {
+  count(outstanding_of(s: standing(series: [b_refuted(sequence: 1), all_held(sequence: 2)]))) == 0
+    && count(outstanding_of(s: standing(series: [all_held(sequence: 1), b_refuted(sequence: 2)]))) == 1
+}
+
+test fn a_non_increasing_sequence_refuses_the_series() -> Bool {
+  match standing(series: [all_held(sequence: 2), b_refuted(sequence: 2)]) {
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => true
+    BehavioralEquivalenceSeriesEmpty => false
+    BehavioralEquivalenceLatest { latest: _, outstanding: _ } => false
+  }
+}
+
+// Inhabitance of the real route: the interlock milestone is DERIVED from the persisted series --
+// never NotDerivable -- and its class is exactly what the live standing's outstanding set says.
+test fn the_milestone_derives_from_the_persisted_series() -> Bool {
+  let want = if count(outstanding_of(s: current_behavioral_equivalence_standing())) == 0 { ClassClear } else { ClassOutstanding }
+  standing_class_label(c: standing_class(s: milestone_status(m: SelfHostBehavioralEquivalenceReestablished)))
+    == standing_class_label(c: want)
+}
