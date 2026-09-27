@@ -772,8 +772,8 @@ fn spark_native_arm_steps() -> SparkNativeArmSteps {
   match glm_native_master_endpoint() {
     Absent => NativeArmStepsRefused { cause: "the arm's rendezvous endpoint is unknown, so nothing could be verified after a restart" as NonEmptyStr }
     Present { value: endpoint } => {
-      let steps = flat_map(zip_map(a: launches, b: renders, f: fn(l, r) { spark_native_step_of(launch: l, render: r) }),
-        o => match o { Absent => [] as List<SparkNativeHostStep>  Present { value: v } => [v] })
+      let per_rank: List<SparkNativeHostStep?> = zip_map(a: launches, b: renders, f: fn(l, r) { spark_native_step_of(launch: l, render: r) })
+      let steps = flat_map(per_rank, o => match o { Absent => [] as List<SparkNativeHostStep>  Present { value: v } => [v] })
       if count(steps) == count(launches) && count(steps) > 0 {
         NativeArmSteps { steps: steps, master_endpoint: endpoint }
       } else {
