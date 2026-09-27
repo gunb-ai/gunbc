@@ -77,19 +77,22 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacConfigurationsUnreadable,
   MegaRacShareMismatch,
   MegaRacShareUnreadable,
-  MegaRacCdErrorReported,
   MegaRacPresentationObserved,
   PresentationStillReady,
   PresentationNoLongerReady,
   presentation_still_served,
   ShareBound,
   ShareMismatch,
-  ShareCdError,
   ShareUnreadable,
-  CdErrorBeforeAnyWrite,
-  CdErrorAtReadiness,
+  CdErrorReading,
+  CdErrorRead,
+  CdErrorUnread,
   CdErrorNone,
   CdErrorUncatalogued,
+  CdErrorClean,
+  CdErrorLatchedWhileServed,
+  CdErrorUnreadWhileServed,
+  MegaRacCdErrorStanding,
   megarac_share_type_wire,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
@@ -403,6 +406,24 @@ type MtCollins1MediaAttachRecord
       result: MegaRacAttachResult
     }
 
+fn cd_reading_text(r: CdErrorReading) -> String {
+  match r {
+    CdErrorRead { code: CdErrorNone } => "0"
+    CdErrorRead { code: CdErrorUncatalogued { wire: w } } => concat(to_string(w), " (uncatalogued)")
+    CdErrorUnread { detail: d } => concat("UNREAD: ", d)
+  }
+}
+
+// A nonzero code beside a healthy presentation is historical and non-blocking, and its clearing
+// action is not known: the text says both, so a reader of the receipt can see what was measured.
+fn cd_standing_text(s: MegaRacCdErrorStanding) -> String {
+  match s {
+    CdErrorClean => "clean"
+    CdErrorLatchedWhileServed { wire: w, semantics: _ } => concat("LATCHED ", concat(to_string(w), " beside a healthy presentation (historical, non-blocking; clearing action unknown)"))
+    CdErrorUnreadWhileServed { detail: d } => concat("unread beside a healthy presentation: ", d)
+  }
+}
+
 fn optional_text(v: String?) -> String {
   match v {
     Present { value: x } => x
@@ -423,6 +444,7 @@ fn detach_evidence_text(detach: MegaRacDetachEvidence) -> String {
     "stopped '", detach.stale_image, "' on media index ", detach.media_index,
     "; stop-media answered ", if detach.command.success { "success" } else { "FAILURE" }, ": ", detach.command.body,
     "; configurations read-back ", if detach.readback_read { "read" } else { "UNREAD" }, ": ", detach.readback,
+    "; cd_error_code after the stop: ", cd_reading_text(r: detach.cd_after_stop),
   ], "")
 }
 
@@ -432,6 +454,8 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
     " session_index=", optional_text(v: e.session_index),
     " redirection_status=", to_string(e.redirection_wire),
     " established_at=", to_string(e.established_at), " looks=", to_string(e.looks),
+    " cd_error_code before any write=", cd_reading_text(r: e.cd_before_any_write),
+    " at ready=", cd_reading_text(r: e.cd_at_ready), " (", cd_standing_text(s: e.cd_error), ")",
   ], "")
 }
 
@@ -459,10 +483,10 @@ fn readiness_look_text(l: ReadinessLook) -> String {
 fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
   match outcome {
     MegaRacPresentationReady { route: _, evidence: _ } => none
-    MegaRacReadinessTimedOut { image_name: n, route: r, last: l, deadline: d, looks: k } =>
-      Present { value: join(["the presentation of '", n as String, "' did not reach Started with a bound session before ", to_string(d), " (", to_string(k), " looks, route: ", attach_route_text(route: r), "); last look ", readiness_look_text(l: l), ". No boot-device or power handoff was made"], "") }
-    MegaRacReadinessRefused { image_name: n, route: r, look: l, looks: k } =>
-      Present { value: join(["the presentation of '", n as String, "' was refused by the readiness policy after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), ". No boot-device or power handoff was made"], "") }
+    MegaRacReadinessTimedOut { image_name: n, route: r, last: l, deadline: d, looks: k, cd_before_any_write: cb, cd_at_refusal: ca } =>
+      Present { value: join(["the presentation of '", n as String, "' did not reach Started with a bound session before ", to_string(d), " (", to_string(k), " looks, route: ", attach_route_text(route: r), "); last look ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
+    MegaRacReadinessRefused { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_refusal: ca } =>
+      Present { value: join(["the presentation of '", n as String, "' was refused by the readiness policy after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
     MegaRacReadinessClockUnreadable { image_name: n, route: _, detail: d } =>
       Present { value: concat("the clock could not be read, so the readiness window for '", concat(n as String, concat("' could not be declared or judged: ", d))) }
     MegaRacConfigurationsUnreadable { detail: d } =>
@@ -473,15 +497,7 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
         e.server_address as String, ":", e.source_path as String, " over ", megarac_share_type_wire(t: e.share_type), " with mount_cd 1, observed ",
         o.server_address, ":", o.source_path, " over ", o.share_type, " with mount_cd ", o.mount_cd,
       ], "") }
-    MegaRacCdErrorReported { at: p, error: e, general: g } =>
-      Present { value: join([
-        "the controller's remote-media settings report cd_error_code ",
-        match e { CdErrorUncatalogued { wire: w } => to_string(w)  CdErrorNone => "0" },
-        ", which is uncatalogued for this firmware, ",
-        match p { CdErrorBeforeAnyWrite => "before any write, so nothing was written"  CdErrorAtReadiness => "at readiness, so no boot-device or power handoff was made" },
-        ": ", g,
-      ], "") }
-    MegaRacPresentationObserved { share: _, readiness: _ } =>
+    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _ } =>
       Present { value: "a read-only presentation observation reached an attach decision; observations never attach and never open the handoff" }
     MegaRacShareUnreadable { detail: d } =>
       Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
@@ -562,10 +578,11 @@ type MtCollins1HandoffMedia
 
 fn observation_text(r: MegaRacAttachResult) -> String {
   match r.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: rd } =>
+    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd } =>
       join([
-        "share ", match sh { ShareBound => "bound"  ShareMismatch { observed: o } => concat("MISMATCH ", concat(o.server_address, concat(":", o.source_path)))  ShareCdError { error: _, body: _ } => "CD ERROR"  ShareUnreadable { detail: d } => concat("UNREADABLE ", d) },
+        "share ", match sh { ShareBound => "bound"  ShareMismatch { observed: o } => concat("MISMATCH ", concat(o.server_address, concat(":", o.source_path)))  ShareUnreadable { detail: d } => concat("UNREADABLE ", d) },
         "; row ", readiness_reading_text(r: rd),
+        "; cd_error_code ", cd_reading_text(r: cd),
         "; session ", session_release_text(standing: r.session_release),
       ], "")
     other => match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" }

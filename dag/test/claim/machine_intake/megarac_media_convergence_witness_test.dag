@@ -70,14 +70,17 @@ import gunbc.machine_intake_megarac_media_attach {
   readiness_wait_outcome,
   stop_media_body,
   share_binding_standing,
-  ready_with_cd_error,
   ShareBound,
   ShareMismatch,
-  ShareCdError,
   ShareUnreadable,
   CdErrorUncatalogued,
-  CdErrorAtReadiness,
-  MegaRacCdErrorReported,
+  CdErrorRead,
+  CdErrorNone,
+  CdErrorUnread,
+  CdErrorLatchedWhileServed,
+  BmcUnknownSemantics,
+  cd_error_reading,
+  cd_error_standing_while_served,
   MegaRacPresentationObserved,
   MegaRacSessionRefused,
   PresentationStillReady,
@@ -280,6 +283,8 @@ test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
     image_name: desired_census,
     firmware: megarac_firmware_0_32,
     route: RouteAlreadyPresented,
+    cd_before: cd_clean,
+    cd_at_end: cd_clean,
   ) {
     MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: e } =>
       e.redirection_wire == 1 && optional_text_is(v: e.session_index, want: "0") && optional_text_is(v: e.media_index, want: "0") && e.established_at == 1500 && e.looks == 1
@@ -289,7 +294,7 @@ test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
 
 // ─── DETACH: the command's answer and the read-back are two facts ───────────────────────────────
 fn detach(success: Bool, body: String, readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
-  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: StopCommandAnswer { success: success, body: body }, readback_read: readback_read, readback: readback }
+  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: StopCommandAnswer { success: success, body: body }, readback_read: readback_read, readback: readback, cd_after_stop: cd_clean }
 }
 
 data stop_1411: String = "{\"error\":\"Error stopping the remote media redirection\",\"code\":1411}"
@@ -322,7 +327,7 @@ fn attempted(result: MegaRacAttachResult) -> MtCollins1MediaAttachRecord {
 
 test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> Bool {
   match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult {
-    outcome: MegaRacReadinessTimedOut { image_name: desired_census, route: RouteAttached { image_list_index: "5" }, last: look(at: 31000, status: "100", session: "0"), deadline: 31000, looks: 15 },
+    outcome: MegaRacReadinessTimedOut { image_name: desired_census, route: RouteAttached { image_list_index: "5" }, last: look(at: 31000, status: "100", session: "0"), deadline: 31000, looks: 15, cd_before_any_write: cd_clean, cd_at_refusal: cd_clean },
     session_release: SessionReleased,
   })) {
     MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "No boot-device or power handoff") && string_contains(s: r as String, pattern: "connecting (status 100)")
@@ -332,7 +337,7 @@ test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> B
 
 test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
   match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult {
-    outcome: MegaRacReadinessRefused { image_name: desired_census, route: RouteAttached { image_list_index: "5" }, look: look(at: 2000, status: "16", session: "255"), looks: 1 },
+    outcome: MegaRacReadinessRefused { image_name: desired_census, route: RouteAttached { image_list_index: "5" }, look: look(at: 2000, status: "16", session: "255"), looks: 1, cd_before_any_write: cd_clean, cd_at_refusal: cd_16 },
     session_release: SessionReleased,
   })) {
     MediaGateWithheld { reason: r } => string_contains(s: r as String, pattern: "redirection_status 16")
@@ -342,7 +347,7 @@ test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
 
 fn ready_outcome() -> MegaRacAttachResult {
   MegaRacAttachResult {
-    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5" }),
+    outcome: readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5" }, cd_before: cd_clean, cd_at_end: cd_clean),
     session_release: SessionReleased,
   }
 }
@@ -418,10 +423,10 @@ test fn the_derived_share_binds_the_controllers_own_answer() -> Bool {
     && (match share_binding_standing(body: mtcollins1_media_general_2026_09_27_morning_as_reported, expected: mtcollins1_media_share) { ShareBound => true _ => false })
 }
 
-// The evening read, after the failed boot, carries cd_error_code 16: refused before any write, wire kept.
-test fn cd_error_16_refuses_before_any_write_keeping_the_wire() -> Bool {
+// The code is not part of the share binding: the evening read, cd_error_code 16, still binds.
+test fn a_latched_cd_error_does_not_unbind_the_share() -> Bool {
   match share_binding_standing(body: mtcollins1_media_general_2026_09_27, expected: mtcollins1_media_share) {
-    ShareCdError { error: CdErrorUncatalogued { wire: w }, body: b } => w == 16 && b == mtcollins1_media_general_2026_09_27
+    ShareBound => true
     _ => false
   }
 }
@@ -452,26 +457,34 @@ test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
   }
 }
 
-// AT READINESS: a Started presentation is withheld while the general settings carry an error.
-test fn a_ready_presentation_with_cd_error_16_is_withheld_at_readiness() -> Bool {
-  (match ready_with_cd_error(ready: ready_outcome().outcome, general_read: true, general: mtcollins1_media_general_2026_09_27) {
-    MegaRacCdErrorReported { at: CdErrorAtReadiness, error: CdErrorUncatalogued { wire: w }, general: _ } => w == 16
-    _ => false
-  })
-    && (match ready_with_cd_error(ready: ready_outcome().outcome, general_read: true, general: mtcollins1_media_general_2026_09_27_morning_as_reported) {
-      MegaRacPresentationReady { route: _, evidence: _ } => true
+// THE CODE IS A LATCHED LAST ERROR, JUDGED WITH THE PRESENTATION (operator direction on #12425).
+// 18:37Z: code 16 while the re-attached image read Started, session 0 -- a healthy presentation. So a
+// nonzero code beside Started is historical: recorded with BmcUnknownSemantics, not blocking, and the
+// gate opens; the same code beside an unhealthy presentation rides that presentation's refusal.
+data cd_clean: CdErrorReading = CdErrorRead { code: CdErrorNone }
+data cd_16: CdErrorReading = cd_error_reading(body: mtcollins1_media_general_2026_09_27)
+
+test fn a_nonzero_code_beside_a_healthy_presentation_is_latched_and_does_not_block() -> Bool {
+  (match cd_error_standing_while_served(reading: cd_16) { CdErrorLatchedWhileServed { wire: w, semantics: BmcUnknownSemantics } => w == 16 _ => false })
+    && (match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5" }, cd_before: cd_16, cd_at_end: cd_16) {
+      MegaRacPresentationReady { route: _, evidence: e } =>
+        (match e.cd_error { CdErrorLatchedWhileServed { wire: w, semantics: _ } => w == 16 _ => false })
+          && (match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: MegaRacPresentationReady { route: RouteAttached { image_list_index: "5" }, evidence: e }, session_release: SessionReleased })) { MediaGateReady { evidence: _ } => true  MediaGateWithheld { reason: _ } => false })
       _ => false
     })
 }
 
-// ─── THE LOOKS AROUND THE HANDOFF ───────────────────────────────────────────────────────────────
-fn observed(general: String, configurations: String) -> MegaRacAttachResult {
-  MegaRacAttachResult {
-    outcome: MegaRacPresentationObserved {
-      share: share_binding_standing(body: general, expected: mtcollins1_media_share),
-      readiness: attach_readiness(answered: true, body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
-    },
-    session_release: SessionReleased,
+test fn a_nonzero_code_beside_an_unhealthy_presentation_rides_its_refusal() -> Bool {
+  match readiness_wait_outcome(wait: ReadinessWaitRefused { look: look(at: 2000, status: "16", session: "255"), looks: 1 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAttached { image_list_index: "5" }, cd_before: cd_clean, cd_at_end: cd_16) {
+    MegaRacReadinessRefused { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_refusal: CdErrorRead { code: CdErrorUncatalogued { wire: w } } } => w == 16
+    _ => false
+  }
+}
+
+test fn an_unread_code_beside_a_healthy_presentation_is_recorded_not_blocking() -> Bool {
+  match readiness_wait_outcome(wait: ReadinessWaitReady { look: look(at: 13000, status: "1", session: "0"), looks: 4 }, image_name: desired_census, firmware: megarac_firmware_0_32, route: RouteAlreadyPresented, cd_before: cd_clean, cd_at_end: CdErrorUnread { detail: "curl: (28)" }) {
+    MegaRacPresentationReady { route: _, evidence: e } => (match e.cd_at_ready { CdErrorUnread { detail: d } => d == "curl: (28)" _ => false })
+    _ => false
   }
 }
 
