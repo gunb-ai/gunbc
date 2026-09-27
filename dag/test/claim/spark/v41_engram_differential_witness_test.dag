@@ -1,7 +1,7 @@
 module test.claim.spark.v41_engram_differential_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, byte_size }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -12,11 +12,14 @@ import gunbc.spark.v41_engram_differential_run {
 }
 import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
 import gunbc.spark.v41_engram_row_store {
-  V41PublishedStoresRead, V41PublishedStoresUnread, V41ObservedRankStore, v41_rank_store_identity,
-  v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings,
+  V41PublishedStoreReadings, V41PublishedStoresRead, V41PublishedStoresUnread, V41ObservedRankStore, v41_rank_store_identity,
+  V41RowStoreEncodingSpec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of,
 }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
-import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries }
+import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
+import extdeps.vllm.engram_layout { vllm_engram_rank_rows }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.nat { Nat }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -67,23 +70,51 @@ test fn an_occupied_host_refuses_and_a_free_one_is_admitted() -> Bool {
   free && gpu && mem
 }
 
-// THE LIVE MANIFEST: the real spec and the published store readings derive a manifest naming all
-// eight stores with their digests and the encode's paths; unread readings refuse.
-test fn the_live_manifest_names_every_published_store() -> Bool {
-  match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
-    V41RowStoreSpecRefused { defects: _ } => false
-    V41RowStoreSpecAdmitted { spec: spec } => {
-      let live = match v41_engram_store_manifest(spec: spec, readings: v41_published_store_readings) {
-        V41StoreManifestDerived { text: t, stores: n } => n == 8 && contains(t, "\"sha256\": \"408fc45afaab71f7ae79af76636e031ca453f8d3a26c416a18baee6c0275de23\"") && contains(t, "/engram-row-stores/") && contains(t, "\"record_bytes\": 264")
-        V41StoreManifestRefused { causes: _ } => false
-      }
-      let unread = match v41_engram_store_manifest(spec: spec, readings: V41PublishedStoresUnread { obligation: "fixture" as NonEmptyStr }) {
-        V41StoreManifestRefused { causes: _ } => true
-        V41StoreManifestDerived { text: _, stores: _ } => false
-      }
-      live && unread
-    }
+// THE MANIFEST AT ITS OWN INTERFACE, OVER A SUPPLIED SPEC AND READINGS: one layer over four ranks, with
+// three-byte records. Every owed (layer, rank) with exactly one read store derives a manifest naming
+// the encode's path and the read digest; a missing store or a store the spec does not owe refuses.
+// The real path (the live spec and the published readings) ran end to end in the differential on srv5,
+// fleet-converge run 36254702828, whose receipt is this module's evidence of record.
+fn w_tiny_spec() -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_of_layers(
+    partition: v41_candidate_partition,
+    layers: [v41_layer_table(layer: 1, weight: "layers.1.engram.embed.weight" as NonEmptyStr, scale: "layers.1.engram.embed.scale" as NonEmptyStr, rows: 8, ranks: vllm_engram_rank_rows(head_sizes: [2, 2, 2, 2], tp_size: 4))],
+    geometry: v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 2, scale_width: 1),
+  )
+}
+
+fn w_store(layer: Nat, rank: Nat, hex: String) -> V41ObservedRankStore {
+  V41ObservedRankStore { identity: v41_rank_store_identity(layer: layer, rank: rank, digest: Sha256Digest { hex: hex as Sha256DigestHex }), size: byte_size(count: 12) }
+}
+
+fn w_read(stores: List<V41ObservedRankStore>) -> V41PublishedStoreReadings {
+  V41PublishedStoresRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, stores: stores }
+}
+
+data w_d0: String = "0000000000000000000000000000000000000000000000000000000000000000"
+data w_d1: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data w_d2: String = "2222222222222222222222222222222222222222222222222222222222222222"
+data w_d3: String = "3333333333333333333333333333333333333333333333333333333333333333"
+
+test fn the_manifest_names_every_owed_store_and_refuses_a_gap_or_an_extra() -> Bool {
+  let four = [w_store(layer: 1, rank: 0, hex: w_d0), w_store(layer: 1, rank: 1, hex: w_d1), w_store(layer: 1, rank: 2, hex: w_d2), w_store(layer: 1, rank: 3, hex: w_d3)]
+  let derived = match v41_engram_store_manifest(spec: w_tiny_spec(), readings: w_read(stores: four)) {
+    V41StoreManifestDerived { text: t, stores: n } => n == 4 && contains(t, "\"record_bytes\": 3") && contains(t, "\"weight_bytes\": 2") && contains(t, join(["\"sha256\": \"", w_d2, "\""], "")) && contains(t, "/engram-row-stores/layer.1.rank.2.engram")
+    V41StoreManifestRefused { causes: _ } => false
   }
+  let gap = match v41_engram_store_manifest(spec: w_tiny_spec(), readings: w_read(stores: [w_store(layer: 1, rank: 0, hex: w_d0), w_store(layer: 1, rank: 1, hex: w_d1), w_store(layer: 1, rank: 2, hex: w_d2)])) {
+    V41StoreManifestRefused { causes: cs } => length(filter(cs, c => contains(c, "layer 1 rank 3 has 0 read stores"))) == 1
+    V41StoreManifestDerived { text: _, stores: _ } => false
+  }
+  let extra = match v41_engram_store_manifest(spec: w_tiny_spec(), readings: w_read(stores: concat(four, [w_store(layer: 14, rank: 0, hex: w_d0)]))) {
+    V41StoreManifestRefused { causes: cs } => length(filter(cs, c => contains(c, "layer 14 rank 0 is not owed"))) == 1
+    V41StoreManifestDerived { text: _, stores: _ } => false
+  }
+  let unread = match v41_engram_store_manifest(spec: w_tiny_spec(), readings: V41PublishedStoresUnread { obligation: "fixture" as NonEmptyStr }) {
+    V41StoreManifestRefused { causes: _ } => true
+    V41StoreManifestDerived { text: _, stores: _ } => false
+  }
+  derived && gap && extra && unread
 }
 
 // THE COMMAND: bounded twice, labelled for this lane, memory-capped, the stores mounted read-only.
