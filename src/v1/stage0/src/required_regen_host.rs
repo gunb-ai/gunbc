@@ -6469,10 +6469,38 @@ mod regen_convergence_host_instrument_tests {
 
     static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
-    fn fixture_workspace() -> (PathBuf, PathBuf, PathBuf, RegenConvergenceCheckpointSubject) {
-        // THE FIXTURE OWNS A FRESH ROOT. Process id and counter alone repeat across runs (a test
-        // that panics never reaches its `remove_dir_all`, and a later process can draw the same
-        // id), so the name also carries the wall-clock nanos, and the root is created with
+    /// The fixture's root, removed when the guard drops -- on success AND on unwind, so a test
+    /// that panics after creating its fixture leaves nothing behind in the runner's temp dir.
+    struct FixtureRoot(PathBuf);
+
+    impl Drop for FixtureRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    impl std::ops::Deref for FixtureRoot {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl AsRef<Path> for FixtureRoot {
+        fn as_ref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    fn fixture_workspace() -> (
+        FixtureRoot,
+        PathBuf,
+        PathBuf,
+        RegenConvergenceCheckpointSubject,
+    ) {
+        // THE FIXTURE OWNS A FRESH ROOT. Process id and counter alone repeat across runs (a
+        // later process can draw the same id), so the name also carries the wall-clock nanos,
+        // and the root is created with
         // `create_dir`: a root that already exists refuses here, located, rather than being
         // written into with a previous run's files and permissions still in it.
         let root = std::env::temp_dir().join(format!(
@@ -6486,6 +6514,8 @@ mod regen_convergence_host_instrument_tests {
         ));
         fs::create_dir(&root)
             .unwrap_or_else(|e| panic!("fixture root {} must be fresh: {e}", root.display()));
+        // Guard taken before any further fallible step, so a panic inside the fixture also cleans up.
+        let root = FixtureRoot(root);
         let stage0 = root.join("src/v1/stage0/src");
         let candidate = root.join("candidate/src");
         fs::create_dir_all(&stage0).unwrap();
@@ -6501,7 +6531,7 @@ mod regen_convergence_host_instrument_tests {
         let git = |args: &[&str]| {
             let output = Command::new("git")
                 .args(args)
-                .current_dir(&root)
+                .current_dir(&*root)
                 .env("GIT_AUTHOR_NAME", "regen fixture")
                 .env("GIT_AUTHOR_EMAIL", "regen@example.invalid")
                 .env("GIT_COMMITTER_NAME", "regen fixture")
@@ -6589,6 +6619,25 @@ mod regen_convergence_host_instrument_tests {
         rows.iter()
             .map(|(path, module, _)| ((*path).to_string(), (*module).to_string()))
             .collect()
+    }
+
+    #[test]
+    fn a_test_that_panics_after_creating_the_fixture_leaves_no_root_behind() {
+        let (root_tx, root_rx) = std::sync::mpsc::channel();
+        let unwound = std::panic::catch_unwind(move || {
+            let (workspace, _, _, _) = fixture_workspace();
+            root_tx.send(workspace.to_path_buf()).unwrap();
+            assert!(
+                workspace.exists(),
+                "fixture root must exist before the panic"
+            );
+            panic!("planted failure after fixture creation");
+        });
+        assert!(unwound.is_err(), "the planted panic must fire");
+        let root = root_rx
+            .recv()
+            .expect("fixture reported its root before panicking");
+        assert!(!root.exists(), "leaked fixture root {}", root.display());
     }
 
     /// RED: the dependent mirror imports a symbol only the sibling introduces. On main the
@@ -6692,7 +6741,6 @@ mod regen_convergence_host_instrument_tests {
         )
         .expect("installing the coherent pair rebuilds");
         assert_eq!(rebuilds, 1, "the round rebuilds once after installing both");
-        fs::remove_dir_all(&workspace).unwrap();
     }
 
     /// Positive control: a single GenerationInput mirror still takes PromoteGenerationInputs.
@@ -6740,7 +6788,6 @@ mod regen_convergence_host_instrument_tests {
         );
         assert_eq!(install_set, drifted);
         assert_eq!(closure_id, "generation-input-cut");
-        fs::remove_dir_all(&workspace).unwrap();
     }
 
     /// THE DISCRIMINATING RED FOR `admit_install_target`, and the reason the wall is not a
@@ -7113,7 +7160,6 @@ mod regen_convergence_host_instrument_tests {
         );
         fs::remove_file(stage0.join("fixture_created.rs")).unwrap();
         restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
-        fs::remove_dir_all(&workspace).unwrap();
     }
 
     #[test]
@@ -7287,7 +7333,7 @@ mod regen_convergence_host_instrument_tests {
         // An emitted non-Rust artifact is admitted from the writer's exact output population,
         // not from a basename exception. This is the crate-layout-product shape without naming
         // any particular product path in the manifest authority.
-        let (_, _, emitted_artifact_candidate, _) = fixture_workspace();
+        let (_root, _, emitted_artifact_candidate, _) = fixture_workspace();
         fs::write(
             emitted_artifact_candidate.join("fixture-layout.artifact"),
             "emitted layout bytes\n",
@@ -7312,7 +7358,7 @@ mod regen_convergence_host_instrument_tests {
 
         // Relative-path identity is load-bearing: a nested file cannot borrow the generated role
         // of an emitted root artifact merely because their basenames collide.
-        let (_, _, emitted_collision_candidate, _) = fixture_workspace();
+        let (_root, _, emitted_collision_candidate, _) = fixture_workspace();
         fs::create_dir_all(emitted_collision_candidate.join("nested")).unwrap();
         fs::write(
             emitted_collision_candidate.join("nested/fixture-layout.artifact"),
@@ -7335,7 +7381,7 @@ mod regen_convergence_host_instrument_tests {
         // Bootstrap-source mirrors inhabit the same immutable candidate artifact as generated
         // surfaces. Their role is bound by the manifest, and changing their bytes after
         // production refuses before any install journal exists.
-        let (_, _, bootstrap_candidate, _) = fixture_workspace();
+        let (_root, _, bootstrap_candidate, _) = fixture_workspace();
         fs::create_dir_all(bootstrap_candidate.join("cli_run")).unwrap();
         fs::write(
             bootstrap_candidate.join("cli_run/fixture_support.txt"),
@@ -7371,7 +7417,7 @@ mod regen_convergence_host_instrument_tests {
 
         // A file with neither a generated-surface row nor a bootstrap-source-mirror row remains
         // foreign to the complete artifact and is refused at the population wall.
-        let (_, _, foreign_candidate, _) = fixture_workspace();
+        let (_root, _, foreign_candidate, _) = fixture_workspace();
         let foreign_rows = [(
             "fixture_generated.rs",
             "fixture.generated",
@@ -7478,7 +7524,6 @@ mod regen_convergence_host_instrument_tests {
         .unwrap_err();
         assert!(post_build_tamper.contains("InstalledDigestMismatch"));
         restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
-        fs::remove_dir_all(&workspace).unwrap();
 
         // A failed build crosses the real copy boundary, then the subject-bound journal restores
         // the admitted checkpoint. This is the single-pass negative control.
@@ -7629,7 +7674,6 @@ mod regen_convergence_host_instrument_tests {
             fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
             before
         );
-        fs::remove_dir_all(&workspace).unwrap();
 
         // An unplanned generated mutation is detected after the hermetic build callback and the
         // complete-population journal restores it with the planned surface.
@@ -7761,7 +7805,6 @@ mod regen_convergence_host_instrument_tests {
         )
         .unwrap_err();
         assert!(bound.contains("BoundRefused"), "{bound}");
-        fs::remove_dir_all(&workspace).unwrap();
     }
 }
 

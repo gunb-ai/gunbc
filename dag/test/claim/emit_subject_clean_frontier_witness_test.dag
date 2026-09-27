@@ -1,5 +1,141 @@
 module test.claim.emit_subject_clean_frontier_witness
 
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.github.actions_environment {
+  ActionsRunCoordinate,
+  ActionsRunCoordinateMissing,
+  ActionsRunCoordinateObserved,
+  ActionsRunEnvironmentObservations
+}
+import gunbc.emit_diagnostic_observation { FilesEmitted, FilesNotWritten, GunbcDiagnostic }
+import gunbc.emit_subject_clean_frontier {
+  BindingAbsent,
+  BindingDivergent,
+  BindingEstablished,
+  BlockingDiagnostics,
+  CompilerComponent,
+  DeclarationIndexUnderRoots,
+  DualUniverse,
+  EmitDebtAdmission,
+  EmitObservationPersistence,
+  EmitPricingReceipt,
+  EmitRatchetEnrolmentAdmission,
+  EmitRatchetHeld,
+  EmitRatchetObservation,
+  EmitRatchetRefused,
+  EmitRatchetVerdict,
+  EmitSubjectBlocked,
+  EmitSubjectClean,
+  EmitSubjectCleanRatchet,
+  EmitSubjectNotEvaluated,
+  EmitSubjectOutcome,
+  EmitSubjectReading,
+  EmittedNothing,
+  EnrolledAsGate,
+  EnrolledAsObservation,
+  EnrolmentPermitted,
+  EnrolmentRefusedDenominator,
+  EnrolmentRefusedNoUniverse,
+  EnrolmentRefusedUnevaluated,
+  ExtentUnestablished,
+  IndexOnlyUniverse,
+  ObservationBinding,
+  ObservationNotTaken,
+  ObservationPersisted,
+  ObservationPersistenceRefused,
+  ObservationTaken,
+  PopulationUnproduced,
+  PopulationUnreadable,
+  PricingBindingDivergent,
+  PricingReceiptBound,
+  PricingReceiptRefused,
+  PricingReportNotPersisted,
+  PricingRunCoordinateUnbound,
+  PricingWorkingTreeDirty,
+  RatchetCleanHeld,
+  RatchetDebtHeld,
+  RatchetFrontierStale,
+  RatchetNotEvaluated,
+  RatchetRegressed,
+  RatchetSubjectNotSelected,
+  RatchetSubjectUnmeasured,
+  RefusedWithoutBlockingPopulation,
+  ResolutionPopulationExceedsClosure,
+  RosterDiscoveryPolicy,
+  RosterEmpty,
+  RosterIdentified,
+  SelectionSubset,
+  SelectionWholeRoster,
+  SourceRevisionComponent,
+  SubjectSelection,
+  UnclassifiedByModuleIndex,
+  UnevaluatedInstrumentSilent,
+  UnevaluatedNoPopulation,
+  UnevaluatedSubject,
+  VerdictEstablishedAndRefused,
+  distinct_component_values,
+  emission_subject_entry_text,
+  emit_debt_admission,
+  emit_outcome_of_population,
+  emit_outcome_of_refusal,
+  emit_outcome_under_membership,
+  emit_pricing_receipt,
+  emit_pricing_receipt_text,
+  emit_ratchet_enrolment_admission,
+  emit_ratchet_enrolment_admission_text,
+  emit_ratchet_observation,
+  emit_ratchet_observation_text,
+  emit_ratchet_report_rows,
+  emit_ratchet_runner_cadence,
+  emit_ratchet_runner_execution_standing,
+  emit_ratchet_standing,
+  emit_ratchet_verdict_entry,
+  emit_ratchet_verdict_evaluated,
+  emit_ratchet_verdict_holds,
+  emit_ratchet_verdict_row,
+  emit_ratchet_verdict_standing,
+  emit_subject_reading,
+  fold_emit_subject_clean_ratchet_over_readings,
+  not_evaluated_cause_for_stage,
+  observation_binding,
+  ratchet_failing_rows,
+  roster_discovery_policy_roots,
+  roster_identity_rows,
+  universe_classification_readings,
+  universe_roster_identity
+}
+import gunbc.emit_subject_identity {
+  MembershipObserved,
+  SubjectMembership,
+  unobserved_resolution_candidates
+}
+import std.dissolution { unbound_dissolution }
+import std.measure { byte_size, byte_size_count, nanosecond, second }
+import std.types { Bool, CommitSha, NonEmptyStr, String }
+import std.witness_admission {
+  DeclaredCadenceUnrealized,
+  DiscoverySelection,
+  LegacyFrozenPathDeferral,
+  UnclassifiedPathDeferral,
+  UnexecutedDeferredWitness,
+  WitnessHasExecutingConsumer
+}
+import tools.emission_entry_instrument {
+  EmissionMeasurementSubject,
+  EmissionSubjectUnestablished,
+  EntryScope,
+  PrimaryRootScope,
+  RustRender,
+  SeedLinkedAssembly,
+  StageBinaries,
+  StageEmit,
+  StageEmitDecode,
+  WorkingTreeClean,
+  WorkingTreeDirty,
+  WorkingTreeStanding
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE RATCHET'S OWN EVIDENCE. Every input here is authored beside its expected verdict, so nothing
