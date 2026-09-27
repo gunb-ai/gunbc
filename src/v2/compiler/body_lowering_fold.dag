@@ -2660,7 +2660,7 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
           body_lower_function_value_in_fold(node: node)
         } else {
           match body_lower_fold_family_call_first(node: node) {
-            Present { value: lowered } => lowered
+            Present { value: seam } => body_lower_fold_family_call_arguments_admitted(node: node, emitted: emitted, seam: seam)
             Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
           }
         }
@@ -2680,6 +2680,26 @@ fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: Present { value: arrow }, diagnostics: d } => outcome_with_diagnostics(value: arrow, diagnostics: d)
         Accepted { value: Absent, diagnostics: _ } => unread
+      }
+  }
+}
+
+// THE SEAM KEEPS ONLY THE STEP, SO THE CALL'S ARGUMENTS ARE ADMITTED BEFORE IT IS ACCEPTED.
+// fold_lowering fold_call_seam_loop carries the step body and its carrier and nothing else, so a
+// refusal owned by any other argument (the collection, `init:`) cannot reach the caller through the
+// seam. Before function values lowered in the fold, the catamorphism lowered the call's children
+// first and built the seam after, so such a refusal propagated; taking the call on its raw node
+// skipped that, and `fold(map(s, <unlowerable>), ..)` Accepted with the collection gone
+// (v2.test.claim.namespace_xl0.value_read_refusal, the swallowed fold refusal). The call is lowered
+// once through the ordinary dispatch and its refusal propagates; the seam stands only when it
+// admits. A seam over a refusing step keeps its own refusal (FoldCallStepShapeInvalid).
+fn body_lower_fold_family_call_arguments_admitted(node: Node, emitted: Symbol, seam: Outcome<Node>) -> Outcome<Node> {
+  match seam {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: _ } =>
+      match body_lower_fold_dispatch(node: node, emitted: emitted) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: _ } => seam
       }
   }
 }
