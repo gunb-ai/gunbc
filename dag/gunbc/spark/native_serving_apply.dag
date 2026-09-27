@@ -1290,13 +1290,47 @@ fn spark_native_transaction_receipt(t: SparkNativeArmTransaction) -> String {
   }
 }
 
-fn spark_native_transaction_exit(t: SparkNativeArmTransaction, body: String) -> ProcessExit {
-  match t {
-    NativeArmCommitted { receipt: _ } => ExitSuccess
-    NativeArmCommittedWithCleanupPending { receipt: _ } => exit_failure(reason: body)
-    NativeArmRefusedBeforeActuation { stage: _, receipt: _ } => exit_failure(reason: body)
-    NativeArmRollbackActuationAccepted { stage: _, dispositions: _, receipt: _ } => exit_failure(reason: body)
-    NativeArmDispositionUnestablished { stage: _, dispositions: _, receipt: _ } => exit_failure(reason: body)
+// ONE ARM TRANSACTION OVER PLANNED STEPS, WHOEVER PLANNED THEM: the grant preflight on every host (a
+// refusal touches no host), the transaction identity, then the bounded transaction body. Group B's
+// entry below and the V4.1 Group A launch (gunbc.spark.v41_group_a_launch v41_group_a_launch_ci_wet)
+// both run their plans through this, so the preflight, preserve, head-first apply, readback and
+// commit-or-rollback are one realization with two callers. Only a clean commit is `committed`;
+// cleanup-pending, rolled back and unestablished all read false, as the entry's exit always did.
+type SparkNativeApplyRun {
+  body: String
+  committed: Bool
+}
+
+fn spark_native_apply_transaction(
+  context: FleetSshExecutionContext, trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, at_word: String,
+) -> SparkNativeApplyRun
+{
+  let grants = map(map(steps, st => st.host), h => spark_native_grant_preflight_host(context: context, host: h))
+  let grant_lines = join(map(grants, p => spark_native_grant_preflight_wire(p: p)), "")
+  if spark_native_grant_preflight_refusals(ps: grants).length() > 0 {
+    SparkNativeApplyRun {
+      body: join(["spark_native_serving_apply preflight: the offer's grant is not in place on every host of the arm; NO HOST WAS TOUCHED.\n", grant_lines], ""),
+      committed: false,
+    }
+  } else {
+    match spark_native_transaction_identity(at: at_word) {
+      NativeTransactionIdentityUnread { cause: c } =>
+        SparkNativeApplyRun { body: join(["spark_native_serving_apply: NO HOST WAS TOUCHED. ", c, "\n"], ""), committed: false }
+      NativeTransactionIdentified { id: transaction_id } => {
+        let outcome = spark_native_transaction_body(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id)
+        SparkNativeApplyRun {
+          body: join([spark_native_transaction_headline(t: outcome), grant_lines, spark_native_transaction_receipt(t: outcome)], ""),
+          committed: match outcome {
+            NativeArmCommitted { receipt: _ } => true
+            NativeArmCommittedWithCleanupPending { receipt: _ } => false
+            NativeArmRefusedBeforeActuation { stage: _, receipt: _ } => false
+            NativeArmRollbackActuationAccepted { stage: _, dispositions: _, receipt: _ } => false
+            NativeArmDispositionUnestablished { stage: _, dispositions: _, receipt: _ } => false
+          },
+        }
+      }
+    }
   }
 }
 
@@ -1328,36 +1362,21 @@ fn spark_native_serving_apply_wet() -> ProcessExit
                           match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
                             Absent => exit_failure(reason: "the execution context could not be sealed for the grant preflight")
                             Present { value: preflight_context } => {
-                              let grants = map(map(steps, st => st.host), h => spark_native_grant_preflight_host(context: preflight_context, host: h))
-                              let refusals = spark_native_grant_preflight_refusals(ps: grants)
-                              if refusals.length() > 0 {
-                                exit_failure(reason: join([
-                                  "spark_native_serving_apply preflight: the offer's grant is not in place on every host of the arm; NO HOST WAS TOUCHED.\n",
-                                  join(map(grants, p => spark_native_grant_preflight_wire(p: p)), ""),
-                                ], ""))
+                              let run = spark_native_apply_transaction(
+                                context: preflight_context, trust: trust, path: path, administrator: administrator as Secret,
+                                steps: steps, at_word: probed_at_word(reading: now) as String)
+                              let body = join([
+                                "spark native serving apply at ", probed_at_word(reading: now) as String,
+                                " from ", executor, " over ", spark_reach_path_wire(p: path), "\n",
+                                run.body,
+                              ], "")
+                              let wr = Filesystem.Write(path: spark_native_apply_receipt_path, content: body)
+                              if !wr.success {
+                                exit_failure(reason: join(["spark native apply receipt write failed (the transaction's own outcome is above and is NOT changed by this): ", wr.error, "\n", body], ""))
+                              } else if run.committed {
+                                ExitSuccess
                               } else {
-                                match spark_native_transaction_identity(at: probed_at_word(reading: now) as String) {
-                                NativeTransactionIdentityUnread { cause: c } =>
-                                  exit_failure(reason: join(["spark_native_serving_apply: NO HOST WAS TOUCHED. ", c], ""))
-                                NativeTransactionIdentified { id: transaction_id } => {
-                                let outcome = spark_native_transaction_body(
-                                  trust: trust, path: path, administrator: administrator as Secret,
-                                  steps: steps, transaction_id: transaction_id)
-                                let body = join([
-                                  "spark native serving apply at ", probed_at_word(reading: now) as String,
-                                  " from ", executor, " over ", spark_reach_path_wire(p: path), "\n",
-                                  spark_native_transaction_headline(t: outcome),
-                                  join(map(grants, p => spark_native_grant_preflight_wire(p: p)), ""),
-                                  spark_native_transaction_receipt(t: outcome),
-                                ], "")
-                                let wr = Filesystem.Write(path: spark_native_apply_receipt_path, content: body)
-                                if !wr.success {
-                                  exit_failure(reason: join(["spark native apply receipt write failed (the transaction's own outcome is above and is NOT changed by this): ", wr.error, "\n", body], ""))
-                                } else {
-                                  spark_native_transaction_exit(t: outcome, body: body)
-                                }
-                                }
-                                }
+                                exit_failure(reason: body)
                               }
                             }
                           }
