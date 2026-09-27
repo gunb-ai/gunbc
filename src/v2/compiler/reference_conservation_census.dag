@@ -5,6 +5,11 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
   filesystem_file_observation,
   filesystem_listing_observation,
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused,
+  FilesystemListingObservation,
+  FilesystemReadOutcome,
   FilesystemFileAbsent,
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
@@ -75,24 +80,37 @@ type SamplePathObservation
   | SamplePathSubjectRefused { path: String, cause: String }
   | SamplePathGrammarUnprepared { path: String }
 
-// A listed path's parent directory and entry name, split at its last `/`.
+// A listed path's parent directory and entry name, split at its last `/`, with the parent kept
+// exactly as the path spells it (review 5330814496): an absolute path keeps its root (`/tmp/rc/p.dag`
+// lists `/tmp/rc`, never `tmp/rc`; `/p.dag` lists `/`), and a bare name lists `.`. The listing and
+// the read must name the same file, or the observation answers about a different subject.
 type SamplePathParts {
   directory: String
   name: String
+  segments: Int
 }
 
 fn sample_path_parts(path: String) -> SamplePathParts {
-  fold_list(xs: split(s: path, delimiter: "/"), empty: SamplePathParts { directory: "", name: "" }, cons: fn(acc, part) {
-    if acc.name == "" {
-      SamplePathParts { directory: acc.directory, name: part }
+  let walked = fold_list(xs: split(s: path, delimiter: "/"), empty: SamplePathParts { directory: "", name: "", segments: 0 }, cons: fn(acc, part) {
+    if acc.segments == 0 {
+      SamplePathParts { directory: "", name: part, segments: 1 }
     } else {
-      if acc.directory == "" {
-        SamplePathParts { directory: acc.name, name: part }
+      if acc.segments == 1 {
+        SamplePathParts { directory: acc.name, name: part, segments: 2 }
       } else {
-        SamplePathParts { directory: acc.directory + "/" + acc.name, name: part }
+        SamplePathParts { directory: acc.directory + "/" + acc.name, name: part, segments: acc.segments + 1 }
       }
     }
   })
+  if walked.segments <= 1 {
+    SamplePathParts { directory: ".", name: walked.name, segments: walked.segments }
+  } else {
+    if walked.directory == "" {
+      SamplePathParts { directory: "/", name: walked.name, segments: walked.segments }
+    } else {
+      walked
+    }
+  }
 }
 
 fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
@@ -110,21 +128,43 @@ fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
   }
 }
 
+// THE HOST CALLS, AND NOTHING ELSE: list the path's own parent, read the path, and hand both to the
+// pure classification below.
 fn reference_conservation_path_observation(path: String) -> SamplePathObservation {
   let parts = sample_path_parts(path: path)
   let listed = Filesystem.List(path: parts.directory)
   let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: parts.directory, success: listed.success, entries: listed.entries, error: listed.error),
-    name: parts.name,
+  sample_path_observation_of(
     path: path,
+    listing: filesystem_listing_observation(directory: parts.directory, success: listed.success, entries: listed.entries, error: listed.error),
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
-  ) {
-    FilesystemFileRead { path: _, content: text } => sample_path_measured(path: path, text: text)
-    FilesystemFileAbsent(_) => SamplePathMissing { path: path }
-    FilesystemFileIndeterminate { cause: c } => SamplePathUnreadable { path: path, cause: c }
-    FilesystemFileObservationsDisagree { path: _, cause: c } => SamplePathObservationsDisagree { path: path, cause: c }
-    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => SamplePathSubjectRefused { path: path, cause: c }
+  )
+}
+
+fn listing_observation_directory(listing: FilesystemListingObservation) -> String {
+  match listing {
+    FilesystemDirectoryListed(l) => l.directory as String
+    FilesystemDirectoryListingRefused { directory: d, error: _ } => d as String
+    FilesystemDirectorySubjectRefused { directory: d, cause: _ } => d
+  }
+}
+
+// THE CLASSIFICATION, PURE. A listing of any directory other than the path's own parent refuses as
+// a subject mismatch rather than being asked about the entry: absence read off the wrong directory
+// would turn an unreadable file into a stale pin and lose the host's cause.
+fn sample_path_observation_of(path: String, listing: FilesystemListingObservation, read: FilesystemReadOutcome) -> SamplePathObservation {
+  let parts = sample_path_parts(path: path)
+  let listed_directory = listing_observation_directory(listing: listing)
+  if listed_directory != parts.directory {
+    SamplePathSubjectRefused { path: path, cause: "the listing is of " + listed_directory + ", not the parent " + parts.directory + " of the path read" }
+  } else {
+    match filesystem_file_observation(listing: listing, name: parts.name, path: path, read: read) {
+      FilesystemFileRead { path: _, content: text } => sample_path_measured(path: path, text: text)
+      FilesystemFileAbsent(_) => SamplePathMissing { path: path }
+      FilesystemFileIndeterminate { cause: c } => SamplePathUnreadable { path: path, cause: c }
+      FilesystemFileObservationsDisagree { path: _, cause: c } => SamplePathObservationsDisagree { path: path, cause: c }
+      FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => SamplePathSubjectRefused { path: path, cause: c }
+    }
   }
 }
 

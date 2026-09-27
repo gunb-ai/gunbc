@@ -55,11 +55,13 @@ import std.occurrence_identity {
 }
 import v2.compiler.occurrence_role {
   AtomOccurrenceRole,
+  NameProductionTableAdmission,
+  dag_name_table_admission,
+  occurrence_roles_of_admitted,
   OccurrenceRoleTableRefused,
   OccurrenceRoles,
   OccurrenceRolesRead,
   dag_name_production_emitted_symbols,
-  dag_occurrence_roles,
   occurrence_role_index
 }
 import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label }
@@ -1078,21 +1080,58 @@ fn reference_conservation_role_table_unadmitted(path: String, unlisted: List<Sym
 }
 
 fn reference_conservation_of_subject(subject: ReferenceConservationSubject, token_classes: Map<Symbol, Bool>) -> ReferenceConservationReport {
+  reference_conservation_of_subject_admitted(subject: subject, token_classes: token_classes, admission: dag_name_table_admission())
+}
+
+// ROLES ARE READ FROM THE PARSE, SO THEY ARE OBSERVED WHATEVER NORMALIZATION DOES (review
+// 5330814496). A module that parses but whose normalization refuses still has binders; its report
+// carries the role producer's gaps beside normalization's own refusal accounting, and a role table
+// the grammar does not admit is recorded as unmeasured in that report too, never skipped because the
+// module took the refusal arm. The admission is a parameter so a control can supply a refused one.
+fn reference_conservation_of_subject_admitted(
+  subject: ReferenceConservationSubject,
+  token_classes: Map<Symbol, Bool>,
+  admission: NameProductionTableAdmission
+) -> ReferenceConservationReport {
   match subject.parsed {
     Rejected { diagnostics: d } => reference_conservation_unmeasured(path: subject.path, diagnostics: d)
     Accepted { value: artifact, diagnostics: _ } =>
       let population = authored_atom_population(artifact: artifact, token_classes: token_classes)
+      let roles = occurrence_roles_of_admitted(tree: artifact.tree, admission: admission)
       match subject.normalized {
         Accepted { value: tree, diagnostics: _ } =>
-          match dag_occurrence_roles(artifact: artifact) {
-            OccurrenceRolesRead { roles: roles } =>
-              conservation_against_tree(path: subject.path, population: population, tree: tree, roles: roles)
+          match roles {
+            OccurrenceRolesRead { roles: r } =>
+              conservation_against_tree(path: subject.path, population: population, tree: tree, roles: r)
             OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
               reference_conservation_role_table_unadmitted(path: subject.path, unlisted: u, unknown: k, unkeyed: x)
           }
         Rejected { diagnostics: d } =>
-          conservation_against_refusal(path: subject.path, population: population, diagnostics: d)
+          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d)
+          match roles {
+            OccurrenceRolesRead { roles: r } => report_with_role_gaps(report: refused, roles: r)
+            OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
+              report_snoc_unmeasured(report: refused, item: OccurrenceRoleTableUnadmitted { unlisted: u, unknown: k, unkeyed: x })
+          }
       }
+  }
+}
+
+fn report_snoc_unmeasured(report: ReferenceConservationReport, item: ReferenceConservationUnmeasured) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    role_excluded: report.role_excluded,
+    header_channel: report.header_channel,
+    role_not_yet_read: report.role_not_yet_read,
+    role_reader_refused: report.role_reader_refused,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: report.dropped,
+    unmeasured: list_snoc_item(xs: report.unmeasured, item: item)
   }
 }
 

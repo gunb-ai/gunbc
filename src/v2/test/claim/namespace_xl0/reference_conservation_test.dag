@@ -9,9 +9,12 @@ import v2.compiler.reference_conservation {
   reference_conservation_admitted,
   reference_conservation_holds,
   reference_conservation_of_subject,
-  reference_conservation_subject_of_read
+  reference_conservation_subject_of_read,
+  reference_conservation_of_subject_admitted,
+  OccurrenceRoleTableUnadmitted
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -407,4 +410,43 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
     && r.authored > 0
+}
+
+// ---- roles are observed whatever normalization does (review 5330814496) -----------------------
+
+// A module that parses and whose normalization refuses (an else-less `if` statement). Its one fn
+// has a parameter list, a binder production the role producer does not read yet, so an observed
+// role pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the
+// role producer and reported zero, a gap nobody had observed.
+data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
+
+fn normalization_refused_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)
+}
+
+fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
+  r.authored > 0 && r.refused + length(xs: r.dropped) == r.authored
+}
+
+test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
+  let r = conservation_report_of(subject: normalization_refused_subject())
+  refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
+}
+
+// A ROLE TABLE THE GRAMMAR REFUSES, ON A MODULE WHOSE NORMALIZATION ALSO REFUSES: the report keeps
+// normalization's refusal accounting AND records the unadmitted table. Planted at the interface by
+// supplying a refused admission.
+fn planted_refused_admission() -> NameProductionTableAdmission {
+  NameProductionTableRefused { unlisted: [^reference_conservation_planted_unlisted], unknown: [], unkeyed: [] }
+}
+
+test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds() -> Bool {
+  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_refused_admission())
+  refusal_accounts_for_population(r: r)
+    && fold_list(xs: r.unmeasured, empty: false, cons: fn(acc, u) {
+      acc || match u {
+        OccurrenceRoleTableUnadmitted { unlisted: l, unknown: _, unkeyed: _ } => l == [^reference_conservation_planted_unlisted]
+        _ => false
+      }
+    })
 }
