@@ -13563,6 +13563,45 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
         );
     }
 
+    /// BOTH RULES REACH ONE DECLARATION (review 71782). `Pair` has a field typed through a
+    /// where-only change (`Tag`) and one typed through a carrier change (`Other`). The refinement
+    /// reaches `Pair` first -- `rf.a` sorts before `rf.m` -- and must not stop the signature change
+    /// from propagating through `pair_of`'s RESULT to `rf.py`, which only calls it.
+    const RF_M_BASE: &str = "module rf.m\n\ntype Other = Int\n";
+    const RF_M_HEAD: &str = "module rf.m\n\ntype Other = String\n";
+    const RF_P: &str = "module rf.p\n\nimport rf.a { Tag }\nimport rf.m { Other }\n\ntype Pair {\n  t: Tag\n  o: Other\n}\n";
+    const RF_PZ: &str =
+        "module rf.pz\n\nimport rf.p { Pair }\n\nfn pair_of() -> Pair {\n  pair_of()\n}\n";
+    const RF_PY: &str = "module rf.py\n\nimport rf.pz { pair_of }\n\nfn use_pair() -> Int {\n  let p = pair_of()\n  1\n}\n";
+
+    #[test]
+    fn a_signature_change_still_propagates_where_a_refinement_change_arrived_first() {
+        let (selection, head_fx) = interface_selection(
+            "rf_both",
+            &[
+                ("a.dag", RF_A_BASE),
+                ("m.dag", RF_M_BASE),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+            &[
+                ("a.dag", RF_A_HEAD),
+                ("m.dag", RF_M_HEAD),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.py"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
     /// THE CONTROL: a CARRIER change on `Tag` is an ordinary signature change and still
     /// propagates through `make`'s result to `rf.z`.
     #[test]

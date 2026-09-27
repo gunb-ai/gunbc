@@ -244,6 +244,21 @@ fn propagation_rule(
     }
 }
 
+/// WHETHER A DECLARATION HAS ALREADY BEEN REACHED BY A RULE AT LEAST AS WIDE. `seen` records
+/// the rule each entry was reached by (`true` = input positions only). A wide entry covers both
+/// rules; a narrow one covers only the narrow rule, so a signature change that reaches a
+/// declaration a refinement change reached first is still propagated through every mention --
+/// otherwise the order of the frontier would decide how much of the plan exists (review 71782).
+fn already_propagated(
+    seen: &BTreeSet<(String, String, bool)>,
+    module_path: &str,
+    declaration: &str,
+    through_input: bool,
+) -> bool {
+    let key = |narrow: bool| (module_path.to_string(), declaration.to_string(), narrow);
+    seen.contains(&key(false)) || (through_input && seen.contains(&key(true)))
+}
+
 fn propagated_ground(
     change: &DeclarationInterfaceChange,
     through_input: bool,
@@ -545,10 +560,16 @@ pub(crate) fn interface_changed_consumers(
         ));
     }
     // PROPAGATION, a fixpoint over head interfaces. Bounded: each round adds at least one
-    // (module, declaration) pair not yet in `seen`, and the pairs are finite.
-    let mut seen: BTreeSet<(String, String)> = changes
+    // (module, declaration, rule) triple not yet in `seen`, and the triples are finite.
+    let mut seen: BTreeSet<(String, String, bool)> = changes
         .iter()
-        .map(|c| (c.module_path.clone(), c.declaration.clone()))
+        .map(|c| {
+            (
+                c.module_path.clone(),
+                c.declaration.clone(),
+                propagation_rule(c).1,
+            )
+        })
         .collect();
     let mut frontier: Vec<DeclarationInterfaceChange> = changes.clone();
     while !frontier.is_empty() {
@@ -575,7 +596,8 @@ pub(crate) fn interface_changed_consumers(
             };
             for record in records_reading(&head_records, readers, &universe) {
                 for (in_declaration, spelling) in reads(record) {
-                    if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
+                    if already_propagated(&seen, &record.module_path, in_declaration, through_input)
+                    {
                         continue;
                     }
                     // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
@@ -588,7 +610,11 @@ pub(crate) fn interface_changed_consumers(
                     {
                         continue;
                     }
-                    seen.insert((record.module_path.clone(), in_declaration.clone()));
+                    seen.insert((
+                        record.module_path.clone(),
+                        in_declaration.clone(),
+                        through_input,
+                    ));
                     next.push(DeclarationInterfaceChange {
                         module_path: record.module_path.clone(),
                         declaration: in_declaration.clone(),
@@ -709,10 +735,16 @@ pub(crate) fn interface_changed_consumers_by_scan(
         ));
     }
     // PROPAGATION, a fixpoint over head interfaces. Bounded: each round adds at least one
-    // (module, declaration) pair not yet in `seen`, and the pairs are finite.
-    let mut seen: BTreeSet<(String, String)> = changes
+    // (module, declaration, rule) triple not yet in `seen`, and the triples are finite.
+    let mut seen: BTreeSet<(String, String, bool)> = changes
         .iter()
-        .map(|c| (c.module_path.clone(), c.declaration.clone()))
+        .map(|c| {
+            (
+                c.module_path.clone(),
+                c.declaration.clone(),
+                propagation_rule(c).1,
+            )
+        })
         .collect();
     let mut frontier: Vec<DeclarationInterfaceChange> = changes.clone();
     while !frontier.is_empty() {
@@ -734,7 +766,8 @@ pub(crate) fn interface_changed_consumers_by_scan(
             let (reads, through_input) = propagation_rule(change);
             for record in index_records(head) {
                 for (in_declaration, spelling) in reads(record) {
-                    if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
+                    if already_propagated(&seen, &record.module_path, in_declaration, through_input)
+                    {
                         continue;
                     }
                     // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
@@ -747,7 +780,11 @@ pub(crate) fn interface_changed_consumers_by_scan(
                     {
                         continue;
                     }
-                    seen.insert((record.module_path.clone(), in_declaration.clone()));
+                    seen.insert((
+                        record.module_path.clone(),
+                        in_declaration.clone(),
+                        through_input,
+                    ));
                     next.push(DeclarationInterfaceChange {
                         module_path: record.module_path.clone(),
                         declaration: in_declaration.clone(),
