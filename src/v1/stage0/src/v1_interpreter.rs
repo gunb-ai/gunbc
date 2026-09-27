@@ -4258,6 +4258,7 @@ pub fn refresh_eval_recompute_trace_enabled_cache_for_tests() {
 // rehashed whole on every call -- O(n) per call, O(n^2) per parse -- under a key that could never
 // recur (the table's per-call counters). Unadmitted calls recompute; the receipt still discloses
 // hits/misses, so an empty admission shows as memo_hits=0.
+#[derive(Default)]
 struct EvalCallMemo {
     // Resolved fn-node identities this ctx admits; `admitted_nodes` keeps them alive for the
     // ctx lifetime (frame exit clears served entries, never admission).
@@ -4270,20 +4271,6 @@ struct EvalCallMemo {
     hits: u64,
     misses: u64,
     overflow: u64,
-}
-
-impl Default for EvalCallMemo {
-    fn default() -> Self {
-        EvalCallMemo {
-            admitted: std::collections::HashSet::new(),
-            admitted_nodes: Vec::new(),
-            map: std::collections::HashMap::new(),
-            keepalive_fns: Vec::new(),
-            hits: 0,
-            misses: 0,
-            overflow: 0,
-        }
-    }
 }
 
 const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
