@@ -70,6 +70,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // own line attribution (FloorDiffEdits `touched_declarations`, ExistingSeedItemModified with
 // floor_diff_edits_from_line_ranges, InterfaceConsumerPlanning and interface_consumer_planning);
 // the propagation rule it realizes is modeled as v2.workflow.floor_subject_seed reach_propagates.
+// Its follow-up (the per-PR v2 differential, operator ruling 2026-09-27) adds no declaration:
+// ExistingSeedItemModified are RequiredFloorDisposition (the PlannedAsReachConsumer arm, modeled
+// first in v2.workflow.required_floor), run_required_floor (plans reach consumers outside the
+// gate and publishes their head standings), required_floor_disposition_label, the label-detail
+// match, write_required_floor_disposition_tsv and namespace_baseline ReachedDeclaration (rel_path).
 data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "BaselineReconstruction", field: WholeDeclaration },

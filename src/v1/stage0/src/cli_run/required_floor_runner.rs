@@ -6854,6 +6854,22 @@ pub fn run_required_floor(
             }
         }
     }
+    // THE PER-PR v2 DIFFERENTIAL'S POPULATION: reached witness declarations homed under the v2
+    // claim root. Which of them are claims is the discovery loop's answer, not this one's.
+    let reach_consumer_candidates: HashSet<String> = compile_subject
+        .iter()
+        .filter_map(|subject| match &subject.interface_consumers {
+            InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
+            _ => None,
+        })
+        .flat_map(|reach| reach.reached.iter())
+        .filter(|r| r.witness_carrier && r.rel_path.starts_with("src/v2/"))
+        .map(|r| format!("{}.{}", r.module_path, r.declaration))
+        .collect();
+    let reach_consumer_module_seeds: BTreeSet<String> = reach_consumer_candidates
+        .iter()
+        .filter_map(|identity| identity.rsplit_once('.').map(|(m, _)| m.to_string()))
+        .collect();
     let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
         &required_gate_authored_modules,
         &local_repo_wet_schedule_rows,
@@ -6866,6 +6882,7 @@ pub fn run_required_floor(
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
     .chain(interface_consumer_seeds.iter().cloned())
+    .chain(reach_consumer_module_seeds.iter().cloned())
     .collect();
     floor_seam("prepare-closure-resolve");
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
@@ -7941,6 +7958,7 @@ pub fn run_required_floor(
     // read off this set rather than maintained beside it: a count and a population kept in step
     // by hand are two computations of one fact, and the count is the weaker one.
     let mut declared_identity_set: HashSet<String> = HashSet::new();
+    let mut reach_consumer_planned: HashSet<String> = HashSet::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -8166,12 +8184,22 @@ pub fn run_required_floor(
             }
             // THE FOURTH DECLINE, AFTER COST DEBT so a rostered identity outside the gate still
             // enters `cost_debt_seen` and the roster's staleness check keeps its meaning.
-            if !inside_required_gate {
+            // A REACH CONSUMER REPLACES ONLY THIS DECLINE. Inside the gate a claim keeps its
+            // absolute verdict (a differential would weaken it); a changed witness keeps its own
+            // arm above; a long-home, fixture or cost-debt decline is a separate authority and
+            // stands. What changes is that an out-of-gate v2 claim whose evaluation this diff can
+            // move is run, and judged by whether its verdict moved.
+            let reach_consumer =
+                !inside_required_gate && reach_consumer_candidates.contains(&identity);
+            if !inside_required_gate && !reach_consumer {
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedOutsideRequiredGate,
                 });
                 continue;
+            }
+            if reach_consumer {
+                reach_consumer_planned.insert(identity.clone());
             }
             // NO SECOND DUPLICATE WALL LIVES HERE. This arm used to re-test uniqueness over the
             // PLANNED identities only, which is the same invariant the offered-side insert above
@@ -8183,7 +8211,11 @@ pub fn run_required_floor(
             planned_identities.insert(identity.clone());
             disposition_rows.push(RequiredFloorDispositionRow {
                 identity: identity.clone(),
-                disposition: RequiredFloorDisposition::Planned,
+                disposition: if reach_consumer {
+                    RequiredFloorDisposition::PlannedAsReachConsumer
+                } else {
+                    RequiredFloorDisposition::Planned
+                },
             });
             // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE -- after the corpus-census
             // arm, whose members are judged by their evaluated allowance alone.
@@ -9151,6 +9183,7 @@ pub fn run_required_floor(
     // `Some(identity)` exactly when a claim's evaluation unwound and stopped the fold.
     let mut halted_by: Option<String> = None;
     let mut known_red_held: usize = 0;
+    let mut reach_head_standings: Vec<(String, bool)> = Vec::new();
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
@@ -9592,6 +9625,15 @@ pub fn run_required_floor(
             outcome: result.clone(),
         });
         let passed = matches!(result, ClaimOutcome::Pass);
+        // A REACH CONSUMER'S VERDICT IS A HEAD STANDING, NOT A PASS/FAIL OF THIS FLOOR. It was
+        // never gated, so main may already carry it red; whether THIS change moved it is the
+        // differential's question (`v2.workflow.required_floor` `claim_differential`), answered
+        // against the base standing. It leaves the fold here, after its terminal row, so no
+        // arm below can count it as a failure, a route gap or a budget refusal.
+        if reach_consumer_planned.contains(&claim.qualified) {
+            reach_head_standings.push((claim.qualified.clone(), passed));
+            continue;
+        }
         if expected_red {
             // ONE DISPATCH. Every arm does its own work here rather than classifying once and
             // re-deriving the answer below: two dispatches over one value agree only as long
@@ -10411,6 +10453,22 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    // THE HEAD SIDE OF THE PER-PR v2 DIFFERENTIAL. Observed and published; the base side and
+    // the blocking join arrive with the main-sha baseline (adhoc-be476b8f-943 follow-up).
+    reach_head_standings.sort();
+    for (identity, passed) in &reach_head_standings {
+        eprintln!(
+            "[floor-reach-differential] identity={identity} head={} base=unread",
+            if *passed { "passed" } else { "failed" }
+        );
+    }
+    eprintln!(
+        "[floor-phase] phase=reach-differential planned={} head_passed={} head_failed={} \
+         blocking=none (base side not yet read)",
+        reach_head_standings.len(),
+        reach_head_standings.iter().filter(|(_, p)| *p).count(),
+        reach_head_standings.iter().filter(|(_, p)| !*p).count()
+    );
     outcome.route_gap_held = route_gap_held;
     outcome.known_red_now_passing = known_red_now_passing;
     outcome.known_red_budget_refused = known_red_budget_refused;
@@ -11293,6 +11351,7 @@ pub(crate) fn required_floor_disposition_label(
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::PlannedAsChangedWitness => "planned_as_changed_witness",
+        RequiredFloorDisposition::PlannedAsReachConsumer => "planned_as_reach_consumer",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
@@ -11327,6 +11386,7 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         }
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedOutsideGateClosure
         | RequiredFloorDisposition::DeclinedCostDebt => "",

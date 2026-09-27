@@ -118,6 +118,7 @@ import extdeps.languages.yaml.types { yaml_entry_count }
 type RequiredFloorDisposition =
     Planned
   | PlannedAsChangedWitness
+  | PlannedAsReachConsumer
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedOutsideRequiredGate
@@ -136,6 +137,7 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
   match d {
     Planned => "planned",
     PlannedAsChangedWitness => "planned_as_changed_witness",
+    PlannedAsReachConsumer => "planned_as_reach_consumer",
     DeclinedLongModule { matched_prefix } => "declined_long_module",
     DeclinedFixtureMember { matched_prefix } => "declined_fixture_member",
     DeclinedOutsideRequiredGate => "declined_outside_required_gate",
