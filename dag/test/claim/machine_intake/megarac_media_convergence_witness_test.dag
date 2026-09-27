@@ -57,7 +57,6 @@ import gunbc.machine_intake_megarac_media_attach {
   ReadinessWrongPresentation,
   RouteAlreadyPresented,
   RouteAttached,
-  RedirectionStartedConnectionAccepted,
   SessionReleased,
   SessionReleaseRefused,
   StopCommandAnswer,
@@ -128,7 +127,7 @@ test fn stale_census_presented_with_the_host_off_detaches_it() -> Bool {
 }
 
 test fn the_stop_body_names_the_stale_image_and_its_device() -> Bool {
-  stop_media_body(row: PresentingRow { image_name: stale_census as String, media_index: Present { value: "0" }, session_index: Present { value: "0" }, redirection_wire: 1, redirection: RedirectionStartedConnectionAccepted }) as String
+  stop_media_body(image_name: stale_census as String, media_index: "0") as String
     == concat("{\"image_name\":\"", concat(stale_census as String, "\",\"image_type\":1,\"image_index\":0,\"image_redirection\":1}"))
 }
 

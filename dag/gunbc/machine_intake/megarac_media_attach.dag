@@ -639,7 +639,7 @@ fn megarac_detach_then_attach(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
-    json_body: stop_media_body(row: stale),
+    json_body: stop_media_body(image_name: stale.image_name, media_index: media_index),
   )
   let after = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
@@ -743,14 +743,10 @@ fn megarac_enumerate_then_attach(
 // the row's media_index, the virtual device the presentation occupies, since the image enumeration
 // index of an attached image is not listed (it has left /remote/images). The read-back decides
 // whether the bet held; a wrong index is StaleDetachUnconfirmed, never a success.
-fn stop_media_body(row: PresentingRow) -> NonEmptyStr {
-  let idx = match row.media_index {
-    Present { value: i } => i
-    Absent => ""
-  }
+fn stop_media_body(image_name: String, media_index: String) -> NonEmptyStr {
   join([
-    "{\"image_name\":\"", row.image_name,
-    "\",\"image_type\":1,\"image_index\":", idx,
+    "{\"image_name\":\"", image_name,
+    "\",\"image_type\":1,\"image_index\":", media_index,
     ",\"image_redirection\":1}"
   ], "") as NonEmptyStr
 }
