@@ -2501,11 +2501,15 @@ fn auth_callback_verify(instance: HostDashboardInstance, transaction: OidcLoginT
 }
 
 // THE LOGIN CLAIMS RECEIPT, the direct observation of what the verified ID token actually
-// carried: one owner-only file per callback naming each optional profile member's standing
-// (present with its value, or absent) BEFORE the verdict and the mint decide anything. The
-// 2026-09-27 avatar defect — a fresh session storing name but no picture — proved by
-// construction that the loss is upstream of the session store; this receipt names which side
-// of the Google boundary it sits on. The write never gates the login (its result is unread).
+// carried: one owner-only file per VERIFIED callback naming each optional profile member's
+// standing (present with its value, or absent), written only after the verdict verifies, so
+// the header below is true of every receipt on disk. The 2026-09-27 avatar defect — a fresh
+// session storing name but no picture — is the class of question it answers: which profile
+// members did the provider's token carry at all. NOTE the boundary it observes: the decoded
+// claims projection, not the raw payload document; an absent member here means the projection
+// carried none, which the extractor's construction (present stores, malformed refuses the
+// login) equates with payload absence for the string-claim members. Publication is typed and
+// its refusal continues the login — a diagnostic never gates authentication.
 fn auth_login_claims_receipt(claims: OidcIdTokenClaims) -> String {
   join([
     "login claims receipt — the verified ID token's optional profile members\n",
@@ -2538,9 +2542,6 @@ fn auth_callback_verdict(instance: HostDashboardInstance, transaction: OidcLogin
     Absent =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the ID token's claims could not be decoded for the verdict\n")
     Present { value: claims } =>
-      let claims_receipt_written = Filesystem.WriteOwnerOnly(
-        path: join([login_transaction_store_layout_for_instance(instance: instance).root as String, "/", transaction.state as String, "-claims.receipt"], ""),
-        content: auth_login_claims_receipt(claims: claims))
       let verdict = verify_oidc_id_token(
         claims: claims,
         signature: signature,
@@ -2555,9 +2556,34 @@ fn auth_callback_verdict(instance: HostDashboardInstance, transaction: OidcLogin
       match verdict {
         OidcIdTokenRefused { cause: c } =>
           serve_text_response(status: 403, content_type: text_plain_utf8, body: join(["login refused: ", oidc_id_token_refusal_reason(cause: c), "\n"], ""))
-        OidcIdTokenVerified { claims: _ } =>
-          auth_callback_mint(instance: instance, transaction: transaction, config: config, verdict: verdict)
+        OidcIdTokenVerified { claims: verified_claims } =>
+          let claims_receipt_publication = auth_login_claims_receipt_publish(instance: instance, state: transaction.state, claims: verified_claims)
+          match claims_receipt_publication {
+            LoginClaimsReceiptPublished { path: _ } =>
+              auth_callback_mint(instance: instance, transaction: transaction, config: config, verdict: verdict)
+            LoginClaimsReceiptPublicationRefused { detail: _ } =>
+              auth_callback_mint(instance: instance, transaction: transaction, config: config, verdict: verdict)
+          }
       }
+  }
+}
+
+// THE CLAIMS RECEIPT PUBLICATION, typed: the receipt is a best-effort diagnostic whose
+// PRESENCE is its own evidence — a refused publication continues the login (a diagnostic
+// never gates authentication) with the refusal named, never silently discarded. The write
+// rides the VERIFIED arm only, so the receipt's "verified ID token" header is true of every
+// path that can produce one; a refused verdict writes nothing.
+type LoginClaimsReceiptPublication
+  = LoginClaimsReceiptPublished { path: String }
+  | LoginClaimsReceiptPublicationRefused { detail: String }
+
+fn auth_login_claims_receipt_publish(instance: HostDashboardInstance, state: NonEmptyStr, claims: OidcIdTokenClaims) -> LoginClaimsReceiptPublication {
+  let path = join([login_transaction_store_layout_for_instance(instance: instance).root as String, "/", state as String, "-claims.receipt"], "")
+  let written = Filesystem.WriteOwnerOnly(path: path, content: auth_login_claims_receipt(claims: claims))
+  if written.success {
+    LoginClaimsReceiptPublished { path: path }
+  } else {
+    LoginClaimsReceiptPublicationRefused { detail: written.error }
   }
 }
 
