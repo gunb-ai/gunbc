@@ -104,7 +104,7 @@ import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
   ServeHttpRequest,
   ServeHttpResponse,
-  ServeWireResponse, serve_wire_response,
+  ServeWireResponse, serve_wire_response, serve_wire_response_with_headers,
   ServedRoute, StaticRoute, DynamicRoute,
   ServedRouteTable,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
@@ -1811,7 +1811,7 @@ fn roadmap_serve_handle_over(
   release_revision: CommitSha,
   cookie_header: String = "",
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_over(
+  let response = roadmap_serve_respond_over(
     instance: instance,
     plan: plan,
     daily_body: daily_body,
@@ -1821,7 +1821,8 @@ fn roadmap_serve_handle_over(
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
     cookie_header: cookie_header,
-  ))
+  )
+  serve_wire_response_with_headers(r: response, headers: response.headers)
 }
 
 fn roadmap_serve_handle(
