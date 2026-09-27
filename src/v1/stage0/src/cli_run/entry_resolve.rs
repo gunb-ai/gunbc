@@ -197,6 +197,7 @@ pub(crate) fn import_closure_dag_files(
     seed_entries: &[&str],
 ) -> Result<HashSet<String>, String> {
     let index = dag_module_index(source_roots)?;
+    let mut seen: HashSet<String> = HashSet::new();
     let mut queue: Vec<String> = Vec::new();
     for rel in seed_entries {
         let path = workspace.join(rel);
@@ -2922,7 +2923,6 @@ pub fn reference_resolution_facts(
     let names = reference_pool_names(pool_roots);
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
     let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
