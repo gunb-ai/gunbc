@@ -4,7 +4,6 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.emit_on_demand { emit_on_demand_family_cache_root }
 import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached_with_run_args }
 import v2.compiler.eval { Inputs, inputs_root_only }
-import v2.compiler.self_host.closure_emission { ClosureMemberEmitted, ClosureMemberRefused }
 import v2.extdeps.languages.rust_test { rust_identity_cast_run_args, rust_identity_cast_target_model }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.host_run { EmitHostRunReceipt, HostLogicalRun }
@@ -13,7 +12,9 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import v2.test.claim.coercion.identity_cast_emission_route { identity_cast_route_emit, identity_cast_source }
+import v2.test.claim.coercion.identity_cast_emission_route {
+  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused, identity_cast_route_verdict,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,17 +43,14 @@ fn identity_cast_native_inputs() -> Inputs {
   inputs_root_only(root: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_cast_native_probe } }, children: []))
 }
 
-// The entry member's emitted text from the source route, or Absent when that route did not emit it.
+// The entry member's emitted text, read from the route module's shared verdict rather than emitted a
+// second time: the text built here is the text the admission row asserted on. Absent when the route
+// did not emit exactly the entry.
 fn identity_cast_native_emitted() -> Optional<String> {
-  match identity_cast_route_emit(source: identity_cast_source).outcome {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: ce, diagnostics: _ } =>
-      match first(ce.modules) {
-        Present { value: ClosureMemberEmitted { module: _, text: t } } =>
-          if count(ce.modules) == 1 { optional_present(value: t) } else { optional_absent() }
-        Present { value: ClosureMemberRefused { module: _, diagnostics: _ } } => optional_absent()
-        Absent => optional_absent()
-      }
+  match identity_cast_route_verdict() {
+    IdentityCastEntryEmitted { text: t, members: n } => if n == 1 { optional_present(value: t) } else { optional_absent() }
+    IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
+    IdentityCastClosureRefused { reason: _ } => optional_absent()
   }
 }
 
@@ -90,11 +88,13 @@ test fn the_emitted_identity_cast_preserves_its_runtime_argument_holds() -> Bool
 
 // THE HOST FAILS RATHER THAN DEFAULTING. A malformed argument must not produce a frame: if the driver
 // defaulted to zero, this row would see [0, 0, 0, 0, 0] and the positive row above would not notice.
+// Build reuse is not this row's subject, so it asserts none: a failed run need not leave a reusable
+// artifact, and on a cold cache the follow-up run legitimately rebuilds.
 test fn a_malformed_runtime_argument_fails_the_invocation_holds() -> Bool {
   match identity_cast_native_emitted() {
     Absent => false
     Present { value: text } =>
-      !identity_cast_native_run_is(text: text, value: "not-an-int", expect_skipped: true, octets: [0, 0, 0, 0, 0])
-        && identity_cast_native_run_is(text: text, value: "3", expect_skipped: true, octets: [0, 3, 0, 0, 0])
+      !identity_cast_native_run_is(text: text, value: "not-an-int", expect_skipped: false, octets: [0, 0, 0, 0, 0])
+        && identity_cast_native_run_is(text: text, value: "3", expect_skipped: false, octets: [0, 3, 0, 0, 0])
   }
 }
