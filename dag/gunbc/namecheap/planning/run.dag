@@ -1,0 +1,53 @@
+module gunbc.namecheap.planning.run
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.namecheap.planning.observation { dns_observation_read, DnsObservationReadOk, DnsObservationReadRefused }
+import gunbc.namecheap.planning.intent { dns_intent_read, DevDnsIntentReadOk, DevDnsIntentReadRefused }
+import gunbc.namecheap.planning.plan { DnsPlanning, DnsReviewReady, DnsPlanningRefused, dns_plan, dns_plan_json }
+
+// Receipt provenance comes from the caller's trusted Actions artifact retrieval;
+// parsing JSON alone cannot attest that a provider was contacted. Expected run,
+// attempt and revision must come from that independent retrieval, not this file.
+fn dns_review_text_at(observation: String, intent: String, expected_run: String, expected_attempt: String, expected_revision: String, now: String) -> DnsPlanning {
+  match parse_json_document(s: observation) {
+    JsonDocumentUnreadable { gap: _ } => DnsPlanningRefused { reason: "Observation file is not one complete JSON document" }
+    JsonDocumentParsed { value: receipt } =>
+      match dns_observation_read(v: receipt, expected_run: expected_run, expected_attempt: expected_attempt, expected_revision: expected_revision) {
+        DnsObservationReadRefused { reason } => DnsPlanningRefused { reason: reason }
+        DnsObservationReadOk { observation: o } =>
+          match parse_json_document(s: intent) {
+            JsonDocumentUnreadable { gap: _ } => DnsPlanningRefused { reason: "Intent file is not one complete JSON document" }
+            JsonDocumentParsed { value: requested } =>
+              match dns_intent_read(v: requested) {
+                DevDnsIntentReadRefused { reason } => DnsPlanningRefused { reason: reason }
+                DevDnsIntentReadOk { intent: i } => dns_plan(o: o, intent: i, now: now)
+              }
+          }
+      }
+  }
+}
+fn main(observation_path: String, intent_path: String, expected_run: String, expected_attempt: String, expected_revision: String, output_path: String) -> ProcessExit {
+  if output_path == "" || output_path == observation_path || output_path == intent_path { exit_failure(reason: "A distinct review output path is required") }
+  else {
+    let observed = Filesystem.Read(path: observation_path)
+    let requested = Filesystem.Read(path: intent_path)
+    if !observed.success || !requested.success { exit_failure(reason: "Could not read observation or intent file") }
+    else {
+      match clock_now_probed_at() {
+        Absent => exit_failure(reason: "Could not read the planning clock")
+        Present { value: now } =>
+          match dns_review_text_at(observation: observed.content, intent: requested.content, expected_run: expected_run, expected_attempt: expected_attempt, expected_revision: expected_revision, now: now as String) {
+            DnsPlanningRefused { reason } => exit_failure(reason: reason)
+            DnsReviewReady { plan: p } =>
+              let saved = Filesystem.Write(path: output_path, content: serialize_json(v: dns_plan_json(p: p)))
+              if saved.success { ExitSuccess } else { exit_failure(reason: "Could not write DNS review plan") }
+          }
+      }
+    }
+  }
+}

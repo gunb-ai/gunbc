@@ -1,0 +1,18 @@
+module extdeps.acme.dns01
+
+import std.types { String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.rfc-editor.org/rfc/rfc8555#section-8.4" }
+}
+
+// The TXT value is the unpadded base64url encoding of a SHA-256 digest (32
+// octets): 43 characters; the last sextet has two zero padding bits. This is
+// not the ACME challenge token or key authorization, and validates no order.
+fn acme_dns01_txt_value_valid(s: String) -> Bool {
+  string_length(s: s) == 43
+    && all(s.chars(), c => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 45 || c == 95)
+    && string_contains(s: "AEIMQUYcgkosw048", pattern: char_at(s: s, pos: 42))
+}

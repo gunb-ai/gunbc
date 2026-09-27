@@ -1,0 +1,125 @@
+module gunbc.namecheap.planning.plan
+
+import std.types { String, List, Bool }
+import extdeps.languages.xml.read { XmlAttribute }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool, serialize_json }
+import extdeps.dns.domain_name { fold_dns_case_string }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.namecheap.account { namecheap_account_report }
+import gunbc.namecheap.planning.observation { DnsObservation, dns_attr, dns_observation_fresh }
+import gunbc.namecheap.planning.intent { DevDnsIntent, DevServiceAddress, Dns01Change, PublishChallenge, RetireChallenge, dev_dns_label, dev_dns_challenge_name, dev_dns_origin, dev_dns_service_id }
+import gunbc.auth.consent_preimage { consent_field }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+
+type DnsReviewPlan {
+  observation: DnsObservation
+  intent: DevDnsIntent
+  proposed: List<List<XmlAttribute>>
+}
+type DnsPlanning = DnsReviewReady { plan: DnsReviewPlan } | DnsPlanningRefused { reason: String }
+
+// Service placement and DNS-01 share this zone-wide writer identity. A key is not
+// a lease or a fencing token; this review slice neither acquires nor invents one.
+fn dns_zone_writer_key() -> String { concat("namecheap/zone/", namecheap_account_report.domain) }
+fn dns_owner_matches(fields: List<XmlAttribute>, label: String) -> Bool {
+  let name = fold_dns_case_string(s: dns_attr(fields: fields, name: "Name"))
+  let fqdn = join([label, ".", namecheap_account_report.domain], "")
+  name == label || name == fqdn || name == concat(fqdn, ".")
+}
+fn dns_new_fields(name: String, kind: String, address: String) -> List<XmlAttribute> {
+  [XmlAttribute { name: "Name", value: name }, XmlAttribute { name: "Type", value: kind },
+   XmlAttribute { name: "Address", value: address }, XmlAttribute { name: "TTL", value: "300" }]
+}
+fn dns_service_conflict(rows: List<List<XmlAttribute>>, s: DevServiceAddress) -> Bool {
+  let owned = rows.filter(r => dns_owner_matches(fields: r, label: dev_dns_label(s: s.service)))
+  count(owned.filter(r => dns_attr(fields: r, name: "Type") == "A")) > 1
+    || owned.any(r => dns_attr(fields: r, name: "Type") != "A" && dns_attr(fields: r, name: "Type") != "TXT" && dns_attr(fields: r, name: "Type") != "CAA")
+}
+fn dns_service_upsert(rows: List<List<XmlAttribute>>, s: DevServiceAddress) -> List<List<XmlAttribute>> {
+  let label = dev_dns_label(s: s.service)
+  let address = render_ipv4_address(addr: s.ipv4) as String
+  let exists = rows.any(r => dns_owner_matches(fields: r, label: label) && dns_attr(fields: r, name: "Type") == "A")
+  if exists {
+    map(rows, r => if dns_owner_matches(fields: r, label: label) && dns_attr(fields: r, name: "Type") == "A" {
+      map(r, f => if f.name == "Address" { XmlAttribute { name: f.name, value: address } } else { f })
+    } else { r })
+  } else { concat(rows, [dns_new_fields(name: label, kind: "A", address: address)]) }
+}
+fn dns_challenge_matches(r: List<XmlAttribute>, c: Dns01Change) -> Bool {
+  dns_owner_matches(fields: r, label: dev_dns_challenge_name(s: c.service)) && dns_attr(fields: r, name: "Type") == "TXT" && dns_attr(fields: r, name: "Address") == c.value
+}
+fn dns_challenge_conflict(rows: List<List<XmlAttribute>>, c: Dns01Change) -> Bool {
+  count(rows.filter(r => dns_challenge_matches(r: r, c: c))) > 1
+    || rows.any(r => dns_owner_matches(fields: r, label: dev_dns_challenge_name(s: c.service)) && dns_attr(fields: r, name: "Type") != "TXT")
+}
+fn dns_challenge_change(rows: List<List<XmlAttribute>>, c: Dns01Change) -> List<List<XmlAttribute>> {
+  match c.action {
+    PublishChallenge => if rows.any(r => dns_challenge_matches(r: r, c: c)) { rows }
+      else { concat(rows, [dns_new_fields(name: dev_dns_challenge_name(s: c.service), kind: "TXT", address: c.value)]) }
+    RetireChallenge => rows.filter(r => !dns_challenge_matches(r: r, c: c))
+  }
+}
+fn dns_plan(o: DnsObservation, intent: DevDnsIntent, now: String) -> DnsPlanning {
+  let rows = map(o.hosts, h => h.fields)
+  if !dns_observation_fresh(o: o, now: now) { DnsPlanningRefused { reason: "Observation is future-dated, noncanonical or older than the 30-minute review window" } }
+  else if intent.services.any(s => dns_service_conflict(rows: rows, s: s)) {
+    DnsPlanningRefused { reason: "Managed service owner has multiple A records or unsupported/delegated address data (including AAAA); explicit reconciliation is required" }
+  } else if intent.challenges.any(c => dns_challenge_conflict(rows: rows, c: c)) {
+    DnsPlanningRefused { reason: "DNS-01 owner is delegated, conflicts with another record type or repeats the same token" }
+  } else {
+    let addresses = fold(intent.services, init: rows, f: (acc, s) => dns_service_upsert(rows: acc, s: s))
+    let proposed = fold(intent.challenges, init: addresses, f: (acc, c) => dns_challenge_change(rows: acc, c: c))
+    DnsReviewReady { plan: DnsReviewPlan { observation: o, intent: intent, proposed: proposed } }
+  }
+}
+fn dns_fields_json(fields: List<XmlAttribute>) -> JsonValue {
+  json_object(members: map(fields, f => json_kv(key: f.name, value: json_string(s: f.value))))
+}
+fn dns_plan_changed(p: DnsReviewPlan) -> Bool { p.proposed != map(p.observation.hosts, h => h.fields) }
+// All unmet apply obligations are part of the reviewed content. Noop is about
+// record changes only; it does not prove mail, TLS, reachability or deployment.
+fn dns_plan_content(p: DnsReviewPlan) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "gunbc-namecheap-dns-review/v1")),
+    json_kv(key: "zone_writer_key", value: json_string(s: dns_zone_writer_key())),
+    json_kv(key: "changed", value: json_bool(b: dns_plan_changed(p: p))),
+    json_kv(key: "observation", value: p.observation.receipt),
+    json_kv(key: "intent", value: p.intent.source),
+    json_kv(key: "service_origins", value: json_array(elements: map(p.intent.services, s => json_object(members: [
+      json_kv(key: "service", value: json_string(s: dev_dns_service_id(s: s.service))),
+      json_kv(key: "origin", value: json_string(s: dev_dns_origin(s: s.service))),
+      json_kv(key: "required_access", value: json_string(s: "tailnet-only"))
+    ])))),
+    json_kv(key: "proposed_hosts", value: json_array(elements: map(p.proposed, r => dns_fields_json(fields: r)))),
+    json_kv(key: "preserved_result_fields", value: dns_fields_json(fields: p.observation.result_fields)),
+    json_kv(key: "mail_mode", value: json_string(s: "unobserved")),
+    json_kv(key: "write_authority", value: json_string(s: "withheld")),
+    json_kv(key: "apply_requirements", value: json_array(elements: map([
+      "Independently observe mail mode; never infer it from MX records",
+      "Verify lossless setHosts serialization for every retained provider field",
+      "Verify service-address assignment, tailnet policy and DNS-01 ownership evidence",
+      "Acquire one fenced zone writer shared by service DNS and certificate renewals",
+      "Reobserve the whole zone and exact credential version under that fence; refuse drift",
+      "Replan with all apply evidence; bind the exact subject and attempt through the existing approval app",
+      "Independently read back the whole zone after apply; DNS equality alone is not TLS or deployment convergence"
+    ], r => json_string(s: r)))),
+  ])
+}
+fn dns_plan_preimage(p: DnsReviewPlan) -> String {
+  consent_field(tag: "namecheap-dns-review/v1", value: serialize_json(v: dns_plan_content(p: p)))
+}
+fn dns_plan_digest(p: DnsReviewPlan) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: dns_plan_preimage(p: p))))
+}
+fn dns_plan_json(p: DnsReviewPlan) -> JsonValue {
+  json_object(members: [json_kv(key: "plan", value: dns_plan_content(p: p)), json_kv(key: "sha256", value: json_string(s: dns_plan_digest(p: p)))])
+}
+// A future apply can consume this necessary comparison, but true is NOT an
+// authorization or provider CAS. Fresh provenance may differ; zone content may not.
+fn dns_review_still_matches(p: DnsReviewPlan, current: DnsObservation, intent: DevDnsIntent, now: String) -> Bool {
+  dns_observation_fresh(o: current, now: now) && current.credential_version == p.observation.credential_version
+    && current.revision == p.observation.revision && current.result_fields == p.observation.result_fields
+    && map(current.hosts, h => h.fields) == map(p.observation.hosts, h => h.fields)
+    && intent.source == p.intent.source
+}
