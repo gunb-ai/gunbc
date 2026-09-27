@@ -779,8 +779,8 @@ test fn a_readable_listing_ignores_unrelated_optional_members() -> Bool {
 
 // Partial bytes then a timeout: uncertain, with every byte kept; never a complete controller answer.
 test fn partial_bytes_then_a_timeout_are_uncertain_and_kept() -> Bool {
-  match megarac_write_answer(success: false, body: "{partial", stderr: "curl: (28) Operation timed out") {
-    WriteEffectUncertain { partial_body: b, stderr: e } => b == "{partial" && string_contains(s: e, pattern: "(28)")
+  match megarac_write_answer(success: false, body: "<partial-json-bytes", stderr: "curl: (28) Operation timed out") {
+    WriteEffectUncertain { partial_body: b, stderr: e } => b == "<partial-json-bytes" && string_contains(s: e, pattern: "(28)")
     _ => false
   }
 }
