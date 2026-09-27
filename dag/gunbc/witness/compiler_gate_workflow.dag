@@ -79,6 +79,7 @@ import gunbc.witness_floor_workflow {
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
+  hosted_runner_memory_cgroup_bind_commands,
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -95,7 +96,7 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -193,6 +194,49 @@ fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
 data compiler_gate_clippy_job_id: String = "clippy"
 data compiler_gate_clippy_step_name: String = "Lint every target"
 
+// THE v1 UNIT TESTS RUN HERE, AFTER THE LINT (operator ruling 2026-09-27), which is what retires
+// gunbc.rung_drop rust_unit_tests_off_the_merge_path. That drop's reason was supply: a JOB on a
+// paid runner per pull request. This is a STEP on the hosted lane above, so it adds no job to the
+// closed roster and claims no fleet slot; the lint has already compiled the test targets' deps.
+//
+// THE BOUND IS REAL, NOT DECLARED. The regeneration-host tests read their budget through
+// gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup binds the process, which
+// is every hosted runner. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
+// refuse, so the step's shell moves itself into a leaf with memory.max set -- the same bind the heal
+// publisher performs -- and cargo, and every test binary it starts, inherits it. 12 GiB against the
+// 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
+data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
+data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
+data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
+data compiler_gate_unit_test_memory_max_bytes: Int = 12884901888
+
+fn compiler_gate_unit_test_command() -> String {
+  join(
+    list_append(
+      hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: compiler_gate_unit_test_cgroup_name,
+        memory_max_bytes: compiler_gate_unit_test_memory_max_bytes,
+      ),
+      [repo_self_test_command()],
+    ),
+    "; "
+  )
+}
+
+fn compiler_gate_unit_test_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_unit_test_step_name },
+    id: Present { value: compiler_gate_unit_test_step_id },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: compiler_gate_unit_test_command()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
   [
     CompilerGateBoundStep {
@@ -222,6 +266,11 @@ fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
       ),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: compiler_gate_clippy_step_name,
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_unit_test_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_unit_test_step_name,
     },
   ]
 }

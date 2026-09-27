@@ -122,7 +122,7 @@ import extdeps.git {
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef, Int, String, List, NonEmptyStr }
-import v2.std.algebra { FreeSemigroup, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -2017,16 +2017,32 @@ data heal_publisher_cgroup_name: String = "gunbc-publish"
 // 12 GiB against the 4 vCPU / 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
 data heal_publisher_cgroup_memory_max_bytes: Int = 12884901888
 
-fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
+// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
+// tests in the clippy lane (gunbc.compiler_gate_workflow). The callers differ in the leaf's name and
+// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
+// afterwards inherits a memory.max that gunbc.host_budget_source reads as an ordinary observation.
+fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max_bytes: Int) -> List<String> {
   [
-    app_mint_step(command: "set -euo pipefail"),
-    app_mint_step(command: concat("GUNBC_CG=/sys/fs/cgroup/", heal_publisher_cgroup_name)),
-    app_mint_step(command: "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null"),
-    app_mint_step(command: "sudo mkdir -p \"$GUNBC_CG\""),
-    app_mint_step(command: concat(concat("echo ", to_string(heal_publisher_cgroup_memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null")),
-    app_mint_step(command: "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null"),
-    app_mint_step(command: "cat \"$GUNBC_CG/memory.max\""),
+    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
+    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
+    "sudo mkdir -p \"$GUNBC_CG\"",
+    concat(concat("echo ", to_string(memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
+    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
+    "cat \"$GUNBC_CG/memory.max\"",
   ]
+}
+
+fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
+  concat(
+    [app_mint_step(command: "set -euo pipefail")],
+    list_map(
+      xs: hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: heal_publisher_cgroup_name,
+        memory_max_bytes: heal_publisher_cgroup_memory_max_bytes,
+      ),
+      f: fn(c) { app_mint_step(command: c) },
+    )
+  )
 }
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
