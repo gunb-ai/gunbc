@@ -130,6 +130,62 @@ jobs:
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
           '[' '-z' "$DIRTY" ']' || ('echo' '::error title=release-bins SourceTreeDirty::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key'; exit 1)
+          'env' > "$RUNNER_TEMP"'/env.out'
+          if 'grep' '-qE' '^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))=' "$RUNNER_TEMP"'/env.out'; then ('echo' '::error title=release-bins BuildOverrideNotAdmitted::the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly'; exit 1); fi
+          'sed' '-nE' '/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p' "$RUNNER_TEMP"'/env.out' > "$RUNNER_TEMP"'/env-keyed.out'
+          'sed' '-E' '/^(CARGO_HOME|RUSTUP_HOME|CARGO_BIN|CARGO_TERM_COLOR|CARGO_BUILD_JOBS|RUSTC_WRAPPER)=/d' "$RUNNER_TEMP"'/env-keyed.out' > "$RUNNER_TEMP"'/env-kept.out'
+          'sort' "$RUNNER_TEMP"'/env-kept.out' > "$RUNNER_TEMP"'/env-sorted.out'
+          AXIS_ENVIRONMENT=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/env-sorted.out')
+          ANCESTOR_0="$ROOT"
+          ANCESTOR_1=$('dirname' "$ANCESTOR_0")
+          '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_2=$('dirname' "$ANCESTOR_1")
+          '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_3=$('dirname' "$ANCESTOR_2")
+          '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_4=$('dirname' "$ANCESTOR_3")
+          '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_5=$('dirname' "$ANCESTOR_4")
+          '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_6=$('dirname' "$ANCESTOR_5")
+          '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_7=$('dirname' "$ANCESTOR_6")
+          '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_8=$('dirname' "$ANCESTOR_7")
+          '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_9=$('dirname' "$ANCESTOR_8")
+          '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_10=$('dirname' "$ANCESTOR_9")
+          '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_11=$('dirname' "$ANCESTOR_10")
+          '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_12=$('dirname' "$ANCESTOR_11")
+          '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_13=$('dirname' "$ANCESTOR_12")
+          '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_14=$('dirname' "$ANCESTOR_13")
+          '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_15=$('dirname' "$ANCESTOR_14")
+          '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          ANCESTOR_16=$('dirname' "$ANCESTOR_15")
+          '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']' || ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1)
+          '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
@@ -153,7 +209,7 @@ jobs:
           'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
           AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
           '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
-          ('printf' 'kind=%s\n' 'gunbc.fleet_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin discover_source_root_ingest --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "$SOURCE_CLOSURE" "$RUSTFLAGS" "$CARGO_ENCODED_RUSTFLAGS" "$CC" "$CFLAGS" "$LDFLAGS" 'claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
+          ('printf' 'kind=%s\n' 'gunbc.fleet_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' '"$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin discover_source_root_ingest --bin claim_batch --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin effects_rest_transport_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness --bin codex_app_server_stdio_session' "$SOURCE_CLOSURE" "$AXIS_ENVIRONMENT" 'claim_executor gunbc discover_source_root_ingest claim_batch interp_recorded_fixture_witness v1_src_dag_parse auth_declared_but_unwired_witness bootstrap_witness dag_collect_fingerprint_witness diagnostics_witness effects_rest_transport_witness infer_semantics_witness parse_witness cssl_assemble namespace_structural_root_exposure_generated_witness codex_app_server_stdio_session'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
           'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
           PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
           KEY='release-bins-'"$PREIMAGE_DIGEST"
@@ -168,18 +224,17 @@ jobs:
         id: release_bins_lookup
         run: |
           set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
           STANDING='absent'
           ENTRY='none'
-          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref=''refs/heads/main' '-o' "$RUNNER_TEMP"'/lookup-main.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
-          TOTAL_main=$('sed' '-n' 's/.*"total_count": *\([0-9][0-9]*\).*/\1/p' "$RUNNER_TEMP"'/lookup-main.json')
-          '[' '-n' "$TOTAL_main" ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
-          '[' "$TOTAL_main" '-le' '100' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
-          if 'grep' '-qE' '"key": *"'"$RELEASE_BINS_KEY"'"' "$RUNNER_TEMP"'/lookup-main.json'; then STANDING='present'; ENTRY='ref=''refs/heads/main'' total='"$TOTAL_main"; fi
-          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref='"$GITHUB_REF" '-o' "$RUNNER_TEMP"'/lookup-dispatch.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
-          TOTAL_dispatch=$('sed' '-n' 's/.*"total_count": *\([0-9][0-9]*\).*/\1/p' "$RUNNER_TEMP"'/lookup-dispatch.json')
-          '[' '-n' "$TOTAL_dispatch" ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
-          '[' "$TOTAL_dispatch" '-le' '100' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
-          if 'grep' '-qE' '"key": *"'"$RELEASE_BINS_KEY"'"' "$RUNNER_TEMP"'/lookup-dispatch.json'; then STANDING='present'; ENTRY='ref='"$GITHUB_REF"' total='"$TOTAL_dispatch"; fi
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref=''refs/heads/main' '-o' "$ROOT"'/.release-bins-lookup-main.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          'jq' '--raw-output' '--exit-status' 'if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.ref | type) == "string") then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == "refs/heads/main")] | if length == 0 then "absent" elif length == 1 then "present\nid=\(.[0].id) ref=\(.[0].ref) version=\(.[0].version) created=\(.[0].created_at)" else error("duplicate exact entries") end else error("cache-API answer is not the admitted shape") end' '.release-bins-lookup-main.json' > "$RUNNER_TEMP"'/lookup-main.decoded' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          DECODED_STANDING=$('head' '-n' '1' "$RUNNER_TEMP"'/lookup-main.decoded')
+          if '[' "$DECODED_STANDING" '=' 'present' ']'; then STANDING='present'; ENTRY=$('sed' '-n' '2p' "$RUNNER_TEMP"'/lookup-main.decoded'); else '[' "$DECODED_STANDING" '=' 'absent' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1); fi
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref='"$GITHUB_REF" '-o' "$ROOT"'/.release-bins-lookup-dispatch.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          'jq' '--raw-output' '--exit-status' 'if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.ref | type) == "string") then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == $ENV.GITHUB_REF)] | if length == 0 then "absent" elif length == 1 then "present\nid=\(.[0].id) ref=\(.[0].ref) version=\(.[0].version) created=\(.[0].created_at)" else error("duplicate exact entries") end else error("cache-API answer is not the admitted shape") end' '.release-bins-lookup-dispatch.json' > "$RUNNER_TEMP"'/lookup-dispatch.decoded' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          DECODED_STANDING=$('head' '-n' '1' "$RUNNER_TEMP"'/lookup-dispatch.decoded')
+          if '[' "$DECODED_STANDING" '=' 'present' ']'; then STANDING='present'; ENTRY=$('sed' '-n' '2p' "$RUNNER_TEMP"'/lookup-dispatch.decoded'); else '[' "$DECODED_STANDING" '=' 'absent' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1); fi
           'echo' 'standing='"$STANDING" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
           'echo' 'entry='"$ENTRY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
           'echo' 'release-bins lookup: standing='"$STANDING"' entry='"$ENTRY"
@@ -229,19 +284,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$STAGE"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the stored pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins StoredManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$STAGE"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the stored manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$STAGE"'/unpacked'
           'mkdir' '-p' "$STAGE"'/unpacked'
-          'tar' '-xzf' "$STAGE"'/release-bins.tgz' '-C' "$STAGE"'/unpacked'
-          'ls' '-A' "$STAGE"'/unpacked' > "$RUNNER_TEMP"'/members.out'
-          MEMBERS=$('sort' "$RUNNER_TEMP"'/members.out')
-          ROSTER_SORTED=$('sort' "$RUNNER_TEMP"'/release-bins.roster')
-          '[' "$MEMBERS" '=' "$ROSTER_SORTED" ']' || ('echo' '::error title=release-bins StoredPackMembersNotRoster::the stored pack'\''s members are not exactly the roster'; exit 1)
-          ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins StoredMemberDigestMismatch::a stored member'\''s sha256 differs from the manifest; refusing before any restored binary runs'; exit 1)
+          'tar' '-xzf' "$STAGE"'/release-bins.tgz' '-C' "$STAGE"'/unpacked' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$STAGE"'/unpacked''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the stored member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$STAGE"'/unpacked''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the stored member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--strict' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the stored member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
-          'cp' '-pR' "$STAGE"'/unpacked/.' "$ROOT"'/target/release/'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$STAGE"'/unpacked''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$STAGE"'/unpacked''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$STAGE"'/unpacked''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$STAGE"'/unpacked''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$STAGE"'/unpacked''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$STAGE"'/unpacked''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$STAGE"'/unpacked''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$STAGE"'/unpacked''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
           'rm' '-rf' "$STAGE"'/unpacked'
+          'echo' 'release-bins: stored pack verified and promoted'
           'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
           OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
           'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
@@ -344,7 +494,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -379,20 +529,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -1615,7 +1859,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -1650,20 +1894,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -1773,7 +2111,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -1808,20 +2146,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -1864,7 +2296,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -1899,20 +2331,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -1976,7 +2502,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -2011,20 +2537,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -2053,7 +2673,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -2088,20 +2708,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -2134,7 +2848,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -2169,20 +2883,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
@@ -2302,7 +3110,7 @@ jobs:
         with:
           name: release-bins
         timeout-minutes: 10
-      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
           set -e
@@ -2337,20 +3145,114 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
           'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
-          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ConsumerManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster'; exit 1)
-          CHECK="$RUNNER_TEMP"'/release-bins-check'
-          'rm' '-rf' "$CHECK"
-          'mkdir' '-p' "$CHECK"
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$CHECK"
-          ('cd' "$CHECK" && 'sha256sum' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins ConsumerMemberDigestMismatch::a downloaded member'\''s sha256 differs from the manifest'; exit 1)
-          'rm' '-rf' "$CHECK"
-          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          mkdir -p "$ROOT/target/release"
-          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
-          rm -f "$ROOT/release-bins.tgz"
-          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' > "$RUNNER_TEMP"'/stat-claim_executor.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_executor.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_executor is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_executor is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/gunbc' > "$RUNNER_TEMP"'/stat-gunbc.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-gunbc.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member gunbc is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/gunbc' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member gunbc is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' > "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-discover_source_root_ingest.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member discover_source_root_ingest is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member discover_source_root_ingest is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' > "$RUNNER_TEMP"'/stat-claim_batch.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-claim_batch.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member claim_batch is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member claim_batch is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' > "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-interp_recorded_fixture_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member interp_recorded_fixture_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member interp_recorded_fixture_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' > "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-v1_src_dag_parse.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member v1_src_dag_parse is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member v1_src_dag_parse is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' > "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-auth_declared_but_unwired_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member auth_declared_but_unwired_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member auth_declared_but_unwired_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' > "$RUNNER_TEMP"'/stat-bootstrap_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-bootstrap_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member bootstrap_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member bootstrap_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' > "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-dag_collect_fingerprint_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member dag_collect_fingerprint_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member dag_collect_fingerprint_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' > "$RUNNER_TEMP"'/stat-diagnostics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-diagnostics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member diagnostics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member diagnostics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' > "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-effects_rest_transport_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member effects_rest_transport_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member effects_rest_transport_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' > "$RUNNER_TEMP"'/stat-infer_semantics_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-infer_semantics_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member infer_semantics_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member infer_semantics_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' > "$RUNNER_TEMP"'/stat-parse_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-parse_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member parse_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member parse_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' > "$RUNNER_TEMP"'/stat-cssl_assemble.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-cssl_assemble.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member cssl_assemble is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member cssl_assemble is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' > "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-namespace_structural_root_exposure_generated_witness.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member namespace_structural_root_exposure_generated_witness is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member namespace_structural_root_exposure_generated_witness is not executable'; exit 1)
+          'stat' '-c' '%F:%h' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' > "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out'
+          MEMBER_TYPE=$('head' '-n' '1' "$RUNNER_TEMP"'/stat-codex_app_server_stdio_session.out')
+          '[' "$MEMBER_TYPE" '=' 'regular file:1' ']' || ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded member codex_app_server_stdio_session is not a self-contained regular file (a link, special file or hard-link dependency)'; exit 1)
+          '[' '-x' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' ']' || ('echo' '::error title=release-bins MemberNotExecutable::the downloaded member codex_app_server_stdio_session is not executable'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          'rm' '-f' "$ROOT"'/target/release/claim_executor'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_executor' "$ROOT"'/target/release/claim_executor'
+          'rm' '-f' "$ROOT"'/target/release/gunbc'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/gunbc' "$ROOT"'/target/release/gunbc'
+          'rm' '-f' "$ROOT"'/target/release/discover_source_root_ingest'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/discover_source_root_ingest' "$ROOT"'/target/release/discover_source_root_ingest'
+          'rm' '-f' "$ROOT"'/target/release/claim_batch'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/claim_batch' "$ROOT"'/target/release/claim_batch'
+          'rm' '-f' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/interp_recorded_fixture_witness' "$ROOT"'/target/release/interp_recorded_fixture_witness'
+          'rm' '-f' "$ROOT"'/target/release/v1_src_dag_parse'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/v1_src_dag_parse' "$ROOT"'/target/release/v1_src_dag_parse'
+          'rm' '-f' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/auth_declared_but_unwired_witness' "$ROOT"'/target/release/auth_declared_but_unwired_witness'
+          'rm' '-f' "$ROOT"'/target/release/bootstrap_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/bootstrap_witness' "$ROOT"'/target/release/bootstrap_witness'
+          'rm' '-f' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/dag_collect_fingerprint_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness'
+          'rm' '-f' "$ROOT"'/target/release/diagnostics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/diagnostics_witness' "$ROOT"'/target/release/diagnostics_witness'
+          'rm' '-f' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/effects_rest_transport_witness' "$ROOT"'/target/release/effects_rest_transport_witness'
+          'rm' '-f' "$ROOT"'/target/release/infer_semantics_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/infer_semantics_witness' "$ROOT"'/target/release/infer_semantics_witness'
+          'rm' '-f' "$ROOT"'/target/release/parse_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/parse_witness' "$ROOT"'/target/release/parse_witness'
+          'rm' '-f' "$ROOT"'/target/release/cssl_assemble'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/cssl_assemble' "$ROOT"'/target/release/cssl_assemble'
+          'rm' '-f' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness'
+          'rm' '-f' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'cp' '-p' "$RUNNER_TEMP"'/release-bins-check''/codex_app_server_stdio_session' "$ROOT"'/target/release/codex_app_server_stdio_session'
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5

@@ -184,7 +184,7 @@ data ci_cost_floor_exempt_step_names_note: String = "Cost-floor roster BY STEP N
 data ci_cost_floor_exempt_step_names: List<String> = [
   "Isolate toolchain dirs",
   "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
-  "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)",
+  "Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)",
   "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 ]
 

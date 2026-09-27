@@ -51,7 +51,6 @@ import gunbc.fleet_release_bins_key {
   release_bins_manifest_name, release_bins_staging_dir,
 }
 import gunbc.ci_spec {
-  ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
   gunbc_ci_fleet_key_agent_script,
   gunbc_ci_fleet_key_agent_cleanup_script,
@@ -454,9 +453,9 @@ fn ci_release_bins_download_step() -> Step {
 
 fn ci_release_bins_unpack_verify_step() -> Step {
   RunStep {
-    name: Present { value: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)" },
+    name: Present { value: "Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)" },
     id: Present { value: "release_bins" },
-    run: concat(release_bins_consumer_key_check_script(), ci_release_bins_unpack_verify_script()),
+    run: release_bins_consumer_key_check_script(),
     shell: none,
     env: Present { value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_consumer_key_expression()))] },
     working_directory: none,

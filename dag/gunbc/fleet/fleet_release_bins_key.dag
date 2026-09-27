@@ -1,9 +1,15 @@
 module gunbc.fleet_release_bins_key
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Int, list_length }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
+import std.algebra { Empty }
+import extdeps.tools.jq {
+  JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,
+  jq_invocation_process_plan, jq_admitted_plan_surface, jq_executable,
+}
+import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
@@ -218,15 +224,19 @@ type ReleaseBinsRefusal
   | StoredEntryIncomplete { file: String }
   | StoredPreimageDiffers
   | StoredPreimageKeyMismatch
-  | StoredManifestRosterMismatch
-  | StoredPackMembersNotRoster
-  | StoredMemberDigestMismatch
+  | ManifestRosterMismatch { site: ReleaseBinsVerifySite }
+  | ManifestMalformed { site: ReleaseBinsVerifySite }
+  | PackListingNotRoster { site: ReleaseBinsVerifySite }
+  | MemberNotRegularFile { site: ReleaseBinsVerifySite, member: String }
+  | MemberNotExecutable { site: ReleaseBinsVerifySite, member: String }
+  | MemberDigestMismatch { site: ReleaseBinsVerifySite }
+  | BuildOverrideNotAdmitted
+  | AncestorCargoConfigPresent
+  | CheckoutPathTooDeep
   | ConsumerKeyMissing
   | ConsumerFileMissing { file: String }
   | ConsumerPreimageKeyMismatch
   | ConsumerSourceTreeMismatch
-  | ConsumerManifestRosterMismatch
-  | ConsumerMemberDigestMismatch
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
@@ -241,15 +251,19 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
     StoredEntryIncomplete { file: _ } => "StoredEntryIncomplete"
     StoredPreimageDiffers => "StoredPreimageDiffers"
     StoredPreimageKeyMismatch => "StoredPreimageKeyMismatch"
-    StoredManifestRosterMismatch => "StoredManifestRosterMismatch"
-    StoredPackMembersNotRoster => "StoredPackMembersNotRoster"
-    StoredMemberDigestMismatch => "StoredMemberDigestMismatch"
+    ManifestRosterMismatch { site: _ } => "ManifestRosterMismatch"
+    ManifestMalformed { site: _ } => "ManifestMalformed"
+    PackListingNotRoster { site: _ } => "PackListingNotRoster"
+    MemberNotRegularFile { site: _, member: _ } => "MemberNotRegularFile"
+    MemberNotExecutable { site: _, member: _ } => "MemberNotExecutable"
+    MemberDigestMismatch { site: _ } => "MemberDigestMismatch"
+    BuildOverrideNotAdmitted => "BuildOverrideNotAdmitted"
+    AncestorCargoConfigPresent => "AncestorCargoConfigPresent"
+    CheckoutPathTooDeep => "CheckoutPathTooDeep"
     ConsumerKeyMissing => "ConsumerKeyMissing"
     ConsumerFileMissing { file: _ } => "ConsumerFileMissing"
     ConsumerPreimageKeyMismatch => "ConsumerPreimageKeyMismatch"
     ConsumerSourceTreeMismatch => "ConsumerSourceTreeMismatch"
-    ConsumerManifestRosterMismatch => "ConsumerManifestRosterMismatch"
-    ConsumerMemberDigestMismatch => "ConsumerMemberDigestMismatch"
   }
 }
 
@@ -266,15 +280,31 @@ fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
     StoredEntryIncomplete { file: f } => join(["the stored entry is incomplete: ", f, " is missing"], "")
     StoredPreimageDiffers => "the stored preimage differs from this run's independently derived preimage"
     StoredPreimageKeyMismatch => "the stored preimage does not hash to the probed key"
-    StoredManifestRosterMismatch => "the stored manifest does not name exactly the gunbc.ci_release_bins roster in order"
-    StoredPackMembersNotRoster => "the stored pack's members are not exactly the roster"
-    StoredMemberDigestMismatch => "a stored member's sha256 differs from the manifest; refusing before any restored binary runs"
+    ManifestRosterMismatch { site: w } => join([release_bins_site_noun(site: w), " manifest does not name exactly the gunbc.ci_release_bins roster in order"], "")
+    ManifestMalformed { site: w } => join([release_bins_site_noun(site: w), " manifest has a line that is not one well-formed sha256 record for a roster member"], "")
+    PackListingNotRoster { site: w } => join([release_bins_site_noun(site: w), " pack's archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)"], "")
+    MemberNotRegularFile { site: w, member: m } => join([release_bins_site_noun(site: w), " member ", m, " is not a self-contained regular file (a link, special file or hard-link dependency)"], "")
+    MemberNotExecutable { site: w, member: m } => join([release_bins_site_noun(site: w), " member ", m, " is not executable"], "")
+    MemberDigestMismatch { site: w } => join([release_bins_site_noun(site: w), " member bytes do not match the manifest under strict checking; refusing before any member is promoted or run"], "")
+    BuildOverrideNotAdmitted => "the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly"
+    CheckoutPathTooDeep => "the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out"
+    AncestorCargoConfigPresent => "a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused"
     ConsumerKeyMissing => "the build job published no release-bins key"
     ConsumerFileMissing { file: f } => join(["the release-bins artifact is missing ", f], "")
     ConsumerPreimageKeyMismatch => "the downloaded preimage does not hash to the build job's key"
     ConsumerSourceTreeMismatch => "the pack was keyed on a different source tree than this job's checkout"
-    ConsumerManifestRosterMismatch => "the downloaded manifest does not name exactly the gunbc.ci_release_bins roster"
-    ConsumerMemberDigestMismatch => "a downloaded member's sha256 differs from the manifest"
+  }
+}
+
+// WHERE A PACK IS VERIFIED. Restore (the build job admitting a stored pack) and consumer (a downstream
+// job admitting the handed-off pack) run ONE verification obligation, release_bins_verify_pack; the
+// site only names which copy a refusal is about.
+type ReleaseBinsVerifySite = RestoreSite | ConsumerSite
+
+fn release_bins_site_noun(site: ReleaseBinsVerifySite) -> String {
+  match site {
+    RestoreSite => "the stored"
+    ConsumerSite => "the downloaded"
   }
 }
 
@@ -434,7 +464,7 @@ fn source_closure_statements() -> List<Node> {
   ]
 }
 
-// C7 [producer-status-pipeline] IS CLOSED HERE BY CONSTRUCTION, not recorded: no producer runs in a
+// PRODUCER STATUS IS OBSERVED BY CONSTRUCTION (the no-pipefail gap is closed here, not recorded): no producer runs in a
 // pipeline (see seq / produce_to below), so a failing producer stops the step under set -e even if it
 // printed part of its output. The only pipeline left is append_line's `echo | tee -a`, whose producer
 // is the shell builtin echo writing a model-rendered line and whose last stage (tee) set -e does check.
@@ -507,9 +537,8 @@ fn axis_line(axis: GenerationAxis) -> List<Node> {
     TargetModelAxis => [cmd(ws: [lit(t: "printf"), lit(t: "target_model=%s;cc=%s;ld=%s;libc=%s\\n"), var(n: "AXIS_HOST"), var(n: "AXIS_CC"), var(n: "AXIS_LD"), var(n: "AXIS_LIBC")])]
     BuildConfigurationAxis => [cmd(ws: [
       lit(t: "printf"),
-      lit(t: "build_configuration=%s;embedded_build_identity=%s;RUSTFLAGS=%s;CARGO_ENCODED_RUSTFLAGS=%s;CC=%s;CFLAGS=%s;LDFLAGS=%s;roster=%s\\n"),
-      lit(t: ci_release_build_line()), var(n: "SOURCE_CLOSURE"),
-      var(n: "RUSTFLAGS"), var(n: "CARGO_ENCODED_RUSTFLAGS"), var(n: "CC"), var(n: "CFLAGS"), var(n: "LDFLAGS"),
+      lit(t: "build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\\n"),
+      lit(t: ci_release_build_line()), var(n: "SOURCE_CLOSURE"), var(n: "AXIS_ENVIRONMENT"),
       lit(t: release_bins_roster_text()),
     ])]
     RequiredLensContractAxis => [cmdl(ls: ["printf", "required_lens_contract=none (a seed cargo build admits no lens contract)\\n"])]
@@ -533,6 +562,54 @@ fn preimage_statements() -> List<Node> {
   )
 }
 
+// THE BUILD ENVIRONMENT BOUNDARY. The whole committed tree covers committed Cargo configuration, but
+// Cargo also honours the ambient environment (CARGO_PROFILE_RELEASE_*, CARGO_BUILD_*, RUSTC, linker
+// selection, ...; https://doc.rust-lang.org/cargo/reference/environment-variables.html) and Cargo
+// config files in the checkout's ANCESTOR directories. The boundary is bounded and enforced, not an
+// open list: (1) overrides that would select a compiler, wrapper, linker, runner, target or target
+// directory other than the ones the key probes are REFUSED, so `rustc -vV` and `cc --version` really
+// are the compiler and linker the build uses; (2) every other variable in the Cargo/Rust/C-toolchain
+// namespaces is KEYED by name and value (sorted), except the declared names below, which only locate
+// or schedule the build, or wrap it without changing its output; (3) a Cargo config file in any
+// ancestor directory refuses. CARGO_HOME is isolated and emptied by the prelude, so its config.toml
+// cannot exist.
+data release_bins_refused_override_pattern: String = "^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))="
+data release_bins_keyed_environment_pattern: String = "/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p"
+// Excluded from the key, each with its reason: CARGO_HOME, RUSTUP_HOME and CARGO_BIN name locations
+// (the per-runner isolated homes); CARGO_TERM_COLOR styles output; CARGO_BUILD_JOBS schedules
+// parallelism, which the release profile's fixed codegen-units makes output-neutral; RUSTC_WRAPPER is
+// sccache, a cache in front of the same rustc invocation.
+data release_bins_unkeyed_environment_pattern: String = "/^(CARGO_HOME|RUSTUP_HOME|CARGO_BIN|CARGO_TERM_COLOR|CARGO_BUILD_JOBS|RUSTC_WRAPPER)=/d"
+
+fn release_bins_ancestor_level(level: Int) -> List<Node> {
+  [
+    assign_sub(name: join(["ANCESTOR_", to_string(level)], ""), body: cmd(ws: [lit(t: "dirname"), var(n: join(["ANCESTOR_", to_string(level - 1)], ""))])),
+    or_refuse(check: test_words(ws: [lit(t: "!"), lit(t: "-e"), words(ws: [var(n: join(["ANCESTOR_", to_string(level)], "")), lit(t: "/.cargo/config.toml")])]), r: AncestorCargoConfigPresent),
+    or_refuse(check: test_words(ws: [lit(t: "!"), lit(t: "-e"), words(ws: [var(n: join(["ANCESTOR_", to_string(level)], "")), lit(t: "/.cargo/config")])]), r: AncestorCargoConfigPresent),
+  ]
+}
+
+data release_bins_ancestor_levels: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+fn release_bins_environment_statements() -> List<Node> {
+  seq(parts: [
+    [
+      produce_to(file: "env.out", command: cmdl(ls: ["env"])),
+      bash_build_if(
+        cond: cmd(ws: [lit(t: "grep"), lit(t: "-qE"), lit(t: release_bins_refused_override_pattern), temp(file: "env.out")]),
+        body: bash_build_stmt_list_from_nodes(stmts: [refuse(r: BuildOverrideNotAdmitted)]),
+      ),
+      produce_to(file: "env-keyed.out", command: cmd(ws: [lit(t: "sed"), lit(t: "-nE"), lit(t: release_bins_keyed_environment_pattern), temp(file: "env.out")])),
+      produce_to(file: "env-kept.out", command: cmd(ws: [lit(t: "sed"), lit(t: "-E"), lit(t: release_bins_unkeyed_environment_pattern), temp(file: "env-keyed.out")])),
+      produce_to(file: "env-sorted.out", command: cmd(ws: [lit(t: "sort"), temp(file: "env-kept.out")])),
+      read_back(name: "AXIS_ENVIRONMENT", file: "env-sorted.out", reader: ["paste", "-s", "-d", ";"]),
+      bash_build_assign(name: "ANCESTOR_0", value: var(n: "ROOT")),
+    ],
+    seq(parts: map(release_bins_ancestor_levels, l => release_bins_ancestor_level(level: l))),
+    [or_refuse(check: test_words(ws: [var(n: join(["ANCESTOR_", to_string(list_length(release_bins_ancestor_levels))], "")), lit(t: "="), lit(t: "/")]), r: CheckoutPathTooDeep)],
+  ])
+}
+
 fn digest_of(name: String, path: Node) -> List<Node> {
   [
     produce_to(file: join([name, ".out"], ""), command: cmd(ws: [lit(t: "sha256sum"), path])),
@@ -551,21 +628,63 @@ fn roster_file_statement() -> Node {
   )
 }
 
-fn manifest_roster_check(manifest: Node, r: ReleaseBinsRefusal) -> List<Node> {
+// THE ONE PACK VERIFICATION OBLIGATION, consumed by restore and by every downstream consumer. It
+// establishes, before anything is promoted or run: the archive LISTING is exactly the roster in order
+// (no extra, duplicate, directory or escaping entry); the manifest has exactly one well-formed sha256
+// record per roster member in order; after extraction into an isolated directory each member is a
+// regular file with one link and the executable bit (no symlink, special file or hard-link
+// dependency); and every member's bytes match the manifest under --strict, which makes a malformed
+// checksum line a failure rather than a skipped line. Only then is each member copied, as a regular
+// file, from that same verified directory into target/release -- the archive is never extracted a
+// second, unchecked time.
+data release_bins_manifest_record_pattern: String = "^[0-9a-f]{64}  [A-Za-z0-9_]+$"
+
+fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, member: String) -> List<Node> {
   [
-    produce_to(file: "manifest-names.out", command: cmd(ws: [lit(t: "cut"), lit(t: "-c"), lit(t: "67-"), manifest])),
-    or_refuse(check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "manifest-names.out"), temp(file: "release-bins.roster")]), r: r),
+    produce_to(file: join(["stat-", member, ".out"], ""), command: cmd(ws: [lit(t: "stat"), lit(t: "-c"), lit(t: "%F:%h"), words(ws: [dir, lit(t: join(["/", member], ""))])])),
+    read_back(name: "MEMBER_TYPE", file: join(["stat-", member, ".out"], ""), reader: ["head", "-n", "1"]),
+    or_refuse(check: test_words(ws: [var(n: "MEMBER_TYPE"), lit(t: "="), lit(t: "regular file:1")]), r: MemberNotRegularFile { site: site, member: member }),
+    or_refuse(check: test_words(ws: [lit(t: "-x"), words(ws: [dir, lit(t: join(["/", member], ""))])]), r: MemberNotExecutable { site: site, member: member }),
   ]
 }
 
-fn member_digest_check(dir: Node, manifest: Node, r: ReleaseBinsRefusal) -> Node {
-  or_refuse(
-    check: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
-      left: cmd(ws: [lit(t: "cd"), dir]),
-      right: cmd(ws: [lit(t: "sha256sum"), lit(t: "--quiet"), lit(t: "-c"), manifest]),
-    )]),
-    r: r,
-  )
+fn release_bins_promote(dir: Node, member: String) -> List<Node> {
+  [
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: join(["target/release/", member], ""))]),
+    cmd(ws: [lit(t: "cp"), lit(t: "-p"), words(ws: [dir, lit(t: join(["/", member], ""))]), rooted(file: join(["target/release/", member], ""))]),
+  ]
+}
+
+fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node) -> List<Node> {
+  seq(parts: [
+    [
+      roster_file_statement(),
+      produce_to(file: "pack-listing.out", command: cmd(ws: [lit(t: "tar"), lit(t: "-tzf"), archive])),
+      or_refuse(check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "pack-listing.out"), temp(file: "release-bins.roster")]), r: PackListingNotRoster { site: site }),
+      produce_to(file: "manifest-names.out", command: cmd(ws: [lit(t: "cut"), lit(t: "-c"), lit(t: "67-"), manifest])),
+      or_refuse(check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "manifest-names.out"), temp(file: "release-bins.roster")]), r: ManifestRosterMismatch { site: site }),
+      bash_build_if(
+        cond: cmd(ws: [lit(t: "grep"), lit(t: "-qvE"), lit(t: release_bins_manifest_record_pattern), manifest]),
+        body: bash_build_stmt_list_from_nodes(stmts: [refuse(r: ManifestMalformed { site: site })]),
+      ),
+      cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir]),
+      cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir]),
+      cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), archive, lit(t: "-C"), dir, lit(t: "--no-same-owner")]),
+    ],
+    seq(parts: map(ci_floor_required_artifact_names(), m => release_bins_member_checks(site: site, dir: dir, member: m))),
+    [
+      or_refuse(
+        check: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
+          left: cmd(ws: [lit(t: "cd"), dir]),
+          right: cmd(ws: [lit(t: "sha256sum"), lit(t: "--strict"), lit(t: "--quiet"), lit(t: "-c"), manifest]),
+        )]),
+        r: MemberDigestMismatch { site: site },
+      ),
+      cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
+    ],
+    seq(parts: map(ci_floor_required_artifact_names(), m => release_bins_promote(dir: dir, member: m))),
+    [cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir])],
+  ])
 }
 
 fn entry_files() -> List<String> {
@@ -583,7 +702,7 @@ fn release_bins_key_statements() -> List<Node> {
         root_statement(),
         assign_sub(name: "DIRTY", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "status"), lit(t: "--porcelain"), lit(t: "--untracked-files=no")])),
         or_refuse(check: test_words(ws: [lit(t: "-z"), var(n: "DIRTY")]), r: SourceTreeDirty),
-      ], source_closure_statements()),
+      ], concat(release_bins_environment_statements(), source_closure_statements())),
       concat(
         concat([bash_build_assign(name: "EXPECTED", value: temp(file: join([release_bins_preimage_name, ".expected"], "")))], preimage_statements()),
         concat(digest_of(name: "PREIMAGE_DIGEST", path: var(n: "EXPECTED")), [
@@ -601,14 +720,91 @@ fn release_bins_key_statements() -> List<Node> {
 }
 
 // LOOKUP: GitHub's cache API is the authority for whether an exact entry exists under an admitted
-// producer ref. There is no reader program: the API filters by ref exactly (`ref=`), one request per
-// admitted ref writes its answer to a file, the answer's total_count is read back and must be a
-// number no larger than the page (a larger or unreadable answer is incomplete, never absence), and
-// presence is an exact match on the quoted key -- the closing quote is what makes the API's PREFIX
-// key filter an equality. Only an answered set with no exact key is absence.
+// producer ref. One request per admitted ref (the API filters `ref` exactly) writes its answer to a
+// file, and the answer is DECODED STRUCTURALLY by jq (extdeps.tools.jq), through the jq model's own
+// lowering (jq_invocation_process_plan), under --exit-status (JqLastResultExit). The program admits
+// only an object whose total_count is a number equal to the length of an actions_caches ARRAY of
+// objects with string key and ref, no larger than one page; anything else -- truncated or malformed
+// JSON, a missing array, a count that disagrees with the rows, a wrong-shaped row -- makes jq exit
+// nonzero, which refuses as LookupAnswerUnusable and is never absence. Of the admitted rows, exactly
+// one with key == the requested key and ref == the admitted ref is a candidate (its id, ref, version
+// and creation time are the receipt's producer identity); none is absence; two is refused.
 data release_bins_lookup_page_size: String = "100"
 
-fn lookup_ref_statements(ref_word: Node, tag: String) -> List<Node> {
+fn release_bins_lookup_program(ref_expression: String) -> String {
+  join([
+    "if type == \"object\"",
+    " and (.total_count | type) == \"number\"",
+    " and (.actions_caches | type) == \"array\"",
+    " and .total_count == (.actions_caches | length)",
+    " and .total_count <= ", release_bins_lookup_page_size,
+    " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.ref | type) == \"string\")",
+    " then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == ", ref_expression, ")]",
+    " | if length == 0 then \"", release_bins_standing_wire(standing: LookupEntryAbsent), "\"",
+    " elif length == 1 then \"", release_bins_standing_wire(standing: LookupEntryPresent),
+    "\\nid=\\(.[0].id) ref=\\(.[0].ref) version=\\(.[0].version) created=\\(.[0].created_at)\"",
+    " else error(\"duplicate exact entries\") end",
+    " else error(\"cache-API answer is not the admitted shape\") end",
+  ], "")
+}
+
+fn release_bins_lookup_jq(ref_expression: String, file: String) -> Outcome<JqAdmittedProcessPlan> {
+  jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_lookup_program(ref_expression: ref_expression) },
+    bindings: Empty,
+    input: JqInputFile { path: file },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  })
+}
+
+fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
+  match plan {
+    Accepted { value: p, diagnostics: _ } =>
+      concat([lit(t: jq_executable as String)], map(cli_surface_arguments(surface: jq_admitted_plan_surface(plan: p)), a => lit(t: cli_argument_text(argument: a))))
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+// The two admitted refs, each with its jq ref expression and its answer file (workspace-relative,
+// because the lowered argv carries the path as a literal word).
+type ReleaseBinsLookupRef {
+  tag: String
+  url_ref: Node
+  jq_ref_expression: String
+}
+
+fn release_bins_lookup_refs() -> List<ReleaseBinsLookupRef> {
+  [
+    ReleaseBinsLookupRef {
+      tag: "main",
+      url_ref: lit(t: release_bins_admitted_producer_ref),
+      jq_ref_expression: join(["\"", release_bins_admitted_producer_ref, "\""], ""),
+    },
+    ReleaseBinsLookupRef { tag: "dispatch", url_ref: var(n: "GITHUB_REF"), jq_ref_expression: "$ENV.GITHUB_REF" },
+  ]
+}
+
+fn release_bins_lookup_file(r: ReleaseBinsLookupRef) -> String {
+  join([".release-bins-lookup-", r.tag, ".json"], "")
+}
+
+fn release_bins_lookup_plan(r: ReleaseBinsLookupRef) -> Outcome<JqAdmittedProcessPlan> {
+  release_bins_lookup_jq(ref_expression: r.jq_ref_expression, file: release_bins_lookup_file(r: r))
+}
+
+fn release_bins_lookup_plans_admitted() -> Bool {
+  fold(release_bins_lookup_refs(), init: true, f: (acc, r) => acc && release_bins_script_accepted_plan(plan: release_bins_lookup_plan(r: r)))
+}
+
+fn release_bins_script_accepted_plan(plan: Outcome<JqAdmittedProcessPlan>) -> Bool {
+  match plan {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn lookup_ref_statements(r: ReleaseBinsLookupRef) -> List<Node> {
   [
     or_refuse(
       check: cmd(ws: [
@@ -618,24 +814,28 @@ fn lookup_ref_statements(ref_word: Node, tag: String) -> List<Node> {
         words(ws: [
           var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
           lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&key="], "")), var(n: "RELEASE_BINS_KEY"),
-          lit(t: "&ref="), ref_word,
+          lit(t: "&ref="), r.url_ref,
         ]),
-        lit(t: "-o"), temp(file: join(["lookup-", tag, ".json"], "")),
+        lit(t: "-o"), rooted(file: release_bins_lookup_file(r: r)),
       ]),
       r: LookupTransportFailed,
     ),
-    read_back(name: join(["TOTAL_", tag], ""), file: join(["lookup-", tag, ".json"], ""), reader: ["sed", "-n", "s/.*\"total_count\": *\\([0-9][0-9]*\\).*/\\1/p"]),
-    or_refuse(check: test_words(ws: [lit(t: "-n"), var(n: join(["TOTAL_", tag], ""))]), r: LookupAnswerUnusable),
-    or_refuse(check: test_words(ws: [var(n: join(["TOTAL_", tag], "")), lit(t: "-le"), lit(t: release_bins_lookup_page_size)]), r: LookupAnswerUnusable),
-    bash_build_if(
-      cond: cmd(ws: [
-        lit(t: "grep"), lit(t: "-qE"),
-        words(ws: [lit(t: "\"key\": *\""), var(n: "RELEASE_BINS_KEY"), lit(t: "\"")]),
-        temp(file: join(["lookup-", tag, ".json"], "")),
-      ]),
-      body: bash_build_stmt_list_from_nodes(stmts: [
+    or_refuse(
+      check: bash_build_with_redir_to_file(
+        inner: cmd(ws: release_bins_jq_words(plan: release_bins_lookup_plan(r: r))),
+        path: temp(file: join(["lookup-", r.tag, ".decoded"], "")),
+      ),
+      r: LookupAnswerUnusable,
+    ),
+    read_back(name: "DECODED_STANDING", file: join(["lookup-", r.tag, ".decoded"], ""), reader: ["head", "-n", "1"]),
+    bash_build_if_else(
+      cond: test_words(ws: [var(n: "DECODED_STANDING"), lit(t: "="), lit(t: release_bins_standing_wire(standing: LookupEntryPresent))]),
+      then_body: bash_build_stmt_list_from_nodes(stmts: [
         bash_build_assign(name: "STANDING", value: lit(t: release_bins_standing_wire(standing: LookupEntryPresent))),
-        bash_build_assign(name: "ENTRY", value: words(ws: [lit(t: "ref="), ref_word, lit(t: " total="), var(n: join(["TOTAL_", tag], ""))])),
+        read_back(name: "ENTRY", file: join(["lookup-", r.tag, ".decoded"], ""), reader: ["sed", "-n", "2p"]),
+      ]),
+      else_body: bash_build_stmt_list_from_nodes(stmts: [
+        or_refuse(check: test_words(ws: [var(n: "DECODED_STANDING"), lit(t: "="), lit(t: release_bins_standing_wire(standing: LookupEntryAbsent))]), r: LookupAnswerUnusable),
       ]),
     ),
   ]
@@ -644,11 +844,11 @@ fn lookup_ref_statements(ref_word: Node, tag: String) -> List<Node> {
 fn release_bins_lookup_statements() -> List<Node> {
   seq(parts: [
     [
+      root_statement(),
       bash_build_assign(name: "STANDING", value: lit(t: release_bins_standing_wire(standing: LookupEntryAbsent))),
       bash_build_assign(name: "ENTRY", value: lit(t: "none")),
     ],
-    lookup_ref_statements(ref_word: lit(t: release_bins_admitted_producer_ref), tag: "main"),
-    lookup_ref_statements(ref_word: var(n: "GITHUB_REF"), tag: "dispatch"),
+    seq(parts: map(release_bins_lookup_refs(), r => lookup_ref_statements(r: r))),
     [
       append_line(file_var: "GITHUB_OUTPUT", line: words(ws: [lit(t: "standing="), var(n: "STANDING")])),
       append_line(file_var: "GITHUB_OUTPUT", line: words(ws: [lit(t: "entry="), var(n: "ENTRY")])),
@@ -681,19 +881,13 @@ fn release_bins_outcome_statements() -> List<Node> {
         ),
       ], digest_of(name: "STORED_DIGEST", path: staged(file: release_bins_preimage_name)), [
         or_refuse(check: key_matches(digest_var: "STORED_DIGEST"), r: StoredPreimageKeyMismatch),
-        roster_file_statement(),
-      ], manifest_roster_check(manifest: staged(file: release_bins_manifest_name), r: StoredManifestRosterMismatch), [
-        cmd(ws: [lit(t: "rm"), lit(t: "-rf"), staged(file: "unpacked")]),
-        cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), staged(file: "unpacked")]),
-        cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), staged(file: "unpacked")]),
-        produce_to(file: "members.out", command: cmd(ws: [lit(t: "ls"), lit(t: "-A"), staged(file: "unpacked")])),
-        read_back(name: "MEMBERS", file: "members.out", reader: ["sort"]),
-        assign_sub(name: "ROSTER_SORTED", body: cmd(ws: [lit(t: "sort"), temp(file: "release-bins.roster")])),
-        or_refuse(check: test_words(ws: [var(n: "MEMBERS"), lit(t: "="), var(n: "ROSTER_SORTED")]), r: StoredPackMembersNotRoster),
-        member_digest_check(dir: staged(file: "unpacked"), manifest: staged(file: release_bins_manifest_name), r: StoredMemberDigestMismatch),
-        cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-        cmd(ws: [lit(t: "cp"), lit(t: "-pR"), staged(file: "unpacked/."), rooted(file: "target/release/")]),
-        cmd(ws: [lit(t: "rm"), lit(t: "-rf"), staged(file: "unpacked")]),
+      ], release_bins_verify_pack(
+        site: RestoreSite,
+        archive: staged(file: ci_release_bins_archive_name),
+        manifest: staged(file: release_bins_manifest_name),
+        dir: staged(file: "unpacked"),
+      ), [
+        cmd(ws: [lit(t: "echo"), lit(t: "release-bins: stored pack verified and promoted")]),
       ]]),
       concat(
         release_bins_receipt_statements(kind: ReleaseBinsReuseReceipt),
@@ -754,14 +948,16 @@ fn release_bins_consumer_statements() -> List<Node> {
           check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), rooted(file: release_bins_preimage_name)]),
           r: ConsumerSourceTreeMismatch,
         ),
-        roster_file_statement(),
-      ], manifest_roster_check(manifest: rooted(file: release_bins_manifest_name), r: ConsumerManifestRosterMismatch), [
-        bash_build_assign(name: "CHECK", value: temp(file: "release-bins-check")),
-        cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "CHECK")]),
-        cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "CHECK")]),
-        cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), rooted(file: ci_release_bins_archive_name), lit(t: "-C"), var(n: "CHECK")]),
-        member_digest_check(dir: var(n: "CHECK"), manifest: rooted(file: release_bins_manifest_name), r: ConsumerMemberDigestMismatch),
-        cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "CHECK")]),
+      ], release_bins_verify_pack(
+        site: ConsumerSite,
+        archive: rooted(file: ci_release_bins_archive_name),
+        manifest: rooted(file: release_bins_manifest_name),
+        dir: temp(file: "release-bins-check"),
+      ), [
+        cmd(ws: concat(
+          [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
+          map(ci_floor_required_artifact_names(), m => rooted(file: join(["target/release/", m], ""))),
+        )),
       ]]),
     ),
   )
@@ -795,7 +991,7 @@ fn release_bins_pack_manifest_script() -> String { release_bins_script_text(outc
 fn release_bins_consumer_key_check_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_consumer_statements())) }
 
 fn release_bins_scripts_admitted() -> Bool {
-  fold(
+  release_bins_lookup_plans_admitted() && fold(
     [
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_key_statements())),
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_lookup_statements())),
