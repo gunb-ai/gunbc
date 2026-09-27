@@ -11,7 +11,15 @@ import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.text { String }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_program_readiness,
+  witness_bin_release_path,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusal
+}
 
 // Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated
 // emit->assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe
@@ -244,23 +252,53 @@ fn cssl_fault_run_detected_the_planted_fault(
     && !string_contains(s: fault_stdout, pattern: pass_marker)
 }
 
+// Both binaries are gated BEFORE staging and typed, first refusal wins
+// (tools.host_prelude witness_bin_program_readiness): an unready gunbc or cssl_assemble is an
+// EvidenceInstrumentRefused carrying its WitnessBinRefusal, never a false that reads like the
+// emitted module disagreeing with its driver.
 fn cssl_seed_linked_behavioral_receipt(
   source_rel: String,
   driver_rel: String,
   pass_marker: String,
   claim_runs: List<CuratedSeedLinkedClaimRun>
-) -> Bool {
+) -> SubjectEvidence<WitnessBinRefusal, Bool> {
   let root = git.Inspect.Toplevel()
-  let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
-  let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
+  let binaries = witness_bin_program_readiness(
+    root: root.path,
+    prereqs: [witness_bin(var_name: "GUNBC", bin_name: "gunbc")],
+    invoke: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble")
+  )
+  match binaries {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: _ } =>
+      EvidenceSubjectCompleted {
+        outcome: cssl_seed_linked_behavioral_run(
+          root: root.path,
+          source_rel: source_rel,
+          driver_rel: driver_rel,
+          pass_marker: pass_marker,
+          claim_runs: claim_runs
+        )
+      }
+  }
+}
+
+fn cssl_seed_linked_behavioral_run(
+  root: String,
+  source_rel: String,
+  driver_rel: String,
+  pass_marker: String,
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+) -> Bool {
+  let module_read = Filesystem.Read(path: cssl_repo_path(root: root, rel: source_rel))
+  let driver_read = Filesystem.Read(path: cssl_repo_path(root: root, rel: driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let cssl_assemble_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
-  let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
+  let gunbc_bin = witness_bin_release_path(root: root, bin_name: "gunbc")
+  let cssl_assemble_bin = witness_bin_release_path(root: root, bin_name: "cssl_assemble")
   let emit = gunbc.WitnessBin.Run(
-    workdir: root.path,
+    workdir: root,
     bin_path: gunbc_bin,
     args: [
       "compile",
@@ -275,12 +313,12 @@ fn cssl_seed_linked_behavioral_receipt(
 
   let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
   let generic_assembly_ok = cssl_run_generic_closure_assembly(
-    root: root.path,
+    root: root,
     out_dir: out_dir.path,
     source_rel: source_rel,
     cssl_assemble_bin: cssl_assemble_bin
   )
-  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: cssl_v1_compiled_cargo_toml(root: root.path))
+  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: cssl_v1_compiled_cargo_toml(root: root))
   let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
 
   let build = cargo.Build.BuildManifest(
@@ -299,7 +337,7 @@ fn cssl_seed_linked_behavioral_receipt(
     pass_marker: pass_marker
   )
   let claim_ok = cssl_supplemental_claims_ok(
-    root: root.path,
+    root: root,
     gunbc_bin: gunbc_bin,
     claim_runs: claim_runs
   )
@@ -307,7 +345,7 @@ fn cssl_seed_linked_behavioral_receipt(
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
   module_read.success && driver_read.success
-    && out_dir.success && gunbc_built && cssl_assemble_built && emit.success
+    && out_dir.success && emit.success
     && src_dir.success
     && generic_assembly_ok
     && manifest.success && main_rs.success

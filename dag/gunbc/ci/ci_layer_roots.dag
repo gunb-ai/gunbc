@@ -1549,6 +1549,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_verdict_compose_laws_hold"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_verdict_compose_RED_on_injected_failure"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_a_exemplar_compile_green"),
+  bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag", f: "compile_clean_shard_a_unready_compiler_surfaces_its_refusal"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_roster_is_well_formed"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_algebra_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_algebra_holds"),

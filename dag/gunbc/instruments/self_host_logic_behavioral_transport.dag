@@ -22,10 +22,16 @@ import v2.compiler.self_host.promotion_admission {
   ObservationPresent,
   ObservationUnavailable,
   BehavioralReceiptStanding,
-  behavioral_receipt_standing,
-  behavioral_receipt_standing_holds
+  behavioral_receipt_standing
 }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusal
+}
 
 // Wave 1 Gate 4 (weak self-host behavioral receipt) for dag/std/logic.dag: realize the v2 self-emit
 // -> compile -> run -> equals-seed chain as typed host ops, mirroring run_rust_smoke's shape
@@ -143,22 +149,19 @@ fn slb_cargo_toml(root: String) -> String {
 //
 // DirWithTemplate rather than a fixed path: concurrent receipts must not share a scratch root,
 // which is the one property Mktemp.Dir was providing and a hardcoded directory would lose.
-fn slb_comparison_observation() -> BehavioralComparisonObservation {
-  let root = git.Inspect.Toplevel()
-  let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
+fn slb_comparison_observation(root: String, gunbc_bin: String) -> BehavioralComparisonObservation {
+  let logic_read = Filesystem.Read(path: slb_repo_path(root: root, rel: slb_logic_source_rel))
 
-  let stage_root = shell.Mkdir.Parents(path: concat(root.path, "/target/wet-stage"))
+  let stage_root = shell.Mkdir.Parents(path: concat(root, "/target/wet-stage"))
   let scratch_src = shell.Mktemp.DirWithTemplate(
-    template: concat(root.path, "/target/wet-stage/logic-XXXXXX")
+    template: concat(root, "/target/wet-stage/logic-XXXXXX")
   )
   let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
   let logic_written = Filesystem.Write(path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content)
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let emit = gunbc.WitnessBin.Run(
-    workdir: root.path,
+    workdir: root,
     bin_path: gunbc_bin,
     args: [
       "compile",
@@ -170,7 +173,7 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     ]
   )
 
-  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: slb_cargo_toml(root: root.path))
+  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: slb_cargo_toml(root: root))
   let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: slb_driver_main_source)
 
   let build = cargo.Build.BuildManifest(
@@ -190,7 +193,7 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let staged = logic_read.success
     && stage_root.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
-    && out_dir.success && gunbc_built && emit.success
+    && out_dir.success && emit.success
     && manifest.success && main_rs.success
     && cleanup_src.success && cleanup_out.success
 
@@ -253,10 +256,18 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
 // matched the payload to `_` at three sites and answered false, so no consumer could count
 // anything, and the sentence describing the property was the only place the property existed.
 // The standing below is now the return value and the Bool is derived from it at one site.
-fn slb_behavioral_receipt_standing() -> BehavioralReceiptStanding {
-  behavioral_receipt_standing(o: slb_comparison_observation())
-}
-
-fn slb_behavioral_receipt_holds() -> Bool {
-  behavioral_receipt_standing_holds(s: slb_behavioral_receipt_standing())
+//
+// The compiler binary is gated BEFORE the observation and typed: a gunbc that could not be made
+// Ready is an EvidenceInstrumentRefused carrying its WitnessBinRefusal, so it can never surface as
+// one of the observation's staging causes and be read as a comparison that failed to stage.
+fn slb_behavioral_receipt_standing() -> SubjectEvidence<WitnessBinRefusal, BehavioralReceiptStanding> {
+  let root = git.Inspect.Toplevel()
+  match witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: gunbc_bin } =>
+      EvidenceSubjectCompleted {
+        outcome: behavioral_receipt_standing(o: slb_comparison_observation(root: root.path, gunbc_bin: gunbc_bin))
+      }
+  }
 }

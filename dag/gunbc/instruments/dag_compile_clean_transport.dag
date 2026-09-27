@@ -9,7 +9,16 @@ import gunbc.ci_gate { GateReceipt }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectFailure, ExpectSuccess }
 import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path,
+  WitnessBinReadiness,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusal
+}
 
 // Compile-clean gate transports, typed. Each receipt is a composition of typed service operations
 // (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on the gunbc binary,
@@ -67,8 +76,8 @@ fn dcc_fixture_only_compile_args(tmp: String, entry_file: String) -> List<String
   ]
 }
 
-fn dcc_gunbc_ready(root: String) -> Bool {
-  witness_bin_ready(root: root, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+fn dcc_gunbc_readiness(root: String) -> WitnessBinReadiness {
+  witness_bin_ensure_built_typed(root: root, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
 }
 
 fn dcc_gunbc_path(root: String) -> String {
@@ -119,49 +128,61 @@ fn dcc_perturb_compile_with_args(
   wrote.success && cleaned.success && (compile.success == expect_success)
 }
 
-fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
-  let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let tmp = shell.Mktemp.Dir()
-    if tmp.success {
-      dcc_perturb_compile_with_args(
-        tmp_path: tmp.path,
-        compile_args: dcc_perturb_compile_args(tmp: tmp.path, entry_file: module_file),
-        module_file: module_file,
-        source: source,
-        expect_success: expect_success
-      )
-    } else {
-      false
-    }
-  } else {
-    false
-  }
-}
-
-fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> Bool {
-  let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let tmp = shell.Mktemp.DirWithTemplate(
-      template: concat(root.path, "/target/dcc_perturb_fixture_XXXXXX")
+fn dcc_perturb_compile_staged(module_file: String, source: String, expect_success: Bool) -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if tmp.success {
+    dcc_perturb_compile_with_args(
+      tmp_path: tmp.path,
+      compile_args: dcc_perturb_compile_args(tmp: tmp.path, entry_file: module_file),
+      module_file: module_file,
+      source: source,
+      expect_success: expect_success
     )
-    if tmp.success {
-      dcc_perturb_compile_with_args(
-        tmp_path: tmp.path,
-        compile_args: dcc_fixture_only_compile_args(tmp: tmp.path, entry_file: module_file),
-        module_file: module_file,
-        source: source,
-        expect_success: expect_success
-      )
-    } else {
-      false
-    }
   } else {
     false
   }
 }
 
-fn run_perturb_optional_skew_red_receipt() -> Bool {
+fn dcc_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> SubjectEvidence<WitnessBinRefusal, Bool> {
+  let root = git.Inspect.Toplevel()
+  match dcc_gunbc_readiness(root: root.path) {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: _ } => EvidenceSubjectCompleted {
+      outcome: dcc_perturb_compile_staged(module_file: module_file, source: source, expect_success: expect_success)
+    }
+  }
+}
+
+fn dcc_fixture_perturb_compile_staged(root: String, module_file: String, source: String, expect_success: Bool) -> Bool {
+  let tmp = shell.Mktemp.DirWithTemplate(
+    template: concat(root, "/target/dcc_perturb_fixture_XXXXXX")
+  )
+  if tmp.success {
+    dcc_perturb_compile_with_args(
+      tmp_path: tmp.path,
+      compile_args: dcc_fixture_only_compile_args(tmp: tmp.path, entry_file: module_file),
+      module_file: module_file,
+      source: source,
+      expect_success: expect_success
+    )
+  } else {
+    false
+  }
+}
+
+fn dcc_fixture_perturb_compile_expecting(module_file: String, source: String, expect_success: Bool) -> SubjectEvidence<WitnessBinRefusal, Bool> {
+  let root = git.Inspect.Toplevel()
+  match dcc_gunbc_readiness(root: root.path) {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: _ } => EvidenceSubjectCompleted {
+      outcome: dcc_fixture_perturb_compile_staged(root: root.path, module_file: module_file, source: source, expect_success: expect_success)
+    }
+  }
+}
+
+fn run_perturb_optional_skew_red_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_red.dag",
     source: perturb_module_source,
@@ -169,7 +190,7 @@ fn run_perturb_optional_skew_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_unresolved_import_red_receipt() -> Bool {
+fn run_perturb_unresolved_import_red_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_unresolved_import.dag",
     source: unresolved_import_perturb_source,
@@ -177,7 +198,7 @@ fn run_perturb_unresolved_import_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_optional_skew_fixture_red_receipt() -> Bool {
+fn run_perturb_optional_skew_fixture_red_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_fixture_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_red.dag",
     source: perturb_module_source,
@@ -185,7 +206,7 @@ fn run_perturb_optional_skew_fixture_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_unresolved_import_fixture_red_receipt() -> Bool {
+fn run_perturb_unresolved_import_fixture_red_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_fixture_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_unresolved_import.dag",
     source: unresolved_import_perturb_source,
@@ -193,7 +214,7 @@ fn run_perturb_unresolved_import_fixture_red_receipt() -> Bool {
   )
 }
 
-fn run_perturb_fixture_green_receipt() -> Bool {
+fn run_perturb_fixture_green_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_fixture_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_fixture_green.dag",
     source: perturb_fixture_green_module_source,
@@ -201,7 +222,7 @@ fn run_perturb_fixture_green_receipt() -> Bool {
   )
 }
 
-fn run_cross_tree_import_green_receipt() -> Bool {
+fn run_cross_tree_import_green_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_cross_tree_green.dag",
     source: cross_tree_green_module_source,
@@ -209,7 +230,7 @@ fn run_cross_tree_import_green_receipt() -> Bool {
   )
 }
 
-fn run_dag_shell_primary_precedence_receipt() -> Bool {
+fn run_dag_shell_primary_precedence_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_dag_shell_primary.dag",
     source: dag_shell_primary_module_source,

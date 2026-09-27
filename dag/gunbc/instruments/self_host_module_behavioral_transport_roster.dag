@@ -4,6 +4,7 @@ import tools.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedClaimRun,
   cssl_seed_linked_behavioral_receipt
 }
+import tools.host_prelude { WitnessBinRefusal }
 import v2.std.algebra { fold_list }
 import v2.std.collection {
   List
@@ -19,6 +20,7 @@ import v2.std.logic { Bool }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,
   EvidenceSubjectCompleted,
+  EvidenceSubjectUnreached,
   SubjectEvidence,
   subject_evidence_establishes
 }
@@ -216,6 +218,7 @@ fn module_behavioral_transport_config_for(module_path: String) -> Optional<Modul
 // closes the arm ABOVE it without touching its signature.
 type CompilerModuleReceiptNoVerdict
   = BehavioralTransportConfigAbsent { module_path: String }
+  | BehavioralWitnessBinRefused { module_path: String, refusal: WitnessBinRefusal }
 
 type CompilerModuleReceiptOutcome
   = BehavioralReceiptHeld
@@ -232,18 +235,23 @@ fn compiler_module_behavioral_receipt_evidence(
   module_path: String
 ) -> SubjectEvidence<CompilerModuleReceiptNoVerdict, CompilerModuleReceiptOutcome> {
   match module_behavioral_transport_config_for(module_path: module_path) {
-    Present { value: cfg } => EvidenceSubjectCompleted {
-      outcome: if cssl_seed_linked_behavioral_receipt(
+    Present { value: cfg } =>
+      match cssl_seed_linked_behavioral_receipt(
         source_rel: cfg.module_path,
         driver_rel: cfg.driver_rel,
         pass_marker: cfg.pass_marker,
         claim_runs: cfg.claim_runs
       ) {
-        BehavioralReceiptHeld
-      } else {
-        BehavioralReceiptRefuted
+        EvidenceInstrumentRefused { cause: refusal } => EvidenceInstrumentRefused {
+          cause: BehavioralWitnessBinRefused { module_path: module_path, refusal: refusal }
+        }
+        EvidenceSubjectUnreached { cause: refusal } => EvidenceSubjectUnreached {
+          cause: BehavioralWitnessBinRefused { module_path: module_path, refusal: refusal }
+        }
+        EvidenceSubjectCompleted { outcome: held } => EvidenceSubjectCompleted {
+          outcome: if held { BehavioralReceiptHeld } else { BehavioralReceiptRefuted }
+        }
       }
-    }
     Absent => EvidenceInstrumentRefused {
       cause: BehavioralTransportConfigAbsent { module_path: module_path }
     }

@@ -1,6 +1,7 @@
 module test.claim.namespace_import_closure_witness
 
-import tools.namespace_import_closure_behavioral_transport { nic_behavioral_receipt_holds }
+import v2.std.subject_evidence { subject_evidence_establishes }
+import tools.namespace_import_closure_behavioral_transport { nic_behavioral_receipt }
 
 // Wet receipt for the Gate-1 emit import-closure derivation (emit_import_closure_root):
 // tools.namespace_import_closure_behavioral_transport emits an import-free namespace module that
@@ -11,5 +12,5 @@ import tools.namespace_import_closure_behavioral_transport { nic_behavioral_rece
 // falsifier Wet follow-on batch (falsifier_self_host_wet_entries), not per-PR hermetic discovery.
 
 test fn namespace_import_closure_receipt_holds() -> Bool {
-  nic_behavioral_receipt_holds()
+  subject_evidence_establishes(evidence: nic_behavioral_receipt(), licenses: fn(held) { held })
 }

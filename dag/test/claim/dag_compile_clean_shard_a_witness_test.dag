@@ -1,5 +1,12 @@
 module test.claim.dag_compile_clean_shard_a_witness
 
+import v2.std.subject_evidence {
+  EvidenceInstrumentRefused,
+  EvidenceSubjectCompleted,
+  EvidenceSubjectUnreached,
+  subject_evidence_establishes
+}
+import tools.host_prelude { WitnessBinNotEnrolled }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
@@ -24,5 +31,18 @@ test fn compile_clean_shard_verdict_compose_RED_on_injected_failure() -> Bool {
 }
 
 test fn compile_clean_shard_a_exemplar_compile_green() -> Bool {
-  run_shard_a_exemplar_compile()
+  subject_evidence_establishes(evidence: run_shard_a_exemplar_compile(), licenses: fn(held) { held })
+}
+
+// A MISSING COMPILER IS A LOCATED INSTRUMENT REFUSAL, NEVER A SHARD VERDICT. Same receipt route as
+// the green above, with a compiler that is not an enrolled release bin: the evidence must be the
+// EvidenceInstrumentRefused arm naming that bin and WitnessBinNotEnrolled. Before the receipt was
+// typed, this state and an unclean module answered the same false.
+test fn compile_clean_shard_a_unready_compiler_surfaces_its_refusal() -> Bool {
+  match run_shard_a_exemplar_compile_with_unenrolled_compiler() {
+    EvidenceInstrumentRefused { cause: refusal } =>
+      refusal.bin_name == "no_such_witness_bin_zzz" && refusal.reason == WitnessBinNotEnrolled
+    EvidenceSubjectUnreached { cause: _ } => false
+    EvidenceSubjectCompleted { outcome: _ } => false
+  }
 }
