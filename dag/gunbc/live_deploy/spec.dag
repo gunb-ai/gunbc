@@ -425,6 +425,19 @@ data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.servi
 
 data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
 
+// THE REPOSITORY CONVERGENCE ONESHOT'S SLICE, ONE PER HOST. Its bounds and the reason it is one per
+// host rather than per instance live with the rows in gunbc.live_deploy.slice_bounds; the admission
+// that refuses to place the oneshot inside a serving slice lives in
+// gunbc.live_deploy.repository_convergence_placement. The name deliberately shares no systemd
+// hierarchy prefix with a serving slice: a dash in a slice name is a parent edge, so a name like
+// gunbc-roadmap-convergence.slice would sit INSIDE gunbc-roadmap.slice and inherit the bound it
+// exists to escape. That admission checks descent, not only equality, for this reason.
+data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-convergence.slice"
+
+fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", gunbc_repository_convergence_slice_unit_name as String], "") as NonEmptyStr
+}
+
 // A SPEC THAT DOES NOT OWN THE BROKER EMITS NO BROKER STEP. This is the predicate the emitter
 // consults; it is not a validation standing beside a write that would otherwise happen, because the
 // steps are CONSTRUCTED from it -- a non-owning apply produces an empty list, so there is nothing to

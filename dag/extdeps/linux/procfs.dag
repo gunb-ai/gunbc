@@ -33,7 +33,8 @@ type ProcfsPath
   | ProcSelfMountinfo
 
 // A FILE UNDER ONE PROCESS'S DIRECTORY, /proc/<pid>/<file> (proc(5)): stat and cmdline are
-// world-readable; exe, fd and environ need ptrace-read access to the process and are not read here.
+// world-readable; exe, fd and environ need ptrace-read access to the process, so only a reader running
+// as the process's own uid (or root) can take them.
 fn procfs_pid_file_path(pid: String, file: String) -> String {
   "/proc/" + pid + "/" + file
 }

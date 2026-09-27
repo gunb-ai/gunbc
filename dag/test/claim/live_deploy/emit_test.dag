@@ -13,8 +13,10 @@ import std.os.types { Apt }
 import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.spec {
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
+  gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   gunbc_approval_broker_unit_path, deployment_owns_the_host_approval_broker,
   DeploymentSpec,
   DeploymentDependencyStep,
@@ -402,6 +404,28 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 // stage directory and its trap, the memory-cap step and the closing receipt. Each is a fixed
 // literal inside `apply_intent_from_effects` with no parameter that could carry an elevation, so
 // acquiring one there means editing that function directly.
+// THE CONVERGENCE SLICE IS INSTALLED BEFORE THE CONVERGENCE STARTS. The oneshot names
+// gunbc-repository-convergence.slice, and a Slice= whose file is missing does not fail: systemd
+// creates the slice with no bound, and the process that refuses to plan without a cgroup bound
+// (HostBudgetUnreadable) or the throttle this slice exists to remove comes back silently. So the claim
+// is ORDER, not presence: the slice file's install must precede the restart of the convergence unit.
+// The red is an arm that installs the slice after the restart, or not at all.
+test fn the_convergence_slice_is_installed_before_the_convergence_restart() -> Bool {
+  let spec = deployment_spec_srv1()
+  let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  let slice_install = deploy_stage_install_command(
+    stage_name: gunbc_repository_convergence_slice_unit_name as String,
+    mode: "0644",
+    dest: gunbc_repository_convergence_slice_unit_path() as String,
+  )
+  let restart = deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name))
+  match split(s: sh, sep: restart) |> first() {
+    Absent => false
+    Present { value: before } =>
+      string_contains(s: sh, pattern: restart) && string_contains(s: before, pattern: slice_install)
+  }
+}
+
 fn witness_apply_preamble_text() -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: a } =>

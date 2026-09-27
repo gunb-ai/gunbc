@@ -10,13 +10,6 @@ fn live_derived() -> List<RunnerHostDeployment> {
   plan_derived_deployments(p: live_plan())
 }
 
-fn host_is_derived(host: HostIdentity) -> Bool {
-  match runner_host_deployment_for(p: live_plan(), host: host) {
-    HostRunnerDeploymentDerived { deployment: _ } => true
-    HostRunnerDeploymentRefused { refusal: _ } => false
-  }
-}
-
 // THE CONSERVATION PROPERTIES ARE ASSERTED OVER THE HOSTS THAT DERIVED, and the roster is no longer
 // required to be the whole fleet. That is the substantive change: a host whose premise is missing
 // refuses on its own, and the hosts that did derive must still each be internally sound. Asserting
@@ -249,18 +242,39 @@ test fn an_oversized_control_plane_reports_over_commitment_and_not_unmeasured() 
   r.contains("over-committed") && !r.contains("unchargeable")
 }
 
-// AN UNPLACED CONTROL PLANE ADDS NO REFUSAL OF ITS OWN, which is what this row has always meant.
-// It used to assert the whole fleet reason is empty, which stopped being a statement about the
-// control plane once per-host refusal let a host decline for an unrelated cause: srv2 now refuses
-// because its session reservation is unestablished, under every placement, so the old form reds
-// on a fact it never tested. The claim is restated RELATIVELY -- the unplaced arm refuses exactly
-// what the baseline already refuses -- isolating the control plane's contribution instead of
-// requiring the rest of the fleet to be clean.
+// AN UNPLACED CONTROL PLANE ADDS NO REFUSAL OF ITS OWN. The subject is the allocation verdict's
+// control-plane arm, so the budget is SUPPLIED at that interface rather than read off the live
+// fleet: the previous form asserted the whole fleet's reason carried neither cause, which made it a
+// statement about srv1's live memory budget and it went red (srv1 over-committed) on a fact the
+// control plane has no part in. The budget below conserves by construction, so the only input that
+// varies between the two arms is the placement, and the verdict must follow it: unplaced conserves,
+// the same host with an unmeasured envelope is unchargeable. The real placement fold stays executed
+// by the unmeasured/oversized pair above, which run runner_deployment_plan_under_placement.
+fn verdict_under_supplied_budget(p: FabricControlPlanePlacement) -> HostAllocationVerdict {
+  host_allocation_verdict(
+    host: byte_size(100000000000),
+    overhead: byte_size(1000000000),
+    headroom: byte_size(1000000000),
+    runner_pool: byte_size(10000000000),
+    session_pool: byte_size(10000000000),
+    compile_pool: byte_size(10000000000),
+    control_plane: host_fabric_control_plane_claim_under(host: operator_host_srv1, placement: p),
+    served_deployment: ServedDeploymentNotPlaced
+  )
+}
+
 test fn the_unplaced_control_plane_adds_no_refusal_of_its_own() -> Bool {
-  let unplaced = plan_reason_under(p: ControlPlaneUnplaced)
-  !unplaced.contains("unchargeable")
-    && !unplaced.contains("over-committed")
-    && plan_reason_under(p: control_plane_unmeasured_placement()).contains("unchargeable")
+  let unplaced = match verdict_under_supplied_budget(p: ControlPlaneUnplaced) {
+    HostAllocationConserves => true
+    HostAllocationOversubscribed => false
+    HostAllocationUnchargeable { cause: _ } => false
+  }
+  let unmeasured = match verdict_under_supplied_budget(p: control_plane_unmeasured_placement()) {
+    HostAllocationUnchargeable { cause: _ } => true
+    HostAllocationConserves => false
+    HostAllocationOversubscribed => false
+  }
+  unplaced && unmeasured
 }
 
 // THIS IS THE CONTROL, AND IT IS WRITTEN AS AN INEQUALITY ON PURPOSE. The two witnesses above each
@@ -276,14 +290,32 @@ test fn the_two_control_plane_refusals_do_not_share_one_reason() -> Bool {
     != plan_reason_under(p: control_plane_oversized_placement())
 }
 
-// THE DIRECT RED FOR THE DEFECT THIS CARRIER REPLACES. On the preceding shape, srv2's
-// unestablished session reservation set one fleet-level unsound_reason and runner_deployment_plan
-// discarded EVERY host that had derived correctly -- 44 witnesses across six files went red, nine
-// existing only to verify srv3. This asserts both facts: srv2 refuses for its own reason, and srv3
-// derives ANYWAY. On the old carrier the second half was unwritable, because no derived srv3 was
-// left in the result to ask about.
+// THE DIRECT RED FOR THE DEFECT THIS CARRIER REPLACES. On the preceding shape, one host's
+// unestablished session reservation set a fleet-level unsound_reason and runner_deployment_plan
+// discarded EVERY host that had derived correctly. The subject is the plan's per-host lookup, so the
+// refusal is SUPPLIED as a value beside the hosts that really derive: the previous form read which
+// hosts refuse off the live fleet (srv2 refusing, srv1 and srv3 deriving), and went red when srv1's
+// live budget moved -- a fact about srv1, not about erasure. Asserted: the supplied refusal is found
+// under its own host with its own cause, and every derived host is still found derived. On the old
+// carrier the second half was unwritable. The real route -- a live refusal beside a live derivation
+// -- stays executed by a_refused_host_makes_the_fleet_incomplete and
+// witness_live_effective_runners_derives_declared_count.
+fn derived_is_found(p: RunnerDeploymentPlan, d: RunnerHostDeployment) -> Bool {
+  match runner_host_deployment_for(p: p, host: d.identity) {
+    HostRunnerDeploymentDerived { deployment: found } => found.runner_count == d.runner_count
+    HostRunnerDeploymentRefused { refusal: _ } => false
+  }
+}
+
 test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
-  let srv2_refused = match runner_host_deployment_for(p: live_plan(), host: operator_host_srv2) {
+  let derived = live_derived()
+  let p = RunnerDeploymentPlan {
+    hosts: append(
+      map(derived, d => HostRunnerDeploymentDerived { deployment: d }),
+      items: [refused_fixture(host: ("witness-refused-host" as HostIdentity), cause: SessionReservationUnestablished { cause: "fixture: session denominator unestablished" })]
+    ),
+  }
+  let refused_found = match runner_host_deployment_for(p: p, host: ("witness-refused-host" as HostIdentity)) {
     HostRunnerDeploymentRefused { refusal: r } =>
       match r.cause {
         SessionReservationUnestablished { cause: _ } => true
@@ -301,7 +333,10 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
       }
     HostRunnerDeploymentDerived { deployment: _ } => false
   }
-  srv2_refused && host_is_derived(host: operator_host_srv3) && host_is_derived(host: operator_host_srv1)
+  derived.length() > 0
+    && refused_found
+    && plan_derived_deployments(p: p).length() == derived.length()
+    && all(derived, d => derived_is_found(p: p, d: d))
 }
 
 // A REFUSED HOST MAKES THE FLEET INCOMPLETE, NOT COMPLETE-MINUS-ONE. The incomplete arm must also
@@ -340,7 +375,13 @@ test fn two_refused_hosts_are_both_retained() -> Bool {
   refused.length() == 2
     && any(refused, r => (r.host as String) == (operator_host_srv2 as String))
     && any(refused, r => (r.host as String) == (operator_host_srv4 as String))
-    && host_deployment_refusal_text(c: refused[0].cause) != host_deployment_refusal_text(c: refused[1].cause)
+    && match refused[0] {
+      Absent => false
+      Present { value: a } => match refused[1] {
+        Absent => false
+        Present { value: b } => host_deployment_refusal_text(c: a.cause) != host_deployment_refusal_text(c: b.cause)
+      }
+    }
 }
 
 // CHANGING ONE HOST'S REFUSAL CAUSE MUST NOT PERTURB ANOTHER HOST'S DEPLOYMENT. This is the

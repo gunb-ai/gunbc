@@ -210,11 +210,12 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
+  is_lambda_expr,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
   declared_return_type_node,
-  match_unguarded_absent_arm_index, optional_scrutinee_binding_is_present,
+  match_unguarded_absent_arm_index, optional_match_arm_sees_present_value,
   expr_span,
   resolved_type_name,
   expand_type_for_field_access,
@@ -11533,7 +11534,56 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       } else {
         emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
       }
+    ExprListLit =>
+      if rust_list_lit_holds_callables(texpr: texpr) {
+        let element_type = rust_list_lit_callable_element_type(texpr: texpr, shared_types: shared_types, scope: scope, emit_info: emit_info)
+        emit_list_lit_expr(element_strs: texpr.children |> map(el => rust_callable_list_element(el: el, element_type: element_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel - 1)), target: Rust)
+      } else {
+        emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
+      }
     _ => emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
+  }
+}
+
+// A LAMBDA LITERAL IN A LIST IS A CALLABLE VALUE, and an arrow in value position realizes as
+// Rc<dyn Fn(..) -> ..> (callable_type_template), exactly as at an arrow-typed record field
+// (rust_callable_field_value_wrap) or fn return (rust_callable_return_wrap). Each lambda element is
+// therefore wrapped by the same callable row with its capture preamble; a bare closure there is
+// E0308 (every closure is its own type, and none is the Rc<dyn Fn> a List<fn..> renders to). The
+// decision is the element's own expression kind, not the list's recorded type: a lambda is a
+// callable whatever list holds it. A non-lambda element keeps its own rendering -- a call result or
+// a parameter already carries the arrow carrier its producer chose.
+fn rust_list_lit_holds_callables(texpr: Node) -> Bool {
+  texpr.children |> any(el => is_lambda_expr(e: el))
+}
+
+// vec! takes its element type from its first element, so each wrapped lambda is also BOUND at the
+// rendered arrow the list's element type names: without it the Vec is of one closure's Rc and the
+// others are E0308. A typed let and not an `as` cast, because a cast cuts the expectation that
+// types the closure's body -- `Some(7)` under `as Rc<dyn Fn() -> Option<i64>>` is Option<i32>,
+// E0271; the let is the same coercion site an arrow-typed record field already is.
+fn rust_list_lit_callable_element_type(texpr: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> String? {
+  match resolved_type(n: texpr).children |> first {
+    Present { value: el } =>
+      let et = child_type_node(ch: el)
+      if et.connective == Arrow {
+        Present { value: render_rust_type(n: et, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info) }
+      } else { none }
+    Absent => none
+  }
+}
+
+fn rust_callable_list_element(el: Node, element_type: String?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, fuel: Int) -> String {
+  match el.expr_data {
+    ExprLambda =>
+      let wrapped = rust_callable_field_value_wrap(
+        raw: emit_typed_collection_lambda(lambda_expr: el, elem_type_str: "_", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info),
+        value_node: Present { value: el }, scope: scope)
+      match element_type {
+        Present { value: ty } => concat(concat(concat("{ let __callable: ", ty), concat(" = ", wrapped)), "; __callable }")
+        Absent => wrapped
+      }
+    _ => emit_typed_expr(texpr: el, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
   }
 }
 
@@ -13558,27 +13608,22 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
   concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
 }
 
-// A BINDING ARM AFTER AN UNGUARDED ABSENT ARM BINDS THE PRESENT VALUE, and the emitted pattern must
-// say so. v1.compiler.infer types the bare binding in `match opt { null => a  v => b }` at the
-// scrutinee's REQUIRED type (optional_scrutinee_binding_is_present over
-// match_unguarded_absent_arm_index); the body is emitted against that narrowed type. Emitting the
-// binding as a bare `v` bound the whole Option<T>, so the body met an Option where it was typed T
-// (E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>). The narrowing is read
-// from the checker's own predicate, never re-derived here, so the pattern and the typing cannot
-// disagree about which arm narrows: in exactly that arm the binding is emitted `Some(v)`, which the
-// earlier `None` arm keeps exhaustive. The tail-call lowering's own arm emitter
-// (emit_typed_tco_match_arm) and the String-literal re-emission (emit_typed_match's needs_string_from
-// arm) read the same predicate, so the three match renderings agree. In that re-emission a string
-// LITERAL arm over an optional scrutinee is `Some(ref __s)` as well: a literal matches only a
-// present value (the interpreter's Null never equals a Str), which is pattern semantics over an
-// optional carrier rather than the checker's narrowing, so it is keyed on the scrutinee's cardinality.
+// AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
+// is one checker decision, v1.compiler.infer optional_match_arm_sees_present_value: a bare binding
+// after an unguarded `null` arm (typed at the scrutinee's REQUIRED type, so a bare `v` bound the
+// whole Option<T> -- E0308 expected i64 found Option<i64>; E0609 no field on Option<Rc<..>>), and a
+// non-null literal arm (a literal matches only a present value). Every match rendering here -- this
+// one, the tail-call lowering's emit_typed_tco_match_arm and emit_typed_match's String-literal
+// re-emission -- and the interpreter's eval_match read that predicate and decide nothing of their
+// own, so the typing, the emitted pattern and the interpreted arm cannot disagree about which arm
+// sees the payload. The earlier `None` arm keeps the `Some(..)` arms exhaustive.
 fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, scrut_rt: Node) -> List<String> {
   let has_irrefutable = arms |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a)))
   if has_irrefutable {
     let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
     arms |> enumerate |> map(pair =>
       emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false,
-        present_binding: optional_scrutinee_binding_is_present(scrut_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
+        present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
     let entries = arms |> map(arm => RcGroupedArmEntry {
@@ -13642,10 +13687,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
     let sf_absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arms)
-    let sf_scrut_optional = resolved_type(n: scrutinee).return_cardinality == CardOptional
     let sf_arm_strs = arms |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true,
-      present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)
-        || (sf_scrut_optional && is_string_lit_pattern(p: arm_pattern(n: pair.second)))))
+      present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: scrutinee), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: sf_absent_arm_index)))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
@@ -13720,8 +13763,16 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
     recurse: (node, d) => emit_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
 }
 
+// A LET-BOUND LAMBDA is emitted with its parameters TYPED, through the same renderer a collection
+// method's lambda uses (emit_typed_collection_lambda). The shared lambda rendering writes `|x|`, and
+// a closure bound to a local has no call site to infer x from before its body is checked, so any
+// method on x (the `.clone()` every operand carries) is E0282. The binding stays a bare closure --
+// the impl Fn slot a function-typed parameter takes it into -- and is called as one.
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  let val_str = match value.expr_data {
+    ExprLambda => emit_typed_collection_lambda(lambda_expr: value, elem_type_str: "_", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    _ => emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+  }
   emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Rust,
     recurse: (bd, sc) => emit_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024),
     scope: scope, value_node: value)
@@ -15028,7 +15079,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let absent_arm_index = match_unguarded_absent_arm_index(arm_nodes: arm_list)
       let arm_strs = arm_list |> enumerate |> map(pair =>
         emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
-          present_binding: optional_scrutinee_binding_is_present(scrut_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
+          present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_rc_option_ref {
@@ -17474,9 +17525,9 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
       "    let reads = read_ingest(&roots);", "\n",
       "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));", "\n",
       "    let text = v2_cli_outcome_text(outcome.clone());", "\n",
+      "    print!(\"\{text\}\");", "\n",
       "    match &*v2_cli_exit(outcome) \{", "\n",
       "        ProcessExit::ExitSuccess => \{", "\n",
-      "            print!(\"\{text\}\");", "\n",
       "            std::process::exit(0);", "\n",
       "        \}", "\n",
       "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",

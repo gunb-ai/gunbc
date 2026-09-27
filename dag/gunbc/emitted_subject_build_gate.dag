@@ -1,7 +1,8 @@
 module gunbc.emitted_subject_build_gate
 
 import std.types { Bool, String, List }
-import v2.std.algebra { list_map, list_append }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }

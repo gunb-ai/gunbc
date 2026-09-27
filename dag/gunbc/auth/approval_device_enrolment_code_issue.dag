@@ -18,7 +18,7 @@ import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root }
-import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_release_binary_path, ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_release_binary_path, ReleaseRevisionBinding, RevisionBoundAtEmission, release_revision_execstart_text }
 
 // ── THE OPERATOR'S CODE-ISSUING VERB, over the fleet SSH administrator edge ──────────────────
 // A FleetConvergeWorkflowMode step (ApprovalDeviceEnrolmentCodeIssue) run on the host-pinned
@@ -34,7 +34,8 @@ import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_rel
 // only (decision msg_a1d8d1b9: the code never appears in a step log or a receipt artifact).
 //
 // THE RELEASE IS NAMED BY THE DISPATCH: expected_revision selects the broker release directory,
-// so the verb runs the same sources the broker serves; a revision that is not installed is a
+// so the verb runs the same sources the broker serves, and is passed to the verb as `revision`, which
+// names the per-release observation helper its channel reading runs; a revision that is not installed is a
 // missing binary and a loud remote failure, never a fallback to another tree.
 data approval_device_enrolment_code_issue_attempt_raw: String = "approval-device-enrolment-code-issue-ci"
 
@@ -56,6 +57,7 @@ fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<St
     "--source-root", release_dir + "/src/v2",
     "--entry", release_dir + "/dag/gunbc/auth/approval_device_routes.dag",
     "--function", "issue_device_enrolment_code",
+    "--arg", "revision=" + release_revision_execstart_text(binding: revision),
   ])
   concat([inv.bin_path], inv.args)
 }

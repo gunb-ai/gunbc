@@ -103,23 +103,8 @@ data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmi
   },
 ]
 
-// THE MT. COLLINS STANDING-RULING DIGEST ROW (gunbc#12101, 2026-09-23), a separately bounded incident.
-// Its one identity is the single inhabitance claim of the standing ruling's real digest route
-// (standing_ruling_request -> standing_ruling_digest -> sha256_hex over the production ruling's
-// canonical encoding); every other ruling claim supplies its digest (DESIGN section 3), so this one
-// cannot. What the CPU pays is one interpreter-realized SHA-256 over that encoding. Its declared drop is
-// gunbc.rung_drop.mtcollins1_standing_ruling_digest_new_witness_eval_step_cost, whose trigger names
-// its own native route; the App Attest ECDSA route does not retire it. The measurement is the required
-// floor run on gunbc#12101 that the drop's row cites, enrolment-margin line.
-data mtcollins1_standing_ruling_digest_typed_admissions: List<FloorCostDebtTypedAdmission> = [
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_standing_ruling_witness_test.the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it",
-    reason: "the seed interpreter evaluates one SHA-256 over the production standing ruling's canonical encoding (about twenty-two blocks) as UInt32 word folds; it is the single inhabitance claim of the ruling-digest route, so the digest cannot be supplied; owner: the Mt. Collins boot lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
-  },
-]
-
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_standing_ruling_digest_typed_admissions)
+  app_attest_interpreted_crypto_typed_admissions
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {

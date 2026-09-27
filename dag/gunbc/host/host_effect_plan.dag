@@ -1,12 +1,14 @@
 module gunbc.host_effect_plan
 
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, freemonoid_empty }
 import v2.std.algebra {
-  freemonoid_empty,
-  list_head, list_tail,
-  HeadFound, HeadAbsent,
-  TailFound, TailAbsent,
+  list_head,
+  list_tail,
+  HeadFound,
+  HeadAbsent,
+  TailFound,
+  TailAbsent
 }
 import gunbc.host_effect {
   HostEffect,

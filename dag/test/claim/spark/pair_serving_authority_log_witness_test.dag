@@ -11,11 +11,13 @@ import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpe
 import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable, HeadAbsent, HeadAt, HeadExpectation }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
-import std.measure { second, second_count }
-import extdeps.docker.cli { DockerPsByName, DockerPsByAncestor }
+import std.measure { second, second_count, byte_size }
+import extdeps.docker.cli { DockerPsByName, DockerPsByAncestor, DockerPsByLabel, DockerLabel, docker_run_ephemeral_command }
+import extdeps.exec.command { argv_words }
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
 import gunbc.spark.host_effect_quiescence {
   HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
-  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantTerminated,
+  ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantTerminated, residue_spec_members, residue_spec_decode,
 }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
@@ -803,4 +805,34 @@ test fn a_prepared_preparation_is_aborted_only_by_its_preparer_or_a_recovery() -
   (match placement_fold(oldest_first: [prep, alw_env(id: "e4", e: stranger)]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e4" && r.contains("not its claimant's own")  _ => false })
     && (match placement_fold(oldest_first: [prep, alw_env(id: "e4", e: alw_abort(parent: Present { value: "e3" as EventId }, preparation: "e3", at: 1001))]) { PlacementFolded { effects: _, preparations: ps } => any(ps, r => (r.id as String) == "e3" && (match r.state { Aborted => true  _ => false }))  _ => false })
     && (match placement_fold(oldest_first: [prep, alw_env(id: "e4", e: recovery)]) { PlacementFolded { effects: _, preparations: ps } => any(ps, r => (r.id as String) == "e3" && (match r.state { Aborted => true  _ => false }))  _ => false })
+}
+
+// A LANE-LABEL RESIDUE SURVIVES THE EVENT LOG'S WIRE, and a document naming two filters (an image and a
+// label) is incoherent and decodes to nothing rather than to either one.
+test fn a_label_residue_round_trips_and_two_filters_refuse() -> Bool {
+  let spec = HostEffectResidueSpec { process_pattern: "/srv/probe" as NonEmptyStr, container: Present { value: DockerPsByLabel { label: DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "a-lane" as NonEmptyStr } } } }
+  let round = match residue_spec_decode(doc: json_object(members: residue_spec_members(prefix: "residue_", s: spec)), prefix: "residue_") {
+    Present { value: back } => match back.container {
+      Present { value: DockerPsByLabel { label: l } } => (l.key as String) == "gunbc.lane" && (l.value as String) == "a-lane" && (back.process_pattern as String) == "/srv/probe"
+      Present { value: DockerPsByAncestor { image: _ } } => false
+      Present { value: DockerPsByName { name: _ } } => false
+      Absent => false
+    }
+    Absent => false
+  }
+  let two = concat(residue_spec_members(prefix: "residue_", s: spec), [json_kv(key: "residue_container_image", value: json_string(s: "sha256:ea39"))])
+  let incoherent = match residue_spec_decode(doc: json_object(members: two), prefix: "residue_") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  round && incoherent
+}
+
+// A LABELLED, MEMORY-CAPPED EPHEMERAL RUN carries its labels and a cap with no swap headroom, and an
+// unlabelled, uncapped run carries neither.
+test fn an_ephemeral_run_carries_its_labels_and_memory_cap() -> Bool {
+  let capped = join(argv_words(command: docker_run_ephemeral_command(image: "img" as NonEmptyStr, gpus_all: true, mounts: [], labels: [DockerLabel { key: "gunbc.lane" as NonEmptyStr, value: "a-lane" as NonEmptyStr }], memory_limit: Present { value: byte_size(count: 1024) }, entrypoint: "sh" as NonEmptyStr, argv: ["-c", "true"])), " ")
+  let plain = join(argv_words(command: docker_run_ephemeral_command(image: "img" as NonEmptyStr, gpus_all: false, mounts: [], labels: [] as List<DockerLabel>, memory_limit: Absent, entrypoint: "sh" as NonEmptyStr, argv: ["-c", "true"])), " ")
+  contains(capped, "--label gunbc.lane=a-lane --memory 1024 --memory-swap 1024 --entrypoint sh img -c true")
+    && !contains(plain, "--label") && !contains(plain, "--memory")
 }

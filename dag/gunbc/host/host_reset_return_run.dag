@@ -1,6 +1,5 @@
 module gunbc.host_reset_return_run
 
-import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRulingConfirmed, StandingRulingRefused, mtcollins1_boot_standing_ruling_read }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
   unit_hold_store_root, host_reset_owner,
@@ -58,7 +57,6 @@ import gunbc.host_reset_return {
   SubjectHasNoRosterRow,
   UnitHoldStoreNotOnObserver,
   UnitHeldForMaintenance,
-  StandingRulingUnconfirmed,
   reset_preflight_refusal_wire,
   ResetDispatchAdmitted,
   ResetDispatchNotThisMode,
@@ -683,25 +681,17 @@ fn host_reset_return_wet() -> ProcessExit
                   remedy: "the subject's maintenance hold lives on the store host; a reset observed from anywhere else would take a hold in a store the operator never sees",
                 )
               } else {
-                match mtcollins1_boot_standing_ruling_read() {
-                  StandingRulingRefused { reason: why } =>
+                match unit_hold_acquire(root: unit_hold_store_root, key: k, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
+                  UnitHoldRefused { reason: r } =>
                     host_reset_return_preflight_exit(
-                      refusal: StandingRulingUnconfirmed { subject: subject, reason: why },
-                      remedy: "the operator's standing ruling for this unit's destructive BMC effects is not confirmed; nothing was written to its controller",
+                      refusal: UnitHeldForMaintenance { subject: subject, reason: r },
+                      remedy: "the unit is held (maintenance or another run); nothing was written to its controller",
                     )
-                  StandingRulingConfirmed { confirmation: ruling } =>
-                  match unit_hold_acquire(ruling: ruling, root: unit_hold_store_root, key: k, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
-                    UnitHoldRefused { reason: r } =>
-                      host_reset_return_preflight_exit(
-                        refusal: UnitHeldForMaintenance { subject: subject, reason: r },
-                        remedy: "the unit is held (maintenance or another run); nothing was written to its controller",
-                      )
-                    UnitHeld { proof: p } =>
-                      unit_hold_release(
-                        proof: p,
-                        outcome: host_reset_return_attempt_exit(proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
-                      )
-                  }
+                  UnitHeld { proof: p } =>
+                    unit_hold_release(
+                      proof: p,
+                      outcome: host_reset_return_attempt_exit(proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
+                    )
                 }
               }
           }
