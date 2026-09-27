@@ -359,7 +359,12 @@ fn roles_walk(acc: OccurrenceRoles, node: Node, by_emitted: Map<Symbol, NameProd
 }
 
 fn occurrence_roles_of_tree(tree: Node, root: GrammarRoot, rows: List<NameProductionRow>) -> OccurrenceRoleOutcome {
-  match name_production_table_admission(root: root, rows: rows) {
+  occurrence_roles_of_admitted(tree: tree, admission: name_production_table_admission(root: root, rows: rows))
+}
+
+// The walk against a table already admitted, so a caller that walks many trees admits once.
+fn occurrence_roles_of_admitted(tree: Node, admission: NameProductionTableAdmission) -> OccurrenceRoleOutcome {
+  match admission {
     NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x }
     NameProductionTableAdmitted { by_emitted: by_emitted } =>
       OccurrenceRolesRead { roles: roles_walk(acc: occurrence_roles_empty(), node: tree, by_emitted: by_emitted) }
@@ -386,7 +391,16 @@ fn dag_name_production_emitted_symbols() -> List<Symbol> {
   })
 }
 
+// THE `.dag` TABLE, ADMITTED ONCE, AS ONE NULLARY VALUE. Admission re-derives the whole grammar
+// root and folds every production's expression, which costs more than one module's walk; the result
+// depends on nothing but the language, so it is enrolled WARM in v2.workflow.floor_pure_producer_share
+// (beside v2.compiler.reference_conservation dag_declared_token_classes) and paid once per floor, not
+// once per census claim. dag_name_production_emitted_symbols below is enrolled the same way.
+fn dag_name_table_admission() -> NameProductionTableAdmission {
+  name_production_table_admission(root: dag_grammar_root(), rows: dag_name_production_rows())
+}
+
 // The `.dag` language's roles for one parsed module.
 fn dag_occurrence_roles(artifact: ParseArtifact) -> OccurrenceRoleOutcome {
-  occurrence_roles_of_tree(tree: artifact.tree, root: dag_grammar_root(), rows: dag_name_production_rows())
+  occurrence_roles_of_admitted(tree: artifact.tree, admission: dag_name_table_admission())
 }
