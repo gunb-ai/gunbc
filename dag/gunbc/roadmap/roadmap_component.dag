@@ -1,5 +1,8 @@
 module gunbc.roadmap_component
 
+import gunbc.roadmap_issue_sort { issue_sort_bind_statements }
+import gunbc.roadmap_inline_assignment_client { inline_assignment_bind_statements }
+
 import std.types { Int, String, Bool, Milliseconds }
 import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
@@ -3574,7 +3577,7 @@ fn dispatch_client_program_for(
                       concat(
                         row_selection_bind_statements(),
                         concat(
-                          issue_filter_bind_statements(),
+                          concat(issue_filter_bind_statements(), concat(issue_sort_bind_statements(), inline_assignment_bind_statements())),
                           instance_statements))))))))))))),
   }
 }

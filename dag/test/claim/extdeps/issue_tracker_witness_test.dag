@@ -59,7 +59,6 @@ import extdeps.google.issue_tracker {
   IssueResultsColumn,
   IssueResultsColumnKind,
   IssueColumnPriority,
-  IssueColumnType,
   IssueColumnTitle,
   IssueColumnAssignee,
   IssueColumnStatus,
@@ -412,7 +411,7 @@ test fn w_stock_sidebar_roster_is_verbatim() -> Bool {
 // vocabulary, the 2026-09-25 bump the capture-verified assignee display rule. The pin keeps the
 // row from drifting back.
 test fn w_interface_version_cites_capture_date() -> Bool {
-  (issue_tracker_interface_version as String) == "2026-09-25"
+  (issue_tracker_interface_version as String) == "2026-09-27"
 }
 
 test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool {
@@ -698,26 +697,19 @@ test fn w_browse_components_derives_the_tree() -> Bool {
 test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling() -> Bool {
   let wires = map(issue_results_columns, c =>
     join([issue_results_column_kind_wire(kind: c.kind), ":", c.header as String], ""))
-  count(issue_results_columns) == 6
+  count(issue_results_columns) == 5
     && (match wires.first() { Present { value: w } => w == "priority:P", Absent => false })
-    && (match wires.skip(n: 1).first() { Present { value: w } => w == "type:TYPE", Absent => false })
-    && (match wires.skip(n: 2).first() { Present { value: w } => w == "title:TITLE", Absent => false })
-    && (match wires.skip(n: 3).first() { Present { value: w } => w == "assignee:ASSIGNEE", Absent => false })
-    && (match wires.skip(n: 4).first() { Present { value: w } => w == "status:STATUS", Absent => false })
-    && (match wires.skip(n: 5).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
+    && (match wires.skip(n: 1).first() { Present { value: w } => w == "title:TITLE", Absent => false })
+    && (match wires.skip(n: 2).first() { Present { value: w } => w == "assignee:ASSIGNEE", Absent => false })
+    && (match wires.skip(n: 3).first() { Present { value: w } => w == "status:STATUS", Absent => false })
+    && (match wires.skip(n: 4).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
 }
 
-// THE GRID TEMPLATE derives from the roster — one track per declared column, the workflow's
-// actions slot last — so the header and every row share it by construction. The pin states the
-// derivation's bytes; the render-side witness pins the served CSS carries exactly them. THE TRACK
-// LAW rides the same string (owner rulings 2026-09-25): TITLE takes the dominant flexible share
-// (minmax(0, 2fr)) against STATUS's minmax(0, 1fr), and every short column is a FIXED width (P 4ch
-// from "P4", TYPE 6ch from "Task", ASSIGNEE 9ch from its header, LAST MODIFIED 12ch from an ISO
-// date, actions 24ch from the count chip's upper bound) — so band filtering changes which rows
-// show and NEVER the grid geometry.
+// One track per served column, with no TYPE or project-only count slot. Fixed short
+// tracks keep geometry stable across filtering; TITLE retains the dominant share.
 test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
-  issue_results_row_tracks() == "4ch 6ch minmax(0, 2fr) 9ch minmax(0, 1fr) 12ch 24ch"
-    && count(issue_results_columns) == 6
+  issue_results_row_tracks() == "4ch minmax(0, 2fr) 9ch minmax(0, 1fr) 12ch"
+    && count(issue_results_columns) == 5
 }
 
 // THE FILTER-STABILITY LAW, the owner complaint's structural answer ("the size of columns is not

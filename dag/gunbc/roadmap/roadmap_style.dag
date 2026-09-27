@@ -995,6 +995,44 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
     ] },
+    StaticRule { selector: RawSelector { text: ".issue-sort, .issue-inline-assign" }, decls: [
+      decl(prop: FontFamily, value: "inherit"),
+      decl(prop: FontSize, value: "inherit"),
+      decl(prop: Color, value: "inherit"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "0"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: MaxWidth, value: "100%"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-sort:hover, .issue-sort:focus-visible, .issue-inline-assign:focus-visible" }, decls: [
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: TextDecoration, value: "underline"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-inline-assign:disabled, .issue-sort-undo:disabled" }, decls: [
+      decl(prop: Cursor, value: "default"),
+      decl(prop: Opacity, value: "0.6"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-inline-picker" }, decls: [
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: FontFamily, value: "inherit"),
+      decl(prop: FontSize, value: "inherit"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Background, value: "var(--issue-bg-subtle)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-inline-result" }, decls: [
+      decl(prop: GridColumn, value: "1 / -1"),
+      decl(prop: WhiteSpace, value: "pre-wrap"),
+      decl(prop: Overflow, value: "auto"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-sort-status" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
     StaticRule { selector: ClassSelector { name: "issue-cell" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
@@ -1025,15 +1063,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: Color, value: "var(--issue-text-dim)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-row-actions" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
-      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-line:hover .issue-cell, .issue-line:hover .issue-row-actions" }, decls: [
+    StaticRule { selector: RawSelector { text: ".issue-line:hover .issue-cell" }, decls: [
       decl(prop: Background, value: "var(--issue-bg-hover)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-id" }, decls: [

@@ -11,7 +11,8 @@ import gunbc.roadmap_serve {
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
-  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
+  serve_issue_assignment_context_over,
   AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler, AuthSessionHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
@@ -54,7 +55,7 @@ import gunbc.roadmap_component { instrument_lab_links }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
-  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie,
+  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
   RequestSecurityContext, AccessPathLocalDev,
   ServedRouteTable,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
@@ -643,6 +644,7 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
 // the durable-assign handler. Same table, same selection idiom as every other route.
 test fn witness_issue_detail_route_selects() -> Bool {
   selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
+    && selects(method: GET, path: "/issue/some-node/assignment", want: IssueAssignmentContextHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
@@ -1019,5 +1021,24 @@ fn auth_header_wire(header: ServeResponseHeader) -> String {
   match header {
     ServeResponseHeaderLocation { location: l } => l as String
     ServeResponseHeaderSetCookie { set_cookie: c } => c as String
+    ServeResponseHeaderNoStore => "Cache-Control: no-store"
   }
+}
+
+// Anonymous context reads expose no token or history, and an authenticated request for
+// an unknown issue refuses before touching the event store.
+test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> Bool {
+  let anonymous = serve_issue_assignment_context_over(
+    instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
+    request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } })
+  let unknown = serve_issue_assignment_context_over(
+    instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
+    request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } })
+  anonymous.status == 401
+    && string_contains(s: anonymous.body, pattern: "Sign in")
+    && !string_contains(s: anonymous.body, pattern: "csrf")
+    && unknown.status == 404
+    && !string_contains(s: unknown.body, pattern: "csrf-1")
 }

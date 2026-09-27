@@ -1970,12 +1970,10 @@ type DailyWorkspaceView {
   table: List<IssueTableRow>
 }
 
-// A table row carries its tree when it is a collapsed project's root: the dense line paints the
-// tree's decided k-of-n count and the project marker from it, so the table never re-derives
-// project-hood and never drops the count the tree shows.
+// Every issue has the same table row. Recursive forest traversal supplies the order,
+// but neither a project-only payload nor a type label changes the row's structure.
 type IssueTableRow {
   view: WorkRowView
-  project: ProjectTreeView?
 }
 
 // THE ISSUE TABLE'S FLAT ROW SET (owner ruling 2026-09-22, "the frontend as an issue tracker"):
@@ -1987,19 +1985,19 @@ type IssueTableRow {
 // contributes its member rows. Nothing is recomputed; the trees are read once and enumerated.
 fn project_flat_rows(view: ProjectTreeView) -> List<IssueTableRow> {
   concat(
-    [ IssueTableRow { view: view.row, project: Present { value: view } } ],
+    [ IssueTableRow { view: view.row } ],
     concat(
-      map(view.chain, r => IssueTableRow { view: r, project: none }),
+      map(view.chain, r => IssueTableRow { view: r }),
       flat_map(view.entries, e => match e {
-        ProjectLeaf { row } => [ IssueTableRow { view: row, project: none } ]
+        ProjectLeaf { row } => [ IssueTableRow { view: row } ]
         ProjectNested { project } => project_flat_rows(view: project)
       })))
 }
 
 fn band_entry_flat_rows(e: WorkBandEntry) -> List<IssueTableRow> {
   match e {
-    BandRow { row } => [ IssueTableRow { view: row, project: none } ]
-    BandFamily { family } => map(family.rows, r => IssueTableRow { view: r, project: none })
+    BandRow { row } => [ IssueTableRow { view: row } ]
+    BandFamily { family } => map(family.rows, r => IssueTableRow { view: r })
     BandProject { project } => project_flat_rows(view: project)
   }
 }

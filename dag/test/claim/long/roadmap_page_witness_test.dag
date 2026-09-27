@@ -892,19 +892,15 @@ fn occurrence_count(s: String, pattern: String) -> Int {
   count(split(s: s, delimiter: pattern)) - 1
 }
 
-// THE PROJECT ROW ON THE TABLE (owner ruling 2026-09-25, "just copy buganizer"): the dense line
-// carries the project's k-of-n count chip in the actions track — status, never actuation — and
-// every issue renders EXACTLY ONCE on the page: the forest that used to render the project a
-// second time (the taskbar with its progress bar, the tasks disclosure, the nested task rows, and
-// the row's dispatch/Start Work buttons) retired with the tree/bands views. The progress-bar and
-// task-disclosure renderer survives on the /sandbox exhibit's grouping path, not on this surface.
+// Uniform recursive issue rows (owner 2026-09-27): the table keeps every issue once,
+// with no project-only counter, wrapper, or dispatch control. The sandbox forest is separate.
 test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
-      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-band=\"upcoming\" data-node=\"page-project\" tabindex=\"0\"")
-        && string_contains(s: table, pattern: "<span class=\"taskbar-count\">0 of 2 tasks closed</span>")
+      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\" role=\"table\" aria-label=\"Issue search results\">"), index: 1)
+      string_contains(s: h, pattern: "<li class=\"node node-open\" data-band=\"upcoming\" data-node=\"page-project\" tabindex=\"0\"")
+        && !string_contains(s: table, pattern: "tasks closed")
         && !string_contains(s: table, pattern: "taskbar-project-bar")
         && !string_contains(s: table, pattern: "project-tasks")
         && !string_contains(s: table, pattern: "project-chain")
@@ -1027,7 +1023,7 @@ test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
   match fx_page_chain_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
+      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\" role=\"table\" aria-label=\"Issue search results\">"), index: 1)
       !string_contains(s: table, pattern: "project-deeper")
         && !string_contains(s: table, pattern: "+2 deeper")
         && !string_contains(s: table, pattern: "class=\"project-tasks\"")
@@ -1080,8 +1076,8 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let arc_row = li_of_node(html: h, node_id: "shell-residue-zero")
-      string_contains(s: arc_row, pattern: "node-project")
-        && string_contains(s: arc_row, pattern: " tasks closed")
+      !string_contains(s: arc_row, pattern: "node-project")
+        && !string_contains(s: arc_row, pattern: " tasks closed")
         && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
         && all(chain_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
         && !string_contains(s: h, pattern: "project-chain-member")
@@ -1120,8 +1116,8 @@ test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let top_row = li_of_node(html: h, node_id: "page-collapse-top")
-      string_contains(s: top_row, pattern: "node-project")
-        && string_contains(s: top_row, pattern: "0 of 2 tasks closed")
+      !string_contains(s: top_row, pattern: "node-project")
+        && !string_contains(s: top_row, pattern: "tasks closed")
         && !string_contains(s: h, pattern: "project-chain-member")
         && !string_contains(s: h, pattern: "class=\"project-tasks\"")
         && occurrence_count(s: h, pattern: "data-node=\"page-collapse-mid\" tabindex=\"0\"") == 1
@@ -1440,7 +1436,7 @@ fn fx_shell_live_workspace_html(refused: Bool) -> HtmlEmitResult {
   let ws = gunbc.roadmap_presentation.daily_workspace_view(
     rows: rows, edges: edges, program: none,
     observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [])
-  try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: ws))
+  try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: ws, edges: edges))
 }
 
 fn fx_shell_task_ids() -> List<String> {
@@ -1478,8 +1474,8 @@ test fn witness_shell_project_row_heads_the_table_with_live_task() -> Bool {
           let project_row = li_of_node(html: live, node_id: "shell-residue-zero")
           let live_row = li_of_node(html: live, node_id: "shell-dag-cron-entry-line-builder")
           let refused_row = li_of_node(html: refused_h, node_id: "shell-dag-cron-entry-line-builder")
-          string_contains(s: project_row, pattern: "node-project")
-            && string_contains(s: project_row, pattern: " tasks closed")
+          !string_contains(s: project_row, pattern: "node-project")
+            && !string_contains(s: project_row, pattern: " tasks closed")
             && marker_before(s: live, first: "data-node=\"shell-residue-zero\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
             && all(fx_shell_task_ids(), id => occurrence_count(s: live, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
             && string_contains(s: live_row, pattern: "data-band=\"active\"")
@@ -1732,7 +1728,8 @@ test fn witness_issue_table_is_summary_only_and_stale_rows_fall_back_to_scheduli
           let stale_table = table_region(html: stale_h)
           occurrence_count(s: live_table, pattern: "taskbar-inspect") == 0
             && occurrence_count(s: stale_table, pattern: "taskbar-inspect") == 0
-            && string_contains(s: live_table, pattern: "data-node=\"page-task-one\" tabindex=\"0\" data-search=\"page task one page-task-one \" data-summary-only=\"\"")
+            && string_contains(s: li_of_node(html: live_table, node_id: "page-task-one"), pattern: "data-search=\"page task one page-task-one \"")
+            && string_contains(s: li_of_node(html: live_table, node_id: "page-task-one"), pattern: "data-summary-only=\"\"")
             && string_contains(s: live_table, pattern: "<span class=\"taskbar-signal issue-status activity-line-error-refusal\">Submission · failed</span>")
             && !string_contains(s: live_table, pattern: "earlier attempt")
             && !string_contains(s: stale_table, pattern: "earlier attempt")
@@ -1804,13 +1801,12 @@ test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
+      let table = table_region(html: h)
       occurrence_count(s: table, pattern: "dispatch-btn") == 0
-        && occurrence_count(s: table, pattern: "issue-action") == 0
         && occurrence_count(s: table, pattern: "Start Work") == 0
-        && occurrence_count(s: table, pattern: "<button") == 0
-        && string_contains(s: table, pattern: "class=\"issue-row-actions\" data-col=\"actions\"")
-        && string_contains(s: table, pattern: "<span class=\"taskbar-count\">")
+        && occurrence_count(s: table, pattern: "class=\"issue-inline-assign\"") == 3
+        && !string_contains(s: table, pattern: "issue-row-actions")
+        && !string_contains(s: table, pattern: "tasks closed")
   }
 }
 
@@ -1828,31 +1824,27 @@ test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() ->
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let table = string_at(parts: split(s: table_region(html: h), delimiter: "<div class=\"issue-table\">"), index: 1)
-      occurrence_count(s: table, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-viewer — principal:google-oidc/accounts/sub-viewer\"") == 1
-        && occurrence_count(s: table, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\">--</span>") == 2
-        && occurrence_count(s: table, pattern: "sub-viewer</") == 0
-        && !string_contains(s: table, pattern: "assignee\"><button")
-        && !string_contains(s: table, pattern: "assignee\"><a")
+      let table = table_region(html: h)
+      occurrence_count(s: table, pattern: "class=\"issue-avatar\" data-avatar=\"absent\"") == 1
+        && occurrence_count(s: table, pattern: ">--</button>") == 2
+        && occurrence_count(s: table, pattern: "class=\"issue-inline-assign\" disabled=\"disabled\"") == 3
+        && string_contains(s: table, pattern: "Sign in to assign this issue; checking session.")
   }
 }
 
-// THE COLUMN TEMPLATE (owner ruling 2026-09-24, the derivation law + the column-alignment fix):
-// the table's header IS the extdeps model's declared roster — the seven capture columns (the ID
-// column retired by the 2026-09-25 title-is-link ruling) in order, then the actions slot's header
-// cell. The expected header is built HERE from the model, so the pin fails the moment the served
-// header drifts from the declaration.
+// Headers derive from the model and expose keyboard-operable sort controls. TYPE and
+// the special count slot are absent under the uniform-row ruling (2026-09-27).
 test fn witness_issue_table_header_derives_from_the_model_roster() -> Bool {
-  let want_cells = join(map(issue_results_columns, c =>
-    join([
-      "<span class=\"issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind),
-      "\" data-col=\"", issue_results_column_kind_wire(kind: c.kind), "\">",
-      c.header as String, "</span>",
-    ], "")), "")
-  let want = join(["<div class=\"issue-table-header\">", want_cells, "<span class=\"issue-col issue-col-actions\" data-col=\"actions\"></span></div>"], "")
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
-    EmitOk { html: h } => string_contains(s: table_region(html: h), pattern: want)
+    EmitOk { html: h } =>
+      let table = table_region(html: h)
+      all(issue_results_columns, c =>
+        string_contains(s: table, pattern: join(["data-sort-key=\"", extdeps.google.issue_tracker.issue_results_sort_key_wire(key: c.sort_key), "\""], ""))
+          && string_contains(s: table, pattern: join([">", c.header as String, "</button>"], "")))
+        && occurrence_count(s: table, pattern: "aria-sort=\"none\"") == count(issue_results_columns)
+        && !string_contains(s: table, pattern: "data-col=\"type\"")
+        && !string_contains(s: table, pattern: "data-col=\"actions\"")
   }
 }
 
@@ -1863,40 +1855,25 @@ fn marker_before(s: String, first: String, second: String) -> Bool {
   }
 }
 
-// A ROW NOT SHARING THE TEMPLATE IS A DERIVATION DEFECT (owner ruling 2026-09-24): every row
-// carries exactly the six declared column cells — in roster order, each named by data-col —
-// then the actions region; the header pins the template, the rows ride it. Empty columns (P ·
-// TYPE · LAST MODIFIED — facts our domain does not keep on the dense line) render
-// empty cells that KEEP their track; emptiness never re-orders a row. The TITLE cell IS the
-// detail link (owner ruling 2026-09-25, the ID column retired); the assignee cell reads the
-// standing's holder.
+// Every row follows the same column roster and carries underlying sort values.
+// Empty values retain their cells; type labels and project counters add no columns.
 test fn witness_issue_table_rows_share_the_header_template() -> Bool {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
-      let row_body = string_at(parts: split(s: string_at(parts: split(s: table, delimiter: "data-node=\"page-task-one\""), index: 1), delimiter: "</li>"), index: 0)
-      occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 18
-        && occurrence_count(s: table, pattern: "class=\"issue-col issue-col-") == 7
-        && occurrence_count(s: table, pattern: "data-col=\"priority\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"type\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"title\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"assignee\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"status\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"d-views\"") == 0
-        && occurrence_count(s: table, pattern: "data-col=\"last-modified\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 4
-        && occurrence_count(s: table, pattern: "data-col=\"id\"") == 0
-        && marker_before(s: row_body, first: "data-col=\"priority\"", second: "data-col=\"type\"")
-        && marker_before(s: row_body, first: "data-col=\"type\"", second: "data-col=\"title\"")
+      let row_body = li_of_node(html: table, node_id: "page-task-one")
+      occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 3 * count(issue_results_columns)
+        && occurrence_count(s: table, pattern: "class=\"issue-col issue-col-") == count(issue_results_columns)
+        && all(issue_results_columns, c => occurrence_count(s: table, pattern: join(["data-col=\"", issue_results_column_kind_wire(kind: c.kind), "\""], "")) == 4)
+        && marker_before(s: row_body, first: "data-col=\"priority\"", second: "data-col=\"title\"")
         && marker_before(s: row_body, first: "data-col=\"title\"", second: "data-col=\"assignee\"")
         && marker_before(s: row_body, first: "data-col=\"assignee\"", second: "data-col=\"status\"")
         && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"last-modified\"")
-        && marker_before(s: row_body, first: "data-col=\"last-modified\"", second: "class=\"issue-row-actions\"")
-        && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-priority\" data-col=\"priority\"></span><span class=\"issue-cell issue-cell-type\" data-col=\"type\"></span><span class=\"issue-cell issue-cell-title\" data-col=\"title\"><a class=\"issue-title-link\" href=\"/issue/page-task-one\">")
-        && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-assignee\" data-col=\"assignee\"><span class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-viewer — principal:google-oidc/accounts/sub-viewer\">s</span></span>")
-        && string_contains(s: row_body, pattern: "<span class=\"issue-cell issue-cell-status\" data-col=\"status\"><span class=\"taskbar-signal issue-status activity-line-error-refusal\">Submission · failed</span></span>")
-        && string_contains(s: row_body, pattern: "</a></span><span class=\"issue-cell issue-cell-assignee\"")
+        && string_contains(s: row_body, pattern: "href=\"/issue/page-task-one\"")
+        && string_contains(s: row_body, pattern: "data-sort-value=\"Submission · failed\"")
+        && !string_contains(s: table, pattern: "data-col=\"type\"")
+        && !string_contains(s: table, pattern: "data-col=\"actions\"")
   }
 }
 
@@ -1932,7 +1909,7 @@ test fn witness_issue_table_cells_are_direct_grid_children() -> Bool {
     && string_contains(s: css, pattern: ".issue-table li { display: contents }")
     && string_contains(s: css, pattern: ".issue-table-heading { font-family: var(--issue-font-heading); font-size: var(--text-15); font-weight: 500; margin-bottom: var(--space-8); grid-column: 1 / -1 }")
     && string_contains(s: css, pattern: ".issue-empty { display: none; color: var(--text-dim); font-size: var(--text-13); padding: var(--space-12) var(--space-8); grid-column: 1 / -1 }")
-    && string_contains(s: css, pattern: ".issue-line:hover .issue-cell, .issue-line:hover .issue-row-actions { background: var(--issue-bg-hover) }")
+    && string_contains(s: css, pattern: ".issue-line:hover .issue-cell { background: var(--issue-bg-hover) }")
 }
 
 // OVERFLOW CONTROL (owner complaint 2026-09-24: rows ran entirely off the page): a deliberately
@@ -1979,10 +1956,10 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
-      string_contains(s: table, pattern: join(["<span class=\"issue-cell issue-cell-title\" data-col=\"title\"><a class=\"issue-title-link\" href=\"/issue/page-long-title\">", long_title], ""))
+      string_contains(s: table, pattern: join(["<a class=\"issue-title-link\" href=\"/issue/page-long-title\">", long_title], ""))
         && string_contains(s: table, pattern: "class=\"issue-cell issue-cell-status\"")
-        && occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 6
-        && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 2
+        && occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 5
+        && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 0
         && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
         && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", issue_results_row_tracks()], ""))
         && string_contains(s: css, pattern: ".roadmap { padding: var(--space-16) var(--space-24) }")

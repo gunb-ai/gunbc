@@ -1,0 +1,48 @@
+module gunbc.roadmap_inline_assignment
+
+import gunbc.auth.session { AuthenticatedSession }
+import gunbc.principal_projection { principal_ref_label, principal_ref_eq, fabric_workflow_principal }
+import gunbc.roadmap.roadmap_event_log {
+  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, RoadmapEventEnvelope,
+  event_principal_label,
+}
+import gunbc.roadmap_page { issue_chain_head_id, event_principal_display, issue_assign_suggestions, issue_assignee_chip_node }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_string, json_bool }
+
+// The picker submits established principal references. Display names never mint identity.
+// Fabric is pinned first, then self, then distinct authenticated recents in ledger order.
+// Legacy email-only recents remain visible but disabled: no email can mint a principal.
+fn inline_assignment_choices(session: AuthenticatedSession, recents: List<EventPrincipal>) -> List<EventPrincipal> {
+  issue_assign_suggestions(viewer: principal_ref_label(p: session.principal), recents: recents)
+}
+
+fn inline_assignment_option(session: AuthenticatedSession, p: EventPrincipal) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "value", value: json_string(s: event_principal_label(p: p))),
+    json_kv(key: "disabled", value: json_bool(b: match p {
+      EventPrincipalAuthenticated { ref: _ } => false
+      LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => true
+    })),
+    json_kv(key: "chip_html", value: json_string(s: match try_serialize_html_source(node: issue_assignee_chip_node(holder: p)) {
+      EmitOk { html } => html
+      EmitRejected { reason: _ } => ""
+    })),
+    json_kv(key: "label", value: json_string(s: match p {
+      EventPrincipalAuthenticated { ref } =>
+        if principal_ref_eq(a: ref, b: fabric_workflow_principal) { "fabric@gunb.ai" }
+        else if principal_ref_eq(a: ref, b: session.principal) { "Me" }
+        else { event_principal_display(p: p).name }
+      LegacyEmailPrincipal { email, authentication_unestablished: _ } => join([email as String, " (unverified identity)"], "")
+    })),
+  ])
+}
+
+fn inline_assignment_context_body(session: AuthenticatedSession, events: List<RoadmapEventEnvelope>, recents: List<EventPrincipal>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
+    json_kv(key: "expected_revision", value: json_string(s: issue_chain_head_id(envs: events))),
+    json_kv(key: "options", value: json_array(elements: map(inline_assignment_choices(session: session, recents: recents), p => inline_assignment_option(session: session, p: p)))),
+  ]))
+}

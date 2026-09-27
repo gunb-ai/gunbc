@@ -96,12 +96,13 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
+  issue_results_sort_key_wire, issue_results_sort_numeric,
   IssueActionAssign, issue_action_wire,
   IssueButtonText, issue_button_idiom_wire,
   IssueActionAvailability, issue_action_availability_wire,
   issue_assignee_unassigned_display,
   IssueResultsColumn, IssueResultsColumnKind,
-  IssueColumnPriority, IssueColumnType, IssueColumnTitle, IssueColumnAssignee,
+  IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee,
   IssueColumnStatus, IssueColumnLastModified,
   issue_results_columns, issue_results_column_kind_wire,
   avatar_initials_of, issue_avatar_standing_wire, AvatarStanding, AvatarAbsent,
@@ -615,6 +616,7 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<Ev
       el_class("div", "issue-assign-suggestions", map(suggestions, issue_assign_suggestion_nodes)),
       el_attrs("button", [
         attr(name: "class", value: "issue-assign-submit issue-action-text" ),
+        attr(name: "disabled", value: "disabled" ),
         attr(name: "type", value: "submit" ),
         attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
         attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
@@ -639,8 +641,10 @@ fn issue_assign_suggestions(viewer: String, recents: List<EventPrincipal>) -> Li
     Present { value: ref } => [EventPrincipalAuthenticated { ref: ref }]
     Absent => if string_contains(s: viewer, pattern: "@") { [LegacyEmailPrincipal { email: viewer as NonEmptyStr, authentication_unestablished: true }] } else { [] }
   }
-  let seeds = concat(self_row, fabric_row)
-  concat(seeds, filter(recents, r => !any(seeds, s2 => event_principal_label(p: s2) == event_principal_label(p: r))))
+  fold(concat(fabric_row, concat(self_row, recents)), init: [] as List<EventPrincipal>, f: (acc, p) =>
+    if any(acc, existing => event_principal_label(p: existing) == event_principal_label(p: p)) {
+      acc
+    } else { concat(acc, [p]) })
 }
 
 // THE SELECTOR a suggestion submits is the EMAIL, never the qualified identity (owner 2026-09-26:
@@ -1590,34 +1594,28 @@ fn issue_controls_markup() -> Fragment {
       issue_band_chip(label: "upcoming", band: "upcoming"),
       issue_band_chip(label: "done", band: "done"),
       issue_band_chip(label: "superseded", band: "superseded"),
+      el_attrs("button", [
+        attr(name: "type", value: "button"),
+        attr(name: "class", value: "chip issue-topological"),
+        attr(name: "aria-pressed", value: "false"),
+      ], [ txt("Topological sort") ]),
+      el_attrs("button", [
+        attr(name: "type", value: "button"),
+        attr(name: "class", value: "chip issue-sort-undo"),
+        attr(name: "disabled", value: "disabled"),
+      ], [ txt("Undo sort") ]),
+      el_attrs("span", [
+        attr(name: "class", value: "issue-sort-status"),
+        attr(name: "role", value: "status"),
+        attr(name: "aria-live", value: "polite"),
+      ], []),
     ]))
 }
 
-// THE DENSE ISSUE LINE derives its anatomy FROM the extdeps model (owner ruling 2026-09-24, the
-// derivation law): one cell per declared results column, in roster order — P · TYPE · TITLE ·
-// ASSIGNEE · STATUS · LAST MODIFIED (the 2026-09-25 rulings dropped the ID column — the TITLE
-// cell IS the link — and D VIEWS, a view counter we do not track) — then the workflow's trailing
-// actions region
-// (the last grid track), which the 2026-09-25 Buganizer ruling made STATUS ONLY (the k-of-n /
-// attempt-count chip — see issue_row_actions_nodes; the row's action buttons retired with it). The
-// template lands ONCE, on the .issue-table container (the stylesheet's
-// law), and this markup stays a flat list on purpose: the header div and the row div are
-// display: contents wrappers, so these cells parent DIRECTLY into the table's one grid and every
-// row's tracks ARE the header's by construction — a second grid spelling, here or in the sheet,
-// is a derivation defect, never a styling choice (owner column-alignment fix 2026-09-24). Cells
-// the domain has no fact for render EMPTY and keep their track — emptiness never re-orders a row.
-// The cells: TITLE reads the headline AND links the issue's detail route — the capture's
-// ID-links-to-detail idiom, the link following the words (owner ruling 2026-09-25); ASSIGNEE reads
-// the standing's holder (who holds the work
-// now — the attempt identity lives on the Work tab) and falls back to the model's "--"
-// unassigned placeholder when no holder exists (the capture's unassigned spelling); STATUS reads
-// the decided bar signal. The table's row is NOT the taskbar — the taskbar is the /roadmap and
-// /sandbox component; the table reads the SAME decided bar view
-// (one authority) onto the contract's dense line. No id anchor on the row's li: the #node-* ids
-// were the forest rows' anchors, and the dense table rows carry none — the row's stable identity
-// is its data-node. The row's li keeps li.node so selection and the band chips apply uniformly
-// — the li stays in the DOM as the filter/selection subject; only its box is contents.
-
+// One cell per modeled column for every issue, regardless of recursive position or
+// descriptive type. TITLE links to detail; ASSIGNEE is the inline assignment control;
+// STATUS reads the decided signal. Unknown priority/modified facts remain empty.
+// The shared grid is declared once on the table; wrappers use display: contents.
 // THE TABLE ROW SHOWS ONLY THE LATEST ATTEMPT'S SUMMARY, AND ONLY WHEN IT IS RECENT OR LIVE
 // (owner defect fix 2026-09-23): a stale attempt — launched against a revision that is no longer
 // the deployed head — is evidence for a superseded question, and its summary does not belong on
@@ -1631,17 +1629,23 @@ fn issue_line_cell_class(kind: IssueResultsColumnKind) -> String {
 fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> List<Fragment> {
   match col.kind {
     IssueColumnPriority => []
-    IssueColumnType => []
     IssueColumnTitle =>
       [ el_attrs("a", [
           attr(name: "class", value: "issue-title-link" ),
           attr(name: "href", value: join(["/issue/", view.node_id], "") ),
         ], inline_md_nodes(text: view.headline)) ]
     IssueColumnAssignee =>
-      match issue_assignee_holder(view: view, attempts: []) {
-        Absent => [ txt(issue_assignee_unassigned_display as String) ]
-        Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
-      }
+      [ el_attrs("button", [
+          attr(name: "type", value: "button"),
+          attr(name: "class", value: "issue-inline-assign"),
+          attr(name: "disabled", value: "disabled"),
+          attr(name: "title", value: "Sign in to assign this issue; checking session."),
+          attr(name: "aria-label", value: join(["Assign ", view.headline], "")),
+          attr(name: "data-assign-node", value: view.node_id),
+        ], match issue_assignee_holder(view: view, attempts: []) {
+          Absent => [ txt(issue_assignee_unassigned_display as String) ]
+          Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
+        }) ]
     IssueColumnStatus =>
       if bar.signal == "" { [] } else {
         [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
@@ -1650,68 +1654,69 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
   }
 }
 
-// THE ROW'S ACTIONS REGION: STATUS, NEVER ACTUATION (owner ruling 2026-09-25, "scrap the button
-// stuff ... just copy buganizer" — the Buganizer row carries no action buttons at all). The
-// workflow's trailing slot holds the project's k-of-n count when the row carries its tree, else
-// the latest attempt's summary count — a status chip, nothing pressable. The durable Assign
-// action lives on the detail page's action bar; the retired Start Work button rendered here
-// until the ruling.
-fn issue_row_actions_nodes(row: IssueTableRow, view: WorkRowView, bar: TaskBarView) -> Fragment {
-  el_attrs("div", [
-    attr(name: "class", value: "issue-row-actions" ),
-    attr(name: "data-col", value: "actions" ),
-  ], match row.project {
-    Absent =>
-      if bar.count == "" { [] } else { [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ] }
-    Present { value: p } =>
-      [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
-  })
+// Sort the underlying identity and status text, never avatar initials or DOM decorations.
+// Priority and modified have no authored facts yet, so they remain missing, not invented.
+fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> String {
+  match col.kind {
+    IssueColumnPriority => ""
+    IssueColumnTitle => view.headline
+    IssueColumnAssignee => match issue_assignee_holder(view: view, attempts: []) {
+      Absent => ""
+      Present { value: holder } => event_principal_display(p: holder).name
+    }
+    IssueColumnStatus => bar.signal
+    IssueColumnLastModified => ""
+  }
 }
 
-fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Fragment {
+fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, edges: List<RoadmapEdge>) -> Fragment {
   let view = row.view
   let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
   Element {
     tag: "li",
     attributes: concat(
-      node_li_attributes_for(view: view, class_infix: match row.project {
-        Absent => ""
-        Present { value: _ } => " node-project"
-      }) |> filter(a => !(a.name == "id")),
-      [ attr(name: "data-search", value: issue_search_value(view: view) ),
+      node_li_attributes_for(view: view, class_infix: "") |> filter(a => !(a.name == "id")),
+      [ attr(name: "role", value: "row"),
+        attr(name: "data-dependencies", value: join(map(filter(edges, e => e.child as String == view.node_id), e => e.parent as String), " ") ),
+        attr(name: "data-search", value: issue_search_value(view: view) ),
         attr(name: "data-summary-only", value: "" ) ]),
-    children: [ el_class("div", "issue-line", concat(
+    children: [ el_attrs("div", [attr(name: "class", value: "issue-line"), attr(name: "role", value: "presentation")],
       map(issue_results_columns, c => el_attrs("span", [
         attr(name: "class", value: issue_line_cell_class(kind: c.kind) ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
-      ], issue_line_cell_content(col: c, view: view, bar: bar))),
-      [ issue_row_actions_nodes(row: row, view: view, bar: bar) ])) ],
+        attr(name: "data-sort-value", value: issue_line_sort_value(col: c, view: view, bar: bar) ),
+        attr(name: "role", value: "cell"),
+      ], issue_line_cell_content(col: c, view: view, bar: bar)))) ],
   }
 }
 
 // THE TABLE HEADER derives from the SAME roster as the rows: one header cell per declared column
-// in roster order, then the actions slot's (empty) header cell. The header div is a display:
+// in roster order. The header div is a display:
 // contents wrapper like the row divs, so these cells land in the table's one grid beside the
 // rows' cells — same tracks, by construction.
 fn issue_table_header_nodes() -> Fragment {
-  el_class("div", "issue-table-header", concat(
+  el_attrs("div", [attr(name: "class", value: "issue-table-header"), attr(name: "role", value: "row")],
     map(issue_results_columns, c =>
       el_attrs("span", [
         attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
-      ], [ txt(c.header as String) ])),
-    [ el_attrs("span", [
-        attr(name: "class", value: "issue-col issue-col-actions" ),
-        attr(name: "data-col", value: "actions" ),
-      ], []) ]))
+        attr(name: "role", value: "columnheader" ),
+        attr(name: "aria-sort", value: "none" ),
+      ], [ el_attrs("button", [
+        attr(name: "type", value: "button" ),
+        attr(name: "class", value: "issue-sort" ),
+        attr(name: "data-sort-key", value: issue_results_sort_key_wire(key: c.sort_key) ),
+        attr(name: "data-sort-numeric", value: if issue_results_sort_numeric(key: c.sort_key) { "true" } else { "false" } ),
+        attr(name: "aria-label", value: join(["Sort by ", c.header as String], "") ),
+      ], [ txt(c.header as String) ]) ])))
 }
 
-fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView) -> Fragment {
-  el_class("div", "issue-table", [
+fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView, edges: List<RoadmapEdge>) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
     el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
-    el("ul", map(rows, r => issue_line_li(row: r, observation: observation))),
+    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(rows, r => issue_line_li(row: r, observation: observation, edges: edges))),
   ])
 }
 
@@ -2399,8 +2404,9 @@ fn issue_detail_node_exists(proj: RoadmapAuthorityProjection, node_id: String) -
 }
 
 // THE CHAIN HEAD the rendered page pins into the assign form's expected_revision: the envelope no
-// other envelope parents. An empty or forked history pins "" — the route then refuses nothing (the
-// fork refusal below governs writes), and any write on empty is a root.
+// other envelope parents. Empty history pins the empty initial revision: if a first
+// event arrives before submission, the POST refuses the changed head. The route separately
+// refuses forked or incomplete histories before appending any assignment.
 fn issue_chain_head_id(envs: List<RoadmapEventEnvelope>) -> String {
   match (filter(envs, e => !any(envs, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))).first() {
     Present { value: h } => h.id as String
@@ -2482,11 +2488,11 @@ fn issue_detail_not_found_page(node_id: String, viewer: String) -> Fragment {
 // vocabulary outlives the band SURFACE. The forest renderer below (workspace_entries_ul and its
 // chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
 // calls it.
-fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
+fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", concat(
       [ issue_controls_markup() ],
-      [ issue_table_markup(rows: ws.table, observation: ws.observation) ])),
+      [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges) ])),
   ])
 }
 
@@ -2651,7 +2657,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
         roadmap_header(page: "daily workspace"),
         el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
           workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws)])))),
+          [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc))])))),
         dispatch_client_script(),
       ]),
     ],

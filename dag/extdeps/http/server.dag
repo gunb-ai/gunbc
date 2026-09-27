@@ -294,11 +294,13 @@ type ServeWireResponse {
 type ServeResponseHeader
   = ServeResponseHeaderLocation { location: NonEmptyStr }
   | ServeResponseHeaderSetCookie { set_cookie: NonEmptyStr }
+  | ServeResponseHeaderNoStore
 
 fn serve_response_header_wire(header: ServeResponseHeader) -> String {
   match header {
     ServeResponseHeaderLocation { location: l } => join(["Location: ", l as String], "")
     ServeResponseHeaderSetCookie { set_cookie: c } => c as String
+    ServeResponseHeaderNoStore => "Cache-Control: no-store"
   }
 }
 
