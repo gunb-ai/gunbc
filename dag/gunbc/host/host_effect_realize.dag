@@ -184,7 +184,10 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
   approval_broker_dark_install_script,
   microvm_controller_install_script,
-  ReleaseRevisionBinding, RevisionBoundAtEmission,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
 }
 import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
