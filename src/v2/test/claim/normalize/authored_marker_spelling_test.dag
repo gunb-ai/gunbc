@@ -41,9 +41,10 @@ data sugar_type_spelling_source: String = "module chunk\n\ndata x: Int = dag_c3_
 
 data top_level_item_spelling_source: String = "module chunk\n\nfn dag_surface_top_level_item() -> Int {\n  1\n}\n\nfn f() -> Int {\n  2\n}\n"
 
+// carries_authored_atom: the authored spelling survives, as an atom (a value) or as a
+// declaration's member name.
 type MarkerSpellingVerdict {
   outcome: Symbol
-  // the authored spelling survives: as an atom (a value) or as a declaration's member name
   carries_authored_atom: Bool
 }
 
