@@ -132,12 +132,6 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
   },
   CauseOwnership {
-    cause: ^body_lowering_reason_caret_symbol_not_lowered,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "caret lowers to LitSymbol: owned by the MQ-1 symbol-literal slice (the grammar stamps the caret's name with its lexeme, and body lowering produces a std.syntax LitSymbol atom the resolver accepts without lookup). Until then every caret symbol in value position refuses here, located at the `^` token, rather than lowering to that token with its symbol dropped, as it did in all ten value positions on main b1b7aea9aa7 (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form)"
-  },
-  CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
