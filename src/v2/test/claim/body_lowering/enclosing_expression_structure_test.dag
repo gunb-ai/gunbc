@@ -79,8 +79,9 @@ type EesValue
 // (body_lower_body_subtree_lower), which the fn body producer and the value reader's own fall-back
 // enter. The defect had one link on each: the walker searched the whole subtree for a control form
 // and lowered that form alone, and the primary reducer re-read a capture the fold had already
-// lowered. Each claim below names its route; each route's claims are red with that route's fix
-// reverted and the other kept.
+// lowered. Measured (gunbc PR body): with the search fix reverted and the primary rule kept, the
+// body walker's call claim is red; with the primary rule reverted and the search fix kept, both
+// binary claims are red; the base fold reds all three discriminating claims.
 type EesRoute = EesValueReader | EesBodyWalker
 
 fn ees_body_value(source: String) -> EesValue {
@@ -169,6 +170,9 @@ test fn an_operand_beside_a_match_lowers_as_the_operator_over_both_operands() ->
 }
 
 // `ees_h(a: match ees_w {..}, b: ees_s)` is Transform(ees_h, Match(ees_w, arm, arm), ees_s).
+// A CONTROL, NOT A DISCRIMINATOR, on this route: the value reader already lowered a match-valued
+// argument whole before this change (green on the base fold and under either revert). It pins that
+// the value-reader route stays correct; the discriminating call claim is the body-walker one below.
 test fn a_call_with_a_match_argument_lowers_as_the_call_over_every_argument() -> Bool {
   match ees_call_match_value() {
     EesLowered { value: v } =>
