@@ -1095,10 +1095,32 @@ fn function_output_extent(item: &Rc<Node>) -> Option<(String, i64, i64)> {
         Some(crate::v1_std_core::InferredNode::Resolved { node: parked }) => parked,
         _ => return None,
     };
+    // A RETURNED FUNCTION'S PARAMETERS ARE INPUTS: a caller of `fn mk() -> fn(Tag) -> Int`
+    // admits a value into `Tag` through the closure it receives. Telling that function type's
+    // parameters from its result would be a variance judgment this index does not make, so a
+    // return type containing any function type is not an output at all -- the sound direction.
+    if contains_function_type(returns) {
+        return None;
+    }
     let file = item.span.file.clone();
     let mut extent: Option<(i64, i64)> = None;
     subtree_extent(returns, &file, &mut extent);
     extent.map(|(start, end)| (file, start, end))
+}
+
+/// Whether a type subtree contains a function type (`Arrow`) anywhere.
+fn contains_function_type(node: &Rc<Node>) -> bool {
+    node.connective == Connective::Arrow
+        || node
+            .children
+            .iter()
+            .chain(node.params.iter())
+            .chain(node.type_annotation.iter())
+            .any(contains_function_type)
+        || matches!(
+            node.inferred.as_ref().map(|i| i.as_ref()),
+            Some(crate::v1_std_core::InferredNode::Resolved { node: parked }) if contains_function_type(parked)
+        )
 }
 
 /// The one walk behind `unpositioned_interface_parts`: optionally with ONE node -- an alias's

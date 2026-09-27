@@ -13484,6 +13484,10 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
     const RF_R: &str = "module rf.r\n\nimport rf.a { Tag }\n\ntype Holder {\n  tag: Tag\n}\n";
     const RF_W: &str = "module rf.w\n\nimport rf.r { Holder }\n\nfn holder() -> Holder {\n  Holder { tag: \"t\" }\n}\n";
 
+    const RF_K: &str = "module rf.k\n\nimport rf.a { Tag }\n\nfn mk() -> fn(Tag) -> Int {\n  fn(t) {\n    1\n  }\n}\n";
+    const RF_C: &str =
+        "module rf.c\n\nimport rf.k { mk }\n\nfn run() -> Int {\n  let f = mk()\n  1\n}\n";
+
     fn refinement_selection(
         name: &str,
         head_a: &str,
@@ -13493,6 +13497,8 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
             ("z.dag", RF_Z),
             ("r.dag", RF_R),
             ("w.dag", RF_W),
+            ("k.dag", RF_K),
+            ("c.dag", RF_C),
         ];
         let mut base = vec![("a.dag", RF_A_BASE)];
         base.extend(rest);
@@ -13542,6 +13548,19 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
             selection.changes
         );
         assert!(consumers.contains(&"rf.r"), "{consumers:?}");
+    }
+
+    /// A RETURNED CLOSURE'S PARAMETER IS AN INPUT (review 71772): `rf.c` never names `Tag`, but
+    /// calling the `fn(Tag) -> Int` that `mk` returns admits a value into `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_a_returned_function_parameter() {
+        let selection = refinement_selection("rf_closure", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.c"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
     }
 
     /// THE CONTROL: a CARRIER change on `Tag` is an ordinary signature change and still
