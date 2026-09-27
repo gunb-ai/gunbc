@@ -45,12 +45,17 @@ current repository so it can reuse the landed approval app rather than copying
 its newer authorities into that older checkout. The previous local `api_key_file`
 onboarding proposal is superseded by this Secret Manager reference.
 
-Validation: all 21 `gcp_iam_converge_witness_test` claims passed with the full
-`dag` and `src/v2` roots, including the new dedicated Namecheap target and the
-existing approval, expiry, stale-policy and controller-trust controls. All five
-`namecheap_credential_witness_test` claims passed. These are model checks, not
-live GCP or Namecheap observations. The current repository binary was required;
-the older stage0 experiment binary cannot parse this base's newer declarations.
+Validation on the current main base: a combined full-root run evaluated all
+21 IAM convergence controls, five credential controls, 15 XML/provider controls,
+and four workflow controls successfully, then regenerated the workflow through
+`tools.generated_artifact_gate.main_wet_one`. Its receipt counts 46 because it
+also ran one redundant aggregate IAM check, subsequently removed; the retained
+45 controls all ran in that invocation. The generated YAML was independently
+parsed and checked for the dispatch mode, dedicated identity, event SHA checkout,
+SSH exclusion, and success-only receipt upload. The self-contained loopback
+transport harness passed and observed the fixture query arriving without the
+fixture key in curl's argv. These are local checks, not live GCP or Namecheap
+observations.
 
 
 ## Read-only verification workflow
@@ -72,13 +77,13 @@ The XML subset reader refuses unsupported syntax and ambiguous envelopes rather
 than guessing: DTDs and external entities, duplicate attributes, extra documents,
 namespace overrides, malformed records, duplicate provider record IDs, and a
 response for another domain/command cannot yield an observation. It preserves
-all provider host attributes, including unknown ones. Unsupported XML features
+all provider result and host attributes, including unknown ones. Unsupported XML features
 (including numeric character references) are a located read refusal; this is not
 a claim to implement every XML document.
 
 `target/namecheap-observation.json` records the run ID, attempt, revision, start
 time, exact credential version, account, observed public egress, domain and
-returned host fields. The job uploads it only after success, so failure cannot
+returned result and host fields. The job uploads it only after success, so failure cannot
 publish a previous run's receipt. `mail_mode=unobserved` and
 `write_authority=withheld` are deliberate: getHosts does not independently prove
 the console's mail mode, and this observer grants no DNS mutation authority.
@@ -92,3 +97,10 @@ readbacks. Full-zone DNS mutation, DNS-01 renewal coordination, and dashboard
 fleet cutover remain separate unfinished consumers of this observation.
 
 Provider authority: [Namecheap getHosts](https://www.namecheap.com/support/api/methods/domains-dns/get-hosts/).
+
+Landing boundary: the active main ruleset requires the `witnesses` status and
+merge queue. The IAM authority also requires reviewed main code; the feature
+branch cannot impersonate the dedicated main-pinned identity. A read-only query
+of the latest 100 fleet workflow dispatches found no `gcp_iam_converge` run. That
+is limited history, not proof that bootstrap never happened. The bootstrap
+reach and independent readback are still unverified.

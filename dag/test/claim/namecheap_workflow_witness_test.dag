@@ -13,12 +13,6 @@ import gunbc.fleet_converge_workflow {
 import gunbc.ci_spec { gunbc_run_step_targets }
 import gunbc.namecheap.observe { namecheap_observe_ci_wet }
 import gunbc.namecheap.federation { namecheap_service_account, namecheap_provider_resource }
-import test.claim.gcp_iam_converge_witness_test {
-  iam_converge_is_impersonated_only_after_a_recorded_approval,
-  only_a_live_approval_admits_the_mint_gate_or_the_apply,
-  a_policy_that_moved_since_consent_refuses_the_write,
-  namecheap_has_a_dedicated_secret_scoped_federation,
-}
 
 fn auth_step_matches(st: Step) -> Bool {
   match st {
@@ -48,10 +42,4 @@ test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
 test fn observer_is_a_registered_dispatch_and_run_target() -> Bool {
   any(fleet_converge_mode_options, m => m == "namecheap_observe")
     && count(filter(gunbc_run_step_targets(), t => t.entry == "dag/gunbc/namecheap/observe.dag" && t.function == "namecheap_observe_ci_wet")) == 1
-}
-test fn adding_namecheap_preserves_existing_approval_gates() -> Bool {
-  iam_converge_is_impersonated_only_after_a_recorded_approval()
-    && only_a_live_approval_admits_the_mint_gate_or_the_apply()
-    && a_policy_that_moved_since_consent_refuses_the_write()
-    && namecheap_has_a_dedicated_secret_scoped_federation()
 }

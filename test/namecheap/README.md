@@ -8,8 +8,8 @@ systemd-run --user --scope -p MemoryMax=6G --quiet \
   python3 test/namecheap/query_transport.py /absolute/path/to/gunbc
 ```
 
-This harness currently uses the import-closure helper at `target/a7/closure.py`.
-It starts a loopback HTTP server, sends a fixture-only query through the actual
+The harness stages its own temporary import closure, starts a loopback HTTP
+server, and sends a fixture-only query through the actual
 modeled `Http.Client.GetQueryStdinWithin` operation, verifies the received query,
 and inspects that curl process's argv to ensure the fixture key is absent. It
 uses no real credential and reaches neither GCP nor Namecheap.
