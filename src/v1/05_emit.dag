@@ -1139,6 +1139,7 @@ type FileVerb
   | FileWrite
   | FileWriteOwnerOnly
   | FileWriteCreateNew
+  | FileWriteCreateNewWithMode
   | FileDelete
   | FileList
 
@@ -1227,7 +1228,8 @@ fn file_result_channel_of_key(key: String) -> FileResultChannel? {
 // put a fact extdeps owns into the compiler (section 3).
 //
 // Total by construction over the admitted set: `file_emission_verb_refusal` has
-// already rejected any verb that is not delete, list, write_owner_only or write_create_new, so the
+// already rejected any verb that is not delete, list, write_owner_only, write_create_new or
+// write_create_new_with_mode, so the
 // final arm is the floor beneath that wall rather than a second opinion.
 fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> FileVerb {
   match file_transport_declared_verb(t: t, source_indices: source_indices) {
@@ -1235,6 +1237,7 @@ fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineInd
       if v == file_transport_verb_delete { FileDelete }
       else if v == file_transport_verb_list { FileList }
       else if v == file_transport_verb_write_create_new { FileWriteCreateNew }
+      else if v == file_transport_verb_write_create_new_with_mode { FileWriteCreateNewWithMode }
       else { FileWriteOwnerOnly }
     Absent =>
       if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { FileWrite }
@@ -2510,6 +2513,7 @@ type FileEmissionRefusal
   | FileVerbNotModeled { verb: String }
   | FilePathNotStaticallyRenderable
   | FileWriteMissingContentInput { verb: String }
+  | FileWriteMissingModeInput { verb: String }
   | FileOutputKeyNotModeled { key: String }
   | FileOutputShapeNotModeled
 
@@ -2520,12 +2524,15 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
         "' has no file realization handler, so no operation carrying `transport file` is emitted for it")
     FileVerbNotModeled { verb: v } =>
       concat("file transport verb '", v,
-        "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only and write_create_new, and an absent verb means write when the operation declares a `content` input and read otherwise")
+        "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only, write_create_new and write_create_new_with_mode, and an absent verb means write when the operation declares a `content` input and read otherwise")
     FilePathNotStaticallyRenderable =>
       "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering"
     FileWriteMissingContentInput { verb: v } =>
       concat("file transport verb '", v,
         "' writes a payload, and the operation declares no `content` input to write -- the payload is an input to the operation, never a value the emitter may invent")
+    FileWriteMissingModeInput { verb: v } =>
+      concat("file transport verb '", v,
+        "' publishes with a declared mode, and the operation declares no `mode` input -- the mode is the caller's modeled fact, never a value the emitter may invent")
     FileOutputKeyNotModeled { key: k } =>
       concat("file transport output key '", k,
         "' has no modeled channel -- the modeled channels are write_success, read_success, delete_success, list_success, success, bytes_written, bytes, byte_count, path, error, content and entries")
@@ -2540,6 +2547,11 @@ data file_transport_verb_write_owner_only: String = "write_owner_only"
 
 data file_transport_verb_write_create_new: String = "write_create_new"
 
+// THE SAME CREATE-NEW PUBLICATION, WITH THE PUBLISHED MODE DECLARED BY THE CALLER instead of left to
+// the process umask (extdeps.filesystem.io WriteCreateNewWithMode). One canonical realization serves
+// both verbs; this one passes the declared bits, the other passes none.
+data file_transport_verb_write_create_new_with_mode: String = "write_create_new_with_mode"
+
 fn file_transport_declared_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match transport_verb(t: t, source_indices: source_indices) {
     Present { value: v } => match v.expr_data {
@@ -2550,8 +2562,12 @@ fn file_transport_declared_verb(t: Node, source_indices: Map<String, NewlineInde
   }
 }
 
+fn file_operation_has_input(op_node: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  op_node.params |> any(p => param_node_name_at(n: p, source_indices: source_indices) == name)
+}
+
 fn file_operation_has_content_input(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  op_node.params |> any(p => param_node_name_at(n: p, source_indices: source_indices) == "content")
+  file_operation_has_input(op_node: op_node, name: "content", source_indices: source_indices)
 }
 
 // The channels the interpreter's map_file_outputs answers, read back as the emitter's obligation.
@@ -2608,6 +2624,12 @@ fn file_emission_verb_refusal(op_node: Node, verb: String?, source_indices: Map<
       } else if v == file_transport_verb_write_owner_only || v == file_transport_verb_write_create_new {
         if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { none }
         else { Present { value: FileWriteMissingContentInput { verb: v } } }
+      } else if v == file_transport_verb_write_create_new_with_mode {
+        if !file_operation_has_content_input(op_node: op_node, source_indices: source_indices) {
+          Present { value: FileWriteMissingContentInput { verb: v } }
+        } else if !file_operation_has_input(op_node: op_node, name: "mode", source_indices: source_indices) {
+          Present { value: FileWriteMissingModeInput { verb: v } }
+        } else { none }
       } else {
         Present { value: FileVerbNotModeled { verb: v } }
       }

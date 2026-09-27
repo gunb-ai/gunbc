@@ -22,6 +22,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  content_hash,
   Bind,
   ComputationNode,
   Arrow,
@@ -47,7 +48,7 @@ import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_append }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -115,6 +116,15 @@ data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport 
 // once lowered to the literal's first token, dropping the literal and its `-> Bool`.
 data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
 
+// FRESH TYPE VARIABLES ARE NAMED BY STRUCTURAL PATH (ruled on gunbc#12210). Consumers identify type
+// variables by spelling (gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2), so
+// a function value's minted variables must be distinct from any other function value's its types can
+// meet -- a nested literal reusing its parameter name, and siblings -- while the same lambda at the same
+// position in two declarations keeps the same type and content hash (no occurrence in the type).
+data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(x) { x }\n    g\n  }, v: p)\n}\n"
+
+data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n"
+
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
 fn vpw_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -138,7 +148,10 @@ data vpw_ingest: SourceRootIngest = Cons {
             head: vpw_read(source: vpw_lambda_undeclared_source, id: ^vpw_lambda_undeclared_artifact, unit: ^vpw_lambda_undeclared_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_lambda_undeclared.dag"),
             tail: Cons {
               head: vpw_read(source: vpw_fn_literal_in_arm_source, id: ^vpw_fn_literal_in_arm_artifact, unit: ^vpw_fn_literal_in_arm_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_in_arm.dag"),
-              tail: Empty
+              tail: Cons {
+                head: vpw_read(source: vpw_fv_nest_source, id: ^vpw_fv_nest_resolve_artifact, unit: ^vpw_fv_nest_resolve_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_nest_resolve.dag"),
+                tail: Empty
+              }
             }
           }
         }
@@ -162,6 +175,7 @@ type VpwOutcomes
       arg_call: VpwVerdict
       lambda_undeclared: VpwVerdict
       fn_literal_in_arm: VpwVerdict
+      fv_nest: VpwVerdict
     }
 
 fn vpw_verdict_of(outcome: NativeCensusModuleOutcome) -> VpwVerdict {
@@ -209,7 +223,8 @@ fn vpw_outcomes() -> VpwOutcomes {
         arg_lambda: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_lambda"),
         arg_call: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_call"),
         lambda_undeclared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_lambda_undeclared"),
-        fn_literal_in_arm: vpw_verdict_in(context: context, module_name: "v2.test.vpw_fn_literal_in_arm")
+        fn_literal_in_arm: vpw_verdict_in(context: context, module_name: "v2.test.vpw_fn_literal_in_arm"),
+        fv_nest: vpw_verdict_in(context: context, module_name: "v2.test.vpw_fv_nest")
       }
   }
 }
@@ -231,7 +246,7 @@ fn vpw_is_unbound_at(v: VpwVerdict, spelling: Symbol) -> Bool {
 
 test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
+    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_scrutinee)
     VpwContextRefused => false
   }
@@ -239,7 +254,7 @@ test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_ato
 
 test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -247,7 +262,7 @@ test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
 
 test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -255,7 +270,7 @@ test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
 
 test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v, fn_literal_in_arm: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_lambda_body)
     VpwContextRefused => false
   }
@@ -263,7 +278,7 @@ test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_i
 
 test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _, fn_literal_in_arm: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_argument)
     VpwContextRefused => false
   }
@@ -294,7 +309,13 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
               head: vpw_read(source: vpw_two_lambdas_source, id: ^vpw_two_lambdas_artifact, unit: ^vpw_two_lambdas_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_two_lambdas.dag"),
               tail: Cons {
                 head: vpw_read(source: vpw_let_fn_literal_source, id: ^vpw_let_fn_literal_artifact, unit: ^vpw_let_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_let_fn_literal.dag"),
-                tail: Empty
+                tail: Cons {
+                  head: vpw_read(source: vpw_fv_nest_source, id: ^vpw_fv_nest_artifact, unit: ^vpw_fv_nest_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_nest.dag"),
+                  tail: Cons {
+                    head: vpw_read(source: vpw_fv_siblings_source, id: ^vpw_fv_siblings_artifact, unit: ^vpw_fv_siblings_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_siblings.dag"),
+                    tail: Empty
+                  }
+                }
               }
             }
           }
@@ -505,7 +526,7 @@ test fn a_fn_literal_argument_with_a_let_block_body_lowers_its_body_as_a_named_f
 
 test fn a_fn_literal_in_a_match_arm_binds_its_parameter_for_its_match_body() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: v } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: v, fv_nest: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -616,4 +637,95 @@ test fn a_fn_literal_with_two_wildcard_parameters_lowers_well_formed() -> Bool {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_two_wildcard_arrow(n: n) })
   })
+}
+
+// Two symbol lists share no element.
+fn vpw_disjoint(a: List<Symbol>, b: List<Symbol>) -> Bool {
+  fold_list(xs: a, empty: true, cons: fn(acc, x) { acc && !vpw_symbol_in(xs: b, s: x) })
+}
+
+// A function value's Arrow: an Arrow declaring type parameters (its fresh variables).
+fn vpw_is_function_value_arrow(n: Node) -> Bool {
+  vpw_is_arrow(n: n) && (length(xs: type_param_names(n: n)) > 0)
+}
+
+// Some function-value Arrow strictly inside `outer` whose type parameters are disjoint from outer's.
+fn vpw_has_disjoint_nested_function_value(outer: Node) -> Bool {
+  fold_list(xs: node_subtree_nodes(root: outer), empty: false, cons: fn(acc, inner) {
+    acc || (vpw_is_function_value_arrow(n: inner) && (content_hash(n: inner) != content_hash(n: outer)) && vpw_disjoint(a: type_param_names(n: outer), b: type_param_names(n: inner)))
+  })
+}
+
+fn vpw_any_nested_distinct() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || (vpw_is_function_value_arrow(n: n) && vpw_has_disjoint_nested_function_value(outer: n))
+    })
+  })
+}
+
+// `fn(x) { let g = fn(x) { x }  g }`: the nested literal reuses `x`, and its fresh variables are not
+// the outer's. A mutation naming them by depth-free label alone (both `x`) reds it.
+test fn a_nested_fn_literal_reusing_its_parameter_name_mints_distinct_type_variables() -> Bool {
+  vpw_any_nested_distinct()
+}
+
+// The function-value arguments of the call to `callee`, in order.
+fn vpw_function_value_args(n: Node, callee: Symbol) -> List<Node> {
+  let no_nodes: List<Node> = []
+  if vpw_is_call_to(n: n, callee: callee) {
+    fold(vpw_operands(n: n), init: no_nodes, f: fn(acc, a) {
+      if vpw_is_function_value_arrow(n: a) { list_append(left: acc, right: [a]) } else { acc }
+    })
+  } else {
+    no_nodes
+  }
+}
+
+// Every function-value argument of every call to `callee` across the lowered roots, in walk order.
+fn vpw_all_function_value_args(callee: Symbol) -> List<Node> {
+  let no_nodes: List<Node> = []
+  fold(vpw_roots(), init: no_nodes, f: fn(acc, r) {
+    fold(node_subtree_nodes(root: r), init: acc, f: fn(a, n) { list_append(left: a, right: vpw_function_value_args(n: n, callee: callee)) })
+  })
+}
+
+fn vpw_pair_disjoint(xs: List<Node>) -> Bool {
+  (length(xs: xs) == 2) && (match list_at_optional(xs: xs, index: 0) {
+    Present { value: f } =>
+      match list_at_optional(xs: xs, index: 1) {
+        Present { value: g } => vpw_disjoint(a: type_param_names(n: f), b: type_param_names(n: g))
+        Absent => false
+      }
+    Absent => false
+  })
+}
+
+// `pair(x => x, x => x)`: two sibling lambdas with one parameter name mint distinct variables. A
+// mutation naming them by nesting depth alone (both depth 1) reds it.
+test fn sibling_lambdas_with_one_parameter_name_mint_distinct_type_variables() -> Bool {
+  vpw_pair_disjoint(xs: vpw_all_function_value_args(callee: ^vpw_pair))
+}
+
+// The same lambda at the same position in two declarations: EQUAL content hash, which covers its
+// type-parameter list. This is the property that rules an occurrence out of the name.
+test fn the_same_lambda_at_two_sites_has_equal_type_variables_and_content_hash() -> Bool {
+  let sites = vpw_all_function_value_args(callee: ^vpw_site)
+  (length(xs: sites) == 2) && (match list_at_optional(xs: sites, index: 0) {
+    Present { value: f } =>
+      match list_at_optional(xs: sites, index: 1) {
+        Present { value: g } => (content_hash(n: f) == content_hash(n: g)) && (length(xs: type_param_names(n: f)) > 0)
+        Absent => false
+      }
+    Absent => false
+  })
+}
+
+// The nested module RESOLVES: a nested literal's fresh variables are not a shadow of the outer's.
+test fn a_nested_fn_literal_resolves_without_a_type_parameter_shadow_refusal() -> Bool {
+  match vpw_outcomes() {
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _, fv_nest: v } =>
+      vpw_is_resolved(v: v)
+    VpwContextRefused => false
+  }
 }

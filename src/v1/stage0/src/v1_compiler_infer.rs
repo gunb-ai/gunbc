@@ -2642,6 +2642,31 @@ pub fn node_admits_list_literal(
             }))
 }
 
+pub fn declared_callable_list_element(
+    elem_expected: Option<Rc<Node>>,
+    elements: Rc<Vec<Rc<Node>>>,
+) -> Option<Rc<Node>> {
+    match elem_expected.clone() {
+        Some(de) => {
+            if ((de.connective.clone() == Connective::Arrow) && {
+                let mut __found = false;
+                for e in elements.iter().cloned() {
+                    if is_lambda_expr(e.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) {
+                Some(de.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn type_node_is_established(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13306,30 +13331,41 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 }),
                 elem_inhabitance_diags.clone(),
             );
-            let elem_type_node = if ((elem_results.clone().len() as i64) > 0) {
-                match elem_results.clone().first().cloned() {
-                    Some(r) => crate::v1_compiler_infer_types::resolved_type(r.typed.clone()),
-                    std::option::Option::None => unit_type(),
-                }
-            } else {
-                match expected.clone() {
-                    Some(exp) => {
-                        if crate::v1_compiler_infer_types::node_is_element_collection(
-                            exp.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ) {
-                            match exp.children.clone().first().cloned() {
-                                Some(elem) => {
-                                    crate::v1_compiler_infer_types::child_type_node(elem.clone())
-                                }
-                                std::option::Option::None => unit_type(),
+            let declared_callable_elem =
+                declared_callable_list_element(elem_expected.clone(), elements.clone());
+            let elem_type_node = match declared_callable_elem.clone() {
+                Some(de) => de.clone(),
+                std::option::Option::None => {
+                    if ((elem_results.clone().len() as i64) > 0) {
+                        match elem_results.clone().first().cloned() {
+                            Some(r) => {
+                                crate::v1_compiler_infer_types::resolved_type(r.typed.clone())
                             }
-                        } else {
-                            unit_type()
+                            std::option::Option::None => unit_type(),
                         }
-                    }
-                    std::option::Option::None => {
-                        type_variable_node("empty_list_element".to_string())
+                    } else {
+                        match expected.clone() {
+                            Some(exp) => {
+                                if crate::v1_compiler_infer_types::node_is_element_collection(
+                                    exp.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    match exp.children.clone().first().cloned() {
+                                        Some(elem) => {
+                                            crate::v1_compiler_infer_types::child_type_node(
+                                                elem.clone(),
+                                            )
+                                        }
+                                        std::option::Option::None => unit_type(),
+                                    }
+                                } else {
+                                    unit_type()
+                                }
+                            }
+                            std::option::Option::None => {
+                                type_variable_node("empty_list_element".to_string())
+                            }
+                        }
                     }
                 }
             };

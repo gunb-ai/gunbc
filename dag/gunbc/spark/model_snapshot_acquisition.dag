@@ -395,6 +395,18 @@ data spark_hub_cache_root: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub
 // than a prefix re-spelled per row.
 data spark_models_root: NonEmptyStr = "/home/briansrls/models" as NonEmptyStr
 
+// WHERE A PINNED CHECKPOINT MATERIALIZED UNDER THE MODELS ROOT LIVES: the Hub's own repo folder name
+// under the root, and the pinned revision beneath it, so a revision bump lands in a new directory rather
+// than on top of the old one. The materializer that installs it and the launch that mounts it both
+// read this, so the install path and the mount cannot be two derivations of one directory.
+fn spark_local_checkpoint_repo_directory(repo: HubRepoId) -> NonEmptyStr {
+  join([spark_models_root as String, "/", hub_repo_cache_directory_name(repo: repo) as String], "") as NonEmptyStr
+}
+
+fn spark_local_checkpoint_directory(repo: HubRepoId, revision: NonEmptyStr) -> NonEmptyStr {
+  join([spark_local_checkpoint_repo_directory(repo: repo) as String, "/", revision as String], "") as NonEmptyStr
+}
+
 fn model_snapshot_install_path(snapshot: ModelSnapshotDesired) -> NonEmptyStr? {
   match model_snapshot_subject(snapshot: snapshot, cache_root: spark_hub_cache_root) {
     Absent => none
