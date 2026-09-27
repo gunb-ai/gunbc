@@ -14166,7 +14166,16 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
     optional_present(value: ^dag_binding_pick_lit_two)
   } else if id == ^dag_rec_lit_nine {
     optional_present(value: ^dag_binding_rec_lit_nine)
-  } else if id == ^dag_binding_param_r {
+  } else {
+    optional_absent()
+  }
+}
+
+// CANONICAL PARAMETER NAMES are not literals: they are names, so they resolve through arrow scope or
+// not at all. Only the historical no-literal arm (target_value_expr_mint_unscoped_atom) reads this
+// table; the arrow-scope caller refuses them when they miss scope.
+fn target_value_expr_binding_ref_for_canonical_param_atom(id: Symbol) -> Optional<Symbol> {
+  if id == ^dag_binding_param_r {
     optional_present(value: ^dag_binding_param_r)
   } else if id == ^dag_binding_param_x {
     optional_present(value: ^dag_binding_param_x)
@@ -14183,6 +14192,13 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
   }
 }
 
+fn target_value_expr_mint_unscoped_atom(id: Symbol) -> Outcome<TargetValueExpression> {
+  match target_value_expr_binding_ref_for_canonical_param_atom(id: id) {
+    Present { value: binding } => outcome_accepted(target_value_expression_binding_ref(binding: binding))
+    Absent => outcome_accepted(target_value_expression_symbol_identity(identity: id))
+  }
+}
+
 fn target_value_expr_project_pick_literal_atom(
   id: Symbol,
   source_bool_form: TargetBoolLiteralShape
@@ -14190,7 +14206,7 @@ fn target_value_expr_project_pick_literal_atom(
   target_value_expr_project_pick_literal_atom_or(
     id: id,
     source_bool_form: source_bool_form,
-    on_no_literal: fn(sym) { outcome_accepted(target_value_expression_symbol_identity(identity: sym)) }
+    on_no_literal: fn(sym) { target_value_expr_mint_unscoped_atom(id: sym) }
   )
 }
 
@@ -14273,7 +14289,7 @@ fn target_value_expr_project_atom_literal(
   target_value_expr_project_atom_literal_or(
     node: node,
     source_bool_form: source_bool_form,
-    on_no_literal: fn(sym) { outcome_accepted(target_value_expression_symbol_identity(identity: sym)) }
+    on_no_literal: fn(sym) { target_value_expr_mint_unscoped_atom(id: sym) }
   )
 }
 
