@@ -14187,6 +14187,21 @@ fn target_value_expr_project_pick_literal_atom(
   id: Symbol,
   source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
+  target_value_expr_project_pick_literal_atom_or(
+    id: id,
+    source_bool_form: source_bool_form,
+    on_no_literal: fn(sym) { outcome_accepted(target_value_expression_symbol_identity(identity: sym)) }
+  )
+}
+
+// THE ONE LITERAL LADDER. `on_no_literal` is what an atom that spells no literal becomes: the
+// historical callers mint it as a symbol_identity; the arrow-scope caller, for which such an atom is
+// a name that missed scope, refuses (target_value_expr_project_atom_in_arrow_scope).
+fn target_value_expr_project_pick_literal_atom_or(
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape,
+  on_no_literal: fn(Symbol) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: id,
     source_bool_form: source_bool_form
@@ -14199,10 +14214,7 @@ fn target_value_expr_project_pick_literal_atom(
           outcome_accepted(
             target_value_expression_binding_ref(binding: binding)
           )
-        Absent =>
-          outcome_accepted(
-            target_value_expression_symbol_identity(identity: id)
-          )
+        Absent => on_no_literal(id)
       }
   }
 }
@@ -14229,10 +14241,17 @@ fn target_value_expr_project_atom_in_arrow_scope(
                 target_value_expression_binding_ref(binding: scoped)
               )
             Rejected { diagnostics: _ } =>
-              target_value_expr_project_atom_literal_or_refuse(
+              target_value_expr_project_atom_literal_or(
                 node: node,
-                id: id,
-                source_bool_form: source_bool_form
+                source_bool_form: source_bool_form,
+                on_no_literal: fn(_) {
+                  outcome_rejected(
+                    target_value_expr_diagnostic(
+                      reason: ^target_value_expr_reason_body_scope_binding_invalid,
+                      node: node
+                    )
+                  )
+                }
               )
           }
         _ =>
@@ -14247,47 +14266,21 @@ fn target_value_expr_project_atom_in_arrow_scope(
   )
 }
 
-// AN ATOM THAT MISSES ARROW SCOPE is a literal only when it SPELLS one: an int or bool literal, a
-// symbol-identity wire, or a row of the pick table. Anything else is a NAME the scope could not
-// resolve, and minting it as symbol_identity would emit the name as if it resolved (§5 absorbing
-// fallback) -- so it refuses with the scope diagnostic, located at the atom.
-fn target_value_expr_project_atom_literal_or_refuse(
-  node: Node,
-  id: Symbol,
-  source_bool_form: TargetBoolLiteralShape
-) -> Outcome<TargetValueExpression> {
-  if id == ^target_value_expression_symbol_identity_atom
-    || target_value_expr_is_int_literal_atom(node: node) {
-    target_value_expr_project_atom_literal(node: node, source_bool_form: source_bool_form)
-  } else {
-    match target_value_expr_bool_literal_value_from_atom(node: node) {
-      Present { value: b } => outcome_accepted(target_value_expression_bool_literal(value: b))
-      Absent =>
-        match target_value_expr_bool_literal_value_from_source_symbol(
-          id: id,
-          source_bool_form: source_bool_form
-        ) {
-          Present { value: b } => outcome_accepted(target_value_expression_bool_literal(value: b))
-          Absent =>
-            match target_value_expr_binding_ref_for_literal_atom(id: id) {
-              Present { value: binding } =>
-                outcome_accepted(target_value_expression_binding_ref(binding: binding))
-              Absent =>
-                outcome_rejected(
-                  target_value_expr_diagnostic(
-                    reason: ^target_value_expr_reason_body_scope_binding_invalid,
-                    node: node
-                  )
-                )
-            }
-        }
-    }
-  }
-}
-
 fn target_value_expr_project_atom_literal(
   node: Node,
   source_bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
+  target_value_expr_project_atom_literal_or(
+    node: node,
+    source_bool_form: source_bool_form,
+    on_no_literal: fn(sym) { outcome_accepted(target_value_expression_symbol_identity(identity: sym)) }
+  )
+}
+
+fn target_value_expr_project_atom_literal_or(
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape,
+  on_no_literal: fn(Symbol) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -14295,9 +14288,10 @@ fn target_value_expr_project_atom_literal(
         bind_outcome(
           o: target_value_expression_symbol_identity_from_wire(wire: node),
           f: fn(inner_id) {
-            target_value_expr_project_pick_literal_atom(
+            target_value_expr_project_pick_literal_atom_or(
               id: inner_id,
-              source_bool_form: source_bool_form
+              source_bool_form: source_bool_form,
+              on_no_literal: on_no_literal
             )
           }
         )
@@ -14308,9 +14302,10 @@ fn target_value_expr_project_atom_literal(
           Present { value: b } =>
             outcome_accepted(target_value_expression_bool_literal(value: b))
           Absent =>
-            target_value_expr_project_pick_literal_atom(
+            target_value_expr_project_pick_literal_atom_or(
               id: id,
-              source_bool_form: source_bool_form
+              source_bool_form: source_bool_form,
+              on_no_literal: on_no_literal
             )
         }
       }

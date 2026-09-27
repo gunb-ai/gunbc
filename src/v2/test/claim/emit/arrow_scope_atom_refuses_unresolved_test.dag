@@ -149,3 +149,13 @@ test fn arrow_scope_literal_atom_still_projects() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+// THE SAME ROUTE THROUGH THE PICK-TABLE ARM: an atom the one literal ladder maps to a binding
+// (target_value_expr_binding_ref_for_literal_atom) still projects, so the arrow-scope caller shares
+// that ladder rather than carrying its own copy of it.
+test fn arrow_scope_pick_table_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_atom(id: ^dag_rec_lit_nine)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
