@@ -205,6 +205,60 @@ pub(crate) enum InterfaceChangeGround {
         module_path: String,
         declaration: String,
     },
+    /// A where-refined alias whose interface text differs ONLY in its refinement predicates
+    /// (`ModuleDeclarationRecord::where_refinements`: the predicate serialization differs, the
+    /// interface with the predicates left out is byte-equal). What changed is which VALUES
+    /// inhabit the alias, so what it can strand is a site that ADMITS a value into it. Every
+    /// direct reader is planned. It propagates only through INPUT positions
+    /// (`input_interface_references`): a declaration that mentions the alias in a constructor
+    /// field, a parameter or an alias target admits values into it without naming it, while a
+    /// return type or a read of `b.f` supplies nothing. A LOOSENED predicate strands no
+    /// admission, but it is planned exactly the same way: loosening is not decided here, and
+    /// planning it is the sound direction.
+    RefinementPredicatesChanged,
+    /// The declaration's own interface is unchanged, but an INPUT position of it is typed
+    /// through a declaration whose admitted values changed (`RefinementPredicatesChanged`, or
+    /// this ground again). Its readers are planned, since supplying a value to it may now be
+    /// refused, and it propagates onward through input positions only.
+    AdmittedThroughInput {
+        module_path: String,
+        declaration: String,
+    },
+}
+
+/// WHICH INTERFACE OCCURRENCES A CHANGE PROPAGATES THROUGH, and the ground it hands on. The one
+/// rule both selectors apply. A refinement-only change travels input positions alone; every
+/// other propagating change travels every interface occurrence, as before.
+fn propagation_rule(
+    change: &DeclarationInterfaceChange,
+) -> (
+    fn(&ModuleDeclarationRecord) -> &BTreeSet<(String, String)>,
+    bool,
+) {
+    match change.ground {
+        InterfaceChangeGround::RefinementPredicatesChanged
+        | InterfaceChangeGround::AdmittedThroughInput { .. } => {
+            (|r| &r.input_interface_references, true)
+        }
+        _ => (|r| &r.interface_references, false),
+    }
+}
+
+fn propagated_ground(
+    change: &DeclarationInterfaceChange,
+    through_input: bool,
+) -> InterfaceChangeGround {
+    if through_input {
+        InterfaceChangeGround::AdmittedThroughInput {
+            module_path: change.module_path.clone(),
+            declaration: change.declaration.clone(),
+        }
+    } else {
+        InterfaceChangeGround::PropagatedThrough {
+            module_path: change.module_path.clone(),
+            declaration: change.declaration.clone(),
+        }
+    }
 }
 
 /// One declaration whose interface differs between the base and head indexes.
@@ -294,7 +348,20 @@ fn direct_interface_changes(
             }
         }
         if base_text != head_text {
-            out.push(change(InterfaceChangeGround::SignatureChanged));
+            let refinement_only = match (
+                base_record.where_refinements.get(declaration),
+                head_record.where_refinements.get(declaration),
+            ) {
+                (Some((base_where, base_rest)), Some((head_where, head_rest))) => {
+                    base_rest == head_rest && base_where != head_where
+                }
+                _ => false,
+            };
+            out.push(change(if refinement_only {
+                InterfaceChangeGround::RefinementPredicatesChanged
+            } else {
+                InterfaceChangeGround::SignatureChanged
+            }));
             continue;
         }
         // THE FOUR ROSTER TRANSITIONS, decided on presence first and difference second:
@@ -452,6 +519,13 @@ pub(crate) fn interface_changed_consumers(
     let interface_readers = records_by_read_leaf(&head_records, |r| {
         Box::new(r.interface_references.iter().map(|(_, spelling)| spelling))
     });
+    let input_readers = records_by_read_leaf(&head_records, |r| {
+        Box::new(
+            r.input_interface_references
+                .iter()
+                .map(|(_, spelling)| spelling),
+        )
+    });
     let any_readers = records_by_read_leaf(&head_records, |r| {
         Box::new(
             r.referenced
@@ -493,8 +567,14 @@ pub(crate) fn interface_changed_consumers(
                 continue;
             }
             let universe = change_universe(base, head, change);
-            for record in records_reading(&head_records, &interface_readers, &universe) {
-                for (in_declaration, spelling) in &record.interface_references {
+            let (reads, through_input) = propagation_rule(change);
+            let readers = if through_input {
+                &input_readers
+            } else {
+                &interface_readers
+            };
+            for record in records_reading(&head_records, readers, &universe) {
+                for (in_declaration, spelling) in reads(record) {
                     if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
                         continue;
                     }
@@ -512,10 +592,7 @@ pub(crate) fn interface_changed_consumers(
                     next.push(DeclarationInterfaceChange {
                         module_path: record.module_path.clone(),
                         declaration: in_declaration.clone(),
-                        ground: InterfaceChangeGround::PropagatedThrough {
-                            module_path: change.module_path.clone(),
-                            declaration: change.declaration.clone(),
-                        },
+                        ground: propagated_ground(change, through_input),
                     });
                 }
             }
@@ -654,8 +731,9 @@ pub(crate) fn interface_changed_consumers_by_scan(
                 continue;
             }
             let universe = change_universe(base, head, change);
+            let (reads, through_input) = propagation_rule(change);
             for record in index_records(head) {
-                for (in_declaration, spelling) in &record.interface_references {
+                for (in_declaration, spelling) in reads(record) {
                     if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
                         continue;
                     }
@@ -673,10 +751,7 @@ pub(crate) fn interface_changed_consumers_by_scan(
                     next.push(DeclarationInterfaceChange {
                         module_path: record.module_path.clone(),
                         declaration: in_declaration.clone(),
-                        ground: InterfaceChangeGround::PropagatedThrough {
-                            module_path: change.module_path.clone(),
-                            declaration: change.declaration.clone(),
-                        },
+                        ground: propagated_ground(change, through_input),
                     });
                 }
             }

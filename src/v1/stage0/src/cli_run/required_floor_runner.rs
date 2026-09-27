@@ -6735,6 +6735,13 @@ pub fn run_required_floor(
                             module_path,
                             declaration,
                         } => format!("PropagatedThrough through={module_path}.{declaration}"),
+                        InterfaceChangeGround::RefinementPredicatesChanged => {
+                            "RefinementPredicatesChanged".to_string()
+                        }
+                        InterfaceChangeGround::AdmittedThroughInput {
+                            module_path,
+                            declaration,
+                        } => format!("AdmittedThroughInput through={module_path}.{declaration}"),
                     };
                     eprintln!(
                         "[floor-plan] SeedDeclarationInterfaceChangedConsumer declaration={}.{} \
@@ -13461,6 +13468,98 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
             selection.changes
         );
         assert!(planned.is_err(), "C must refuse under Strict preparation");
+    }
+
+    /// A REFINEMENT-ONLY CHANGE. `Tag`'s predicate is respelled and nothing else moves. `make`
+    /// mentions `Tag` only as its RESULT, so `rf.z`, which reaches `Tag` only by calling `make`, is
+    /// not a site that admits a value into `Tag`. `Holder.tag` is an INPUT position, so `rf.w`,
+    /// which constructs a `Holder` without ever naming `Tag`, does admit one.
+    const RF_A_BASE: &str = "module rf.a\n\ntype Tag = String where alpha_pred\n";
+    const RF_A_HEAD: &str = "module rf.a\n\ntype Tag = String where beta_pred\n";
+    const RF_A_CARRIER: &str = "module rf.a\n\ntype Tag = Int where alpha_pred\n";
+    const RF_B: &str =
+        "module rf.b\n\nimport rf.a { Tag }\n\nfn make() -> Tag {\n  \"x\" as Tag\n}\n";
+    const RF_Z: &str =
+        "module rf.z\n\nimport rf.b { make }\n\nfn use_it() -> Int {\n  let t = make()\n  1\n}\n";
+    const RF_R: &str = "module rf.r\n\nimport rf.a { Tag }\n\ntype Holder {\n  tag: Tag\n}\n";
+    const RF_W: &str = "module rf.w\n\nimport rf.r { Holder }\n\nfn holder() -> Holder {\n  Holder { tag: \"t\" }\n}\n";
+
+    fn refinement_selection(
+        name: &str,
+        head_a: &str,
+    ) -> crate::cli_run::namespace_baseline::InterfaceConsumerSelection {
+        let rest = [
+            ("b.dag", RF_B),
+            ("z.dag", RF_Z),
+            ("r.dag", RF_R),
+            ("w.dag", RF_W),
+        ];
+        let mut base = vec![("a.dag", RF_A_BASE)];
+        base.extend(rest);
+        let mut head = vec![("a.dag", head_a)];
+        head.extend(rest);
+        let (selection, head_fx) = interface_selection(name, &base, &head);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        selection
+    }
+
+    #[test]
+    fn a_where_only_change_is_classified_as_a_refinement_change() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_classify", RF_A_HEAD);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| (c.declaration.as_str(), c.ground.clone()))
+                .collect::<Vec<_>>(),
+            vec![("Tag", InterfaceChangeGround::RefinementPredicatesChanged)]
+        );
+    }
+
+    /// THE RED: `rf.z` reaches `Tag` only through `make`'s result, so it is no longer planned;
+    /// `make`'s own module still is, as a direct reader of `Tag`.
+    #[test]
+    fn a_refinement_change_does_not_propagate_through_an_output_position() {
+        let selection = refinement_selection("rf_output", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            !consumers.contains(&"rf.z"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.b"), "{consumers:?}");
+    }
+
+    /// ADMISSION THROUGH B: `rf.w` never names `Tag`, but constructing `Holder` supplies a value
+    /// to an input position typed `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_an_input_position() {
+        let selection = refinement_selection("rf_input", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.w"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.r"), "{consumers:?}");
+    }
+
+    /// THE CONTROL: a CARRIER change on `Tag` is an ordinary signature change and still
+    /// propagates through `make`'s result to `rf.z`.
+    #[test]
+    fn a_carrier_change_still_propagates_through_every_mention() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_carrier", RF_A_CARRIER);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| c.ground.clone())
+                .collect::<Vec<_>>(),
+            vec![InterfaceChangeGround::SignatureChanged]
+        );
+        let consumers = consumers_of(&selection);
+        assert!(consumers.contains(&"rf.z"), "{consumers:?}");
+        assert!(consumers.contains(&"rf.w"), "{consumers:?}");
     }
 
     /// WALL 2: an added arm WITH a generic arity change is not pure growth.
