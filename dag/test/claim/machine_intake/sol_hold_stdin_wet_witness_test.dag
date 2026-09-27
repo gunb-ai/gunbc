@@ -1,0 +1,197 @@
+module test.claim.machine_intake.sol_hold_stdin_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { second }
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line }
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_await_capture_terminal, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, TerminalWatch,
+}
+import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+
+// THE COLLECTOR, EXECUTED RATHER THAN SPELLED. Each test runs the real gunbc.machine_intake.sol_hold
+// ActivateHeld launch -- its fifo, fd plumbing, supervisor, pid+starttime publication and
+// client-diagnostic file -- with the `ipmitool` input pointed at a probe written into a throwaway
+// /tmp/gunbc_solstdin.* directory. The watch controls then run the REAL
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_await_capture_terminal over that live
+// collector. No BMC, network or credential is touched: the password path is empty, which the watch's
+// SMpro pass and its post-loss mc info / chassis reads both answer as NotTaken rather than reading.
+// Every probe ends on its own; the directory is removed.
+//
+// A string check over the argv cannot establish the stdin property: a launch that writes one NUL to
+// fd 3 before handing it over keeps every spelling and still types at the host. The stdin probe
+// reads that byte. At the parent revision the launch redirected `< /dev/zero` (millions of bytes);
+// `< /dev/null` reports EOF at once.
+data stdin_probe_script: String = "#!/bin/sh\nt=$(mktemp) || exit 1\ntimeout 3 cat > \"$t\"\nrc=$?\nn=$(wc -c < \"$t\" | tr -d ' ')\nrm -f \"$t\"\nif [ \"$rc\" = 124 ]; then eof=no; else eof=yes; fi\necho \"stdin-probe bytes=$n eof=$eof\"\n"
+
+data begin_line: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-27T00:00:00Z====="
+
+data end_line: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-27T00:01:00Z====="
+
+// The host prints the begin marker AND the exact text ipmitool prints on its way out -- on STDOUT,
+// the console -- then keeps the session for twenty seconds (more than one poll cadence), prints the
+// end marker and exits 0. A watch that let host bytes decide loss, or read the capture before
+// liveness, reports ObservationChannelLost here; the real verdict is the closed envelope's.
+fn end_then_exit_probe() -> String {
+  concat("#!/bin/sh\necho '", concat(begin_line, concat("'\necho 'SOL session closed by BMC'\nsleep 20\necho '", concat(end_line, "'\nexit 0\n"))))
+}
+
+// The envelope opens and the collector leaves before any end: genuinely incomplete at exit.
+fn incomplete_exit_probe() -> String {
+  concat("#!/bin/sh\necho '", concat(begin_line, "'\nsleep 1\nexit 0\n"))
+}
+
+// The CLIENT ends it: its own diagnostic on stderr and a nonzero exit, as ipmitool does.
+fn client_exit_probe() -> String {
+  concat("#!/bin/sh\necho '", concat(begin_line, "'\nsleep 1\necho 'Error sending SOL data: FAIL' >&2\necho 'SOL session closed by BMC' >&2\nexit 1\n"))
+}
+
+data probe_owner_only_executable: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+type ProbeLaunch {
+  launched: Bool
+  capture_path: String
+  pid_path: String
+}
+
+fn scratch_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_solstdin.XXXXXX").path as String
+}
+
+fn probe_launch(dir: String, script: String, pid_path: String) -> ProbeLaunch {
+  let probe = concat(dir, "/ipmitool-probe")
+  let capture_path = concat(dir, "/capture")
+  let written = Filesystem.WriteCreateNewWithMode(path: probe, content: script, mode: file_mode_bits(mode: probe_owner_only_executable))
+  let bound = Filesystem.Write(path: capture_path, content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path), content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_incident_path(capture_path: capture_path), content: "").success
+  if !written.success || !bound {
+    ProbeLaunch { launched: false, capture_path: capture_path, pid_path: pid_path }
+  } else {
+    let spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
+      bmc_host: "probe.invalid",
+      username: "probe",
+      password_file: concat(dir, "/password") as NonEmptyStr,
+      capture_path: capture_path as NonEmptyStr,
+      pid_path: pid_path as NonEmptyStr,
+      ipmitool: probe as NonEmptyStr,
+      client_diagnostic_path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path) as NonEmptyStr,
+    )
+    ProbeLaunch { launched: spawned.success, capture_path: capture_path, pid_path: pid_path }
+  }
+}
+
+fn read_or_empty(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  if r.success { r.content } else { "" }
+}
+
+fn settle(seconds: Int) -> Bool {
+  sleep_delay_seconds_second_carrier_projection(duration: second(count: seconds))
+}
+
+fn watch(run: ProbeLaunch) -> TerminalWatch {
+  mtcollins1_boot_await_capture_terminal(
+    remaining: 4,
+    capture_path: run.capture_path,
+    pid_path: run.pid_path,
+    subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
+    password_file: "",
+    smpro_census: SmproNotTaken { reason: "wet control" },
+    last_live_at: "",
+  )
+}
+
+fn outcome_reason(w: TerminalWatch) -> String {
+  match w.outcome {
+    ExitSuccess => "success"
+    ExitFailure { code: _, reason: r } => r
+  }
+}
+
+// Zero bytes, and the read was still open when the probe's own three-second bound ended it.
+test fn the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: stdin_probe_script, pid_path: concat(dir, "/collector.pid"))
+  let _waited = settle(seconds: 5)
+  let capture = read_or_empty(path: run.capture_path)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && string_contains(s: capture, pattern: "stdin-probe bytes=0 eof=no")
+}
+
+// A pid destination that cannot be written (here: a directory) is not published, and the child the
+// launch created is stopped before it reports; the supervisor records both facts in the client file.
+test fn a_launch_that_cannot_publish_its_pid_stops_the_child_it_created() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: stdin_probe_script, pid_path: dir)
+  let _waited = settle(seconds: 5)
+  let capture = read_or_empty(path: run.capture_path)
+  let client = read_or_empty(path: mtcollins1_sol_client_diagnostic_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  !string_contains(s: capture, pattern: "stdin-probe")
+    && string_contains(s: client, pattern: sol_hold_pid_not_published_line)
+    && string_contains(s: client, pattern: sol_hold_exit_record_prefix)
+}
+
+// END BEFORE EXIT, THROUGH THE REAL WATCH, WITH THE HOST PRINTING THE DIAGNOSTIC TEXT: the watch sees
+// a live collector and a pending capture for more than one tick, the collector then writes END and
+// exits, and the verdict is the closed envelope's (it refuses: no sections were written) -- never
+// ObservationChannelLost, and nothing is frozen as an incident.
+test fn an_end_written_before_exit_is_judged_on_the_final_bytes() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: end_then_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = settle(seconds: 2)
+  let w = watch(run: run)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "host qualification REFUSED")
+    && !string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost")
+    && incident == ""
+}
+
+// INCOMPLETE AT EXIT, THROUGH THE REAL WATCH: the collector leaves with the envelope open, the watch
+// reports ObservationChannelLost at once, and the incident is on disk -- frozen before any enrichment
+// read, so deleting the freeze from the watch's loss arm turns this red.
+test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = settle(seconds: 3)
+  let w = watch(run: run)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
+    && string_contains(s: incident, pattern: "ObservationChannelLost")
+    && string_contains(s: incident, pattern: "the collector exited with status 0")
+}
+
+// AN AUTHENTIC CLIENT EXIT: the client's own stderr diagnostic and exit status reach the incident,
+// in neutral words -- the line is reported as what the client printed, not as the BMC's decision.
+test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: client_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = settle(seconds: 3)
+  let w = watch(run: run)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let capture = read_or_empty(path: run.capture_path)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost")
+    && string_contains(s: incident, pattern: "the collector exited with status 1")
+    && string_contains(s: incident, pattern: "does not say which side ended the session")
+    && !string_contains(s: incident, pattern: "the BMC closed")
+    && !string_contains(s: capture, pattern: "SOL session closed")
+}
