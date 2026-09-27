@@ -62,15 +62,26 @@ fn bla_value_param_as_type() -> Outcome<Node> {
 }
 
 // The bound value is an Int sum, whose grounding infer DERIVES, so the check is judged rather than
-// left on the frontier. A let-bound literal is not derived there, so it would leave the check
-// unjudged and admit both rows without discriminating anything. The infer outcomes below are
-// enrolled share points, so a claim reads the result and pays for none of the sum's derivation.
+// left on the frontier. The infer outcomes below are enrolled share points, so a claim reads the
+// result and pays for none of the sum's derivation.
 fn bla_int_sum_as_int() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n")
 }
 
 fn bla_int_sum_as_bool() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n")
+}
+
+// A let-bound int LITERAL grounds too: lowering hands infer the canonical literal
+// (dag_token_int_literal with its magnitude payload) and infer derives it as Int, so the check is
+// judged at the literal as well. Until main 980761c this was believed to sit on the
+// GroundingNotDerived frontier (the #12322 handoff); rows (5b) pin that it does not.
+fn bla_int_literal_as_int() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  x\n}\n")
+}
+
+fn bla_int_literal_as_bool() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = 1\n  x\n}\n")
 }
 
 fn bla_annotations(n: Node) -> List<Node> {
@@ -210,6 +221,34 @@ test fn bla_infer_refuses_int_sum_ascribed_bool() -> Bool {
               !bla_has_computation(n: a.at) && !bla_atom_in(n: a.at, id: ^y)
             _ => false
           }
+    }
+}
+
+// (5b) THE SAME CHECK IS JUDGED AT A LET-BOUND LITERAL: `1` ascribed Int is admitted; `1` ascribed
+// Bool refuses with coercion's typed mismatch as the cause and the annotation's own fatal. RED if the
+// literal falls back to the GroundingNotDerived frontier: the Bool ascription is then admitted.
+fn bla_int_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_literal_as_int())
+}
+
+fn bla_int_literal_as_bool_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_literal_as_bool())
+}
+
+test fn bla_infer_admits_int_literal_ascribed_int() -> Bool {
+  match bla_int_literal_as_int_inferred() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
+  tpb_accepts(o: bla_int_literal_as_bool())
+    && match bla_int_literal_as_bool_inferred() {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
     }
 }
 

@@ -25,7 +25,6 @@ data transitional_admission_exception_identities: List<String> = [
   "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag::witness_p1_proof_kernel_acceptance_contract_holds",
   "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
   "src/v2/test/claim/long/direct_rust_door_production_group_test.dag::direct_rust_door_production_group_closing_expectation_holds",
-  "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag::self_host_parse_engine_hooks_behavioral_receipt_holds",
   "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag::self_host_use_site_verdict_behavioral_receipt_holds",
   "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds",
   "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag::self_host_discovery_enumeration_behavioral_receipt_holds",

@@ -29,8 +29,8 @@ import v2.std.text { String }
 // (compiler_module_behavioral_receipt_for) replacing the 16 hand-authored
 // tools.self_host_<mod>_behavioral_transport.dag files this roster supersedes (00_compile,
 // 01_tokenize, 02_parse, 03_body_producer, 03_ingest, 03_normalize, 03_resolve, 04_infer,
-// 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks,
-// program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data
+// 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks
+// (since deleted with its module), program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data
 // only (module path, driver path, pass marker, supplementary claim-runs); the hand shim paths the
 // rows once carried are deleted with the fields that held them (see
 // gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module), so every row links the whole
@@ -136,17 +136,6 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     driver_rel: "dag/gunbc/instruments/self_host_materialization_carriers_shims/witness_main.rs",
     pass_marker: "SELF_HOST_MATERIALIZATION_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
-  },
-  ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/parse_engine_hooks.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_parse_engine_hooks_shims/witness_main.rs",
-    pass_marker: "SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: [
-      CuratedSeedLinkedClaimRun {
-        entry_rel: "src/v2/test/claim/parse_engine_hooks_test.dag",
-        function: "parse_engine_hooks_symbols_match_grammar_productions"
-      }
-    ]
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_assembly.dag",
