@@ -2232,7 +2232,24 @@ mod process_cwd_mutation_reachability_gate {
         // what makes the offender list above a verdict rather than a selection: if a gating test
         // could reach the mutator through an ambiguous spelling, it is named here instead of
         // being silently outside the walk.
-        let expected: BTreeSet<String> = ["main", "run"].iter().map(|s| s.to_string()).collect();
+        // Pinned, each with its reason, re-derived 2026-09-27 once the destructor and local-arm
+        // merges stopped the closure from swallowing the crate (which had hidden this set):
+        // `main`, `run` -- process entry points above `pre_push::run_inner`; `handle_serve`,
+        // `invoke_bound_target_producer` -- the CLI dispatch trait's handlers, declared in
+        // main.rs and gunbc_cli_dispatch_generated.rs and called only from that dispatch;
+        // `run_native_claim_program` -- the `gunbc test` producer in target_invocation_host.rs
+        // (#12250), called only from its own TargetProducer match (the other declaration, in
+        // native_lane_runner, is reached by the qualified `cli_run::` spelling).
+        let expected: BTreeSet<String> = [
+            "handle_serve",
+            "invoke_bound_target_producer",
+            "main",
+            "run",
+            "run_native_claim_program",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(
             undecided, expected,
             "the set of mutator-reaching names this scanner cannot resolve to one definition has \
