@@ -784,16 +784,16 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
 // (canonicalize_positional_then_named), while the stored node keeps authored order for the
 // occurrence layer.
 fn positional_prefix_then_labeled_conform(children: List<Edge>) -> Bool {
-  let walk = fold(children, init: PrefixWalk { seen_named: false, ok: true }, f: fn(acc, e) {
+  let walk = fold(children, init: TransformActualsWalk { seen_named: false, ok: true }, f: fn(acc, e) {
     match e.label {
-      Positional => PrefixWalk { seen_named: acc.seen_named, ok: acc.ok && !acc.seen_named }
-      Named { name: _ } => PrefixWalk { seen_named: true, ok: acc.ok }
+      Positional => TransformActualsWalk { seen_named: acc.seen_named, ok: acc.ok && !acc.seen_named }
+      Named { name: _ } => TransformActualsWalk { seen_named: true, ok: acc.ok }
     }
   })
   walk.ok && all_names_distinct(children: children)
 }
 
-type PrefixWalk {
+type TransformActualsWalk {
   seen_named: Bool
   ok: Bool
 }
