@@ -2,7 +2,7 @@ module extdeps.games.animal_crossing.disc_messages
 
 import std.types { Bool, Int, List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.octet_read { OctetPatch, OctetRangeCopy }
+import std.octet_read { OctetPatch, OctetRangeCopy, zero_octets }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.formats.gamecube.disc {
@@ -200,14 +200,6 @@ fn splice_message_data(layout: DiscMessageLayout, replacements: List<MessageRepl
   if rest > 0 {
     SpliceFold { copies: list_push(r.copies, OctetRangeCopy { source_offset: message_data_image_offset(layout: layout) + r.source, target_offset: r.target, length: rest }), writes: r.writes, source: layout.data_file.size, target: r.target + rest }
   } else { r }
-}
-
-fn zero_octets_from(n: Int, acc: List<Int>) -> List<Int> {
-  if count(acc) >= n { acc } else { zero_octets_from(n: n, acc: list_push(acc, 0)) }
-}
-
-fn zero_octets(n: Int) -> List<Int> {
-  zero_octets_from(n: n, acc: [])
 }
 
 fn overwrite(bytes: List<Int>, patch: OctetPatch) -> List<Int> {

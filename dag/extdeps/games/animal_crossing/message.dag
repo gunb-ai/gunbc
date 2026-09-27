@@ -1,12 +1,12 @@
 module extdeps.games.animal_crossing.message
 
 import v2.std.algebra { any, filter }
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, Map, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.octet_read { be_u32_at, be_u32_octets, hex_octets, octet_hex, octets_hex }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.games.animal_crossing.charset { ac_glyph_octet, ac_octet_glyph }
+import extdeps.games.animal_crossing.charset { ac_glyph_index, ac_glyph_octet, ac_octet_glyph }
 import extdeps.games.animal_crossing.font { glyph_advance, inserted_string_max_octets, widest_glyph_advance }
 
 // Animal Crossing (GameCube, GAFE01) dialogue as the game stores and draws it. Messages live in
@@ -342,13 +342,13 @@ fn steering_tokens(tokens: List<MessageToken>) -> List<List<Int>> {
 
 // ---- readable text ----
 
-fn token_text(token: MessageToken) -> String {
+fn token_text(index: Map<String, Int>, token: MessageToken) -> String {
   match token {
     Control { code: c, arguments: a } =>
       if count(a) == 0 { join(["{", c.name, "}"], "") }
       else { join(["{", c.name, ":", a |> map(o => octet_hex(octet: o)) |> join(separator: " "), "}"], "") }
     Glyph { octet: o } =>
-      match ac_octet_glyph(octet: o) {
+      match ac_octet_glyph(index: index, octet: o) {
         Present { value: g } => g
         Absent => join(["{#", octet_hex(octet: o), "}"], "")
       }
@@ -356,7 +356,8 @@ fn token_text(token: MessageToken) -> String {
 }
 
 fn message_text(tokens: List<MessageToken>) -> String {
-  tokens |> map(t => token_text(token: t)) |> join(separator: "")
+  let index = ac_glyph_index()
+  tokens |> map(t => token_text(index: index, token: t)) |> join(separator: "")
 }
 
 // `mode`: 0 plain text; 2 inside a {placeholder}.
@@ -402,7 +403,7 @@ fn placeholder_octets(codes: List<ControlCode>, placeholder: String) -> MessageO
   }
 }
 
-fn text_step(codes: List<ControlCode>, acc: TextFold, cp: Int) -> TextFold {
+fn text_step(codes: List<ControlCode>, index: Map<String, Int>, acc: TextFold, cp: Int) -> TextFold {
   if acc.refusal != "" { acc }
   else if acc.mode == 2 {
     if cp == 125 {
@@ -414,7 +415,7 @@ fn text_step(codes: List<ControlCode>, acc: TextFold, cp: Int) -> TextFold {
   } else if cp == 123 { TextFold { octets: acc.octets, mode: 2, placeholder: [], refusal: "" } }
   else if cp == 125 { text_refused(acc: acc, reason: "'}' outside a control code") }
   else {
-    match ac_glyph_octet(glyph: from_code_point(cp)) {
+    match ac_glyph_octet(index: index, glyph: from_code_point(cp)) {
       Present { value: o } => TextFold { octets: list_push(acc.octets, o), mode: 0, placeholder: [], refusal: "" }
       Absent => text_refused(acc: acc, reason: join(["'", from_code_point(cp), "' is not in the game's font; write a {#hh} escape for a specific glyph"], ""))
     }
@@ -425,7 +426,8 @@ fn text_step(codes: List<ControlCode>, acc: TextFold, cp: Int) -> TextFold {
 // exactly its argument count, or any character the font does not draw. Braces never occur as text:
 // the font has no brace glyphs, so '{' always opens a placeholder.
 fn text_message(codes: List<ControlCode>, text: String) -> MessageOutcome<List<Int>> {
-  let r = fold(chars(text), init: TextFold { octets: [], mode: 0, placeholder: [], refusal: "" }, f: (acc, cp) => text_step(codes: codes, acc: acc, cp: cp))
+  let index = ac_glyph_index()
+  let r = fold(chars(text), init: TextFold { octets: [], mode: 0, placeholder: [], refusal: "" }, f: (acc, cp) => text_step(codes: codes, index: index, acc: acc, cp: cp))
   if r.refusal != "" { MessageRefused { reason: r.refusal } }
   else if r.mode == 2 { MessageRefused { reason: "unterminated '{' placeholder" } }
   else { MessageAccepted { value: r.octets } }
