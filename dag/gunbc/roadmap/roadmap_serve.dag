@@ -2500,12 +2500,47 @@ fn auth_callback_verify(instance: HostDashboardInstance, transaction: OidcLoginT
   }
 }
 
+// THE LOGIN CLAIMS RECEIPT, the direct observation of what the verified ID token actually
+// carried: one owner-only file per callback naming each optional profile member's standing
+// (present with its value, or absent) BEFORE the verdict and the mint decide anything. The
+// 2026-09-27 avatar defect — a fresh session storing name but no picture — proved by
+// construction that the loss is upstream of the session store; this receipt names which side
+// of the Google boundary it sits on. The write never gates the login (its result is unread).
+fn auth_login_claims_receipt(claims: OidcIdTokenClaims) -> String {
+  join([
+    "login claims receipt — the verified ID token's optional profile members\n",
+    auth_receipt_optional_line(key: "name", standing: match claims.standard.name {
+      Present { value: n } => concat("present \"", concat(n, "\""))
+      Absent => "absent"
+    }),
+    auth_receipt_optional_line(key: "picture", standing: match claims.standard.picture {
+      Present { value: u } => concat("present ", uri_wire(uri: u) as String)
+      Absent => "absent"
+    }),
+    auth_receipt_optional_line(key: "email", standing: match claims.standard.email {
+      Present { value: e } => concat("present ", e as String)
+      Absent => "absent"
+    }),
+    auth_receipt_optional_line(key: "email_verified", standing: match claims.standard.email_verified {
+      Present { value: b } => if b { "present true" } else { "present false" }
+      Absent => "absent"
+    }),
+  ], "")
+}
+
+fn auth_receipt_optional_line(key: String, standing: String) -> String {
+  join([key, ": ", standing, "\n"], "")
+}
+
 fn auth_callback_verdict(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, id_token: NonEmptyStr, epoch: Int, verify_id: NonEmptyStr) -> ServeHttpResponse {
   let signature = oidc_id_token_signature_verify(instance: instance, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
   match auth_callback_wire_claims(id_token: id_token) {
     Absent =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: "login refused: the ID token's claims could not be decoded for the verdict\n")
     Present { value: claims } =>
+      let claims_receipt_written = Filesystem.WriteOwnerOnly(
+        path: join([login_transaction_store_layout_for_instance(instance: instance).root as String, "/", transaction.state as String, "-claims.receipt"], ""),
+        content: auth_login_claims_receipt(claims: claims))
       let verdict = verify_oidc_id_token(
         claims: claims,
         signature: signature,
