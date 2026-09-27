@@ -1,22 +1,124 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram.py b/vllm/models/deepseek_v4_1/nvidia/engram.py
-index b141b6c..520a92a 100644
+index b141b6c..dc7b16b 100644
 --- a/vllm/models/deepseek_v4_1/nvidia/engram.py
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram.py
-@@ -38,6 +38,17 @@ from vllm.models.deepseek_v4_1.common.engram import (
+@@ -38,6 +38,22 @@ from vllm.models.deepseek_v4_1.common.engram import (
  from vllm.utils.platform_utils import is_uva_available
  from vllm.utils.torch_utils import get_accelerator_view_from_cpu_tensor
  
-+# Import only. ParallelEngramEmbedding._allocate_weights still constructs
-+# DPSharedEngramStorage. Binding FileBackedEngramStorage is the wiring
-+# trigger, not this member.
++# FILE-BACKED ENGRAM (gunbc design B, decision evidence fleet-converge run 36247421840). When the
++# launch names a row-store manifest, Engram._create_embedding builds FileBackedParallelEngramEmbedding
++# for every layer and no DPShared or pinned table is constructed.
 +from vllm.models.deepseek_v4_1.nvidia.engram_file_backed import (
-+    ExpectedRowStoreIdentity,
-+    FileBackedEngramStorage,
-+    EngramLocalStoreMissing,
-+    EngramFullTablePinned,
++    EngramCheckpointGeometryMismatch,
++    EngramFileBackedRequiresOffload,
++    FileBackedLookup,
++    RowStoreManifest,
 +    allocate_file_backed,
++    check_checkpoint_geometry,
++    expected_identity,
++    manifest_entry,
++    manifest_from_env,
++    register_touch_storage,
 +)
 +
  logger = init_logger(__name__)
  
  
+@@ -328,6 +344,78 @@ class ParallelEngramEmbedding(BaseParallelEngramEmbedding):
+         return out[:, : self.n_hash_cols]
+ 
+ 
++class FileBackedParallelEngramEmbedding(ParallelEngramEmbedding):
++    """This rank's head buckets served from its (layer, rank) row store: no host table is allocated,
++    the checkpoint's engram rows are checked against the encoded geometry and not copied, and lookup
++    gathers owned records from the store (FileBackedLookup)."""
++
++    def __init__(
++        self,
++        layer_id: int,
++        manifest: RowStoreManifest,
++        num_embeddings: int,
++        dim: int,
++        head_sizes: tuple[int, ...],
++        block_size: int = 32,
++        cpu_offload: bool = False,
++        dp_shared_memory: bool = False,
++    ) -> None:
++        if not cpu_offload or dp_shared_memory:
++            raise EngramFileBackedRequiresOffload(
++                "file-backed Engram needs engram cpu_offload=True (the prefetch stream path) and "
++                "dp_shared_memory=False; the launch names row stores, so no other table may be built"
++            )
++        if manifest.weight_bytes != dim or manifest.record_bytes != dim + dim // block_size:
++            raise EngramCheckpointGeometryMismatch(
++                f"the manifest's record ({manifest.weight_bytes}+{manifest.record_bytes - manifest.weight_bytes} bytes) "
++                f"is not this layer's row ({dim}+{dim // block_size} bytes)"
++            )
++        self._layer_id = layer_id
++        self._manifest = manifest
++        super().__init__(num_embeddings, dim, head_sizes, block_size, cpu_offload=True, dp_shared_memory=False)
++        rank = get_tensor_model_parallel_rank()
++        entry = manifest_entry(manifest, layer_id, rank)
++        max_tokens = get_current_vllm_config().scheduler_config.max_num_batched_tokens
++        storage, staging = allocate_file_backed(
++            entry.path, expected_identity(manifest, entry),
++            staging_rows=max_tokens * self.part_n_hash_cols, row_bytes=manifest.record_bytes,
++            device=torch.device("cpu"),
++        )
++        records = (storage._mmap.size() - len(manifest.magic)) // manifest.record_bytes
++        if records != self.part_num_embeddings:
++            storage.close()
++            raise EngramCheckpointGeometryMismatch(
++                f"layer {layer_id} rank {rank}: the store holds {records} records, this rank owns "
++                f"{self.part_num_embeddings} rows"
++            )
++        self._lookup = FileBackedLookup(storage, staging, dim, block_size)
++        register_touch_storage(storage, rank)
++        logger.info("Engram layer %d rank %d file-backed from %s (%d rows)", layer_id, rank, entry.path, records)
++
++    def _allocate_weights(self) -> tuple[torch.Tensor, torch.Tensor]:
++        return (
++            torch.empty(0, self.dim, dtype=torch.float8_e4m3fn),
++            torch.empty(0, self.dim // self.block_size, dtype=torch.uint8),
++        )
++
++    def _weight_loader(self, param: torch.nn.Parameter, loaded_weight: torch.Tensor) -> None:
++        # Bound per instance: the base registers self._weight_loader on both params.
++        check_checkpoint_geometry(loaded_weight, param is self.weight_scale_inv, self.dim, self.block_size, self.vocab_end_idx)
++
++    def _storage(self) -> tuple[torch.Tensor, torch.Tensor]:
++        raise EngramFileBackedRequiresOffload("a file-backed Engram layer has no host table to view; lookup reads its row store")
++
++    def lookup(self, indices: torch.Tensor, out: torch.Tensor, background: bool = False) -> None:
++        tokens = indices.shape[0]
++        if not tokens:
++            return
++        local_ids = torch.full((tokens, self.part_n_hash_cols), -1, dtype=torch.int64)
++        present = max(0, min(self.part_n_hash_cols, self.n_hash_cols - self.head_start))
++        if present:
++            local_ids[:, :present] = indices[:, self.head_start:self.head_start + present].to("cpu", torch.int64)
++        self._lookup.lookup(local_ids, self.vocab_start_idx, self.vocab_end_idx, out)
++
++
+ def _gather_engram_rows(staged: torch.Tensor, num_tokens: int) -> torch.Tensor:
+     """Exchange DP tokens for heads, retaining only this replica's tokens."""
+     dp_group = get_engram_dp_group()
+@@ -357,6 +445,17 @@ class Engram(BaseEngram):
+     ) -> ParallelEngramEmbedding:
+         engram_config = get_current_vllm_config().engram_config
+         assert engram_config is not None
++        manifest = manifest_from_env()
++        if manifest is not None:
++            return FileBackedParallelEngramEmbedding(
++                layout.layer_ids[layer_hash_index],
++                manifest,
++                layout.num_embeddings[layer_hash_index],
++                layout.head_dim,
++                tuple(size for order in layout.primes[layer_hash_index] for size in order),
++                cpu_offload=engram_config.cpu_offload,
++                dp_shared_memory=engram_config.dp_shared_memory,
++            )
+         return ParallelEngramEmbedding(
+             layout.num_embeddings[layer_hash_index],
+             layout.head_dim,
