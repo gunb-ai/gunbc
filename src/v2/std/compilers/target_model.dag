@@ -14852,11 +14852,10 @@ fn target_project_loop(
         )
       Present { value: literal_node } =>
         bind_outcome(
-          o: target_value_expr_project_atom_in_arrow_scope(
-            arrow: arrow,
+          o: target_value_expr_project_atom_literal_or(
             node: literal_node,
-            target: target,
-            source_bool_form: source_bool_form
+            source_bool_form: source_bool_form,
+            on_no_literal: fn(sym) { outcome_accepted(target_value_expression_symbol_identity(identity: sym)) }
           ),
           f: fn(projected_body) {
             outcome_accepted(
