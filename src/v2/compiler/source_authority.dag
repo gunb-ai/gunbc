@@ -1,5 +1,7 @@
 module v2.compiler.source_authority
 
+import gunbc.source_root_read { SourceRootFile }
+
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import v2.std.language_model { LanguageModel }
 
@@ -1532,4 +1534,15 @@ fn source_authority_round_trip(
     canonical_source_target: canonical_source_target,
     lm: dag_language_model()
   )
+}
+
+// The native filesystem fold supplies observed bytes; provenance is constructed at the same
+// authority as every other source witness. Neither rendered main owns this conversion.
+fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngest {
+  files |> map(file => DagSourceReadWitness {
+    source: Medium { carried: file.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
+    compilation_unit: file.path,
+    source_root: source_root_for_storage_path(path: file.path)
+  })
 }
