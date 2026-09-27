@@ -75,10 +75,6 @@ fn is_unpositioned_fresh_type_variable(sym: Symbol) -> Bool {
   starts_with(s: symbol_lexeme(sym: sym), prefix: fresh_type_variable_prefix() + ":")
 }
 
-// The recogniser for a fresh type variable, positioned or not.
-fn is_fresh_type_variable(sym: Symbol) -> Bool {
-  starts_with(s: symbol_lexeme(sym: sym), prefix: fresh_type_variable_prefix())
-}
 
 // THE ONE RECOGNISER. Every reader that must treat an anonymous slot differently -- emission
 // (v2.std.compilers.target_model bound_spelling_from_map) renders it `_`, and
