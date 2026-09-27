@@ -79,8 +79,11 @@ type V41DifferentialImage
   = DifferentialImageBuilt { config_digest: NonEmptyStr, build_run: NonEmptyStr }
   | ImageLacksEngramOverlay { trigger: NonEmptyStr }
 
-data v41_differential_image: V41DifferentialImage = ImageLacksEngramOverlay {
-  trigger: "the production V4.1 image built from main after the design-B cutover lands, whose patch population includes engram_file_backed.py.patch; bind its config digest and build run here from that build's receipt" as NonEmptyStr,
+// The production V4.1 image (fleet-converge run 36327364664, srv8), built with this overlay; its receipt
+// row is gunbc.spark.v41_runtime_image_converge v41_production_produced_image.
+data v41_differential_image: V41DifferentialImage = DifferentialImageBuilt {
+  config_digest: "sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" as NonEmptyStr,
+  build_run: "36327364664" as NonEmptyStr,
 }
 
 data v41_differential_overlay_module: String = "vllm.models.deepseek_v4_1.nvidia.engram_file_backed"

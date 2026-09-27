@@ -23,12 +23,12 @@ import std.nat { Nat }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// NO IMAGE CARRIES THE OVERLAY YET, so the binding is unbuilt and the mode refuses with its trigger named
-// (ImageLacksEngramOverlay) instead of running anything.
-test fn the_differential_image_is_unbuilt_until_an_image_carries_the_overlay() -> Bool {
+// THE DIFFERENTIAL RUNS FROM THE PRODUCTION IMAGE, which carries the overlay: the binding names its config
+// digest and the build run that produced it.
+test fn the_differential_image_is_the_production_image() -> Bool {
   match v41_differential_image {
-    ImageLacksEngramOverlay { trigger: t } => contains(t as String, "production V4.1 image")
-    DifferentialImageBuilt { config_digest: _, build_run: _ } => false
+    DifferentialImageBuilt { config_digest: d, build_run: r } => (d as String) == "sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" && (r as String) == "36327364664"
+    ImageLacksEngramOverlay { trigger: _ } => false
   }
 }
 

@@ -129,6 +129,9 @@ type V41EngramStartupArm = EngramUpstreamPinned | EngramFileBackedReleased
 
 type V41EngramArmBinding { arm: V41EngramStartupArm, image_config: OciContentDigest, build_run: NonEmptyStr }
 
+// Arm B: fleet-converge run 36327364664 (tag gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e), the production
+// V4.1 image built on srv8 with the design-B cutover's patch set (#12359), so it serves Engram
+// file-backed with the page cache released. Both arms are now bound, so the binding frontier is gone.
 // Arm A: fleet-converge spark_v41_runtime_image_build run 36207135528 (tag
 // gunbc-vllm-dsv41-gb10:d73e307009a5d716), reported by proud-deer-538 2026-09-26. Built before the
 // _allocate_weights cutover, so it serves upstream pinned storage.
@@ -138,9 +141,12 @@ data v41_engram_arm_bindings: List<V41EngramArmBinding> = [
     image_config: OciSha256Digest(Sha256Digest { hex: "ea39410ed01d396caad86339d877c1adb181a983baadffd22c722069109ea664" as Sha256DigestHex }),
     build_run: "36207135528" as NonEmptyStr,
   },
+  V41EngramArmBinding {
+    arm: EngramFileBackedReleased,
+    image_config: OciSha256Digest(Sha256Digest { hex: "5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" as Sha256DigestHex }),
+    build_run: "36327364664" as NonEmptyStr,
+  },
 ]
-
-data v41_engram_arm_binding_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the first srv8 V4.1 runtime image built after the ParallelEngramEmbedding._allocate_weights cutover to allocate_file_backed finishes, and its config digest is bound to EngramFileBackedReleased with its build run. An image built after #12304 but before the cutover serves upstream pinned storage and binds to EngramUpstreamPinned, not here. SUFFICIENT FOR: both residency timelines name their arm by image content, so a cell from either image resolves to exactly one arm." as NonEmptyStr)
 
 fn v41_engram_arm_of(image: V41OciImageDigest, bindings: List<V41EngramArmBinding>) -> V41EngramStartupArm? {
   let wire = render_oci_content_digest_wire(d: image.config)
