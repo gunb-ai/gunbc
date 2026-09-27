@@ -2675,7 +2675,7 @@ fn infer_transform_derived_optional(
   if infer_transform_is_binary_infix_int_add_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
   } else {
-    infer_transform_cast_optional(node: node, entries: entries, tree: tree, symbol_index: symbol_index)
+    infer_transform_cast_optional(node: node, entries: entries, symbol_index: symbol_index)
   }
 }
 
@@ -2692,7 +2692,7 @@ fn infer_transform_is_cast(node: Node) -> Bool {
   }
 }
 
-fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, tree: Node, symbol_index: SymbolIndex) -> Optional<Outcome<InferredFacts>> {
+fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, symbol_index: SymbolIndex) -> Optional<Outcome<InferredFacts>> {
   if !infer_transform_is_cast(node: node) {
     optional_absent()
   } else {
