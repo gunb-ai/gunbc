@@ -199,6 +199,12 @@ struct EmittedPreparation {
     closure_identity: String,
     seed_identity: String,
     build: EmittedBuildObserved,
+    /// THE DISCRIMINATING RED THIS BUILD ESTABLISHED, carried as the verdict's own payload. It was
+    /// checked and printed and then dropped; a preparation can now only be built from the
+    /// `Discriminated` arm, and a build that is later served from a store has to be admitted on the
+    /// red recorded when it was built, because a served run enters no cargo to re-establish one.
+    discriminating_red_subject: super::emitted_closure_compile_host::MutationSubject,
+    discriminating_red_line: String,
     /// THE RUN'S OWN PROBE ROOT TRAVELS WITH THE PREPARATION, so the directory the artifact was
     /// emitted into is named by the value that owns it for as long as the preparation is read.
     /// It is private by construction (`emitted_closure_compile_host` `PrivateProbeRoot`): no other
@@ -219,42 +225,141 @@ struct EmittedBuildObserved {
     warning_count: i64,
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+/// A FILE'S BYTES FED INTO A DIGEST THROUGH A FIXED BUFFER, never held whole. The route digests
+/// the seed and the emitted executable, tens of MB each, and M1.c will digest a stored artifact
+/// before serving it; a whole-file read makes the memory an identity costs grow with the file.
+/// SHA-256 gives the same value however the input is split, so every caller's value is unchanged.
+fn sha256_feed_file(hasher: &mut sha2::Sha256, path: &Path) -> Result<(), String> {
     use sha2::Digest;
-    let bytes = std::fs::read(path).map_err(|e| {
+    use std::io::Read;
+    const READ_BUFFER_BYTES: usize = 64 * 1024;
+    let unreadable = |e: std::io::Error| {
         format!(
             "could not read {} for its content identity: {e}",
             path.display()
         )
-    })?;
-    Ok(format!("{:x}", sha2::Sha256::digest(&bytes)))
+    };
+    let mut file = std::fs::File::open(path).map_err(unreadable)?;
+    let mut buffer = vec![0u8; READ_BUFFER_BYTES];
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => return Ok(()),
+            Ok(n) => hasher.update(&buffer[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(unreadable(e)),
+        }
+    }
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    sha256_feed_file(&mut hasher, path)?;
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// The emitted closure's identity: one digest over the crate's emitted sources, path and
 /// content in sorted order, so the receipt names WHAT was compiled, not merely that something
 /// was.
+///
+/// THE VALUE IS DELIBERATELY UNCHANGED HERE, AND IT IS NOT A KEY. It concatenates each file name
+/// and its bytes with no length prefix, sees only top-level `src/*.rs`, and excludes the manifest,
+/// so it cannot serve as a cross-run key -- and it is an OUTPUT of emission, while a key that lets
+/// a hit bypass emission has to be computed over emission's inputs. Those defects are the U3 cut's,
+/// with the length-prefix authority. What changes here is only that the bytes are streamed and that
+/// an unreadable directory entry refuses instead of silently leaving the identity.
 fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
     use sha2::Digest;
     let src_dir = crate_dir.join("src");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&src_dir)
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(&src_dir)
         .map_err(|e| format!("could not list {}: {e}", src_dir.display()))?
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().map(|ext| ext == "rs").unwrap_or(false))
-        .collect();
+    {
+        let path = entry
+            .map_err(|e| format!("could not list {}: {e}", src_dir.display()))?
+            .path();
+        if path.extension().map(|ext| ext == "rs").unwrap_or(false) {
+            files.push(path);
+        }
+    }
     files.sort();
     let mut hasher = sha2::Sha256::new();
     for path in &files {
-        let bytes =
-            std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
         hasher.update(
             path.file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default()
                 .as_bytes(),
         );
-        hasher.update(&bytes);
+        sha256_feed_file(&mut hasher, path)?;
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// THE PROBE ROOT'S SIZE ON DISK, so the temporary space a cold build takes is an observation
+/// rather than an unaccounted cost. M1.c must bound what a stored compiler occupies and what a
+/// miss spends building one; neither can be sized from a number nobody measured. Hard links are
+/// counted once (cargo uplifts `release/<bin>` as a link into `deps/`), symlinks are never
+/// followed, and apparent bytes exclude directories' own sizes, so both totals agree with `du`.
+struct ProbeRootFootprint {
+    entries: u64,
+    apparent_bytes: u64,
+    allocated_bytes: u64,
+    target_dir_allocated_bytes: u64,
+    executable_apparent_bytes: u64,
+}
+
+fn probe_root_footprint(
+    root: &Path,
+    target_dir: &Path,
+    executable: &Path,
+) -> Result<ProbeRootFootprint, String> {
+    use std::os::unix::fs::MetadataExt;
+    let mut seen: std::collections::HashSet<(u64, u64)> = std::collections::HashSet::new();
+    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    // The executable's own size is read from its own name: the walk below meets its inode once,
+    // possibly through cargo's `deps/` link first, and must not have to guess which name it saw.
+    let executable_apparent_bytes = std::fs::metadata(executable)
+        .map_err(|e| format!("could not stat {}: {e}", executable.display()))?
+        .size();
+    let mut footprint = ProbeRootFootprint {
+        entries: 0,
+        apparent_bytes: 0,
+        allocated_bytes: 0,
+        target_dir_allocated_bytes: 0,
+        executable_apparent_bytes,
+    };
+    while let Some(path) = stack.pop() {
+        let meta = std::fs::symlink_metadata(&path)
+            .map_err(|e| format!("could not stat {}: {e}", path.display()))?;
+        if !seen.insert((meta.dev(), meta.ino())) {
+            continue;
+        }
+        footprint.entries += 1;
+        // Apparent bytes are content: a directory's own st_size is filesystem bookkeeping, and
+        // coreutils (9.4, the oracle here) leaves it out of `du --apparent-size` while its blocks
+        // stay in the allocated total.
+        if !meta.file_type().is_dir() {
+            footprint.apparent_bytes += meta.size();
+        }
+        let allocated = meta.blocks() * 512;
+        footprint.allocated_bytes += allocated;
+        if path.starts_with(target_dir) {
+            footprint.target_dir_allocated_bytes += allocated;
+        }
+        if meta.file_type().is_dir() {
+            for entry in std::fs::read_dir(&path)
+                .map_err(|e| format!("could not list {}: {e}", path.display()))?
+            {
+                stack.push(
+                    entry
+                        .map_err(|e| format!("could not list {}: {e}", path.display()))?
+                        .path(),
+                );
+            }
+        }
+    }
+    Ok(footprint)
 }
 
 /// PREPARATION IS THE EMIT-COMPILE PHASE'S OWN MACHINERY, REUSED. The same emission entry
@@ -394,9 +499,14 @@ fn prepare_emitted_compiler_for_entry(
         ));
     }
     let binary_identity = sha256_file(&binary_path)?;
-    let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
-        format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
-    })?)?;
+    // THE SEED IS THE IMAGE THAT IS RUNNING, READ AS SUCH. `current_exe()` returns a file NAME and
+    // the digest re-opened it minutes after emission: a seed rebuilt in the meantime (cargo swaps an
+    // uplifted binary by rename) made the name resolve to `... (deleted)`, refused as unreadable, or
+    // -- if the swap landed between the lookup and the open -- to a binary that did not emit this
+    // closure. `/proc/self/exe` is the running inode, and the kernel refuses a write to it while it
+    // executes, so the digest is of the image that emitted in this process.
+    let seed_identity = sha256_file(Path::new("/proc/self/exe"))
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — {cause}"))?;
     eprintln!(
         "v2-native-route: emitted compiler at {} (sha256 {binary_identity})",
         binary_path.display()
@@ -433,16 +543,22 @@ fn prepare_emitted_compiler_for_entry(
         &probe_root.target_dir(),
         &entry_module,
     );
-    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
-            super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-        ));
-    }
     eprintln!(
-        "v2-native-route: discriminating red established — {}",
+        "v2-native-route: discriminating red — {}",
         super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
     );
+    let (discriminating_red_subject, discriminating_red_line) = match mutation {
+        super::emitted_closure_compile_host::MutationVerdict::Discriminated {
+            subject,
+            red_line,
+        } => (subject, red_line),
+        refused => {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+                super::emitted_closure_compile_host::mutation_verdict_summary(&refused)
+            ))
+        }
+    };
     let identity_after_mutation = sha256_file(&binary_path)?;
     if identity_after_mutation != binary_identity {
         return Err(format!(
@@ -453,12 +569,34 @@ fn prepare_emitted_compiler_for_entry(
         ));
     }
 
+    // Measured here, the state handed on, before `PrivateProbeRoot`'s drop removes the tree. An
+    // unobservable footprint is printed as UNOBSERVED with its cause, never as a zero; nothing in
+    // this preparation decides on it.
+    match probe_root_footprint(probe_root.path(), &probe_root.target_dir(), &binary_path) {
+        Ok(f) => eprintln!(
+            "v2-native-route: probe root footprint root={} entries={} apparent_bytes={} \
+             allocated_bytes={} target_allocated_bytes={} executable_bytes={}",
+            probe_root.path().display(),
+            f.entries,
+            f.apparent_bytes,
+            f.allocated_bytes,
+            f.target_dir_allocated_bytes,
+            f.executable_apparent_bytes
+        ),
+        Err(cause) => eprintln!(
+            "v2-native-route: probe root footprint UNOBSERVED root={} cause={cause}",
+            probe_root.path().display()
+        ),
+    }
+
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
         closure_identity,
         seed_identity,
         build,
+        discriminating_red_subject,
+        discriminating_red_line,
         _probe_root: probe_root,
     })
 }
@@ -1170,6 +1308,10 @@ pub struct SelfHostHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The emitted module the discriminating red was planted in, and the diagnostic line cargo
+    /// failed on, so the instrument's receipt names the red it established.
+    pub discriminating_red_module: String,
+    pub discriminating_red_line: String,
     /// The cause the built driver gave for refusing the poison specimen when this instrument
     /// STARTED it. Carried as the refusal's own sentence rather than as a Bool, so a receipt reader
     /// can see WHICH refusal fired — the flattening this file's `run_native_binary` annotation
@@ -1329,6 +1471,12 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        discriminating_red_module:
+            super::emitted_closure_compile_host::mutation_subject_rust_module(
+                &prepared.discriminating_red_subject,
+            )
+            .to_string(),
+        discriminating_red_line: prepared.discriminating_red_line,
         door_refusal_reason,
     })
 }
@@ -1343,6 +1491,10 @@ pub struct V2NativeCliHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The emitted module the discriminating red was planted in, and the diagnostic line cargo
+    /// failed on -- the same pair `SelfHostHeld` carries.
+    pub discriminating_red_module: String,
+    pub discriminating_red_line: String,
     /// The status the built binary itself took on the EMIT PROBE, and the length of what it wrote on
     /// stdout. Carried rather than folded into a Bool because a receipt that says only "the probe
     /// held" cannot be read afterwards for what the door actually did — the flattening
@@ -2150,6 +2302,12 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        discriminating_red_module:
+            super::emitted_closure_compile_host::mutation_subject_rust_module(
+                &prepared.discriminating_red_subject,
+            )
+            .to_string(),
+        discriminating_red_line: prepared.discriminating_red_line,
         door_exit_status,
         door_emitted_bytes: door_emitted_bytes as i64,
         door_refusal_exit_status,
@@ -2458,6 +2616,206 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn m1c_scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("m1c-u2-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create the control's scratch directory");
+        dir
+    }
+
+    /// STREAMING CHANGED HOW THE BYTES ARE READ, NOT THE VALUE. At every read-buffer boundary the
+    /// streamed digest equals the one-shot digest the route used before, and the FIPS 180-4 vectors
+    /// hold (anchored at `extdeps.crypto.hash` `extdeps_external_authority_anchor`).
+    #[test]
+    fn a_streamed_digest_equals_the_one_shot_digest_at_every_buffer_boundary() {
+        use sha2::Digest;
+        let dir = m1c_scratch("stream");
+        const B: usize = 64 * 1024;
+        for size in [0, 1, B - 1, B, B + 1, 3 * B + 7] {
+            let bytes: Vec<u8> = (0..size)
+                .map(|i| (i.wrapping_mul(31) ^ (i >> 8)) as u8)
+                .collect();
+            let path = dir.join(format!("f{size}"));
+            std::fs::write(&path, &bytes).expect("write the specimen");
+            assert_eq!(
+                sha256_file(&path).expect("digest the specimen"),
+                format!("{:x}", sha2::Sha256::digest(&bytes)),
+                "size {size}"
+            );
+        }
+        let empty = dir.join("empty");
+        std::fs::write(&empty, b"").expect("write the empty vector");
+        assert_eq!(
+            sha256_file(&empty).expect("digest the empty vector"),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        let abc = dir.join("abc");
+        std::fs::write(&abc, b"abc").expect("write the abc vector");
+        assert_eq!(
+            sha256_file(&abc).expect("digest the abc vector"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE CLOSURE IDENTITY'S DEFINITION, PINNED AS IT STANDS: each sorted top-level `src/*.rs`
+    /// contributes its file name and then its bytes, with no separator and no length prefix, and no
+    /// other file contributes. U3 replaces this definition on purpose; this is the red that shows the
+    /// definition moved rather than drifted.
+    #[test]
+    fn the_closure_identity_is_name_then_bytes_over_sorted_rs_files() {
+        use sha2::Digest;
+        let dir = m1c_scratch("closure");
+        let src = dir.join("src");
+        std::fs::create_dir_all(&src).expect("create src");
+        let b: Vec<u8> = (0..(64 * 1024 + 3)).map(|i| (i % 251) as u8).collect();
+        std::fs::write(src.join("a.rs"), b"").expect("write a.rs");
+        std::fs::write(src.join("b.rs"), &b).expect("write b.rs");
+        std::fs::write(src.join("main.rs"), b"fn main() {}\n").expect("write main.rs");
+        std::fs::write(src.join("notes.txt"), b"not rust").expect("write notes.txt");
+        let mut h = sha2::Sha256::new();
+        h.update(b"a.rs");
+        h.update(b"b.rs");
+        h.update(&b);
+        h.update(b"main.rs");
+        h.update(b"fn main() {}\n");
+        assert_eq!(
+            emitted_closure_identity(&dir).expect("identify the fixture closure"),
+            format!("{:x}", h.finalize())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE FOOTPRINT AGREES WITH COREUTILS `du`: hard links counted once, symlinks not followed,
+    /// holes not counted as allocated, and the executable sized from its own name. A walk that
+    /// followed the symlink into `/bin` or counted the hard link twice disagrees with `du`.
+    #[test]
+    fn the_probe_root_footprint_agrees_with_du_on_hard_links_symlinks_and_holes() {
+        let root = m1c_scratch("footprint");
+        let target = root.join("target");
+        std::fs::create_dir_all(target.join("release").join("deps")).expect("create target");
+        let exe = target.join("release").join("bin");
+        std::fs::write(&exe, vec![7u8; 100_000]).expect("write the executable");
+        std::fs::hard_link(&exe, target.join("release").join("deps").join("bin-0123"))
+            .expect("link the executable into deps");
+        std::os::unix::fs::symlink("/bin", root.join("link-to-bin")).expect("symlink /bin");
+        std::fs::File::create(root.join("sparse"))
+            .and_then(|f| f.set_len(1 << 20))
+            .expect("create a sparse file");
+        std::fs::create_dir_all(root.join("nested").join("deeper")).expect("create nested dirs");
+        std::fs::write(root.join("nested").join("deeper").join("x"), b"x").expect("write x");
+        let f = probe_root_footprint(&root, &target, &exe).expect("measure the footprint");
+        let du = |args: &[&str]| -> u64 {
+            let out = Command::new("du")
+                .args(args)
+                .arg(&root)
+                .output()
+                .expect("run du");
+            String::from_utf8_lossy(&out.stdout)
+                .split_whitespace()
+                .next()
+                .expect("du printed a total")
+                .parse()
+                .expect("du's total is a number")
+        };
+        assert_eq!(
+            f.apparent_bytes,
+            du(&["-sb"]),
+            "apparent bytes against du -sb"
+        );
+        assert_eq!(
+            f.allocated_bytes,
+            du(&["-s", "-B1"]),
+            "allocated bytes against du -s -B1"
+        );
+        assert_eq!(f.executable_apparent_bytes, 100_000);
+        assert!(f.target_dir_allocated_bytes <= f.allocated_bytes);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A FILE LARGER THAN THE MEMORY CAP DIGESTS UNDER THE CAP, and equals coreutils `sha256sum`.
+    /// An operator receipt, run under a capped scope:
+    /// `systemd-run --user --scope -p MemoryMax=64M -p MemorySwapMax=0 <v1-compiler lib test binary>
+    /// cli_run::native_lane_runner::tests::a_file_larger_than_the_memory_cap_digests_under_the_cap
+    /// --exact --ignored`. It refuses to run unless its own cgroup is capped at 256 MiB or less, so it
+    /// cannot exhaust an uncapped host. The red is the whole-file read this replaced: killed by the cap.
+    #[test]
+    #[ignore]
+    fn a_file_larger_than_the_memory_cap_digests_under_the_cap() {
+        let cap = crate::memory_governor::leaf_cgroup_dir()
+            .and_then(|dir| crate::memory_governor::read_cgroup_u64(&dir, "memory.max"))
+            .expect("this control runs only inside a cgroup whose memory.max is a number");
+        assert!(
+            cap <= 256 << 20,
+            "memory.max={cap} is above 256 MiB; refusing to run without a cap that discriminates"
+        );
+        let dir = m1c_scratch("capped");
+        let path = dir.join("sparse-4g");
+        std::fs::File::create(&path)
+            .and_then(|f| f.set_len(4 << 30))
+            .expect("create a 4 GiB sparse file");
+        let ours = sha256_file(&path).expect("digest under the cap");
+        let out = Command::new("sha256sum")
+            .arg(&path)
+            .output()
+            .expect("run sha256sum");
+        let theirs = String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .next()
+            .expect("sha256sum printed a digest")
+            .to_string();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(ours, theirs);
+    }
+
+    /// THE SEED IDENTITY IS THE RUNNING IMAGE AFTER ITS PATH IS REPLACED. A local receipt: the
+    /// parent copies this test binary, starts the copy in child mode, renames a different file over
+    /// the copy's path, and only then lets the child digest `/proc/self/exe`. The child must report
+    /// the ORIGINAL copy's digest. The name-based route this replaced re-opens `<path> (deleted)`.
+    #[test]
+    #[ignore]
+    fn the_seed_identity_is_the_running_image_after_the_path_is_replaced() {
+        const CHILD: &str = "M1C_U2_SEED_CHILD_SYNC";
+        const NAME: &str =
+            "cli_run::native_lane_runner::tests::the_seed_identity_is_the_running_image_after_the_path_is_replaced";
+        if let Ok(sync) = std::env::var(CHILD) {
+            let go = Path::new(&sync).join("go");
+            for _ in 0..600 {
+                if go.exists() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            println!(
+                "M1C_SEED_DIGEST={}",
+                sha256_file(Path::new("/proc/self/exe")).expect("digest the running image")
+            );
+            return;
+        }
+        let dir = m1c_scratch("seed");
+        let seed = dir.join("seed");
+        std::fs::copy(std::env::current_exe().expect("this test binary"), &seed)
+            .expect("copy this test binary");
+        let original = sha256_file(&seed).expect("digest the copy");
+        let child = Command::new(&seed)
+            .args([NAME, "--exact", "--ignored", "--nocapture"])
+            .env(CHILD, &dir)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("start the copy");
+        let other = dir.join("other");
+        std::fs::write(&other, b"a different seed").expect("write the replacement");
+        std::fs::rename(&other, &seed).expect("replace the running copy's path");
+        std::fs::write(dir.join("go"), b"").expect("release the child");
+        let out = child.wait_with_output().expect("wait for the child");
+        let reported = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("M1C_SEED_DIGEST=").map(str::to_string))
+            .expect("the child reported the digest of its running image");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(reported, original);
+    }
 
     /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
     ///

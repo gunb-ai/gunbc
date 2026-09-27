@@ -1,0 +1,44 @@
+module gunbc.native_compiler_reuse_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// SEED GROWTH FOR M1.c U2: native-compiler cross-run reuse needs identities it can trust before any
+// artifact is served, and this unit makes the existing identities streamed, taken from the observed
+// bytes, and carried as values. Operator ruling 2026-09-27 assigned M1.c delivery to this lane and
+// admitted U0-U2 to proceed against a pinned base.
+//
+// MODIFIED, NOT ADDED (ExistingSeedItemModified per gunbc.seed_growth_admission
+// SeedGrowthChangeDisposition, not counted as additions, nothing netted against the additions below):
+// v1_compiler.cli_run.native_lane_runner sha256_file (streams through sha256_feed_file, same value),
+// emitted_closure_identity (streams; an unreadable directory entry refuses instead of silently leaving
+// the identity; same value on every successful run), prepare_emitted_compiler_for_entry (the seed
+// identity is read from /proc/self/exe; the discriminating red is destructured into the preparation;
+// the probe-root footprint is printed), EmittedPreparation (two red fields), SelfHostHeld and
+// V2NativeCliHeld (two red fields each), run_self_host and run_v2_native_cli (fill them), and
+// v1_compiler.target_invocation_host run_self_host and run_v2_native_cli (the instrument receipt line
+// names the red). The .dag authority those identities feed is gunbc.witness_v2_native_route
+// NativeRouteReceipt; the instrument lines are gunbc.instrument_targets self_host_label and
+// v2_native_cli_label.
+data native_compiler_reuse_u2_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "sha256_feed_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "ProbeRootFootprint", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "probe_root_footprint", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "m1c_scratch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "a_streamed_digest_equals_the_one_shot_digest_at_every_buffer_boundary", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "the_closure_identity_is_name_then_bytes_over_sorted_rs_files", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "the_probe_root_footprint_agrees_with_du_on_hard_links_symlinks_and_holes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "a_file_larger_than_the_memory_cap_digests_under_the_cap", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "the_seed_identity_is_the_running_image_after_the_path_is_replaced", field: WholeDeclaration }
+  ],
+
+  reason: "The native route's identities are about to become the inputs of a cross-run key (M1.c NativeCompilerArtifactRequest), and three of them could not carry that weight. The executable and seed digests read whole files into memory, so the memory an identity costs grew with the artifact; sha256_feed_file streams through a fixed 64 KiB buffer and gives the same SHA-256 value. The seed identity re-opened a file NAME minutes after emission, so a seed rebuilt in the meantime was refused as unreadable or, if the rename landed between lookup and open, recorded a binary that did not emit the closure; it is now read from /proc/self/exe, the running inode. The discriminating red was checked, printed and dropped, so a build later served from a store could not be admitted on the red it established; it is now the preparation's value and the instruments print it. probe_root_footprint measures the temporary space a cold build takes, so the store capacity and build-space obligations M1.c owes are sized from an observation. WHY RUST: every item is a host effect on the route's own files and process image (open/read, symlink_metadata, /proc/self/exe) inside the seed's native lane runner, which runs no interpreter; there is no .dag route to these bytes. PURPOSE ADMISSION under gunbc.v1_maintenance_standing v1_seed_standing (SemanticsFrozen, MaintenanceActive): it serves the v2 self-host program's native route. Streaming is a bounded operational fix with an unchanged value; the running-image seed identity is a defect repair; carrying the red preserves behavior. None of it is PublicSurfaceGrowth (no verb, flag or public item; the instrument receipt line only names what the instrument already established), none is NewEscapeHatchOrAdmissionRow (nothing is admitted that refused before), and none is SeedFeatureCompletion (no new capability the successor lacks). CONSUMERS (DESIGN section 3c): the streamed identities and the red are consumed by execution now -- the route and both instruments read them; the footprint line is read by the M1.c capacity decision (a declared frontier, trigger: the U5 capacity unit sizing the store from it). The controls are local receipts because no CI step runs this crate's unit tests (gunbc.rung_drop rust_unit_tests_off_the_merge_path).",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these items when the native route's preparation -- emission, crate assembly, build, identity and the discriminating red -- is performed by a native v2 generation rather than by the seed's native lane runner, so that the seed is no longer the producer whose identities a cross-run key reads. WHAT DOES NOT RETIRE THEM: moving the digest into another seed file; replacing SHA-256 with another family in the same function; or M1.c serving from a store while the seed still prepares every miss. Each leaves the seed as the producer of the identities.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs sha256_feed_file, ProbeRootFootprint, probe_root_footprint and their tests, called from prepare_emitted_compiler_for_entry behind gunbc test //v2/test/..., //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli"
+}
