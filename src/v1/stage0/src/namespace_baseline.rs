@@ -211,8 +211,8 @@ pub(crate) enum InterfaceChangeGround {
     /// inhabit the alias, so what it can strand is a site that ADMITS a value into it. Every
     /// direct reader is planned. It propagates only through INPUT positions
     /// (`input_interface_references`): a declaration that mentions the alias in a constructor
-    /// field, a parameter or an alias target admits values into it without naming it, while a
-    /// return type or a read of `b.f` supplies nothing. A LOOSENED predicate strands no
+    /// field, a parameter, an alias target or a returned function's parameter admits values into it
+    /// without naming it, while a plain return type or a read of `b.f` supplies nothing. A LOOSENED predicate strands no
     /// admission, but it is planned exactly the same way: loosening is not decided here, and
     /// planning it is the sound direction.
     RefinementPredicatesChanged,

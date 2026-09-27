@@ -285,9 +285,10 @@ pub struct ModuleDeclarationRecord {
     /// changed -- while a body reference does not.
     pub interface_references: BTreeSet<(String, String)>,
     /// The subset of `interface_references` in an INPUT position: every interface occurrence
-    /// except those inside a function's return type. A value is admitted into a type through an
-    /// input position -- a constructor field, a parameter, an alias target -- and only through
-    /// one; a return type is an output, and reading `b.f` supplies nothing. A refinement change
+    /// except those inside a function's return type, when that return type contains no function
+    /// type. A value is admitted into a type through an input position -- a constructor field, a
+    /// parameter, an alias target, or a parameter of a function a caller receives -- and only
+    /// through one; a plain return type is an output, and reading `b.f` supplies nothing. A refinement change
     /// propagates through these alone (`namespace_baseline` `RefinementPredicatesChanged`).
     pub input_interface_references: BTreeSet<(String, String)>,
     /// WHERE-REFINED ALIASES: declaration -> (its refinement predicates, serialized canonically
