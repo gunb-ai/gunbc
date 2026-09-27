@@ -1,4 +1,4 @@
-module test.claim.generic_coproduct_return_argument_witness
+module test.claim.declared_type_generic_coproduct_return_witness_test
 
 import gunbc.compile_diagnostic_census {
   CensusObserved,
