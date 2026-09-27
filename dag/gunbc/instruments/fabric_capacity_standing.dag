@@ -603,7 +603,14 @@ fn fabric_capacity_standing() -> ProcessExit
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
       match now_epoch_seconds() {
         Absent => exit_failure(reason: "fabric capacity standing: the clock could not be read as epoch seconds, so the lease standing of the authority cannot be derived")
-        Present { value: at } => fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
+        Present { value: at } => fabric_capacity_standing_at(executor: executor, at: at)
       }
   }
+}
+
+// THE ENTRY BELOW ITS OBSERVATIONS: the executor and the instant are supplied, and the authority
+// is still read from the log that executor resolves. A claim about an executor with no event log
+// placement supplies one here instead of depending on which host happened to run it.
+fn fabric_capacity_standing_at(executor: String, at: EpochSecs) -> ProcessExit {
+  fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
 }

@@ -2,26 +2,42 @@ module test.claim.spark.fabric_capacity_standing_wet_witness
 
 import std.logic { Bool }
 import std.types { String }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitSuccess, ExitFailure }
-import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.roadmap_dashboard_instance { DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
+import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing_at }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE LIVE ENTRY, EXECUTED. test.claim.spark.fabric_capacity_standing_witness drives the verdict
-// over a SUPPLIED roster so the real group_report producer and its binding run hermetically; this
-// file is the other half of DESIGN §3's pairing obligation, the one that cannot be hermetic: the
-// entry reads the executor's hostname (shell.Exec.RunArgv, no mock_response), resolves its event
-// log layout and reads every claimed group's authority from the log before any standing is
-// judged. On the wet lane's runner that read does not reach a log -- the runner is no dashboard
-// host, or its remote is unreachable -- so the honest verdict is a refusal that NAMES THE READ:
-// every claimed group is reported "serving authority could not be read at <step>", and no
-// group's capacity is stood for. That is the route: deleting the live binding, or letting an
-// unreadable log fall back to the source row, changes this text.
+// The executor this claim is about: a host with no event log placement. It is SUPPLIED (DESIGN §3,
+// a witness discriminates at one interface), because the executor the runner observes is not the
+// claim's subject -- srv1 is both a CI runner and a declared dashboard host, so observing it made
+// the verdict a function of which runner took the job (gunbc.recurring_failure_mode
+// wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+data off_fleet_executor: String = "off-fleet-witness-executor"
+
+// THE LIVE ENTRY BELOW ITS OBSERVATIONS, EXECUTED. test.claim.spark.fabric_capacity_standing_witness
+// drives the verdict over a SUPPLIED roster; this is the other half of DESIGN §3's pairing
+// obligation: fabric_capacity_standing_at resolves the supplied executor's event log layout
+// through the real host-store derivation and reads every claimed group's authority before any
+// standing is judged. The executor is first shown to have no declared placement, so the refusal
+// that NAMES THE READ -- "serving authority could not be read at <step>" -- is the route and not
+// an accident of the runner. Deleting the log read, or letting an unreadable log fall back to the
+// source row, changes this text.
 test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
-  match fabric_capacity_standing() {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: reason } =>
-      string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+  match dashboard_instance_for_host(host: off_fleet_executor) {
+    DashboardInstanceForHost { instance: _ } => false
+    DashboardInstanceHostUnknown { host: _ } =>
+      match now_epoch_seconds() {
+        Absent => false
+        Present { value: at } =>
+          match fabric_capacity_standing_at(executor: off_fleet_executor, at: at) {
+            ExitSuccess => false
+            ExitFailure { code: _, reason: reason } =>
+              string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+          }
+      }
   }
 }
