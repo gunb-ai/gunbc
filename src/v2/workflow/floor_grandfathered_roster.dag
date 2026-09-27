@@ -125,6 +125,14 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessDeleted {
+    identity: "v2.test.claim.parse_engine_hooks_test.parse_engine_hooks_symbols_match_grammar_productions" as NonEmptyStr,
+    deleted_in: "parse_engine_hooks deletion (follow-up to gunbc#12376): v2.compiler.parse_engine_hooks was unconsumed -- v2.compiler.parse imported its three Symbols and read none -- and one of them named dag_production_match_arm_body, a production extdeps.languages.dag does not declare. The module is deleted, so the claim comparing its constants to literals has no subject" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds" as NonEmptyStr,
+    deleted_in: "parse_engine_hooks deletion (follow-up to gunbc#12376): the self-host behavioral receipt for a deleted module; checking the emitted contract of dead code is residue. Its roster row, driver and wet-receipt standing row are deleted with it" as NonEmptyStr
+  },
   WitnessRenamed {
     previous_identity: "v2.test.claim.c_compilation_unit_witness.witness_partition_fold_compat_wrapper_not_receipt_path" as NonEmptyStr,
     new_identity: "v2.test.claim.c_compilation_unit_witness.witness_partition_fold_outcome_yields_both_units" as NonEmptyStr,

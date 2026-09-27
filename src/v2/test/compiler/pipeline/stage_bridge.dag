@@ -6,7 +6,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.dag {
@@ -118,7 +118,7 @@ fn pipeline_normalize_source(source: String, file: Symbol) -> Outcome<Normalized
   )
 }
 
-fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
+fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: pipeline_normalize_source(source: source, file: file),
     f: fn(normalized) {
@@ -138,7 +138,7 @@ fn pipeline_inferred_source(source: String, file: Symbol) -> Outcome<InferredTre
   bind_outcome(
     o: pipeline_resolved_source(source: source, file: file),
     f: fn(resolved) {
-      pipeline_inferred_arrow_from_resolved(resolved: resolved)
+      pipeline_inferred_arrow_from_resolved(resolved: resolved.root)
     }
   )
 }
@@ -293,7 +293,7 @@ fn pipeline_match_corpus_resolve_relationship_holds() -> Bool {
     file: ^pipeline_corpus_match_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
-      pipeline_arrow_body_has_behavior(root: tree, wanted: Match)
+      pipeline_arrow_body_has_behavior(root: tree.root, wanted: Match)
     Rejected { diagnostics: _ } => false
   }
 }

@@ -20,7 +20,7 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_witness_for_node, infer }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_arrow_with_body_node,
@@ -117,7 +117,7 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-fn ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
+fn ingested_resolved_module_from_source(source: String) -> Outcome<ResolvedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source, file: ^ingested_classical_not_file, rules: lm.lex),
@@ -141,11 +141,11 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
   bind_outcome(
     o: ingested_resolved_module_from_source(source: source),
     f: fn(resolved) {
-      match ingested_find_arrow_in_module(root: resolved) {
+      match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } => outcome_accepted(value: arrow)
         Absent =>
           outcome_rejected(
-            d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved)
+            d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)
           )
       }
     }

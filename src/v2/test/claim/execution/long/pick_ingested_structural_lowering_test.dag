@@ -14,7 +14,7 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
@@ -262,7 +262,7 @@ test fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
   )
 }
 
-fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
+fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<ResolvedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
@@ -282,11 +282,11 @@ fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
   )
 }
 
-fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
+fn pick_ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: pick_ingested_resolved_module_from_source(source: source),
     f: fn(resolved) {
-      match pick_ingested_find_arrow_in_module(root: resolved) {
+      match pick_ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } => outcome_accepted(value: arrow)
         Absent =>
           outcome_rejected(
@@ -409,7 +409,7 @@ test fn pick_ingested_pick_true_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow,
+          callee: arrow.root,
           expected_lexeme: "1"
         )
       )
@@ -422,7 +422,7 @@ test fn pick_ingested_pick_false_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow,
+          callee: arrow.root,
           expected_lexeme: "2"
         )
       )
@@ -435,7 +435,7 @@ test fn pick_ingested_swapped_arms_red_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow,
+          callee: arrow.root,
           expected_lexeme: "1"
         )
       ) == false
@@ -466,7 +466,7 @@ test fn pick2_ingested_pick_true_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow,
+          callee: arrow.root,
           expected_lexeme: "3"
         )
       )
@@ -479,7 +479,7 @@ test fn pick2_ingested_pick_false_executes_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow,
+          callee: arrow.root,
           expected_lexeme: "4"
         )
       )
@@ -492,7 +492,7 @@ test fn pick2_ingested_swapped_arms_red_holds() -> Bool {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
-          callee: arrow,
+          callee: arrow.root,
           expected_lexeme: "3"
         )
       ) == false
