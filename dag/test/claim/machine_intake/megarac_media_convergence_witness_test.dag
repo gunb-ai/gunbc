@@ -1,7 +1,7 @@
 module test.claim.machine_intake.megarac_media_convergence_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, EpochMs, NonEmptyStr, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
@@ -475,6 +475,10 @@ fn observed(general: String, configurations: String) -> MegaRacAttachResult {
   }
 }
 
+fn only_finding_contains(findings: List<String>, pattern: String) -> Bool {
+  count(findings) == 1 && (match findings.first() { Present { value: f } => string_contains(s: f, pattern: pattern)  Absent => false })
+}
+
 data served_look: MegaRacAttachResult = observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: presenting_in(name: desired_census as String, status: "1", session: "0"))
 
 test fn a_started_bound_presentation_is_still_served() -> Bool {
@@ -486,17 +490,14 @@ test fn a_started_bound_presentation_is_still_served() -> Bool {
 test fn the_36330382023_after_state_is_a_loss_after_handoff() -> Bool {
   let lost = observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "16", session: "255"))
   (match presentation_still_served(result: lost) { PresentationNoLongerReady { reason: _ } => true _ => false })
-    && (match handoff_media_findings(h: HandoffMediaHandedOff { before: served_look, after: lost }) {
-      [f] => string_contains(s: f, pattern: "LOST at or after")
-      _ => false
-    })
-    && (match handoff_media_findings(h: HandoffMediaHandedOff { before: served_look, after: served_look }) { [] => true _ => false })
+    && only_finding_contains(findings: handoff_media_findings(h: HandoffMediaHandedOff { before: served_look, after: lost }), pattern: "LOST at or after")
+    && (count(handoff_media_findings(h: HandoffMediaHandedOff { before: served_look, after: served_look })) == 0)
 }
 
 test fn a_withdrawn_row_or_an_unobserved_look_is_not_served() -> Bool {
   (match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]")) { PresentationNoLongerReady { reason: _ } => true _ => false })
     && (match presentation_still_served(result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "403" }, session_release: SessionReleaseNotAttempted }) { PresentationNoLongerReady { reason: _ } => true _ => false })
-    && (match handoff_media_findings(h: HandoffMediaWithheldAtRecheck { before: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }) { [f] => string_contains(s: f, pattern: "no boot-device or power write") _ => false })
+    && only_finding_contains(findings: handoff_media_findings(h: HandoffMediaWithheldAtRecheck { before: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }), pattern: "no boot-device or power write")
 }
 
 // ─── RECEIPTS FOR THE TWO BETS ──────────────────────────────────────────────────────────────────

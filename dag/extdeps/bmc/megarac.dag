@@ -78,7 +78,6 @@ data megarac_supported_protocols_floor: List<BmcProtocol> = [Ipmi]
 // with form-encoded username/password; the JSON reply carries CSRFToken, and every
 // subsequent request presents the session cookie plus header X-CSRFTOKEN.
 // ---------------------------------------------------------------------------------------------
-
 type MegaRacApiOperation {
   http_method: NonEmptyStr
   path: NonEmptyStr
@@ -135,7 +134,6 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 // exits and the rule that no later observation overwrites a terminal one are modelled in
 // gunbc.machine_intake_mount_establishment, which is where they belong: what our polling saw is
 // a receipt of OUR attempt, never a fact this vendor module owns.
-
 data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_session_login,
   megarac_op_media_config,
@@ -171,7 +169,6 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
 // AMI advertises Redfish on other builds; this surface does not carry it. Status-code meanings
 // are a separate fact, cited on megarac_redirection_status_of_wire.
 // ---------------------------------------------------------------------------------------------
-
 data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.32",
@@ -180,7 +177,6 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
-
 // REDIRECTION_STATUS. The 255-path catalog does not contain these mappings. The codes that this
 // decoder names are the ones committed observations actually returned on firmware 0.32:
 // 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started

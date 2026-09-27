@@ -18,7 +18,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // callers; this witness hands that source to the compiler through the diagnostic-census harness and
 // requires the refusal CLASS at each SUBJECT by name -- an identity join, so a probe refusing for any
 // other reason measures another wall. The harness control shows the census ran.
-
 data probe_dir: String = "dag/test/probe/"
 
 fn probe_source(name: String) -> String {

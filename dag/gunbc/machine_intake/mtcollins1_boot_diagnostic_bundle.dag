@@ -138,7 +138,6 @@ import gunbc.machine_intake_megarac_media_attach {
 // endpoint, at what instant", and one for "the attempt ended before this could be read, and
 // why". A BMC that does not answer (operator, 2026-09-23: 192.168.1.228 unreachable after a DIMM
 // reseat) is itself a diagnosis, so it has its own arm.
-
 // WHY A BMC READ FAILED. Every arm carries the endpoint it addressed and the instant of the
 // attempt. The transport's own exit code and stderr are the evidence: curl 6/7 (name not
 // resolved, connection refused or host unreachable), curl 28 (timeout), curl 22 with an HTTP
@@ -482,6 +481,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
         match p { CdErrorBeforeAnyWrite => "before any write, so nothing was written"  CdErrorAtReadiness => "at readiness, so no boot-device or power handoff was made" },
         ": ", g,
       ], "") }
+    MegaRacPresentationObserved { share: _, readiness: _ } =>
+      Present { value: "a read-only presentation observation reached an attach decision; observations never attach and never open the handoff" }
     MegaRacShareUnreadable { detail: d } =>
       Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
     MegaRacSessionRefused { detail: d } => Present { value: concat("session refused: ", d) }
@@ -754,7 +755,6 @@ fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
 }
 
 // ── THE SEL DELTA ────────────────────────────────────────────────────────────────────────────
-
 type SelDeltaReading
   = SelDeltaDecoded { delta: SelDelta }
   | SelDeltaRefused { cause: NonEmptyStr }
@@ -816,7 +816,6 @@ fn sel_event_is_memory_or_processor(event: SelWindowEvent) -> Bool {
 }
 
 // ── DECISIVE FINDINGS ────────────────────────────────────────────────────────────────────────
-
 // THE SOCKETS THE CENSUS OBSERVED, derived from its slot rows rather than restated.
 fn distinct_ints(xs: List<Int>) -> List<Int> {
   let empty: List<Int> = []
@@ -1078,7 +1077,6 @@ fn mtcollins1_boot_outcome_with_findings(outcome: ProcessExit, findings: List<St
 }
 
 // ── RENDER ───────────────────────────────────────────────────────────────────────────────────
-
 fn sel_snapshot_text(label: String, s: SelSnapshotReading) -> String {
   match s {
     SelSnapshotRead { raw: r, at: a } => concat(label, ": read at ", a as String, ", ", to_string(count(filter(split(s: r, delimiter: "\n"), l => trim(l) != ""))), " record(s)")
@@ -1266,7 +1264,6 @@ fn mtcollins1_boot_diagnostics_allowance() -> Second {
 }
 
 // ── READS (effects) ──────────────────────────────────────────────────────────────────────────
-
 fn mtcollins1_ipmi_endpoint() -> NonEmptyStr {
   concat("ipmi lanplus ", mtcollins1_endpoint.host as String) as NonEmptyStr
 }
@@ -1514,7 +1511,6 @@ fn assemble_processor_members(collection: NonEmptyStr, at: NonEmptyStr, bodies: 
 }
 
 // ── REDFISH READS UNDER THE BUDGET ───────────────────────────────────────────────────────────
-
 // THE BUDGET DECISION IS PURE: a read the budget cannot pay for is refused before any request is
 // made, and the refusal names what the transaction did not reach.
 fn redfish_budget_refusal(url: NonEmptyStr, at: NonEmptyStr, left: Int, not_reached: String) -> BmcReadCause? {

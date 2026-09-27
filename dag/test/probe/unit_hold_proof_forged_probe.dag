@@ -8,7 +8,6 @@ module test.probe.unit_hold_proof_forged_probe
 //     ConstructorCallAdmissionRefused, keyed by the callee's name;
 //   - THE SKIP-THE-HOLD MUTATION: the hold-owning boot path refuses any caller but
 //     mtcollins1_boot_wet_on_srv1, and the actuation and the acquire refuse any caller outside their roots.
-
 import std.types { NonEmptyStr, String }
 import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }

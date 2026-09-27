@@ -47,7 +47,6 @@ import gunbc.machine_intake_megarac_media_attach {
 // module and the fetch module two authorities for one fact — the artifact this host boots — which
 // admitted verifying one image and attaching another, with every individual step reporting success.
 // See gunbc.machine_intake_mtcollins1_boot_artifact.
-
 // THE JAR IS ATTEMPT-OWNED, AND A FIXED LITERAL HERE WAS THE DEFECT. extdeps.bmc.megarac's note
 // once claimed that making the jar a parameter meant an attempt owned its own — it does not: a
 // parameter PERMITS a per-attempt path and this wrapper passed a constant, so two concurrent
