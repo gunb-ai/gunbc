@@ -59,14 +59,21 @@ fn ams_carries(nodes: List<Node>, identity: Symbol) -> Bool {
   }
 }
 
+fn ams_edge_named(e: Edge, name: Symbol) -> Bool {
+  match e.label {
+    Named { name: n } => n == name
+    Positional => false
+  }
+}
+
+fn ams_node_names_member(n: Node, name: Symbol) -> Bool {
+  ams_edges_name(edges: n.children, name: name)
+}
+
 fn ams_edges_name(edges: List<Edge>, name: Symbol) -> Bool {
   match edges {
     Empty => false
-    Cons { head: e, tail: rest } =>
-      match e.label {
-        Named { name: n } => (n == name) || ams_edges_name(edges: rest, name: name)
-        Positional => ams_edges_name(edges: rest, name: name)
-      }
+    Cons { head: e, tail: rest } => ams_edge_named(e: e, name: name) || ams_edges_name(edges: rest, name: name)
   }
 }
 
@@ -74,7 +81,7 @@ fn ams_edges_name(edges: List<Edge>, name: Symbol) -> Bool {
 fn ams_names_member(nodes: List<Node>, name: Symbol) -> Bool {
   match nodes {
     Empty => false
-    Cons { head: n, tail: rest } => ams_edges_name(edges: n.children, name: name) || ams_names_member(nodes: rest, name: name)
+    Cons { head: n, tail: rest } => ams_node_names_member(n: n, name: name) || ams_names_member(nodes: rest, name: name)
   }
 }
 
