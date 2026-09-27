@@ -3,6 +3,13 @@ module v2.compiler.reference_conservation_census
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
+  filesystem_file_observation,
+  filesystem_listing_observation,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileRead,
+  FilesystemFileSubjectRefused,
   FilesystemReadSucceeded,
   FilesystemReadRefused,
 }
@@ -50,37 +57,83 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 // the same recorded reason: a whole-corpus fold in one process is the load this route exists to
 // avoid. An unreadable path is its own line, never an omission.
 
-// WHAT ONE LISTED PATH YIELDED, TYPED. A path the list names but the tree no longer has is
-// SamplePathMissing -- its own disposition, never an omission and never a zero report -- because a
-// pinned sample whose members silently vanish reports on a smaller population than it claims.
+// WHAT ONE LISTED PATH YIELDED, TYPED. The file is observed through
+// extdeps.filesystem.filesystem_io filesystem_file_observation, which establishes absence from a
+// successful LISTING and never from a failed read (review 71731): a stale pin and an unreadable file
+// call for opposite fixes -- repin, versus find out what is wrong with the environment -- so they
+// are two arms, and the second keeps the host's cause.
+//   SamplePathMissing: the parent directory's listing establishes the file is not there. Only this
+//     arm means the pin is stale.
+//   SamplePathUnreadable: the file is listed but its read failed; the cause is the host's.
+//   SamplePathObservationsDisagree: the listing and the read contradict each other.
+//   SamplePathSubjectRefused: the path does not name a directory entry the listing can be asked about.
 type SamplePathObservation
   = SamplePathMeasured { report: ReferenceConservationReport }
   | SamplePathMissing { path: String }
+  | SamplePathUnreadable { path: String, cause: String }
+  | SamplePathObservationsDisagree { path: String, cause: String }
+  | SamplePathSubjectRefused { path: String, cause: String }
   | SamplePathGrammarUnprepared { path: String }
 
-fn reference_conservation_path_observation(path: String) -> SamplePathObservation {
-  let read = Filesystem.Read(path: path)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: _ } => SamplePathMissing { path: path }
-    FilesystemReadSucceeded { content: text } =>
-      match dag_prepared_grammar() {
-        Rejected { diagnostics: _ } => SamplePathGrammarUnprepared { path: path }
-        Accepted { value: prepared, diagnostics: residue } =>
-          SamplePathMeasured {
-            report: reference_conservation_of_read(
-              read: conservation_read_of(path: path, text: text),
-              lm: dag_language_model(),
-              prepared: prepared,
-              residue: residue
-            )
-          }
+// A listed path's parent directory and entry name, split at its last `/`.
+type SamplePathParts {
+  directory: String
+  name: String
+}
+
+fn sample_path_parts(path: String) -> SamplePathParts {
+  fold_list(xs: split(s: path, delimiter: "/"), empty: SamplePathParts { directory: "", name: "" }, cons: fn(acc, part) {
+    if acc.name == "" {
+      SamplePathParts { directory: acc.directory, name: part }
+    } else {
+      if acc.directory == "" {
+        SamplePathParts { directory: acc.name, name: part }
+      } else {
+        SamplePathParts { directory: acc.directory + "/" + acc.name, name: part }
       }
+    }
+  })
+}
+
+fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => SamplePathGrammarUnprepared { path: path }
+    Accepted { value: prepared, diagnostics: residue } =>
+      SamplePathMeasured {
+        report: reference_conservation_of_read(
+          read: conservation_read_of(path: path, text: text),
+          lm: dag_language_model(),
+          prepared: prepared,
+          residue: residue
+        )
+      }
+  }
+}
+
+fn reference_conservation_path_observation(path: String) -> SamplePathObservation {
+  let parts = sample_path_parts(path: path)
+  let listed = Filesystem.List(path: parts.directory)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: parts.directory, success: listed.success, entries: listed.entries, error: listed.error),
+    name: parts.name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+  ) {
+    FilesystemFileRead { path: _, content: text } => sample_path_measured(path: path, text: text)
+    FilesystemFileAbsent(_) => SamplePathMissing { path: path }
+    FilesystemFileIndeterminate { cause: c } => SamplePathUnreadable { path: path, cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => SamplePathObservationsDisagree { path: path, cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => SamplePathSubjectRefused { path: path, cause: c }
   }
 }
 
 fn sample_path_observation_text(observation: SamplePathObservation) -> String {
   match observation {
     SamplePathMissing { path: p } => "missing " + p + "\n"
+    SamplePathUnreadable { path: p, cause: c } => "unreadable " + p + " " + c + "\n"
+    SamplePathObservationsDisagree { path: p, cause: c } => "observations-disagree " + p + " " + c + "\n"
+    SamplePathSubjectRefused { path: p, cause: c } => "subject-refused " + p + " " + c + "\n"
     SamplePathGrammarUnprepared { path: p } => "grammar-unprepared " + p + "\n"
     SamplePathMeasured { report: r } =>
       fold_list(xs: reference_conservation_report_lines(report: r), empty: "", cons: fn(acc, line) { acc + line + "\n" })
@@ -205,9 +258,9 @@ fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> P
 // earlier wording (the share is over all files, not over the small ones). The 8,000-byte cap bounds
 // the run and biases the sample toward small files; a shape that only appears in large files is
 // not in it, and the full census is what closes that gap. The list is kept here so the sample
-// re-runs byte-for-byte. A listed path the tree no longer holds is reported SamplePathMissing, so a
-// stale pin is visible in the census rather than a smaller population; repinning re-applies the
-// rule at a named revision.
+// re-runs byte-for-byte. A listed path the tree no longer holds is reported SamplePathMissing (its
+// absence established by a listing, not inferred from a failed read), so a stale pin is visible in
+// the census rather than a smaller population; repinning re-applies the rule at a named revision.
 data reference_conservation_stratified_sample_paths: List<String> = [
   "dag/examples/blackjack/cards.dag",
   "dag/examples/blackjack/hand.dag",
