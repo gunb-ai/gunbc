@@ -1746,7 +1746,7 @@ fn megarac_observe_with_token(
 // PresentationStillReady admits a handoff; each other answer withholds and says which it was.
 type PresentationStillServed
   = PresentationStillReady
-  | PresentationReadyButSessionHeld { release: SessionRelease }
+  | PresentationReadyButSessionHeld { held: SessionRelease }
   | PresentationNoLongerReady { reason: NonEmptyStr }
   | PresentationStateUnestablished { cd_error: CdErrorReading }
   | PresentationUnobserved { reason: NonEmptyStr }
@@ -1767,7 +1767,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
                 CdErrorRead { code: CdErrorNone } =>
                   match result.session_release {
                     SessionReleased => PresentationStillReady
-                    other => PresentationReadyButSessionHeld { release: other }
+                    other => PresentationReadyButSessionHeld { held: other }
                   }
                 CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
                 other => PresentationStateUnestablished { cd_error: other }

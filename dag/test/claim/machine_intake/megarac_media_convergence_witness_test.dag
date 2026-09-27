@@ -568,7 +568,7 @@ test fn a_failed_look_is_indeterminate_not_lost() -> Bool {
 // THE RECHECK OWES ITS OWN CLEANUP: identical bodies, differing release -> only the released one admits.
 test fn the_recheck_withholds_when_its_own_session_was_not_released() -> Bool {
   let held = MegaRacAttachResult { outcome: served_look.outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none }
-  (match presentation_still_served(result: held) { PresentationReadyButSessionHeld { release: _ } => true _ => false })
+  (match presentation_still_served(result: held) { PresentationReadyButSessionHeld { held: _ } => true _ => false })
     && (match presentation_still_served(result: served_look) { PresentationStillReady => true _ => false })
 }
 

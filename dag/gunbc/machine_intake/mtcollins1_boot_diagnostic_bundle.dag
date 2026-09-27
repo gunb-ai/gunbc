@@ -601,7 +601,7 @@ fn handoff_media_text(h: MtCollins1HandoffMedia) -> String {
 fn recheck_text(v: PresentationStillServed) -> String {
   match v {
     PresentationStillReady => "served"
-    PresentationReadyButSessionHeld { release: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
+    PresentationReadyButSessionHeld { held: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
     PresentationNoLongerReady { reason: why } => concat("AFFIRMED not served: ", why as String)
     PresentationStateUnestablished { cd_error: c } => concat("UNESTABLISHED: cd_error_code ", cd_reading_text(r: c))
     PresentationUnobserved { reason: why } => concat("UNOBSERVED (indeterminate, not a withdrawal): ", why as String)
@@ -622,7 +622,7 @@ fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
         PresentationNoLongerReady { reason: why } => [concat("the presentation was LOST at or after the boot-device and power handoff (", concat(why as String, concat("): ", observation_text(r: a))))]
         PresentationUnobserved { reason: why } => [concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", concat(why as String, concat("): ", observation_text(r: a))))]
         PresentationStateUnestablished { cd_error: c } => [concat("after the handoff the presentation read Started but cd_error_code was ", concat(cd_reading_text(r: c), concat(", so its state is unestablished: ", observation_text(r: a))))]
-        PresentationReadyButSessionHeld { release: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
+        PresentationReadyButSessionHeld { held: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
       }
   }
 }
