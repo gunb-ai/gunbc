@@ -1691,17 +1691,12 @@ fn infer_formals_in_declared_order(formals: List<InhabitanceFormal>, labels: Lis
     let indexed = fold(labels, init: InferIndexWalk { index: 0, labels: Empty }, f: fn(acc, l) {
       InferIndexWalk { index: acc.index + 1, labels: Cons { head: InferIndexedLabel { label: l, position: acc.index }, tail: acc.labels } }
     }).labels
-    let pairs = zip_map(
-      a: sort_by(indexed, infer_indexed_label_key),
-      b: sort_by(formals, infer_formal_identity_key),
-      f: fn(il, f) { InferFormalPairing { indexed: il, formal: f } }
+    let pairs = infer_pair_by_label(
+      labels: sort_by(indexed, infer_indexed_label_key),
+      formals: sort_by(formals, infer_formal_identity_key)
     )
-    if fold(pairs, init: true, f: fn(acc, p) { acc && (p.indexed.label == p.formal.parameter_identity) }) {
-      FormalsInDeclaredOrder {
-        formals: infer_formal_list_reverse(
-          xs: fold(sort_by(pairs, infer_pairing_position_key), init: Empty, f: fn(acc, p) { Cons { head: p.formal, tail: acc } })
-        )
-      }
+    if infer_pairings_match(pairs: pairs) {
+      FormalsInDeclaredOrder { formals: infer_pairings_in_declared_order(pairs: pairs) }
     } else {
       FormalsOrderRefused { reason: application_parameter_order_malformed_reason() }
     }
@@ -1720,6 +1715,27 @@ fn infer_formal_identity_key(f: InhabitanceFormal) -> Symbol {
 
 fn infer_pairing_position_key(p: InferFormalPairing) -> Int {
   p.indexed.position
+}
+
+// Folds over the pairings take them as a TYPED parameter: the emitter types a fold's element from
+// the list's declared type, and a zip_map result reached inline carries none (it emitted an error
+// type and refused the emitted crate).
+fn infer_pair_by_label(labels: List<InferIndexedLabel>, formals: List<InhabitanceFormal>) -> List<InferFormalPairing> {
+  zip_map(a: labels, b: formals, f: fn(il, f) { InferFormalPairing { indexed: il, formal: f } })
+}
+
+fn infer_pairings_match(pairs: List<InferFormalPairing>) -> Bool {
+  fold(pairs, init: true, f: fn(acc, p) { acc && (p.indexed.label == p.formal.parameter_identity) })
+}
+
+fn infer_pairings_in_declared_order(pairs: List<InferFormalPairing>) -> List<InhabitanceFormal> {
+  infer_formal_list_reverse(
+    xs: infer_pairing_formals_reversed(pairs: sort_by(pairs, infer_pairing_position_key))
+  )
+}
+
+fn infer_pairing_formals_reversed(pairs: List<InferFormalPairing>) -> List<InhabitanceFormal> {
+  fold(pairs, init: Empty, f: fn(acc, p) { Cons { head: p.formal, tail: acc } })
 }
 
 fn infer_formal_list_reverse(xs: List<InhabitanceFormal>) -> List<InhabitanceFormal> {
