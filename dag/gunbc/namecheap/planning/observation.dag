@@ -36,15 +36,15 @@ fn dns_field(v: JsonValue, key: String) -> JsonValue {
 fn dns_elements(v: JsonValue) -> List<JsonValue> { match v { JsonArray { elements } => elements _ => [] } }
 fn dns_string_object(v: JsonValue) -> Bool {
   match v {
-    JsonObject { members } => all(members, f => f.key != "" && count(members.filter(other => other.key == f.key)) == 1 && match f.value { JsonString { value: _ } => true _ => false })
+    JsonObject { members: object_members } => all(object_members, f => f.key != "" && count(object_members.filter(other => other.key == f.key)) == 1 && match f.value { JsonString { value: _ } => true _ => false })
     _ => false
   }
 }
 fn dns_unique_object(v: JsonValue) -> Bool {
-  match v { JsonObject { members } => all(members, f => count(members.filter(other => other.key == f.key)) == 1) _ => false }
+  match v { JsonObject { members: object_members } => all(object_members, f => count(object_members.filter(other => other.key == f.key)) == 1) _ => false }
 }
 fn dns_attrs(v: JsonValue) -> List<XmlAttribute> {
-  match v { JsonObject { members } => map(members, f => XmlAttribute { name: f.key, value: dns_string(v: v, key: f.key) }) _ => [] }
+  match v { JsonObject { members: object_members } => map(object_members, f => XmlAttribute { name: f.key, value: dns_string(v: v, key: f.key) }) _ => [] }
 }
 fn dns_attr(fields: List<XmlAttribute>, name: String) -> String {
   match fields.filter(f => f.name == name).first() { Present { value: f } => f.value Absent => "" }

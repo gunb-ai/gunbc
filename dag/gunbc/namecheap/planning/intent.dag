@@ -19,7 +19,7 @@ type DevDnsIntent { services: List<DevServiceAddress>, challenges: List<Dns01Cha
 type DevDnsIntentRead = DevDnsIntentReadOk { intent: DevDnsIntent } | DevDnsIntentReadRefused { reason: String }
 
 fn dns_keys_exact(v: JsonValue, keys: List<String>) -> Bool {
-  dns_unique_object(v: v) && match v { JsonObject { members } => count(members) == count(keys) && all(members, m => keys.any(k => k == m.key)) _ => false }
+  dns_unique_object(v: v) && match v { JsonObject { members: object_members } => count(object_members) == count(keys) && all(object_members, m => keys.any(k => k == m.key)) _ => false }
 }
 fn dns_known_service(s: String) -> Bool { s == dev_dns_service_id(s: TrackerDev) || s == dev_dns_service_id(s: ApprovalsDev) }
 // Only called after dns_known_service admission.
