@@ -81,16 +81,40 @@ fn mtcollins1_boot_start_word(start: MtCollins1BootStart) -> String {
   }
 }
 
-// AN UNREADABLE CLOCK IS PRINTED AS ITS CAUSE, never as 0 (std.observation observation_measured_note).
-fn mtcollins1_boot_millis_between(from: ClockUnixMillisRead, to: ClockUnixMillisRead) -> String {
+// A DURATION BETWEEN TWO READINGS IS ONE OF THREE THINGS, never a bare number. The clock is the
+// host's wall clock (extdeps.clock UnixMillis is `date +%s%3N`), which NTP may step while a boot
+// runs, so a later reading below an earlier one is a STEP, not a negative duration, and it is
+// refused rather than printed as time. An unreadable reading prints its cause, never 0
+// (std.observation observation_measured_note). A forward step is not detectable from two
+// readings: that residue waits on a monotonic clock read in extdeps.clock (a declared frontier).
+type MtCollins1PhaseDuration
+  = PhaseElapsed { millis: Int }
+  | PhaseClockUnread { detail: String }
+  | PhaseClockSteppedBack { from: Int, to: Int }
+
+fn mtcollins1_boot_phase_duration(from: ClockUnixMillisRead, to: ClockUnixMillisRead) -> MtCollins1PhaseDuration {
   match from {
-    ClockUnixMillisRefused { detail: d } => concat("unread (", d, ")")
+    ClockUnixMillisRefused { detail: d } => PhaseClockUnread { detail: d }
     ClockUnixMillisObserved { millis: a } =>
       match to {
-        ClockUnixMillisRefused { detail: d } => concat("unread (", d, ")")
-        ClockUnixMillisObserved { millis: b } => concat(to_string((b as Int) - (a as Int)), "ms")
+        ClockUnixMillisRefused { detail: d } => PhaseClockUnread { detail: d }
+        ClockUnixMillisObserved { millis: b } =>
+          if (b as Int) < (a as Int) { PhaseClockSteppedBack { from: a as Int, to: b as Int } }
+          else { PhaseElapsed { millis: (b as Int) - (a as Int) } }
       }
   }
+}
+
+fn mtcollins1_boot_phase_duration_text(d: MtCollins1PhaseDuration) -> String {
+  match d {
+    PhaseElapsed { millis: m } => concat(to_string(m), "ms")
+    PhaseClockUnread { detail: x } => concat("unread (", x, ")")
+    PhaseClockSteppedBack { from: a, to: b } => concat("REFUSED: wall clock stepped back from ", to_string(a), " to ", to_string(b), " ms; not a duration")
+  }
+}
+
+fn mtcollins1_boot_millis_between(from: ClockUnixMillisRead, to: ClockUnixMillisRead) -> String {
+  mtcollins1_boot_phase_duration_text(d: mtcollins1_boot_phase_duration(from: from, to: to))
 }
 
 fn mtcollins1_boot_phase_span_text(hold: ClockUnixMillisRead, span: MtCollins1BootPhaseSpan) -> String {

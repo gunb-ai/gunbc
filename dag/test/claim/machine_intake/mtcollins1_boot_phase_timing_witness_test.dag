@@ -48,3 +48,14 @@ test fn an_attempt_that_never_held_says_so() -> Bool {
   let t = mtcollins1_boot_phase_timing_text(t: mtcollins1_boot_phase_timing_not_taken(reason: "the unit hold was refused"))
   contains(t, "boot_start=unobserved (the unit hold was refused)") && contains(t, "phases: none reached")
 }
+
+// DISCRIMINATING RED for the wall-clock step: an end reading below its begin must refuse, never
+// print a negative figure. Removing the step arm from mtcollins1_boot_phase_duration turns this red.
+test fn a_clock_stepped_back_refuses_rather_than_printing_negative_time() -> Bool {
+  let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
+    hold_acquired: ClockUnixMillisObserved { millis: 5000 },
+    start: BootStartCold,
+    spans: [MtCollins1BootPhaseSpan { phase: PhaseHandoff, begin: ClockUnixMillisObserved { millis: 5000 }, end: ClockUnixMillisObserved { millis: 4000 } }],
+  })
+  contains(t, "verified_after=REFUSED: wall clock stepped back from 5000 to 4000 ms") && !contains(t, "-1000ms")
+}
