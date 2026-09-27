@@ -2411,6 +2411,6 @@ test fn witness_header_account_claims_no_identity_without_a_session() -> Bool {
 test fn witness_issue_assign_form_fits_the_rail() -> Bool {
   let css = roadmap_css()
   string_contains(s: css, pattern: ".issue-assign-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) }")
-    && string_contains(s: css, pattern: ".issue-assign-input { font-family: var(--font-mono); font-size: var(--text-13); color: var(--issue-text); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-3); padding: var(--space-2) var(--space-4); flex: 1; min-width: 0 }")
+    && string_contains(s: css, pattern: ".issue-assign-input { font-family: var(--font-mono); font-size: var(--text-13); color: var(--issue-text); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-3); padding: var(--space-2) var(--space-4); min-width: 0; flex: 1 }")
     && occurrence_count(s: css, pattern: "width: 34ch") == 1
 }
