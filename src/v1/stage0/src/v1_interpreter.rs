@@ -16188,6 +16188,7 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
         std::io::ErrorKind::NotFound => "not_found",
         std::io::ErrorKind::AlreadyExists => "already_exists",
         std::io::ErrorKind::PermissionDenied => "permission_denied",
+        std::io::ErrorKind::NotADirectory => "not_a_directory",
         _ => "other",
     }
     .to_string()
