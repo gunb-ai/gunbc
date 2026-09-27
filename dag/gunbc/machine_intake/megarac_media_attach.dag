@@ -127,6 +127,9 @@ type MegaRacAttachOutcome
   | MegaRacReadinessRefused { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int }
   | MegaRacReadinessClockUnreadable { image_name: NonEmptyStr, route: MegaRacAttachRoute, detail: String }
   | MegaRacConfigurationsUnreadable { detail: String }
+  | MegaRacShareMismatch { expected: MegaRacShareBinding, observed: MegaRacObservedShare }
+  | MegaRacShareUnreadable { detail: String }
+  | MegaRacCdErrorReported { at: MegaRacCdErrorPoint, error: MegaRacCdErrorCode, general: String }
   | MegaRacSessionRefused { detail: String }
   | MegaRacSessionTokenUnreadable { detail: String }
   | MegaRacImagesUnreadable { detail: String }
@@ -195,6 +198,119 @@ type MegaRacDetachAdmission
 type MegaRacReplacementPolicy {
   replaceable_seeded_stem: NonEmptyStr
   detach: MegaRacDetachAdmission
+  share: MegaRacShareBinding
+}
+
+// THE SHARE AN IMAGE NAME IS RESOLVED IN, AS A TYPED BINDING. The controller presents an image by
+// NAME from whatever share settings/media/general points it at, so every name check in this module
+// is only as good as that pointer: a same-named file on another server or path would pass every one
+// of them. The binding is the caller's fact (which server and export this unit boots from); the
+// member spellings are the controller's (extdeps.bmc.megarac megarac_op_media_config). It is read
+// before any write on every route, including the already-presented one, because a presentation of
+// the right name from the wrong share is the wrong medium.
+type MegaRacCdErrorPoint
+  = CdErrorBeforeAnyWrite
+  | CdErrorAtReadiness
+
+type MegaRacShareType
+  = MegaRacShareNfs
+  | MegaRacShareCifs
+
+fn megarac_share_type_wire(t: MegaRacShareType) -> String {
+  match t {
+    MegaRacShareNfs => "nfs"
+    MegaRacShareCifs => "cifs"
+  }
+}
+
+type MegaRacShareBinding {
+  server_address: NonEmptyStr
+  source_path: NonEmptyStr
+  share_type: MegaRacShareType
+}
+
+type MegaRacObservedShare {
+  server_address: String
+  source_path: String
+  share_type: String
+  mount_cd: String
+}
+
+type ShareBindingStanding
+  = ShareBound
+  | ShareMismatch { observed: MegaRacObservedShare }
+  | ShareCdError { error: MegaRacCdErrorCode, body: String }
+  | ShareUnreadable { detail: String }
+
+// THE CD ERROR CODE IS ITS OWN OBSERVATION, beside the redirection status and not folded into it.
+// settings/media/general carries cd_error_code: it read 0 at ~15:40Z on 2026-09-27 and 16 at 18:37Z,
+// after boot run 36330382023 whose presentation read redirection_status 16. 0 is catalogued as no
+// error; every other value is uncatalogued on this firmware and refuses keeping its wire, because a
+// code nobody has decoded is not a code anybody may ignore. Whether 16 here and status 16 there are
+// one fact is NOT established -- they are read from different members and are kept apart.
+type MegaRacCdErrorCode
+  = CdErrorNone
+  | CdErrorUncatalogued { wire: Int }
+
+fn megarac_cd_error_code_of_wire(wire: Int) -> MegaRacCdErrorCode {
+  if wire == 0 { CdErrorNone } else { CdErrorUncatalogued { wire: wire } }
+}
+
+type CdErrorReading
+  = CdErrorRead { code: MegaRacCdErrorCode }
+  | CdErrorUnread { detail: String }
+
+fn cd_error_reading(body: String) -> CdErrorReading {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => CdErrorUnread { detail: body }
+    JsonDocumentParsed { value: v } =>
+      match json_number_member(doc: v, key: "cd_error_code") {
+        Absent => CdErrorUnread { detail: concat("cd_error_code missing: ", body) }
+        Present { value: w } =>
+          match parse_int(s: w) {
+            Absent => CdErrorUnread { detail: concat("cd_error_code is not an integer: ", w) }
+            Present { value: n } => CdErrorRead { code: megarac_cd_error_code_of_wire(wire: n) }
+          }
+      }
+  }
+}
+
+// PURE, over the general-settings document. Every member is required: a document missing one is
+// unreadable, never "matches by default". mount_cd must be 1 because a share that is configured but
+// not mounted offers nothing to attach.
+fn share_binding_standing(body: String, expected: MegaRacShareBinding) -> ShareBindingStanding {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ShareUnreadable { detail: body }
+    JsonDocumentParsed { value: v } =>
+      match json_string_member(doc: v, key: "cd_remote_server_address") {
+        Absent => ShareUnreadable { detail: concat("cd_remote_server_address missing: ", body) }
+        Present { value: server } =>
+          match json_string_member(doc: v, key: "cd_remote_source_path") {
+            Absent => ShareUnreadable { detail: concat("cd_remote_source_path missing: ", body) }
+            Present { value: path } =>
+              match json_string_member(doc: v, key: "cd_remote_share_type") {
+                Absent => ShareUnreadable { detail: concat("cd_remote_share_type missing: ", body) }
+                Present { value: kind } =>
+                  match json_number_member(doc: v, key: "mount_cd") {
+                    Absent => ShareUnreadable { detail: concat("mount_cd missing: ", body) }
+                    Present { value: mount } =>
+                      if server != (expected.server_address as String)
+                        || path != (expected.source_path as String)
+                        || kind != megarac_share_type_wire(t: expected.share_type)
+                        || mount != "1" {
+                        ShareMismatch { observed: MegaRacObservedShare { server_address: server, source_path: path, share_type: kind, mount_cd: mount } }
+                      } else {
+                        match cd_error_reading(body: body) {
+                          CdErrorUnread { detail: d } => ShareUnreadable { detail: d }
+                          CdErrorRead { code: CdErrorNone } => ShareBound
+                          CdErrorRead { code: c } => ShareCdError { error: c, body: body }
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
 }
 
 // THE CSRF TOKEN IS READ FROM THE PARSED DOCUMENT, not scraped. The shell version matched a regex
@@ -495,6 +611,9 @@ fn megarac_attach_then_release(
 // and could StartMedia over a controller whose current attachment was unreadable. That is the
 // absorbing-fallback DESIGN §5 forbids: ignorance rendered as the empty case.
 //
+// THE SHARE IS READ FIRST, before configurations and before any write, so no route — including
+// the no-write already-presented one — can be satisfied by a same-named image from another share.
+//
 // THE OPERATION IS A CONVERGENCE ON ONE DESIRED IMAGE (operator ruling 2026-09-27: "the workflow
 // should be ensuring the correct image"). Boot run 36328950865 refused with the previous census
 // image still presented and the new one missing from the listing although it was in the export:
@@ -513,6 +632,21 @@ fn megarac_attach_with_token(
   policy: MegaRacReplacementPolicy,
 ) -> MegaRacAttachOutcome
 {
+  let general = megarac.Media.GetMediaGeneral(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+    max_time: megarac_media_read_max_time_operand(),
+  )
+  if general.success == false {
+    return MegaRacShareUnreadable { detail: general.body }
+  }
+  match share_binding_standing(body: general.body, expected: policy.share) {
+    ShareUnreadable { detail: d } => return MegaRacShareUnreadable { detail: d }
+    ShareMismatch { observed: o } => return MegaRacShareMismatch { expected: policy.share, observed: o }
+    ShareCdError { error: e, body: b } => return MegaRacCdErrorReported { at: CdErrorBeforeAnyWrite, error: e, general: b }
+    ShareBound => none
+  }
   presented = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
@@ -1347,8 +1481,8 @@ fn megarac_readiness_outcome(
 {
   return match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
-    ClockUnixMillisObserved { millis: opened_at } =>
-      readiness_wait_outcome(
+    ClockUnixMillisObserved { millis: opened_at } => {
+      let waited = readiness_wait_outcome(
         wait: megarac_await_readiness(
           bmc_host: bmc_host,
           cookie_jar: cookie_jar,
@@ -1363,6 +1497,34 @@ fn megarac_readiness_outcome(
         firmware: firmware,
         route: route,
       )
+      match waited {
+        MegaRacPresentationReady { route: _, evidence: _ } => {
+          let general = megarac.Media.GetMediaGeneral(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_token: csrf_token,
+            max_time: megarac_media_read_max_time_operand(),
+          )
+          ready_with_cd_error(ready: waited, general_read: general.success, general: general.body)
+        }
+        other => other
+      }
+    }
+  }
+}
+
+// A READY PRESENTATION IS CONFIRMED AGAINST THE CD ERROR CODE BEFORE IT REACHES THE GATE. The
+// redirection row can read Started while the general settings carry a CD error; the two are
+// separate members, so both are read, and an uncatalogued error withholds with its wire.
+fn ready_with_cd_error(ready: MegaRacAttachOutcome, general_read: Bool, general: String) -> MegaRacAttachOutcome {
+  if general_read == false {
+    MegaRacShareUnreadable { detail: concat("the general settings could not be re-read at readiness, so the CD error code is unknown: ", general) }
+  } else {
+    match cd_error_reading(body: general) {
+      CdErrorUnread { detail: d } => MegaRacShareUnreadable { detail: d }
+      CdErrorRead { code: CdErrorNone } => ready
+      CdErrorRead { code: c } => MegaRacCdErrorReported { at: CdErrorAtReadiness, error: c, general: general }
+    }
   }
 }
 

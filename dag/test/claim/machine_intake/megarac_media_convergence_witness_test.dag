@@ -69,10 +69,19 @@ import gunbc.machine_intake_megarac_media_attach {
   readiness_verdict,
   readiness_wait_outcome,
   stop_media_body,
+  share_binding_standing,
+  ready_with_cd_error,
+  ShareBound,
+  ShareMismatch,
+  ShareCdError,
+  ShareUnreadable,
+  CdErrorUncatalogued,
+  CdErrorAtReadiness,
+  MegaRacCdErrorReported,
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -378,4 +387,73 @@ test fn absent_inside_the_window_looks_again() -> Bool {
     EnumerationLookAgain => true
     _ => false
   }
+}
+
+// ─── THE SHARE BINDING AND THE CD ERROR CODE ────────────────────────────────────────────────────
+//
+// RECEIPT, VERBATIM: read-only GET /api/settings/media/general on mtcollins1 (192.168.1.228,
+// firmware 0.32) at 2026-09-27T18:37:18Z, supplied by eager-owl-205, after boot run 36330382023.
+data mtcollins1_media_general_2026_09_27: String = "{ \"id\": 1, \"local_media_support\": 0, \"remote_media_support\": 1, \"same_settings\": 0, \"cd_remote_server_address\": \"192.168.1.188\", \"cd_remote_source_path\": \"\\/srv\\/bmc\", \"cd_remote_share_type\": \"nfs\", \"cd_remote_domain_name\": \"\", \"cd_remote_user_name\": \"\", \"mount_cd\": 1, \"cd_image_name\": \"\", \"cd_error_code\": 16, \"mount_hd\": 0, \"hd_remote_server_address\": \"\", \"hd_remote_source_path\": \"\", \"hd_remote_share_type\": \"\", \"hd_remote_domain_name\": \"\", \"hd_remote_user_name\": \"\", \"hd_image_name\": \"\", \"hd_error_code\": 0, \"rmedia_retry_count\": 3, \"rmedia_retry_interval\": 15 }"
+
+// RECEIPT, AS REPORTED, NOT VERBATIM: the ~15:40Z read the same day was reported identical except
+// cd_error_code 0. The body below is that report applied to the 18:37Z bytes; the 15:40Z bytes
+// themselves were not supplied.
+data mtcollins1_media_general_2026_09_27_morning_as_reported: String = "{ \"id\": 1, \"local_media_support\": 0, \"remote_media_support\": 1, \"same_settings\": 0, \"cd_remote_server_address\": \"192.168.1.188\", \"cd_remote_source_path\": \"\\/srv\\/bmc\", \"cd_remote_share_type\": \"nfs\", \"cd_remote_domain_name\": \"\", \"cd_remote_user_name\": \"\", \"mount_cd\": 1, \"cd_image_name\": \"\", \"cd_error_code\": 0, \"mount_hd\": 0, \"hd_remote_server_address\": \"\", \"hd_remote_source_path\": \"\", \"hd_remote_share_type\": \"\", \"hd_remote_domain_name\": \"\", \"hd_remote_user_name\": \"\", \"hd_image_name\": \"\", \"hd_error_code\": 0, \"rmedia_retry_count\": 3, \"rmedia_retry_interval\": 15 }"
+
+fn general_with(server: String, path: String, kind: String, mount: String, error: String) -> String {
+  join(["{ \"cd_remote_server_address\": \"", server, "\", \"cd_remote_source_path\": \"", path, "\", \"cd_remote_share_type\": \"", kind, "\", \"mount_cd\": ", mount, ", \"cd_error_code\": ", error, " }"], "")
+}
+
+// The binding the production caller passes is derived from srv2's address and the export row, and
+// the controller's own answer binds to it: the morning read (error 0) is bound.
+test fn the_derived_share_binds_the_controllers_own_answer() -> Bool {
+  (mtcollins1_media_share.server_address as String) == "192.168.1.188"
+    && (mtcollins1_media_share.source_path as String) == "/srv/bmc"
+    && (match share_binding_standing(body: mtcollins1_media_general_2026_09_27_morning_as_reported, expected: mtcollins1_media_share) { ShareBound => true _ => false })
+}
+
+// The evening read, after the failed boot, carries cd_error_code 16: refused before any write, wire kept.
+test fn cd_error_16_refuses_before_any_write_keeping_the_wire() -> Bool {
+  match share_binding_standing(body: mtcollins1_media_general_2026_09_27, expected: mtcollins1_media_share) {
+    ShareCdError { error: CdErrorUncatalogued { wire: w }, body: b } => w == 16 && b == mtcollins1_media_general_2026_09_27
+    _ => false
+  }
+}
+
+test fn another_server_is_a_mismatch_naming_it() -> Bool {
+  match share_binding_standing(body: general_with(server: "192.168.1.99", path: "/srv/bmc", kind: "nfs", mount: "1", error: "0"), expected: mtcollins1_media_share) {
+    ShareMismatch { observed: o } => o.server_address == "192.168.1.99"
+    _ => false
+  }
+}
+
+test fn another_path_is_a_mismatch_naming_it() -> Bool {
+  match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/other", kind: "nfs", mount: "1", error: "0"), expected: mtcollins1_media_share) {
+    ShareMismatch { observed: o } => o.source_path == "/srv/other"
+    _ => false
+  }
+}
+
+test fn a_cifs_share_or_an_unmounted_share_is_a_mismatch() -> Bool {
+  (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "cifs", mount: "1", error: "0"), expected: mtcollins1_media_share) { ShareMismatch { observed: o } => o.share_type == "cifs" _ => false })
+    && (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "nfs", mount: "0", error: "0"), expected: mtcollins1_media_share) { ShareMismatch { observed: o } => o.mount_cd == "0" _ => false })
+}
+
+test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
+  match share_binding_standing(body: "{ \"cd_remote_server_address\": \"192.168.1.188\", \"mount_cd\": 1 }", expected: mtcollins1_media_share) {
+    ShareUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+// AT READINESS: a Started presentation is withheld while the general settings carry an error.
+test fn a_ready_presentation_with_cd_error_16_is_withheld_at_readiness() -> Bool {
+  (match ready_with_cd_error(ready: ready_outcome().outcome, general_read: true, general: mtcollins1_media_general_2026_09_27) {
+    MegaRacCdErrorReported { at: CdErrorAtReadiness, error: CdErrorUncatalogued { wire: w }, general: _ } => w == 16
+    _ => false
+  })
+    && (match ready_with_cd_error(ready: ready_outcome().outcome, general_read: true, general: mtcollins1_media_general_2026_09_27_morning_as_reported) {
+      MegaRacPresentationReady { route: _, evidence: _ } => true
+      _ => false
+    })
 }

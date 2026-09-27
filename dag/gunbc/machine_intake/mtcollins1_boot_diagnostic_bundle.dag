@@ -75,6 +75,14 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacReadinessRefused,
   MegaRacReadinessClockUnreadable,
   MegaRacConfigurationsUnreadable,
+  MegaRacShareMismatch,
+  MegaRacShareUnreadable,
+  MegaRacCdErrorReported,
+  CdErrorBeforeAnyWrite,
+  CdErrorAtReadiness,
+  CdErrorNone,
+  CdErrorUncatalogued,
+  megarac_share_type_wire,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
   MegaRacImagesUnreadable,
@@ -452,6 +460,22 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("the clock could not be read, so the readiness window for '", concat(n as String, concat("' could not be declared or judged: ", d))) }
     MegaRacConfigurationsUnreadable { detail: d } =>
       Present { value: concat("the presented-media listing could not be read, so whether anything is attached is UNKNOWN; refusing rather than attaching over an unknown state: ", d) }
+    MegaRacShareMismatch { expected: e, observed: o } =>
+      Present { value: join([
+        "the controller's remote-media share is not this unit's boot share, so no image name read from it can be trusted and nothing was written: expected ",
+        e.server_address as String, ":", e.source_path as String, " over ", megarac_share_type_wire(t: e.share_type), " with mount_cd 1, observed ",
+        o.server_address, ":", o.source_path, " over ", o.share_type, " with mount_cd ", o.mount_cd,
+      ], "") }
+    MegaRacCdErrorReported { at: p, error: e, general: g } =>
+      Present { value: join([
+        "the controller's remote-media settings report cd_error_code ",
+        match e { CdErrorUncatalogued { wire: w } => to_string(w)  CdErrorNone => "0" },
+        ", which is uncatalogued for this firmware, ",
+        match p { CdErrorBeforeAnyWrite => "before any write, so nothing was written"  CdErrorAtReadiness => "at readiness, so no boot-device or power handoff was made" },
+        ": ", g,
+      ], "") }
+    MegaRacShareUnreadable { detail: d } =>
+      Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
     MegaRacSessionRefused { detail: d } => Present { value: concat("session refused: ", d) }
     MegaRacSessionTokenUnreadable { detail: d } => Present { value: concat("session succeeded but no CSRFToken could be read from its document: ", d) }
     MegaRacImagesUnreadable { detail: d } => Present { value: concat("images listing unreadable: ", d) }

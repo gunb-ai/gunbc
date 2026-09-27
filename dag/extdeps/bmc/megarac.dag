@@ -94,7 +94,7 @@ data megarac_op_session_login: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_config: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "PUT",
   path: "/api/settings/media/general",
-  contract_note: "JSON body: remote_media_support:1, cd_remote_server_address/source_path, cd_remote_share_type nfs|cifs, mount_cd:1; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
+  contract_note: "JSON body (GET answers the same object; member spellings as served by the Foxconn Mt. Collins build 0.32, 2026-09-27): remote_media_support:1, cd_remote_server_address, cd_remote_source_path, cd_remote_share_type nfs|cifs, mount_cd:1, plus cd_image_name, cd_error_code, rmedia_retry_count, rmedia_retry_interval and the hd_* counterparts; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
 }
 
 data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
@@ -448,11 +448,11 @@ service megarac.Media {
   }
 
   operation GetMediaGeneral {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/general"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/general"]
     }
     exit {
       0 => Unit
