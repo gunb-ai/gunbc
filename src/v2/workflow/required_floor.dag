@@ -757,10 +757,12 @@ fn required_gate_prefixes() -> List<String> {
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
 // it, because none was in the gate. Each admitted claim discriminates at one interface over a
-// SUPPLIED core (python_emitted_add_fn_node) or a supplied slice, and each was measured alone at
-// or under 53,592 eval steps, inside the new-witness line of 72,300. The one claim that runs the
-// whole python->typescript compile, which is the inhabitance claim for that supplied core, costs
-// about 139,000 steps and stays in its long home under the declared drop `gunbc.rung_drop`
+// SUPPLIED core (python_emitted_add_fn_node) or a supplied slice, and each measures inside the
+// new-witness budget (claim_ceiling_eval_step_budget at NewWitnessTier). The instrument is this
+// floor's own per-claim eval_steps (required_floor_claim_cost.tsv), or claim_batch --hermetic over
+// each module. The one claim that runs the whole python->typescript compile, which is the
+// inhabitance claim for that supplied core, is over that budget. It stays in its long home under
+// the declared drop `gunbc.rung_drop`
 // `python_to_typescript_compile_inhabitance_off_the_required_gate`. The manual module declares
 // ReadsLiveTree, which is no longer a decline (DeclinedLiveTree is deleted above). Its preparation
 // growth is the ingest, neutralization and emit closure over the python and typescript
