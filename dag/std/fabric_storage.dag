@@ -166,6 +166,8 @@ fn fabric_head_admits(expected: FabricHeadExpectation, observed: FabricHeadReadi
 //                            skew between handler and store, not a store fault.
 //   FabricHeadNameRefused    the head name does not address one head (it would navigate); the
 //                            caller's defect, refused before the store is touched.
+//   FabricWriterRefused      the writer's principal is not one the store admits to write; refused
+//                            before the store is touched. The principal is named, never guessed.
 //
 // A lost race is NOT a fault and has no arm here: it is FabricHeadMoved, an outcome carrying both
 // sides. The git realization answered both "lost race" and "unreachable" with exit 128.
@@ -176,6 +178,7 @@ type FabricStorageFault
   | FabricObjectCorrupt { object: FabricObjectRef, detail: NonEmptyStr }
   | FabricReplyUndecodable { detail: NonEmptyStr }
   | FabricHeadNameRefused { name: NonEmptyStr }
+  | FabricWriterRefused { principal: NonEmptyStr }
 
 type FabricPut
   = FabricObjectStored { object: FabricObjectRef }
@@ -250,6 +253,7 @@ fn fabric_storage_fault_wire(fault: FabricStorageFault) -> String {
     FabricObjectCorrupt { object: o, detail: d } => join(["object corrupt: ", fabric_object_ref_wire(object: o) as String, " ", d as String], "")
     FabricReplyUndecodable { detail: d } => join(["reply undecodable: ", d as String], "")
     FabricHeadNameRefused { name: n } => join(["head name refused: ", n as String], "")
+    FabricWriterRefused { principal: p } => join(["writer refused: ", p as String], "")
   }
 }
 

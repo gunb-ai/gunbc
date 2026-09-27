@@ -1,0 +1,94 @@
+module gunbc.fabric_writer_roster
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
+import product.placement_supply { HostIdentity }
+import gunbc.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_storage_placement { fabric_storage_store_root }
+import std.fabric_storage { FabricStoreUnreachable }
+import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
+import gunbc.fabric_writer_identity_observe {
+  FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, NotAReadingOfTheDoor,
+}
+
+// THE SERVED DOOR'S WRITER ROSTER: the tailnet USER principals admitted to put and advance through
+// gunbc.fabric_storage_serve. It is not a list of logins someone typed. It is DERIVED from the
+// readings gunbc.fabric_writer_identity_observe took on each fleet host through the served door
+// itself -- the receipts below are those readings, transcribed from the fleet-converge runs that
+// printed them -- so a login enters the roster exactly when some fleet writer was observed
+// presenting it, and a host that presented none contributes nothing (DESIGN §4d: the reading is
+// the ground, never a guess about which hosts are user-owned).
+//
+// THE GRAIN IS A USER, NOT A NODE (the drop row's chosen trust boundary): every device a rostered
+// user owns may write. An absent login is never admitted -- it is the shape a tagged device, a
+// stripped header or a direct connection produces (extdeps.tailscale.identity), and none is a
+// principal.
+//
+// WHAT THIS ROSTER DOES NOT WALL: the placed host's in-process writers, which never reach the
+// served door (their wall is the store directories' ownership, gunbc.fabric_storage_placement
+// fabric_storage_directory); and anything that reaches the backend socket without the proxy, for
+// which the header is self-asserted (extdeps.tailscale.identity's deployment property).
+type FabricWriterIdentityObservation {
+  run: NonEmptyStr
+  receipt: FabricWriterIdentityReceipt
+}
+
+// THE READINGS, 2026-09-27 (fleet-converge mode fabric_writer_identity_observe, one run per host;
+// each row is the receipt that run printed). NONE IS A LOGIN: srv1 is the placed host and reads
+// unproxied, and srv3 and srv4 could not resolve the door's tailnet name, so no fleet host has yet
+// been observed reaching the served door and the derived roster is EMPTY -- the door refuses every
+// served put and advance. That costs no writer that works today (none reaches the door), and a host
+// joins the roster only by a new reading appended here, never by an authored login.
+data fabric_srv_endpoint: NonEmptyStr = "https://srv1.tailecbe08.ts.net:10000/fabric-storage" as NonEmptyStr
+
+data fabric_door_unresolved: NonEmptyStr = "could not resolve host (curl exit 6): curl: (6) Could not resolve host: srv1.tailecbe08.ts.net" as NonEmptyStr
+
+fn fabric_writer_identity_observations() -> List<FabricWriterIdentityObservation> {
+  [
+    FabricWriterIdentityObservation { run: "36347411725" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
+      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root()) },
+      read: FabricIdentityUnproxied, observed_at: "2026-09-27T20:29Z" as NonEmptyStr } },
+    FabricWriterIdentityObservation { run: "36347414620" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
+      host: "srv3" as HostIdentity, binding: FabricStorageServed { endpoint: fabric_srv_endpoint },
+      read: FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_door_unresolved } }, observed_at: "2026-09-27T20:29Z" as NonEmptyStr } },
+    FabricWriterIdentityObservation { run: "36347416176" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
+      host: "srv4" as HostIdentity, binding: FabricStorageServed { endpoint: fabric_srv_endpoint },
+      read: FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_door_unresolved } }, observed_at: "2026-09-27T20:30Z" as NonEmptyStr } },
+  ]
+}
+
+fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
+  match fabric_writer_identity_ground(read: o.receipt.read) {
+    WriterUserPrincipalObserved { login: l } => [l]
+    WriterPrincipalUnavailable { reason: _ } => []
+    NotAReadingOfTheDoor { reason: _ } => []
+  }
+}
+
+fn fabric_served_writer_roster_of(observations: List<FabricWriterIdentityObservation>) -> List<NonEmptyStr> {
+  fold(flat_map(observations, o => observed_login(o: o)), init: [], f: (acc, l) =>
+    if any(acc, a => (a as String) == (l as String)) { acc } else { concat(acc, [l]) })
+}
+
+fn fabric_served_writer_roster() -> List<NonEmptyStr> {
+  fabric_served_writer_roster_of(observations: fabric_writer_identity_observations())
+}
+
+type FabricServedWriterAdmission
+  = FabricServedWriterAdmitted { login: NonEmptyStr }
+  | FabricServedWriterRefused { principal: NonEmptyStr }
+
+// The comparison is exact, as extdeps.tailscale.identity requires of any identity match.
+fn fabric_served_writer_admission_over(roster: List<NonEmptyStr>, identity: TailnetIdentity) -> FabricServedWriterAdmission {
+  match identity {
+    TailnetIdentityAbsent => FabricServedWriterRefused { principal: "no Tailscale-User-Login was presented" as NonEmptyStr }
+    TailnetUser { login: l } =>
+      if any(roster, r => (r as String) == (l as String)) { FabricServedWriterAdmitted { login: l } }
+      else { FabricServedWriterRefused { principal: join([l as String, " is not a rostered fabric writer"], "") as NonEmptyStr } }
+  }
+}
+
+fn fabric_served_writer_admission(identity: TailnetIdentity) -> FabricServedWriterAdmission {
+  fabric_served_writer_admission_over(roster: fabric_served_writer_roster(), identity: identity)
+}

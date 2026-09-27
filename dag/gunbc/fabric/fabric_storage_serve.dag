@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, List, CommitSha }
 import extdeps.http.server { ServeWireResponse }
 import std.fabric_storage {
   FabricObject, fabric_object_decode, fabric_object_ref_of_wire, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
-  FabricReplyUndecodable, FabricHeadNameRefused,
+  FabricReplyUndecodable, FabricHeadNameRefused, FabricWriterRefused,
   FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
 }
 import gunbc.fabric_storage_file_store {
@@ -12,6 +12,7 @@ import gunbc.fabric_storage_file_store {
 }
 import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
 import extdeps.tailscale.identity { tailnet_identity_of }
+import gunbc.fabric_writer_roster { fabric_served_writer_admission_over, fabric_served_writer_roster, FabricServedWriterAdmitted, FabricServedWriterRefused }
 import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
@@ -30,19 +31,15 @@ import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStorageP
 //
 // ACCESS: the backend binds loopback only and is reached through `tailscale serve`, the same
 // deployment the dashboard uses, so only tailnet members reach it and the Tailscale-User-Login
-// header is trustworthy exactly to the extent extdeps.tailscale.identity states. DECLARED GAP: no
-// principal is refused here. Every tailnet member that reaches the mount may append; the caller's
-// login is not yet joined to a writer roster, because no roster of fabric writers is modeled.
-// This is a declared rung drop, rostered as gunbc.rung_drop.fabric_storage_append_principal_unrefused, whose
-// restoration trigger is an observed fabric writer principal roster this handler refuses outside of.
-// THE OBSERVATION THAT TRIGGER NAMES IS TAKEN THROUGH THIS DOOR: the `identity` operation echoes
-// the login the proxy presented for the request, so each fleet writer reads the principal it
-// presents from the one place the roster will be consulted (gunbc.fabric_writer_identity_observe).
-// It writes nothing and reads no head. WHAT A ROSTER HERE CAN AND CANNOT WALL: the login is the
-// tailnet USER behind the request, so the roster admits a user identity, not an exact node; and
-// the placed host's own writes never arrive here (FabricStorageLocalFiles runs the file store in
-// process), so this door's roster is the wall over SERVED writers only -- the drop row carries the
-// local population as its second half.
+// header is trustworthy exactly to the extent extdeps.tailscale.identity states. THE WRITER WALL:
+// a put or advance is admitted only for a login in gunbc.fabric_writer_roster's served roster --
+// derived from the readings gunbc.fabric_writer_identity_observe took through this door's own
+// `identity` operation -- and an absent login is refused, never admitted as anonymous. The refusal
+// is a typed store outcome (FabricWriterRefused) and touches no file. Reads (head, closure) and the
+// identity echo stay open to the tailnet: they move nothing. WHAT THIS WALL CANNOT SEE: the placed
+// host's own writes never arrive here (FabricStorageLocalFiles runs the file store in process; their
+// wall is the store directories' ownership, gunbc.fabric_storage_placement fabric_storage_directory),
+// and the roster is a USER grain, not a node grain.
 //
 // EVERY TYPED OUTCOME IS HTTP 200. The status says the protocol was answered; the arm is in the
 // body. A non-200 means the request itself was not this protocol (unknown operation, malformed
@@ -84,8 +81,9 @@ fn malformed(detail: String) -> ServeWireResponse {
 //   put       <canonical preimage>
 //   advance   <name> absent <target>   |   <name> at <expected-ref> <target>
 //   identity  (no body)
-fn fabric_storage_respond(root: FabricStorageFileRoot, operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
+fn fabric_storage_respond(root: FabricStorageFileRoot, roster: List<NonEmptyStr>, operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
   let ws = words(text: body)
+  let admission = fabric_served_writer_admission_over(roster: roster, identity: tailnet_identity_of(header_value: tailscale_identity))
   match operation {
     "identity" => ok(body: fabric_storage_wire_identity(identity: tailnet_identity_of(header_value: tailscale_identity)))
     "head" =>
@@ -105,11 +103,18 @@ fn fabric_storage_respond(root: FabricStorageFileRoot, operation: String, body: 
           }
       }
     "put" =>
+      match admission {
+        FabricServedWriterRefused { principal: p } => ok(body: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { principal: p } }))
+        FabricServedWriterAdmitted { login: _ } =>
       match fabric_object_decode(preimage: body) {
         Absent => malformed(detail: "put body is not one fabric object")
         Present { value: o } => ok(body: fabric_storage_wire_put(put: fabric_storage_file_put(root: root, object: o)))
       }
+      }
     "advance" =>
+      match admission {
+        FabricServedWriterRefused { principal: p } => ok(body: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricWriterRefused { principal: p } }))
+        FabricServedWriterAdmitted { login: _ } =>
       match head_name(w: word(ws: ws, i: 0)) {
         Absent => malformed(detail: "advance names no head")
         Present { value: n } =>
@@ -117,6 +122,7 @@ fn fabric_storage_respond(root: FabricStorageFileRoot, operation: String, body: 
             Absent => malformed(detail: "advance expectation or target unreadable")
             Present { value: req } => ok(body: fabric_storage_wire_advance(advance: fabric_storage_file_advance(root: root, name: n, expected: req.expected, target: req.target)))
           }
+      }
       }
     _ => text_response(status: 404, body: join(["fabric_storage/1 no operation ", operation, "\n"], ""))
   }
@@ -153,13 +159,14 @@ fn fabric_storage_operation_of(path: String) -> String? {
   if starts_with(s: path, prefix: prefix) { Present { value: substring(s: path, start: length(prefix), end: length(path)) } } else { none }
 }
 
-fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, method: String, path: String, body: String, tailscale_identity: String) -> ServeWireResponse {
+// The roster is a parameter so a claim can supply one; the served entry below binds the derived one.
+fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, roster: List<NonEmptyStr>, method: String, path: String, body: String, tailscale_identity: String) -> ServeWireResponse {
   if method != "POST" {
     text_response(status: 405, body: "fabric_storage/1 only POST is admitted\n")
   } else {
     match fabric_storage_operation_of(path: path) {
       Absent => text_response(status: 404, body: join(["fabric_storage/1 no route ", path, "\n"], ""))
-      Present { value: op } => fabric_storage_respond(root: root, operation: op, body: body, tailscale_identity: tailscale_identity)
+      Present { value: op } => fabric_storage_respond(root: root, roster: roster, operation: op, body: body, tailscale_identity: tailscale_identity)
     }
   }
 }
@@ -173,7 +180,7 @@ fn fabric_storage_serve_handle(method: String, path: String, body: String, tails
     FabricStoragePlaced { host: _, store_root: r, endpoint: _ } =>
       match fabric_storage_placed_file_root(store_root: r) {
         FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: join(["fabric_storage/1 the store's entry mode is refused: ", detail as String, "\n"], ""))
-        FabricStoragePlacedRootReady { root } => fabric_storage_serve_handle_over(root: root, method: method, path: path, body: body, tailscale_identity: tailscale_identity)
+        FabricStoragePlacedRootReady { root } => fabric_storage_serve_handle_over(root: root, roster: fabric_served_writer_roster(), method: method, path: path, body: body, tailscale_identity: tailscale_identity)
       }
   }
 }
