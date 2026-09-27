@@ -204,11 +204,12 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
   }
 }
 
+// gunbc-private's publisher is a target so that it is created and granted under one operator
+// approval, never by a supplied token (operator 2026-09-27). Its resource-local bindings for
+// iam-converge -- the provider role on its pool, the account-policy role on its account -- are the
+// bootstrap's, like every other target's.
 data gcp_iam_converge_targets: List<DedicatedFederation> = [
   heal_publisher_dedicated_federation(),
-  // gunbc-private's publisher: created and granted under one operator approval, never by a
-  // supplied token (operator 2026-09-27). Its resource-local bindings for iam-converge -- the
-  // provider role on its pool, the account-policy role on its account -- are the bootstrap's.
   private_heal_publisher_dedicated_federation(),
   mtcollins1_boot_dedicated_federation(),
 ]
