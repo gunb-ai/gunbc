@@ -12,25 +12,26 @@ import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tok
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: the cost of the prepared-grammar parse over a list literal, as a function of its
-// length. The specimen is `fn f(x: Int) -> Int { g(xs: [x, x, ..., x]) }`, generated for any N,
-// so one generator serves the small fidelity specimen and the long cost specimen alike.
+// SUBJECT: the prepared-grammar parse of a list literal, on the real route the native pipeline
+// runs (v2.compiler.program_assembly dag_prepared_grammar, then v2.compiler.parse
+// parse_module_prepared). The specimen is `fn f(x: Int) -> Int { g(xs: [x, x, ..., x]) }`,
+// generated for any N, so one generator serves the fidelity specimen and the route specimen.
 //
-// WHY A LONG SPECIMEN IS A DISCRIMINATING CONTROL. The seed's eval-frame memo
-// (extdeps.realization.eval_memo) keys every pure named call by a content hash of its arguments.
-// The parse threads one ParseTable through every call, and that table's memo map is a new
-// allocation after each insert. Until the map key was derived per insert
-// (v1_interpreter eval_recompute_extend_insert_hash, beside #12066's per-push list key), every
-// call re-hashed the whole table: O(n) per call, O(n^2) per parse. Measured on the llv probe
-// (probe/calm-pike-745-llv) at len80 that was ~75s of parse. If the derivation is lost, the claim
-// below goes from a fraction of a second to several seconds and is refused on the per-claim
-// budget: that refusal is its red. The claim asserts only that the parse is accepted and leaves
-// cost to the budget that already binds every claim.
+// THIS IS AN INHABITANCE CLAIM, NOT A COST CONTROL, and it says so because the cost defect it sits
+// beside cannot be gated here. The 02_parse list-literal quadratic that blocked #12377 lived in the
+// seed memo's host-side verification (v1_interpreter value_fast_eq), which the floor's eval-step
+// budget does not count: eval steps are identical with and without that repair, and only CPU
+// separates them, first past the per-claim CPU budget at a length whose steps exceed the new-witness
+// gate. So no N here both fits and discriminates. The discriminator is the Rust unit test
+// push_hash_extension_tests memo_verification_equality_agrees_with_value_eq_and_descends_to_sharing,
+// local-only under gunbc.rung_drop rust_unit_tests_off_the_merge_path; the instrument gap is
+// rostered as gunbc.recurring_failure_mode.floor_eval_step_budget_cannot_see_host_side_work. What
+// this claim does establish, by execution on every floor, is that the real route accepts a
+// multi-element list literal.
 //
 // THE PAIRING OBLIGATION (DESIGN section 3): the generator is a hypothesis about what tokenize
 // emits; lpc_fidelity_small runs the real tokenizer over the same generator's text and compares
-// canonically. The generator's shape does not depend on N beyond the element offset 41 + 3i, so
-// the small specimen checks the formula every long specimen uses.
+// canonically. The generator's shape does not depend on N beyond the element offset 41 + 3i.
 
 fn lpc_tok(class: Symbol, lexeme: String, start: Int, end: Int) -> Token {
   Token { class: class, lexeme: lexeme, file: ^list_literal_parse_cost_probe, start: start, end: end }
@@ -116,6 +117,6 @@ test fn lpc_fidelity_small() -> Bool {
   )
 }
 
-test fn lpc_long_list_literal_parses() -> Bool {
-  lpc_parses(n: 30)
+test fn lpc_list_literal_parses_on_prepared_route() -> Bool {
+  lpc_parses(n: 3)
 }
