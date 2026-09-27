@@ -520,6 +520,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
+        // THE RUNTIME-BODY CHILD STARTS HERE AND IS JUDGED AT ITS PHASE'S PLACE BELOW. It is
+        // already a separate process with its own roots and caches, it reads the tree and writes
+        // nothing, and no phase in front of it reads its answer -- so waiting for the lane
+        // roster, the parse sweep and its riders to finish before starting it only lengthened
+        // the lane by the child's whole wall (154 s on merge-queue run 36339106604). It is still
+        // waited on before the floor phase, so the floor's memory peak never overlaps it.
+        let primitive_runtime_body =
+            required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane)
+                .then(spawn_required_primitive_runtime_body);
+
         // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
         // join rides the parse phase's index, but a match arm is not a declaration, so lane
         // ownership is joined by evaluating the roster authority's
@@ -723,9 +733,9 @@ fn run() -> Result<ExitCode, ExitCode> {
         // A separate source universe: the runtime producer is in src/v1, whose module-name
         // collisions must not widen the floor's prepared subject. The .dag door owns both
         // the population verdict and the permanent missing-body mutation control.
-        if required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane) {
+        if let Some(spawned) = primitive_runtime_body {
             eprintln!("required-ci: phase primitive-runtime-body (live emitted source + mutation control)");
-            if !run_required_primitive_runtime_body() {
+            if !finish_required_primitive_runtime_body(spawned) {
                 phase_failures.push("primitive-runtime-body".to_string());
             }
             ran.push("primitive-runtime-body");
@@ -1626,14 +1636,38 @@ impl RequiredCiLane {
 // Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
 // The witnesses job already builds this sibling binary. Use a child so the extra src/v1
 // preparation and its process-wide caches are released before the ordinary floor starts.
-fn run_required_primitive_runtime_body() -> bool {
-    let executable = match std::env::current_exe() {
-        Ok(path) => path.with_file_name("gunbc"),
-        Err(error) => {
-            eprintln!("primitive-runtime-body: cannot locate sibling gunbc: {error}");
-            return false;
+//
+// The child's output goes to a log under target/ rather than to the job's streams, so the lines
+// it prints while the phases in front of it run are replayed whole under its own phase header
+// instead of interleaving with theirs. A child still running when the parent unwinds is killed
+// rather than orphaned.
+struct SpawnedPrimitiveRuntimeBody {
+    child: Option<std::process::Child>,
+    log: PathBuf,
+}
+
+impl Drop for SpawnedPrimitiveRuntimeBody {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
-    };
+    }
+}
+
+fn spawn_required_primitive_runtime_body() -> Result<SpawnedPrimitiveRuntimeBody, String> {
+    let executable = std::env::current_exe()
+        .map(|path| path.with_file_name("gunbc"))
+        .map_err(|error| format!("cannot locate sibling gunbc: {error}"))?;
+    let log_dir = v1_compiler::cli_run::workspace_root().join("target");
+    fs::create_dir_all(&log_dir)
+        .map_err(|error| format!("cannot create {}: {error}", log_dir.display()))?;
+    let log = log_dir.join("required-ci-primitive-runtime-body.log");
+    let stdout = fs::File::create(&log)
+        .map_err(|error| format!("cannot create {}: {error}", log.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("cannot share {}: {error}", log.display()))?;
     let mut command = std::process::Command::new(executable);
     command.arg("run");
     for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
@@ -1648,10 +1682,42 @@ fn run_required_primitive_runtime_body() -> bool {
         "--function",
         "check",
     ]);
-    match command.status() {
+    command.stdout(stdout).stderr(stderr);
+    let child = command
+        .spawn()
+        .map_err(|error| format!("gunbc did not execute: {error}"))?;
+    Ok(SpawnedPrimitiveRuntimeBody {
+        child: Some(child),
+        log,
+    })
+}
+
+fn finish_required_primitive_runtime_body(
+    spawned: Result<SpawnedPrimitiveRuntimeBody, String>,
+) -> bool {
+    let mut spawned = match spawned {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            eprintln!("primitive-runtime-body: {error}");
+            return false;
+        }
+    };
+    let Some(mut child) = spawned.child.take() else {
+        eprintln!("primitive-runtime-body: the child was already reaped, so no verdict exists");
+        return false;
+    };
+    let status = child.wait();
+    match fs::read_to_string(&spawned.log) {
+        Ok(text) => eprint!("{text}"),
+        Err(error) => eprintln!(
+            "primitive-runtime-body: the child's log at {} could not be read ({error}); its exit status below is still the verdict",
+            spawned.log.display()
+        ),
+    }
+    match status {
         Ok(status) => status.success(),
         Err(error) => {
-            eprintln!("primitive-runtime-body: gunbc did not execute: {error}");
+            eprintln!("primitive-runtime-body: gunbc did not complete: {error}");
             false
         }
     }
