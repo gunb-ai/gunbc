@@ -15,7 +15,7 @@ import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
   PhaseVerified, PhaseRefused, MtCollins1PhaseStep, PhaseStepRan, PhaseStepSkipped, MtCollins1BootRoute,
   PhaseHandoff,
-  mtcollins1_boot_phase_spans, mtcollins1_boot_route_end, mtcollins1_boot_route_sol_refused, mtcollins1_boot_phase_timing_of,
+  mtcollins1_boot_phase_spans, mtcollins1_boot_route_sol_refused, mtcollins1_boot_phase_timing_of,
   mtcollins1_boot_phase_duration, PhaseElapsed, PhaseClockUnread, PhaseClockSteppedBack,
   mtcollins1_smpro_pass_result,
   mtcollins1_boot_start_of, mtcollins1_boot_phase_timing_text, mtcollins1_boot_phase_timing_not_taken,
@@ -137,12 +137,24 @@ fn span_elapsed(s: MtCollins1BootPhaseSpan) -> List<Millisecond> {
   }
 }
 
+fn last_end(prev: ProcUptimeRead, bounds: List<List<ProcUptimeRead>>) -> ProcUptimeRead {
+  match bounds.first() {
+    Absent => prev
+    Present { value: pair } =>
+      match pair.skip(n: 1).first() {
+        Absent => prev
+        Present { value: e } => last_end(prev: e, bounds: bounds.skip(n: 1))
+      }
+  }
+}
+
 fn covers(route: MtCollins1BootRoute) -> Bool {
   let hold = at(ms: hold_ms)
   let spans = mtcollins1_boot_phase_spans(hold: hold, route: route)
   let total = time_measure_list_total(times: flat_map(spans, s => span_elapsed(s: s)))
-  adjacent_from(prev: hold, bounds: ran_bounds(spans: spans))
-    && (match mtcollins1_boot_phase_duration(from: hold, to: mtcollins1_boot_route_end(hold: hold, route: route)) {
+  let bounds = ran_bounds(spans: spans)
+  adjacent_from(prev: hold, bounds: bounds)
+    && (match mtcollins1_boot_phase_duration(from: hold, to: last_end(prev: hold, bounds: bounds)) {
       PhaseElapsed { elapsed: whole } => millisecond_count(m: whole) == millisecond_count(m: total)
       PhaseClockUnread { detail: _ } => false
       PhaseClockSteppedBack { begin: _, end: _ } => false
