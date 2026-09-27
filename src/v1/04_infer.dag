@@ -6415,8 +6415,10 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
 // parent_enum Optional), and the interpreter's raw-payload peel reads that stamp. With the subject
 // blocked the stamp is none, and a present optional whose payload is itself a variant then MISSES the
 // arm and falls to the next one -- a silent wrong answer (gunbc.recurring_failure_mode
-// generic_variant_constructed_without_expected_type_leaves_a_present_arm_undecided). Other variant
-// patterns match by constructor name at every realization and stay admitted.
+// generic_variant_without_expected_type_leaves_a_present_arm_undecided). The reviewed distinction is
+// Present versus Absent only: an Absent arm matches Null and Optional.Absent without the stamp, so its
+// meaning does not rest on the missing type. Scope: a direct arm pattern over a PatternLookupBlocked
+// scrutinee; nested field patterns are not audited here.
 fn present_arms_over_unresolved_scrutinee(arms: List<Node>, span: SourceSpan, module_name: String) -> List<ErrorNode> {
   flat_map(arms, arm =>
     match arm_pattern(n: arm) {
