@@ -1,6 +1,7 @@
 module gunbc.machine_intake_mtcollins1_boot_phase_timing
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
+import std.measure { Millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused }
 import gunbc.machine_intake_oob_boot_handoff { ObservedPowerTransition, PoweredOn, PowerCycled }
 
@@ -111,19 +112,10 @@ type MtCollins1BootPhaseResults {
   sol_release: MtCollins1PhaseRunResult
 }
 
-fn phase_verified(r: MtCollins1PhaseRunResult) -> Bool {
-  match r {
-    PhaseVerified => true
-    PhaseRefused { cause: _ } => false
-  }
-}
-
 // REACHABILITY FOLLOWS THE ACTUATION'S ORDER: the handoff runs only after a verified attach, the
 // power-on SMpro pass and the terminal watch only after a verified handoff. The after-reads, the
 // final power and the SOL release run on every arm that held the SOL, so they are always PhaseRan.
 fn mtcollins1_boot_phase_spans(r: MtCollins1BootPhaseReadings, v: MtCollins1BootPhaseResults) -> List<MtCollins1BootPhaseSpan> {
-  let attached = phase_verified(r: v.media_attach)
-  let powered = attached && phase_verified(r: v.handoff)
   concat(
     [
       PhaseRan { phase: PhaseSolAcquire, result: PhaseVerified, begin: r.hold_acquired, end: r.sol_held },
@@ -131,30 +123,39 @@ fn mtcollins1_boot_phase_spans(r: MtCollins1BootPhaseReadings, v: MtCollins1Boot
       PhaseRan { phase: PhaseMediaAttach, result: v.media_attach, begin: r.param5_before_read, end: r.attach_verified },
     ],
     concat(
-      if attached {
-        [PhaseRan { phase: PhaseHandoff, result: v.handoff, begin: r.attach_verified, end: r.power_verified }]
-      } else {
-        [PhaseNotRan { phase: PhaseHandoff, reason: "the media attach did not verify" }]
-      },
-      concat(
-        if powered {
+      match v.media_attach {
+        PhaseVerified => mtcollins1_boot_spans_after_attach(r: r, v: v)
+        PhaseRefused { cause: _ } =>
           [
-            PhaseRan { phase: PhaseSmproPowerOn, result: v.smpro_power_on, begin: r.power_verified, end: r.smpro_power_on_read },
-            PhaseRan { phase: PhaseTerminalWatch, result: v.terminal_watch, begin: r.smpro_power_on_read, end: r.terminal_observed },
-          ]
-        } else {
-          [
+            PhaseNotRan { phase: PhaseHandoff, reason: "the media attach did not verify" },
             PhaseNotRan { phase: PhaseSmproPowerOn, reason: "power on was never verified" },
             PhaseNotRan { phase: PhaseTerminalWatch, reason: "power on was never verified" },
           ]
-        },
-        [
-          PhaseRan { phase: PhaseParam5After, result: v.param5_after, begin: r.terminal_observed, end: r.param5_after_read },
-          PhaseRan { phase: PhasePowerAfter, result: v.power_after, begin: r.param5_after_read, end: r.power_after_read },
-          PhaseRan { phase: PhaseSolRelease, result: v.sol_release, begin: r.power_after_read, end: r.released },
-        ],
-      ),
+      },
+      [
+        PhaseRan { phase: PhaseParam5After, result: v.param5_after, begin: r.terminal_observed, end: r.param5_after_read },
+        PhaseRan { phase: PhasePowerAfter, result: v.power_after, begin: r.param5_after_read, end: r.power_after_read },
+        PhaseRan { phase: PhaseSolRelease, result: v.sol_release, begin: r.power_after_read, end: r.released },
+      ],
     ),
+  )
+}
+
+fn mtcollins1_boot_spans_after_attach(r: MtCollins1BootPhaseReadings, v: MtCollins1BootPhaseResults) -> List<MtCollins1BootPhaseSpan> {
+  concat(
+    [PhaseRan { phase: PhaseHandoff, result: v.handoff, begin: r.attach_verified, end: r.power_verified }],
+    match v.handoff {
+      PhaseVerified =>
+        [
+          PhaseRan { phase: PhaseSmproPowerOn, result: v.smpro_power_on, begin: r.power_verified, end: r.smpro_power_on_read },
+          PhaseRan { phase: PhaseTerminalWatch, result: v.terminal_watch, begin: r.smpro_power_on_read, end: r.terminal_observed },
+        ]
+      PhaseRefused { cause: _ } =>
+        [
+          PhaseNotRan { phase: PhaseSmproPowerOn, reason: "power on was never verified" },
+          PhaseNotRan { phase: PhaseTerminalWatch, reason: "power on was never verified" },
+        ]
+    },
   )
 }
 
@@ -173,30 +174,34 @@ fn mtcollins1_boot_phase_timing_sol_refused(hold_acquired: ProcUptimeRead, refus
   }
 }
 
-// A DURATION BETWEEN TWO READINGS IS ONE OF THREE THINGS, never a bare number.
+// A DURATION BETWEEN TWO READINGS IS ONE OF THREE THINGS, never a bare number. The subtraction is
+// std.measure measure_sub, whose refusal arm is the clock-went-back case: the end reading below
+// the begin one is carried as both readings, never as a difference.
 type MtCollins1PhaseDuration
-  = PhaseElapsed { millis: Int }
+  = PhaseElapsed { elapsed: Millisecond }
   | PhaseClockUnread { detail: String }
-  | PhaseClockSteppedBack { from_centis: Int, to_centis: Int }
+  | PhaseClockSteppedBack { begin: Millisecond, end: Millisecond }
 
 fn mtcollins1_boot_phase_duration(from: ProcUptimeRead, to: ProcUptimeRead) -> MtCollins1PhaseDuration {
   match from {
     UptimeRefused { detail: d } => PhaseClockUnread { detail: d }
-    UptimeObserved { centiseconds: a } =>
+    UptimeObserved { uptime: a } =>
       match to {
         UptimeRefused { detail: d } => PhaseClockUnread { detail: d }
-        UptimeObserved { centiseconds: b } =>
-          if b < a { PhaseClockSteppedBack { from_centis: a, to_centis: b } }
-          else { PhaseElapsed { millis: (b - a) * 10 } }
+        UptimeObserved { uptime: b } =>
+          match measure_sub(a: b, b: a) {
+            MeasureDifference { value: e } => PhaseElapsed { elapsed: e }
+            MeasureSubtrahendExceedsMinuend => PhaseClockSteppedBack { begin: a, end: b }
+          }
       }
   }
 }
 
 fn mtcollins1_boot_phase_duration_text(d: MtCollins1PhaseDuration) -> String {
   match d {
-    PhaseElapsed { millis: m } => concat(to_string(m), "ms")
+    PhaseElapsed { elapsed: e } => concat(to_string(millisecond_count(m: e)), "ms")
     PhaseClockUnread { detail: x } => concat("unread (", x, ")")
-    PhaseClockSteppedBack { from_centis: a, to_centis: b } => concat("REFUSED: clock went back from ", to_string(a), " to ", to_string(b), " cs; not a duration")
+    PhaseClockSteppedBack { begin: a, end: b } => concat("REFUSED: clock went back from ", to_string(millisecond_count(m: a)), " to ", to_string(millisecond_count(m: b)), " ms; not a duration")
   }
 }
 

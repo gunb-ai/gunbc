@@ -1,6 +1,9 @@
 module extdeps.linux.proc_uptime
 
 import std.types { Int, String }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond, milliseconds_per_second }
+import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present, Absent }
 import std.algebra { trim }
 import v2.std.algebra { filter, skip }
@@ -21,10 +24,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // The first value comes from the kernel's boot-based clock, which a wall-clock step (NTP, settimeofday)
 // does not move. That is why a duration between two readings of it is an elapsed interval, while two
 // `date` readings are not. This module owns the file's shape; the read is extdeps.linux.procfs
-// ReadUptime, one transport of N (DESIGN §3).
+// ReadUptime, one transport of N (DESIGN §3). The reading is carried as std.measure Millisecond:
+// std.measure has no centisecond scale, and the centisecond is a fact of this FORMAT, so the
+// conversion happens here, in the parse, and nowhere downstream.
 type ProcUptimeRead
-  = UptimeObserved { centiseconds: Int }
+  = UptimeObserved { uptime: Millisecond }
   | UptimeRefused { detail: String }
+
+// `%02lu`: the fraction counts hundredths of a second (fs/proc/uptime.c).
+data proc_uptime_fraction_units_per_second: Nat = 100
 
 // ANYTHING BUT `digits.two-digits` REFUSES with the text it read; no field is defaulted.
 fn proc_uptime_parse(text: String) -> ProcUptimeRead {
@@ -51,10 +59,15 @@ fn proc_uptime_parse(text: String) -> ProcUptimeRead {
                       match parse_int(s: frac) {
                         Absent => UptimeRefused { detail: concat("/proc/uptime centiseconds not an integer: '", first, "'") }
                         Present { value: c } =>
-                          if s < 0 || c < 0 {
-                            UptimeRefused { detail: concat("/proc/uptime is negative: '", first, "'") }
-                          } else {
-                            UptimeObserved { centiseconds: s * 100 + c }
+                          match checked_int_to_nat(n: s) {
+                            Absent => UptimeRefused { detail: concat("/proc/uptime is negative: '", first, "'") }
+                            Present { value: secs } =>
+                              match checked_int_to_nat(n: c) {
+                                Absent => UptimeRefused { detail: concat("/proc/uptime is negative: '", first, "'") }
+                                Present { value: hundredths } =>
+                                  UptimeObserved { uptime: millisecond(count: secs * milliseconds_per_second()
+                                    + hundredths * (milliseconds_per_second() / proc_uptime_fraction_units_per_second)) }
+                              }
                           }
                       }
                   }
