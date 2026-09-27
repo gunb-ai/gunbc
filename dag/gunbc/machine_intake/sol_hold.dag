@@ -27,6 +27,16 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // writer, nothing ever writes, and the last descriptor is ipmitool's own: when the collector exits,
 // the pipe is gone with it, so the hold owns and cleans up its input without a supervisor. Protocol
 // keepalives are unaffected -- ipmitool times them from its own select loop, not from stdin.
+//
+// THE BEHAVIOUR ABOVE IS READ FROM THE BUILD THAT RUNS IT. srv1, 2026-09-27: `ipmitool -V` reports
+// 1.8.19; dpkg ipmitool 1.8.19-7ubuntu0.24.04.3 arm64; /usr/bin/ipmitool sha256 prefix
+// 84b8c7b03972e809. That package's debian/patches series (11 patches) touches lib/ipmi_tsol.c,
+// sensor, SEL/SDR, lan print, time and manpage paths and nothing in lib/ipmi_sol.c or the lanplus
+// SOL path, so ipmi_sol_red_pill is upstream IPMITOOL_1_8_19: stdin is tested FIRST in an if/else
+// over the select set (so a stdin that is always readable, as /dev/zero is, starves the receive
+// branch); a read of <= 0 bytes sets bShouldExit; keepalives run at the top of every loop pass on
+// SOL_KEEPALIVE_TIMEOUT (15 s) whatever stdin holds; enter_raw_mode's tcgetattr on a non-tty stdin
+// prints `tcgetattr` and continues, as it did for /dev/zero.
 
 data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

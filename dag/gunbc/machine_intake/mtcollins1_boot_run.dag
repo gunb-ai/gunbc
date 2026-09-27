@@ -878,21 +878,28 @@ fn mtcollins1_boot_terminal_refusal_text(causes: List<MtCollins1BootTerminalCaus
 type SolChannelLoss
   = SolCollectorNotHeld { observed: HeldLeaseObservedState }
   | SolSessionClosed
+  | SolKeepaliveLost
 
 type SolChannelReading
   = SolChannelLive
   | SolChannelLost { loss: SolChannelLoss }
 
-// ipmitool prints this line when the controller ends the session (upstream lanplus
-// ipmi_sol_red_pill, "SOL session closed by BMC"); the collector exits right after it, but the
-// line can land a poll before the pid does.
+// ipmi_sol_red_pill (ipmitool 1.8.19 lib/ipmi_sol.c; the deployed Ubuntu build patches nothing in
+// that file) prints one of two lines on its way out of a session it did not end itself: this one when
+// the BMC closed the session or a receive failed, and the keepalive one when MAX_SOL_RETRY Get Device
+// ID keepalives went unanswered. Either is followed by exit(1), and the line can land a poll before
+// the pid disappears. The pid read catches every other exit; these lines only name the cause earlier.
 data sol_session_closed_line: String = "SOL session closed"
+
+data sol_keepalive_lost_line: String = "No response to keepalive"
 
 fn sol_channel_reading(observed: HeldLeaseObservedState, capture: String) -> SolChannelReading {
   match observed {
     LeaseRunningExpected =>
       if string_contains(s: capture, pattern: sol_session_closed_line) {
         SolChannelLost { loss: SolSessionClosed }
+      } else if string_contains(s: capture, pattern: sol_keepalive_lost_line) {
+        SolChannelLost { loss: SolKeepaliveLost }
       } else {
         SolChannelLive
       }
@@ -914,6 +921,7 @@ fn sol_channel_loss_text(loss: SolChannelLoss) -> String {
   match loss {
     SolCollectorNotHeld { observed: o } => concat("SOL collector exited (", held_lease_observed_text(observed: o), ")")
     SolSessionClosed => "the BMC closed the SOL session"
+    SolKeepaliveLost => "the BMC stopped answering SOL keepalives"
   }
 }
 

@@ -25,7 +25,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
   HardwareThreadCountMismatch, WorkloadWriteFailed,
   mtcollins1_boot_medium_refusal,
-  SolChannelReading, SolChannelLive, SolChannelLost, SolCollectorNotHeld, SolSessionClosed, sol_channel_reading,
+  SolChannelReading, SolChannelLive, SolChannelLost, SolCollectorNotHeld, SolSessionClosed, SolKeepaliveLost, sol_channel_reading,
   WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick,
 }
 import v2.std.operation_argv { operation_argv_tokens_or_refusal_label, operation_argv_bind_text }
@@ -836,6 +836,10 @@ test fn a_dead_collector_under_a_pending_capture_is_channel_lost_not_pending() -
     && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(observed: LeaseInaccessible, capture: "")))
     && (match sol_channel_reading(observed: LeaseRunningExpected, capture: "[SOL Session operational.]\nSOL session closed by BMC\n") {
       SolChannelLost { loss: SolSessionClosed } => true
+      _ => false
+    })
+    && (match sol_channel_reading(observed: LeaseRunningExpected, capture: "Error: No response to keepalive - Terminating session\n") {
+      SolChannelLost { loss: SolKeepaliveLost } => true
       _ => false
     })
     && (match watch_tick(verdict: pending, channel: sol_channel_reading(observed: LeaseRunningStale, capture: "")) {
