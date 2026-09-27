@@ -242,14 +242,3 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
   }
 }
-
-test fn w_all_serving_arm_launch_claims_hold() -> Bool {
-  w_the_group_b_arm_plans_exactly_four_ranks()
-    && w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory()
-    && w_every_rank_names_this_fleets_leg_and_hca()
-    && w_every_rank_keeps_the_transport_evidence_producer_on()
-    && w_the_engine_argv_states_the_profiles_batching_bounds()
-    && w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory()
-    && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
-    && w_the_utilisation_argv_is_the_profiles_value_at_full_precision()
-}

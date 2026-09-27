@@ -1,6 +1,6 @@
 module gunbc.spark.v41_group_a_launch
 
-import std.types { String, Bool, List, NonEmptyStr, Port, EpochSecs }
+import std.types { String, Bool, List, NonEmptyStr, Port, EpochSecs, FilePath }
 import std.nat { Nat, nat_max }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
@@ -9,7 +9,11 @@ import std.measure { TokenCount, BasisPoint, byte_size }
 import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { shell_quote }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
+import gunbc.file_access { FileTreeScope }
+import gunbc.remote_operation { PlannedRemoteStep, RemoteArgv, RemoteFileBytes, remote_operation_label }
+import gunbc.typed_remote_file_write { typed_remote_file_write_seal, TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused, RemoteFileModeOwnerReadWriteWorldRead }
 import extdeps.docker.cli { DockerEnvAssignment, BindMount }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest }
@@ -35,7 +39,6 @@ import gunbc.spark.native_serving_apply {
   SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of,
   spark_native_preflight_plans, spark_native_apply_stage_plans,
 }
-import gunbc.spark.pair_serving_apply { SparkPairHostApplyPlan }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor,
@@ -317,25 +320,49 @@ fn v41_group_a_steps(p: V41GroupALaunchPlan) -> SparkNativeArmSteps {
 
 // THE ENGRAM STAGING RUNS BEFORE THE APPLY'S PREFLIGHT, because the preflight refuses a container whose
 // mount sources are missing (gunbc.spark.native_serving_apply spark_native_mount_source_checks), and the
-// manifest and receipt directories exist only once this has run. The manifest is written beside itself
-// and renamed into place, so an engine never reads half a document; the receipt directory is emptied
-// so a receipt from an earlier serve cannot be read as this one's.
-fn v41_engram_staging_script(manifest_text: String) -> String {
-  let m = v41_engram_manifest_path() as String
-  join([
-    "set -e\n",
-    "install -d -m 755 ", v41_engram_manifest_dir as String, "\n",
-    "printf '%s' ", shell_quote(arg: manifest_text), " > ", m, ".next\n",
-    "mv -f ", m, ".next ", m, "\n",
-    "install -d -m 755 ", v41_engram_touch_receipt_dir as String, "\n",
-    "find ", v41_engram_touch_receipt_dir as String, " -mindepth 1 -delete\n",
-    "test -d ", v41_row_store_output_directory() as String, "\n",
-    "echo engram-staged\n",
-  ], "")
+// manifest and receipt directories exist only once this has run.
+//
+// IT IS MODELLED REMOTE STEPS, NOT A SHELL BODY (review 71644). Each step is a gunbc.remote_operation
+// PlannedRemoteStep: the two directories are the mkdir argv extdeps.tools.mkdir renders, and the manifest
+// is a gunbc.typed_remote_file_write sealed to the manifest directory, so it lands as readback-verified
+// bytes rather than as text a printf wrote. Nothing is cleared from the receipt directory: the overlay
+// writes each rank's receipt by temp file and rename (write_touch_receipt), so a receipt is always a whole
+// document from one SIGUSR2, and the row stores' presence is already the preflight's mount-source check.
+fn v41_engram_manifest_scope() -> FileTreeScope {
+  FileTreeScope { root_path: v41_engram_manifest_dir }
 }
 
-fn v41_engram_staging_plans(steps: List<SparkNativeHostStep>, manifest_text: String) -> List<SparkPairHostApplyPlan> {
-  map(steps, st => SparkPairHostApplyPlan { host: st.host, unit_name: st.unit_name, script: v41_engram_staging_script(manifest_text: manifest_text) })
+fn v41_engram_staging_steps(manifest_text: String) -> List<PlannedRemoteStep>? {
+  match typed_remote_file_write_seal(
+    path: v41_engram_manifest_path() as FilePath,
+    content: manifest_text,
+    allowed_scope: v41_engram_manifest_scope(),
+  ) {
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+    TypedRemoteFileWriteAdmitted { write: manifest } => Present {
+      value: [
+        PlannedRemoteStep {
+          identity: "v41-engram-manifest-dir" as NonEmptyStr,
+          operation: RemoteArgv { argv: argv_words(command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: v41_engram_manifest_dir as String)) },
+        },
+        PlannedRemoteStep {
+          identity: "v41-engram-touch-receipt-dir" as NonEmptyStr,
+          operation: RemoteArgv { argv: argv_words(command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: v41_engram_touch_receipt_dir as String)) },
+        },
+        PlannedRemoteStep {
+          identity: "v41-engram-manifest" as NonEmptyStr,
+          operation: RemoteFileBytes { write: manifest, mode: RemoteFileModeOwnerReadWriteWorldRead },
+        },
+      ],
+    }
+  }
+}
+
+fn v41_engram_staging_wire(manifest_text: String) -> String {
+  match v41_engram_staging_steps(manifest_text: manifest_text) {
+    Absent => "REFUSED: the manifest write could not be sealed to its directory"
+    Present { value: steps } => join(map(steps, st => join([st.identity as String, ": ", remote_operation_label(operation: st.operation)], "")), "\n")
+  }
 }
 
 // ── ADMISSION: WHO MAY START THIS ARM ON THESE HOSTS ─────────────────────────────────────────
@@ -467,7 +494,7 @@ fn v41_group_a_dry_run_report(plan: V41GroupALaunchPlan, admission: V41LaunchAdm
         NativeArmSteps { steps: steps, master_endpoint: _ } =>
           join([
             "plan: ", to_string(length(ls)), " ranks, rendezvous ", e as String, "\n",
-            join(zip_map(a: steps, b: zip_map(a: v41_engram_staging_plans(steps: steps, manifest_text: manifest), b: zip_map(a: spark_native_preflight_plans(steps: steps), b: spark_native_apply_stage_plans(steps: steps), f: fn(pf, ap) { join(["--- preflight\n", pf.script, "\n--- apply\n", ap.script], "") }), f: fn(stg, rest) { join(["--- engram staging\n", stg.script, "\n", rest], "") }), f: fn(st, scripts) {
+            join(zip_map(a: steps, b: zip_map(a: spark_native_preflight_plans(steps: steps), b: spark_native_apply_stage_plans(steps: steps), f: fn(pf, ap) { join(["--- engram staging\n", v41_engram_staging_wire(manifest_text: manifest), "\n--- preflight\n", pf.script, "\n--- apply\n", ap.script], "") }), f: fn(st, scripts) {
               join([
                 "=== host ", st.host as String, " rank ", to_string(st.launch.node.node_rank), " unit ", st.unit_name as String, "\n",
                 "--- create\n", join(concat([st.launch.create.program as String], st.launch.create.arguments), " "), "\n",

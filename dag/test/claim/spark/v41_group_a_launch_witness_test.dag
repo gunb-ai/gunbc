@@ -360,24 +360,8 @@ test fn w_the_dry_run_renders_all_four_hosts() -> Bool {
       && length(split(report, "--- engram staging")) == 5
       && length(split(report, "--- preflight")) == 5
       && length(split(report, "--- apply")) == 5
-      && string_contains(s: report, pattern: "row-store-manifest.json")
+      && string_contains(s: report, pattern: "v41-engram-manifest: write-file /var/lib/gunbc/v41-engram-manifest/row-store-manifest.json")
+      && !string_contains(s: report, pattern: "row-store-manifest.json.next")
       && string_contains(s: report, pattern: "admission: ADMITTED")
   })
-}
-
-test fn w_all_v41_group_a_launch_claims_hold() -> Bool {
-  w_the_plan_is_four_mp_ranks_with_the_v41_engine_flags()
-    && w_every_rank_carries_the_engram_env_and_mounts_under_its_own_name()
-    && w_the_units_render_under_names_no_other_arm_uses()
-    && w_an_unprobed_image_is_refused_by_the_arm_wall()
-    && w_the_live_route_reaches_the_planner_and_names_every_gap()
-    && w_a_suspension_for_this_candidate_admits()
-    && w_an_active_incumbent_refuses()
-    && w_an_expired_lease_may_not_start_a_launch()
-    && w_a_suspension_for_another_successor_refuses()
-    && w_an_image_built_for_another_runtime_key_refuses()
-    && w_a_host_the_subject_does_not_hold_refuses()
-    && w_the_dry_run_renders_all_four_hosts()
-    && w_the_engram_page_cache_allowance_is_charged_to_the_pool()
-    && w_without_a_profile_the_allowance_is_unknown_and_refuses()
 }
