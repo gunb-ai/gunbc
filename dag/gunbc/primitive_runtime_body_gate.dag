@@ -1,7 +1,7 @@
 module gunbc.primitive_runtime_body_gate
 
 import std.primitive_identity {
-  PrimitiveRuntimeBodyCheck,
+  PrimitiveRuntimeBodyCheck, PrimitiveRuntimeBodyCensus,
   PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing, PrimitiveRuntimeBodiesUnreadable,
   primitive_runtime_body_census_in, primitive_runtime_body_check_in,
 }
@@ -29,6 +29,10 @@ fn runtime_body_check_exit(check: PrimitiveRuntimeBodyCheck) -> ProcessExit {
 // refuse exactly that missing body. A constant-green checker cannot pass this phase.
 fn runtime_body_required_check_in(registry: List<RuntimeFunction>, source: String) -> ProcessExit {
   let census = primitive_runtime_body_census_in(registry: registry, source: source)
+  runtime_body_required_check_census_in(registry: registry, census: census)
+}
+
+fn runtime_body_required_check_census_in(registry: List<RuntimeFunction>, census: PrimitiveRuntimeBodyCensus) -> ProcessExit {
   let standing = primitive_runtime_body_check_in(registry: registry, census: census)
   match standing {
     PrimitiveRuntimeBodiesComplete => {

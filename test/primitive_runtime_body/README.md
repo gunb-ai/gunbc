@@ -27,7 +27,10 @@ replace the live `map_insert` row's bridge with `runtime_body_missing_control`,
 keep its operation and calling convention, and require the checker to refuse
 exactly that body. Missing control subject, unexpected missing rows, unreadable
 source, or a control that unexpectedly passes all stop the phase. This control
-remains enrolled when the wall is green. The fixture witnesses additionally
+remains enrolled when the wall is green. The same phase also checks the complete
+combined-surface join and refuses an appended bridge with no body, sharing the
+standing census. These producer controls execute here rather than appearing as
+unexecuted test declarations outside ordinary discovery. The fixture witnesses additionally
 exercise automatic enrollment, alias spelling, bodyless declarations, scanner
 refusals, and preservation of multiple identity joins.
 

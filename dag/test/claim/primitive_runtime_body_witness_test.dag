@@ -1,11 +1,10 @@
 module test.claim.primitive_runtime_body_witness_test
 
 import std.primitive_identity {
-  RuntimeBody, BuiltinRegistry, EmitHandler,
   PrimitiveRuntimeBodiesObserved,
   PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing, PrimitiveRuntimeBodiesUnreadable,
   primitive_runtime_body_census_in, primitive_runtime_body_check_in,
-  primitive_surface_census_with_runtime, surface_rows_carry_symbol_on,
+  primitive_surface_census_with_runtime,
   primitive_identity_eq, primitive_map_keys, primitive_map_values,
 }
 import extdeps.languages.rust.emit { RuntimeFunction }
@@ -77,21 +76,6 @@ test fn unreadable_runtime_refuses_even_with_no_bridges() -> Bool {
   )
   match primitive_runtime_body_check_in(registry: [], census: primitive_surface_census_with_runtime(runtime: census)) {
     PrimitiveRuntimeBodiesUnreadable { line: line, detail: detail } => line == 1 && string_length(s: detail) > 0
-    _ => false
-  }
-}
-
-test fn combined_census_keeps_bridge_and_body_as_distinct_surfaces() -> Bool {
-  let registry = [bridge(name: "map_insert", body: "rc_map_insert")]
-  let census = primitive_runtime_body_census_in(
-    registry: registry,
-    source: "pub fn rc_map_insert<T>() {}\n"
-  )
-  match primitive_surface_census_with_runtime(runtime: census) {
-    PrimitiveRuntimeBodiesObserved { rows: rows } =>
-      surface_rows_carry_symbol_on(rows: rows, authority: RuntimeBody, authored_symbol: "rc_map_insert")
-        && surface_rows_carry_symbol_on(rows: rows, authority: EmitHandler, authored_symbol: "map_insert")
-        && surface_rows_carry_symbol_on(rows: rows, authority: BuiltinRegistry, authored_symbol: "map_insert")
     _ => false
   }
 }
