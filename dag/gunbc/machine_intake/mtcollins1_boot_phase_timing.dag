@@ -173,11 +173,15 @@ fn mtcollins1_boot_phase_spans(hold: ProcUptimeRead, route: MtCollins1BootRoute)
 
 // THE END OF THE LAST PHASE THAT RAN: the instant the route's covered interval closes.
 fn mtcollins1_boot_route_end(hold: ProcUptimeRead, route: MtCollins1BootRoute) -> ProcUptimeRead {
-  mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin:
-    mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin: mtcollins1_boot_after(begin:
-    mtcollins1_boot_after(begin: hold, step: route.sol_acquire), step: route.param5_before), step: route.media_attach),
-    step: route.handoff), step: route.smpro_power_on), step: route.terminal_watch), step: route.param5_after),
-    step: route.power_after), step: route.sol_release)
+  let b1 = mtcollins1_boot_after(begin: hold, step: route.sol_acquire)
+  let b2 = mtcollins1_boot_after(begin: b1, step: route.param5_before)
+  let b3 = mtcollins1_boot_after(begin: b2, step: route.media_attach)
+  let b4 = mtcollins1_boot_after(begin: b3, step: route.handoff)
+  let b5 = mtcollins1_boot_after(begin: b4, step: route.smpro_power_on)
+  let b6 = mtcollins1_boot_after(begin: b5, step: route.terminal_watch)
+  let b7 = mtcollins1_boot_after(begin: b6, step: route.param5_after)
+  let b8 = mtcollins1_boot_after(begin: b7, step: route.power_after)
+  mtcollins1_boot_after(begin: b8, step: route.sol_release)
 }
 
 // A SOL ACQUIRE THAT REFUSED is the one route that holds nothing: the acquire ran and refused, and
