@@ -2278,15 +2278,11 @@ fn main() -> ExitCode {
     // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
     // receipt, so emitting first costs nothing.
     let code = emit_worker_terminal_before_return(code);
-    // ATTRIBUTE THE TEARDOWN INSTEAD OF LEAVING IT SILENT. `main` returns an `ExitCode` and calls
-    // `process::exit` nowhere, so everything still alive is dropped after this function returns --
-    // off the end of the log, where no instrument can see it. This call moves the thread-local drops
-    // inside the timed region so the cost is attributed per cache rather than inferred from a hole.
-    //
-    // IT IS NOT THE REPAIR AND DOES NOT CLAIM TO BE. It makes the quantity visible so a repair can
-    // be chosen against it; whatever `main`'s return still drops after this line remains unmeasured
-    // and is reported as a residue rather than assumed to be zero.
-    v1_compiler::cli_run::drop_process_caches_with_attribution();
+    // THE CORPUS CACHES ARE RELEASED WITH THE PROCESS, NOT FREED ONE NODE AT A TIME. The receipt
+    // above is already out, and nothing reads those caches again; see
+    // `release_process_caches_at_exit` for what it forgets, why that is safe, and the residue it
+    // leaves measured rather than assumed.
+    v1_compiler::cli_run::release_process_caches_at_exit();
     code
 }
 
