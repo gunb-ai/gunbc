@@ -1231,6 +1231,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FlexWrap, value: "wrap"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-assign-input" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
