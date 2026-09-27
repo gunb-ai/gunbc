@@ -755,18 +755,20 @@ fn listing_with(first: String, second: String) -> String {
   join(["[", first, ",", second, "]"], "")
 }
 
-data desired_offer: String = join(["{\"image_name\":\"", desired_census as String, "\",\"image_index\":5}"], "")
+fn desired_offer() -> String {
+  concat("{\"image_name\":\"", concat(desired_census as String, "\",\"image_index\":5}"))
+}
 data dup_name_offer: String = "{\"image_name\":\"a.iso\",\"image_name\":\"b.iso\",\"image_index\":3}"
 
 test fn an_unreadable_offered_row_beside_the_desired_one_refuses_before_start_media() -> Bool {
-  (match images_listing_reading(body: listing_with(first: "{}", second: desired_offer), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
-    && (match images_listing_reading(body: listing_with(first: desired_offer, second: "{}"), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
-    && (match images_listing_reading(body: listing_with(first: dup_name_offer, second: desired_offer), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
-    && (match images_listing_reading(body: listing_with(first: desired_offer, second: "{\"image_name\":7}"), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
+  (match images_listing_reading(body: listing_with(first: "{}", second: desired_offer()), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
+    && (match images_listing_reading(body: listing_with(first: desired_offer(), second: "{}"), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
+    && (match images_listing_reading(body: listing_with(first: dup_name_offer, second: desired_offer()), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
+    && (match images_listing_reading(body: listing_with(first: desired_offer(), second: "{\"image_name\":7}"), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
 }
 
 test fn a_readable_listing_ignores_unrelated_optional_members() -> Bool {
-  match images_listing_reading(body: listing_with(first: "{\"image_name\":\"memtest.iso\",\"image_index\":0}", second: desired_offer), image_name: desired_census) {
+  match images_listing_reading(body: listing_with(first: "{\"image_name\":\"memtest.iso\",\"image_index\":0}", second: desired_offer()), image_name: desired_census) {
     ImagesListingOffers { image_index: i } => i == "5"
     _ => false
   }
