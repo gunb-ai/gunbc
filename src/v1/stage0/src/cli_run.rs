@@ -16928,6 +16928,17 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
                     ));
                 }
                 if full != heads {
+                    if out.divergent.len() < 4 && std::env::var("DBG_DIFF").is_ok() {
+                        let a = format!("{full:#?}");
+                        let b = format!("{heads:#?}");
+                        let al: Vec<&str> = a.lines().collect();
+                        let bl: Vec<&str> = b.lines().collect();
+                        let i = al.iter().zip(bl.iter()).position(|(x, y)| x != y).unwrap_or(al.len().min(bl.len()));
+                        let lo = i.saturating_sub(12);
+                        eprintln!("[dbg-diff] {path} full_lines={} heads_lines={} first_diff_line={i}", al.len(), bl.len());
+                        for k in lo..(i + 4).min(al.len()) { eprintln!("  F {k}: {}", al[k]); }
+                        for k in lo..(i + 4).min(bl.len()) { eprintln!("  H {k}: {}", bl[k]); }
+                    }
                     out.divergent.push(path);
                 }
             }
