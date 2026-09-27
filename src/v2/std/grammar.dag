@@ -1598,13 +1598,27 @@ fn formal_production_index(productions: List<FormalProduction>) -> FormalProduct
   }
 }
 
-// The productions a node can match: for each asked lhs, its untagged bucket and the bucket the node's
-// first positional atom names.
-fn formal_productions_asked_indexed(index: FormalProductionIndex, asked: List<Symbol>, emitted: Node) -> List<FormalProduction> {
-  let tag = match conj_positional_children(parent: emitted) {
-    Empty => optional_absent()
-    Cons { head: first, tail: _ } => node_atom_identity_optional(node: first)
+// THE KEY A NODE IS LOOKED UP BY, from its emitted shape, matching what the matcher accepts: a bare
+// Atom is its own key (a singleton exact-bound production matches an Atom whose identity is the
+// binding, formal_production_rhs_singleton_binding); a Conj is keyed by its first positional atom (a
+// leading exact-bound terminal takes slot 0); any other shape has no key and is offered the untagged
+// rows only. `children` is the node's positional reading, shared with the resolution that reads it.
+fn formal_emitted_index_key(emitted: Node, children: List<Node>) -> Symbol? {
+  match emitted.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    TypeNode { connective: Conj } =>
+      match children {
+        Empty => optional_absent()
+        Cons { head: first, tail: _ } => node_atom_identity_optional(node: first)
+      }
+    _ => optional_absent()
   }
+}
+
+// The productions a node can match: for each asked lhs, its untagged bucket and the bucket the node's
+// key names.
+fn formal_productions_asked_indexed(index: FormalProductionIndex, asked: List<Symbol>, emitted: Node, children: List<Node>) -> List<FormalProduction> {
+  let tag = formal_emitted_index_key(emitted: emitted, children: children)
   fold_list(
     xs: asked,
     empty: Empty,
@@ -1686,8 +1700,8 @@ fn resolve_emitted_productions_asked_in(
   asked: List<Symbol>,
   emitted: Node
 ) -> EmittedProductionResolution {
-  let candidates = formal_productions_asked_indexed(index: index, asked: asked, emitted: emitted)
   let children = conj_positional_children(parent: emitted)
+  let candidates = formal_productions_asked_indexed(index: index, asked: asked, emitted: emitted, children: children)
   let child_count = conj_positional_child_count(children: children)
   let unmatched = EmittedProductionResolution {
     emitted: emitted,
