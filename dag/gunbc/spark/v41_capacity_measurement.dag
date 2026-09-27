@@ -3,7 +3,7 @@ module gunbc.spark.v41_capacity_measurement
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat, nat_min }
+import std.nat { Nat, nat_min, nat_max }
 import std.measure {
   ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value,
   Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count,
@@ -15,6 +15,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingExplicit, PrefixCachingOmitted }
 import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmResolvedKvFormat, ResolvedFp8DsMla, ResolvedUnobserved }
 import extdeps.vllm.kv_layout { VllmReportedCapacity, observed_revisions_agree }
 import extdeps.linux.psi { PsiReading, PsiStallInterval, PsiStallMeasured, PsiStallUnmeasurable, psi_full_stall_interval }
@@ -52,6 +53,55 @@ data v41_measurement_max_model_len: TokenCount = token_count(count: 262144)
 
 // The staircase concurrencies, in order. A capacity is always one of these, never a value between two.
 data v41_staircase_concurrencies: List<Nat> = [1, 2, 4, 6, 8, 12, 16]
+
+// ── THE MEASUREMENT SERVE'S LAUNCH SHAPE ─────────────────────────────────────────────────────────
+//
+// ONE SERVE FOR THE WHOLE STAIRCASE. The load generator raises concurrency; the serve is not relaunched
+// per step, because a relaunch resets the page cache, the refault and fault baselines and the KV pool
+// the stop rules and the Engram-resident capacity read across steps, and every step shares one run id
+// and one startup receipt. The launch (the V4.1 Group A realization) takes its shape from here.
+//
+// max_num_seqs is the largest staircase concurrency, derived from the plan. The other two are AXES OF
+// THE MEASUREMENT, not production policy and not measured facts: no V4.1 figure exists to ground them
+// (V4's were measured on V4 and are not borrowed), so they are declared here, recorded in every rank's
+// startup receipt as resolved, and every capacity this plan reports is a capacity AT them -- the same
+// rule extdeps.vllm.kv_cache applies to cap and pool (measured pairs at a stated utilization, no curve).
+//   gpu memory utilization 8000 bp: vLLM's pool is a fraction of the ~121 GiB unified memory; the
+//     remaining ~20% is left for the OS and the file-backed Engram page cache, whose residency is one of
+//     the three capacities measured. A different utilization is a different measurement.
+//   max_num_batched_tokens 8192: the prefill chunk per scheduler step; it also sizes the file-backed
+//     lookup's pinned staging (max_num_batched_tokens x local heads x record).
+//   prefix caching explicitly OFF: every request pays its own KV and its own Engram lookups, so the
+//     pool, residency and refault readings are not flattered by shared prefixes, and the probe cells'
+//     "prefix caching defeated" holds by the launch rather than by prompt construction alone. Left
+//     omitted, the V4.1 image would resolve it from the model config, so the engine and not this plan
+//     would decide what is measured.
+type V41MeasurementLaunchShape sole_constructor {
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  max_num_batched_tokens: TokenCount
+  gpu_memory_utilization: BasisPoint
+  prefix_caching: VllmPrefixCachingRequest
+}
+
+data v41_measurement_gpu_memory_utilization: BasisPoint = basis_point(count: 8000)
+data v41_measurement_max_num_batched_tokens: TokenCount = token_count(count: 8192)
+
+// CONSUMER: A DECLARED FRONTIER. The V4.1 TP4 Group A launch realization (zesty-ant-800's lane, the mp
+// arm route across srv5-8) reads its max_model_len, max_num_seqs, max_num_batched_tokens,
+// gpu-memory-utilization and prefix caching from this function; until it lands its dry run refuses
+// with this obligation named.
+data v41_measurement_launch_shape_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the V4.1 TP4 Group A launch realization (the mp arm route across srv5-8) takes max_model_len, max_num_seqs, max_num_batched_tokens, gpu memory utilization and prefix caching from gunbc.spark.v41_capacity_measurement v41_measurement_launch_shape and renders them into the launch. SUFFICIENT FOR: the measurement serve runs at exactly the shape the plan declares, and every rank's startup receipt can be checked against it." as NonEmptyStr)
+
+fn v41_measurement_launch_shape() -> V41MeasurementLaunchShape {
+  V41MeasurementLaunchShape {
+    max_model_len: v41_measurement_max_model_len,
+    max_num_seqs: fold(v41_staircase_concurrencies, init: nat_min(a: 0, b: 0), f: (acc, c) => nat_max(a: acc, b: c)),
+    max_num_batched_tokens: v41_measurement_max_num_batched_tokens,
+    gpu_memory_utilization: v41_measurement_gpu_memory_utilization,
+    prefix_caching: PrefixCachingExplicit { enabled: false },
+  }
+}
 
 type V41ProbeCell { context: TokenCount, concurrency: Nat }
 
