@@ -608,6 +608,10 @@ import v2.std.collection { List }
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 MATCH-ARM LIST ROW: v2.test.claim.body_lowering.match_arm_list_structure mals_lowered and
+// mals_third_arm_malformed each tokenize and parse one inline module and call one producer
+// (body_lower_match_arms_optional) on its match capture; the stored value is the lowered arm list
+// (Nodes, no resolution context and no closure), portable for the same reason vpw_normalized is.
 // THE XL-2 BOUND-VALUE RESOLVE ROW IS THE SAME GROUND AT ELEVEN SPECIMENS:
 // v2.test.claim.namespace_xl0.bound_value_resolve_refusal bvr_outcomes drives one front end over
 // eleven inline modules and stores one verdict arm per module, portable for the same reason.
@@ -687,6 +691,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
+  "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
+  "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
