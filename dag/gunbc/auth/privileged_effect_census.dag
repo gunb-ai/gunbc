@@ -826,7 +826,8 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedFederatedGrant,
     divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
-  },  PrivilegedEffectSite {
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "pair_serving_d0_ci_wet"),
     effect: PrivilegedEffect {
       subject: "D0: suspend a group's pair-serving authority for a keyed successor -- claim the consent slot, move the authority partition twice and finalize the host-placement preparation on the fabric DB" as NonEmptyStr,
