@@ -35,10 +35,10 @@ import gunbc.spark.v41_engram_row_store {
 // on exactly the non-record offsets v41_is_record_offset rejects. The Python refuses at runtime because
 // a Spark rank cannot call this fold; the fold is the declaration those raises realize.
 //
-// CONSUMER: A DECLARED FRONTIER, NOT YET IN THIS CLOSURE. The consumer of v41_open_residency_verdict is
-// the (layer, rank) open-receipt reading the wiring patch introduces: when
-// ParallelEngramEmbedding._allocate_weights constructs FileBackedEngramStorage (the trigger
-// gunbc.spark.v41_engram_row_store already names), each rank's EngramStoreOpenReceipt is read back into
+// CONSUMER: A DECLARED FRONTIER. The wiring has landed: FileBackedParallelEngramEmbedding opens each
+// (layer, rank) store through allocate_file_backed, whose open refuses as this verdict does. What
+// remains is the read-back: each rank's EngramStoreOpenReceipt, taken from the measurement serve's
+// worker log (the V4.1 capacity measurement's wet runner), is read into
 // gunbc.spark.v41_runtime_candidate beside v41_published_store_readback_readings and folded through this
 // verdict, so a rank that verified but stayed resident refuses the candidate, not only its own open.
 // v41_gather_rows' consumer is the same change's differential over boundary rows of a published store.
@@ -110,9 +110,10 @@ fn v41_gather_rows(store: V41CompleteStore, spec: V41RowStoreEncodingSpec, offse
 //
 // CONSUMER: A DECLARED FRONTIER. gunbc.spark.v41_capacity_measurement V41EngramLookupObservable's
 // EngramLookupObserved arm (owner of that module: the capacity-measurement lane) reads a rank's
-// receipts through v41_rank_touches, which dissolves TouchCounterUnavailable there; and the rank-side
-// call to write_touch_receipt at a step boundary is the same wiring trigger this module already
-// names for the open receipt. Until then, test.claim.spark.v41_engram_file_backed_witness exercises
+// receipts through v41_rank_touches, which dissolves TouchCounterUnavailable there. The rank side has
+// landed: a worker serving file-backed writes rank<r>.json on SIGUSR2 (register_touch_storage), or
+// rank<r>.unavailable when it cannot install the handler; the wet runner signals each rank at a step
+// boundary and reads the receipts. Until then, test.claim.spark.v41_engram_file_backed_witness exercises
 // the fold and the rank sum over supplied offsets and receipts.
 
 type V41FetchTouchReceipt sole_constructor {
