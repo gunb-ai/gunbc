@@ -412,7 +412,6 @@ fn deploy_stage_directory_let_step() -> PipelineStep {
   }
 }
 
-
 // The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
 // than a sentence assembled by concat, so a host identity carrying a space cannot split
 // `host=` from its value and turn one field into two.
@@ -437,8 +436,6 @@ fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
   }
 }
 
-
-
 // A LIMIT RENDERS ITS FLAG OR RENDERS NOTHING, AND THE EMPTY ARM IS NOT A DEFAULT.
 // LimitUnset is a declared policy state (std.evaluation_budget
 // evaluation_limit_unset_is_a_state_not_a_default_note), so it emits no flag and the
@@ -451,7 +448,6 @@ fn eval_budget_flag_text(flag: String, limit: EvaluationLimit) -> String {
       join([" ", flag, " ", to_string(positive_millisecond_count(m: l))], "")
   }
 }
-
 
 // THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
 // against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
@@ -1130,8 +1126,6 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
-
-
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
 // first installs the owner-run working-byte sync; ServeBinary then installs the admitted binary and
 // replaces that unit document with Git-native convergence. There is no second unit name, lifecycle,
@@ -1212,7 +1206,6 @@ fn repository_convergence_readback_command(
     concat("receipt=", convergence_receipt_path(instance_root: spec.service.instance_root as String)),
   ])
 }
-
 
 // gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
@@ -1764,11 +1757,6 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // diagnostic (DESIGN section 5: refuse, never widen).
 data approval_broker_release_retention_note: String = "The broker's release locus grows one directory per deployed candidate and nothing prunes it. Each holds the .dag corpus, the v2 sources and a gunbc binary. This is ACCEPTED for the cutover and is not a background obligation to be discovered later: retention is a policy question (how many releases must stay rollback-able, and against what) that has no answer until the broker has a rollback story, which it does not have while it is being stood up dark. It is bounded in practice by the number of dark installs the cutover performs. DISSOLVES WHEN the broker has a declared rollback target: at that point the number of releases that must survive is derivable from it, and a prune step belongs beside the install step reading that number -- never a timer reconciling the directory against a guess."
 
-
-
-
-
-
 // EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
 // (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name): the seed refuses to run
 // from a directory that is not a git checkout, and a locus is not one -- measured on srv1
@@ -1777,7 +1765,6 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
   Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
 }
-
 
 // THE DIGEST IS OVER CONTENT, ORDER-INDEPENDENTLY, so two trees with the same bytes in the same
 // paths agree regardless of how either was walked. sort -z before hashing is what makes that true:
@@ -2225,8 +2212,6 @@ data approval_broker_helper_sudoers_stage_name: String = "gunbc-approval-broker-
 data approval_broker_helper_sudoers_readback_stage_name: String = "gunbc-approval-broker-helpers.readback"
 data approval_broker_helper_sudoers_mode: NonEmptyStr = "0440"
 
-
-
 // The release locus, named only so its refusal is a control: it is owned by the broker's service
 // user.
 fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
@@ -2235,11 +2220,6 @@ fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
     owner: spec.approval_broker.service_user,
   }
 }
-
-
-
-
-
 
 // THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
 // runs as fleet_posix_operator_user, which owns the device store and reads the publisher token).
@@ -3099,7 +3079,6 @@ fn retract_unobserved_client_poison(reason: String) -> String {
   )
 }
 
-
 // THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
 // WHOLE PROGRAM.
 //
@@ -3295,7 +3274,6 @@ fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> Strin
 fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
   render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol)
 }
-
 
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
