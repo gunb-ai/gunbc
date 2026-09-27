@@ -2,7 +2,7 @@ module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, kind_node, roster_member_kind }
-import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_tail, zip_map }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, fold_list, length, list_tail, zip_map }
 import std.algebra { Cons, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
@@ -55,7 +55,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
 import v2.std.compilers.body_lowering { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
@@ -967,6 +967,78 @@ fn infer_parameter_type_in_scope(tree: Node, reference: Node, binding: Symbol) -
     ParameterReferenceBound { declared: ty } => Present { value: ty }
     ParameterReferenceUnbound => Absent
     ParameterReferenceNotHere => Absent
+  }
+}
+
+// A REFINEMENT DECLARATION, READ FROM A TYPE REFERENCE. `type Pos = Int where positive` is lowered
+// (v2.compiler.body_lowering_fold body_lower_type_variant, the head lowered as a type) to
+// `Pos: Conj { <type-expr>: Int,
+// <where-refinement-clause>: clause }` and grafted onto the containment spine at its qualified path
+// (v2.compiler.namespace_graft namespace_graft_fold_spine). A resolved reference to it carries that
+// path (v2.std.qualified_name declaration_reference_path_optional), so the declaration is reached by
+// walking the path's own segments down the spine, never by searching the tree for a matching shape.
+// ONE READER, TWO CONSUMERS: v2.std.coercion's declared-carrier widening projects .carrier, and the
+// literal-into-refinement cast projects .where_clause into resolve's predicate bindings. Absent when
+// the reference is not a declaration reference, the path does not reach a declaration, or the
+// declaration carries no where clause (it is then not a refinement, and has no carrier to widen to).
+// When the symbol index reaches infer's carriers, the spine walk becomes a lookup in it
+// (v2.std.symbol_index symbol_index_entry_at) and this reader keeps its signature.
+type RefinementDeclaration {
+  path: QualifiedName
+  carrier: Node
+  where_clause: Node
+}
+
+fn refinement_declaration_spine_step(n: Node, segment: Symbol) -> Optional<Node> {
+  match find_named_child(root: n, name: segment) {
+    Accepted { value: next, diagnostics: _ } => Present { value: next }
+    Rejected { diagnostics: _ } =>
+      match find_named_child(root: n, name: ^grammar_production_captured_node_projection) {
+        Accepted { value: captured, diagnostics: _ } => refinement_declaration_spine_step(n: captured, segment: segment)
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn refinement_declaration_at_path(tree: Node, path: QualifiedName) -> Optional<Node> {
+  fold_list(xs: path, empty: Present { value: tree }, cons: fn(at, segment) {
+    match at {
+      Present { value: n } => refinement_declaration_spine_step(n: n, segment: segment)
+      Absent => Absent
+    }
+  })
+}
+
+fn refinement_declaration(tree: Node, reference: Node) -> Optional<RefinementDeclaration> {
+  match declaration_reference_path_optional(node: reference) {
+    Absent => Absent
+    Present { value: path } =>
+      match refinement_declaration_at_path(tree: tree, path: path) {
+        Absent => Absent
+        Present { value: decl } =>
+          match find_named_child(root: decl, name: ^dag_surface_where_refinement_clause) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: clause, diagnostics: _ } =>
+              match find_named_child(root: decl, name: ^dag_surface_type_expr) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: head, diagnostics: _ } =>
+                  Present {
+                    value: RefinementDeclaration {
+                      path: path,
+                      carrier: head,
+                      where_clause: clause
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn refinement_declared_carrier(tree: Node, source_type: Node) -> Optional<Node> {
+  match refinement_declaration(tree: tree, reference: source_type) {
+    Present { value: d } => Present { value: d.carrier }
+    Absent => Absent
   }
 }
 
@@ -2423,7 +2495,7 @@ fn infer_gather_application_row_on_entries(
 // not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
 // is: the check is neither admitted nor skipped silently.
 
-fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Bool> {
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(true)
     Present { value: annotation } =>
@@ -2436,7 +2508,12 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) ->
               match bound_facts.grounding {
                 GroundingNotDerived { node: _ } => outcome_accepted(true)
                 DerivedGrounding { grounding: g } =>
-                  match coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: annotation) {
+                  match coercion_cast_crossing(
+                    source: g,
+                    source_type: g.witness.structural.evidence,
+                    source_declared_carrier: refinement_declared_carrier(tree: tree, source_type: g.witness.structural.evidence),
+                    target: annotation
+                  ) {
                     Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
                     Rejected { diagnostics: r } =>
                       Rejected { diagnostics: infer_bind_annotation_refusal(annotation: annotation, cause: r) }
@@ -2471,7 +2548,7 @@ fn infer_gather_bind_annotation_row_on_entries(
   partials: List<Node>,
   tree: Node,
 ) -> InferGatherFoldAcc {
-  match infer_bind_annotation_check(node: node, entries: entries) {
+  match infer_bind_annotation_check(node: node, entries: entries, tree: tree) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -2504,7 +2581,7 @@ fn infer_transform_derived_optional(
   if infer_transform_is_binary_infix_int_add_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
   } else {
-    infer_transform_cast_optional(node: node, entries: entries)
+    infer_transform_cast_optional(node: node, entries: entries, tree: tree)
   }
 }
 
@@ -2521,7 +2598,7 @@ fn infer_transform_is_cast(node: Node) -> Bool {
   }
 }
 
-fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, tree: Node) -> Optional<Outcome<InferredFacts>> {
   if !infer_transform_is_cast(node: node) {
     optional_absent()
   } else {
@@ -2538,7 +2615,12 @@ fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) 
                   GroundingNotDerived { node: _ } => optional_absent()
                   DerivedGrounding { grounding: g } =>
                     optional_present(value: bind_outcome(
-                      o: coercion_cast_crossing(source: g, source_type: g.witness.structural.evidence, target: target),
+                      o: coercion_cast_crossing(
+                        source: g,
+                        source_type: g.witness.structural.evidence,
+                        source_declared_carrier: refinement_declared_carrier(tree: tree, source_type: g.witness.structural.evidence),
+                        target: target
+                      ),
                       f: fn(crossed) {
                         match infer_descent_witness_for_node(n: node) {
                           Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
