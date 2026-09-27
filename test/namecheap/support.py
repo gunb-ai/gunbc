@@ -28,4 +28,3 @@ def stage_import_closure(entry, destination):
         copied.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, copied)
     return destination / entry.relative_to(root)
-
