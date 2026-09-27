@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.probe_manifest_overwrites_emitted_dependency_demand
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data probe_manifest_overwrites_emitted_dependency_demand: RecurringFailureMode = RecurringFailureMode {
+  identity: "probe_manifest_overwrites_emitted_dependency_demand" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: the emitter derives Cargo dependency demand from the emitted program, then the native probe writer replaces Cargo.toml with the stage0 foundation dependency roster. The two producers answer different questions while naming one artifact.",
+    "RECEIPT: native-filesystem-fold at 5c3d566a768 emitted 185 files for the native CLI, including an async service driver. The assembled native crate refused with E0433 for tokio and E0752 for async main. The focused native controls built against the original emitted manifest and passed; their green did not establish the assembled route.",
+    "REPAIR: emitted_closure_compile_host consumes the unique emitted Cargo.toml and preserves its dependency and feature tables. It changes only the per-entry package name and carries the original library name so generated main.rs can still address the emitted crate.",
+    "CONTROL: manifest_preserves_emitted_dependency_demand passes both synchronous and asynchronous manifests from emit_cargo_toml through the production adapter and compares their dependency and feature tables. The crate writer refuses an absent or ambiguous emitted manifest rather than supplying a replacement roster.",
+    "CEILING: the host still adapts package identity through TOML. This construction removes its second dependency authority; it does not prove that the emitter has modeled every dependency demand correctly. The native emit/build/fault/restore route remains the executed discriminator for that larger claim.",
+  ],
+  evidence: [],
+}
