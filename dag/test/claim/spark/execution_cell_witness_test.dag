@@ -616,7 +616,7 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             ArmMemoryExperimentAdmitted { plan: p } => token_count_value(t: p.profile.max_model_len)
             ArmMemoryExperimentRefused { cause: _ } => 0
           }
-          let seat_window = match spark_seat_window_tokens(context_window: context_window) {
+          let seat_window = match spark_seat_window_tokens(context_window: phase.variant.window_tokens) {
             Present { value: w } => w
             Absent => 0
           }
@@ -817,12 +817,12 @@ test fn w_the_seat_construction_is_token_exact() -> Bool {
             ArmMemoryExperimentAdmitted { plan: p } => token_count_value(t: p.profile.max_model_len)
             ArmMemoryExperimentRefused { cause: _ } => 0
           }
-          let seat_window = match spark_seat_window_tokens(context_window: context_window) {
+          let seat_window = match spark_seat_window_tokens(context_window: phase.variant.window_tokens) {
             Present { value: w } => w
             Absent => 0
           }
           systemd_workload_header_safety_tokens < spark_seat_window_margin_tokens
-            && seat_window + spark_seat_window_margin_tokens == context_window
+            && seat_window + spark_seat_window_margin_tokens == phase.variant.window_tokens
             && !string_contains(s: prefill, pattern: "s%02db%05d")
             && !string_contains(s: churn, pattern: "s%02db%05d")
             && string_contains(s: prefill, pattern: "(probe_b_tokens - unit_base) / 2")
@@ -1123,39 +1123,59 @@ test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_tear
     Absent => false
     Present { value: phase } =>
       let prefill = phase.prefill_seats.plan.script
+      let sampling = phase.sampling.plan.script
       fires_at_bound
         && below_bound
         && progress_resets
         && quiet_resets
         && s24 == systemd_workload_stall_seconds / systemd_workload_watchdog_poll_seconds
         && string_contains(s: prefill, pattern: "stall-watchdog-armed")
+        && string_contains(s: prefill, pattern: "rides=workload-phase")
+        && string_contains(s: prefill, pattern: "stall_watchdog.pid")
         && string_contains(s: prefill, pattern: "GUNBC_WATCHDOG_EOF")
         && string_contains(s: prefill, pattern: "Avg prompt throughput")
         && string_contains(s: prefill, pattern: join(["-ge ", to_string(systemd_workload_stall_seconds / systemd_workload_watchdog_poll_seconds)], ""))
         && string_contains(s: prefill, pattern: "py-spy dump --pid")
         && string_contains(s: prefill, pattern: "/proc/")
         && string_contains(s: prefill, pattern: "docker top glm-native-tp4")
-        && string_contains(s: prefill, pattern: "prefill_firing_done")
+        && string_contains(s: prefill, pattern: "workload_phase_done")
         && string_contains(s: prefill, pattern: "watchdog: stall captured")
-        && string_contains(s: prefill, pattern: "stall-watchdog-reaped")
+        && !string_contains(s: prefill, pattern: "prefill_firing_done")
+        && !string_contains(s: prefill, pattern: "stall-watchdog-reaped")
+        && string_contains(s: sampling, pattern: "workload_phase_done")
+        && string_contains(s: sampling, pattern: "stall_watchdog.pid")
+        && string_contains(s: sampling, pattern: "stall-watchdog-reaped")
+        && 3600 <= phase.readiness_bounded_seconds
+        && phase.churn_window_seconds + spark_churn_request_timeout_seconds < 3600
   }
 }
 
-// THE DEFAULT VARIANT RUNS THE WATCHDOG OFF: variant a — the repro the parent runs on landing —
-// renders no stall instrumentation, and the dry banner names it: variant, six seats, the full
-// window, concurrent, watchdog off. The budget arithmetic is the plan's own, as every variant.
-test fn w_the_default_variant_renders_watchdog_off_and_names_itself() -> Bool {
+// THE ACTIVE VARIANT RENDERS ITSELF, WHATEVER THE PARENT SET: the phase's variant is the active
+// row, the dry banner names it with its own values, the stall instrumentation renders exactly when
+// the variant arms it, and the sampler's phase-end stand-down rides every variant (inert when no
+// watchdog was armed). The budget arithmetic is the plan's own, as every variant — this witness
+// holds for whichever variant the parent's per-run flip selects, a through e.
+test fn w_the_active_variant_renders_itself_and_the_watchdog_follows_the_variant() -> Bool {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
       match workload {
         Absent => false
         Present { value: phase } =>
-          (phase.variant.name as String) == "a-repro-six-full-window"
-            && !phase.variant.watchdog
-            && !string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog")
-            && string_contains(s: spark_native_experiment_actuation_dry(), pattern: "variant=a-repro-six-full-window seats=6 window_tokens=262144 mode=concurrent watchdog=off")
+          let banner = join(["variant=", phase.variant.name as String, " seats=", to_string(phase.variant.seat_count), " window_tokens=", to_string(phase.variant.window_tokens), " mode=", spark_workload_mode_wire(mode: phase.variant.mode), " watchdog=", if phase.variant.watchdog { "armed" } else { "off" }], "")
+          let watchdog_markers = if phase.variant.watchdog {
+            string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog-armed")
+              && string_contains(s: phase.prefill_seats.plan.script, pattern: "workload_phase_done")
+          } else {
+            !string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog")
+          }
+          (phase.variant.name as String) == (spark_active_workload_variant as String)
+            && watchdog_markers
+            && string_contains(s: spark_native_experiment_actuation_dry(), pattern: banner)
+            && string_contains(s: phase.sampling.plan.script, pattern: "workload_phase_done")
+            && string_contains(s: phase.sampling.plan.script, pattern: "stall_watchdog.pid")
             && string_contains(s: phase.churn.plan.script, pattern: join(["window_seconds=", to_string(phase.churn_window_seconds)], ""))
+            && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: phase.readiness_bounded_seconds)
       }
   }
 }

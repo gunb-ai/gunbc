@@ -187,7 +187,7 @@ test fn w_the_fragmentation_plan_plans_a_workload_phase_from_its_own_figures() -
         Present { value: phase } =>
           let seat_count = phase.variant.seat_count
           let context_window = token_count_value(t: arm_experiment_kvplan_v2_2026_09_26_policy_profile().max_model_len)
-          let seat_window = match spark_seat_window_tokens(context_window: context_window) {
+          let seat_window = match spark_seat_window_tokens(context_window: phase.variant.window_tokens) {
             Present { value: w } => w
             Absent => 0
           }

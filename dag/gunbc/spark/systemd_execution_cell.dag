@@ -384,18 +384,22 @@ fn systemd_workload_stall_fired(stall_polls: Nat, stall_seconds: Nat, poll_secon
 }
 
 // THE STALL WATCHDOG, rendered as a standalone script the prefill leg backgrounds when the active
-// variant arms it (variant e of the matrix, which must ride every hanging run). It tails the head
-// log's throughput lines — the signal that persisted through the 2026-09-27 hang — and on the
-// fired bound captures a stack dump of EVERY process in the engine container (the hung worker and
-// the head process among them, named by pid and comm) into the workload evidence directory, BEFORE
-// any teardown leg can run: the capture lives inside the prefill leg, which precedes the stops by
-// the route's order. THE CAPTURE INSTRUMENT is py-spy where the host carries it — a dependency the
-// parent confirms on srv9 before the wet run; where py-spy is absent the fallback is the kernel's
-// own /proc/<pid>/stack and wchan, which need no install and still localize kernel-side waits.
-// Either way the dump file names the instrument that produced it. The watchdog stands down the
-// moment the prefills finish (the leg touches the done flag), never extends the admitted budget —
-// its own bound is twice the seat timeout, a backstop the flag always beats — and exits after one
-// capture, so a hanging run yields exactly one dump set.
+// variant arms it (variant e of the matrix, which must ride every hanging run) — and from the
+// 2026-09-27 evidence, the hang can fire in ANY workload phase: variant b completed all five
+// prefills and then hung three concurrent churn requests at 0.0 tokens/s with no capture. So the
+// watchdog RIDES THE WHOLE PHASE: armed before the seats fire, alive through the churn and the
+// sampling, standing down only when the sampler leg — the phase's end — touches the done flag, or
+// on its own capture, or at its own bound. It tails the head log's throughput lines, the signal
+// that persisted through both hangs, and on the fired bound captures a stack dump of EVERY process
+// in the engine container (the hung worker and the head process among them, named by pid and comm)
+// into the workload evidence directory, BEFORE any teardown leg can run: every workload leg
+// precedes the stops by the route's order. THE CAPTURE INSTRUMENT is py-spy where the host carries
+// it — a dependency the parent confirms on srv9 before the wet run; where py-spy is absent the
+// fallback is the kernel's own /proc/<pid>/stack and wchan, which need no install and still
+// localize kernel-side waits. Either way the dump file names the instrument that produced it. The
+// watchdog never extends the admitted budget — its own bound, twice the seat timeout, covers the
+// worst-case phase (a seat timeout plus the churn window plus the sampling tail) with room — and
+// exits after one capture, so a hanging run yields exactly one dump set.
 fn systemd_workload_watchdog_script(member: SystemdExecutionMember, serve_port: Port, state_dir: String, bound_seconds: Nat) -> String {
   join([
     "# stall watchdog, rendered by gunbc.spark.systemd_execution_cell; arms only what the matrix names\n",
@@ -404,7 +408,7 @@ fn systemd_workload_watchdog_script(member: SystemdExecutionMember, serve_port: 
     "end=$(( $(date +%s) + ", to_string(bound_seconds), " ))\n",
     "stall_polls=0\n",
     "while [ \"$(date +%s)\" -lt \"$end\" ]; do\n",
-    "  if [ -f \"$state/prefill_firing_done\" ]; then echo \"watchdog: prefills completed, standing down\"; exit 0; fi\n",
+    "  if [ -f \"$state/workload_phase_done\" ]; then echo \"watchdog: workload phase completed, standing down\"; exit 0; fi\n",
     "  line=$(grep \"Avg prompt throughput\" \"$log\" 2>/dev/null | tail -1)\n",
     "  case \"$line\" in *'Avg prompt throughput'*) : ;; *) sleep ", to_string(systemd_workload_watchdog_poll_seconds), "; continue ;; esac\n",
     "  thpt=$(printf '%s' \"$line\" | awk -F'Avg prompt throughput: ' '{ print $2 }' | awk -F' tokens' '{ print $1 }')\n",
@@ -492,16 +496,8 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
       "GUNBC_WATCHDOG_EOF\n",
       "nohup sh \"$state/stall_watchdog.sh\" > \"$state/stall_watchdog.log\" 2>&1 &\n",
       "watchdog_pid=$!\n",
-      "echo \"stall-watchdog-armed pid=$watchdog_pid bound_seconds=3600 stall_seconds=", to_string(systemd_workload_stall_seconds), "\"\n",
-    ], "")
-  } else {
-    ""
-  }
-  let watchdog_reap = if watchdog {
-    join([
-      "for i in 1 2 3; do kill -0 \"$watchdog_pid\" 2>/dev/null || break; sleep 5; done\n",
-      "kill \"$watchdog_pid\" 2>/dev/null || true\n",
-      "echo \"stall-watchdog-reaped\"\n",
+      "printf '%s' \"$watchdog_pid\" > \"$state/stall_watchdog.pid\"\n",
+      "echo \"stall-watchdog-armed pid=$watchdog_pid rides=workload-phase bound_seconds=3600 stall_seconds=", to_string(systemd_workload_stall_seconds), "\"\n",
     ], "")
   } else {
     ""
@@ -542,8 +538,6 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     request,
     "  seat=$(( seat + 1 ))\ndone\n",
     concurrent_wait,
-    "touch \"$state/prefill_firing_done\"\n",
-    watchdog_reap,
     "seat=1\n",
     "failed=0\n",
     "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
@@ -683,8 +677,12 @@ fn systemd_workload_readiness_script(member: SystemdExecutionMember, serve_port:
 // in-flight request tail, bounded by window + request timeout + one cadence — and each tick also
 // checks the driver's recorded pid, so a driver that died without writing its exit file (a launch
 // skew, a missing calibration) refuses located within one cadence instead of riding out the
-// backstop. Then it refuses located on a driver that reported failure or outlived the backstop, and
-// only then prints the peak line: warm reference, peak, gap, sample count, window.
+// backstop. Then it refuses located on a driver that reported failure or outlived the backstop.
+// THE SAMPLER IS THE PHASE'S END: it touches the workload-phase-done flag the stall watchdog
+// stands down on — the watchdog the prefill armed rides the whole phase, through this leg, and the
+// sampler reaps it from its pid file (a bounded wait, inert when no watchdog was armed) — so the
+// capture contract holds for a stall in any phase and the watchdog never outlives the workload.
+// Only then prints the peak line: warm reference, peak, gap, sample count, window.
 fn systemd_workload_sampling_script(member: SystemdExecutionMember, serve_port: Port, window_seconds: Nat, cadence_seconds: Nat, request_timeout_seconds: Nat) -> String {
   let state = systemd_workload_state_dir(member: member)
   join([
@@ -713,6 +711,13 @@ fn systemd_workload_sampling_script(member: SystemdExecutionMember, serve_port: 
     "  sleep ", to_string(cadence_seconds), "\n",
     "done\n",
     "if ! grep -q '^done fail=0$' \"$state/churn_driver.exit\"; then echo \"churn-driver-failed: $(cat \"$state/churn_driver.exit\")\"; exit 44; fi\n",
+    "touch \"$state/workload_phase_done\"\n",
+    "watchdog_pid=$(cat \"$state/stall_watchdog.pid\" 2>/dev/null || true)\n",
+    "if [ -n \"$watchdog_pid\" ]; then\n",
+    "  for i in 1 2 3; do kill -0 \"$watchdog_pid\" 2>/dev/null || break; sleep 5; done\n",
+    "  kill \"$watchdog_pid\" 2>/dev/null || true\n",
+    "  echo \"stall-watchdog-reaped\"\n",
+    "fi\n",
     "gap=$(( peak - warm ))\n",
     "echo \"allocator-gap-peak warm_mib=$warm peak_mib=$peak gap_mib=$gap samples=$ticks window_seconds=", to_string(window_seconds), " cadence_seconds=", to_string(cadence_seconds), "\"\n",
   ], "")
