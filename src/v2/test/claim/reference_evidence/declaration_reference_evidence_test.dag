@@ -236,11 +236,94 @@ fn dre_first_application_optional(n: Node) -> Optional<Node> {
   )
 }
 
-// EXPECTED RED, ENROLLED AS THE NEXT BOUNDARY. The entries-aware callee reader is NECESSARY -- without
-// it the application path cannot see a reference's callable evidence at all -- and it is NOT SUFFICIENT:
-// this call still does not ground. What remains is unidentified, and naming it is the next step rather
-// than widening the reader. Recorded as a claim so the boundary is executed and reported rather than
-// described.
-fn dre_a_named_call_is_grounded_expected_red() -> Bool {
+// THE CALL GROUNDS. Two changes were needed and only the first is obvious: the application path had to
+// SEE the callee's callable evidence (infer_application_callee_arrow_with_facts), and the grounding
+// check had to be asked of the CALLEE USE rather than of the arrow. That second lookup was keyed by
+// `arrow`, which is correct only while an arrow can only be the callee node itself; once the arrow may
+// be a DECLARATION's Arrow reached through the use's facts, it is a node of the declaring module with
+// no entry in this tree, so the lookup answered Absent and the application dropped to the frontier
+// however well the callee was typed.
+test fn dre_a_named_call_is_grounded_holds() -> Bool {
   dre_call_is_grounded(o: dre_reference_source())
+}
+
+// EXECUTION, DELIBERATELY BOOL-RETURNING. The point is that a named call EXECUTES and returns its
+// callee's value -- not that equality types. An Int-returning call compared with `==` would couple this
+// first execution proof to the equality operation, which has its own typing rule and its own unproven
+// standing; a Bool-returning call is its own assertion.
+fn dre_execution_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn consumer(y: Int) -> Bool {\n  truth(only_arg: y)\n}\n")
+}
+
+// A BOOL-RETURNING CALL DOES NOT GROUND, AND THAT IS A SEPARATE BOUNDARY FROM THIS REPAIR. Measured
+// three ways on this base: an Int-returning call grounds; a Bool-returning call with a literal body
+// does not; a Bool-returning call whose body is its parameter does not either. So the variable is the
+// RETURN TYPE, not the body. The reference itself grounds in every case, so this is downstream of the
+// reference repair, in the application's return derivation --
+// infer_arrow_declared_return_type -> dag_binding_denotation. Enrolled executed rather than deleted,
+// and NOT diagnosed further here: which binding symbol a Bool return actually carries is the next
+// question, and answering it is a separate change from this one.
+fn dre_a_named_call_to_a_bool_fn_is_grounded_expected_red() -> Bool {
+  dre_call_is_grounded_for(o: dre_execution_source(), wanted: ^truth)
+}
+
+fn dre_call_is_grounded_for(o: Outcome<ResolvedTree>, wanted: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          match dre_first_application_for(n: inferred.root, wanted: wanted) {
+            Absent => false
+            Present { value: call } =>
+              match inferred.facts.lookup(call) {
+                Absent => false
+                Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+              }
+          }
+      }
+  }
+}
+
+fn dre_first_application_for(n: Node, wanted: Symbol) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          ComputationNode { behavior: Transform } =>
+            match dre_uses_of(root: n0, wanted: wanted) {
+              Cons { head: _, tail: _ } => optional_present(value: n0)
+              Empty => optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _e, child) {
+        match acc { Present { value: _ } => acc  Absent => child }
+      }
+    }
+  )
+}
+
+fn dre_diag_bool_reference_grounds() -> Bool {
+  match dre_single_use_domain_labels(o: dre_execution_source(), wanted: ^truth) {
+    Absent => false
+    Present { value: labels } =>
+      match labels {
+        Cons { head: first, tail: _ } => first == ^only_arg
+        Empty => false
+      }
+  }
+}
+
+// Bool param AND Bool return, body is the parameter -- the same shape as the working Int case, so the
+// only variable against dre_execution_source is the literal body.
+fn dre_bool_param_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn truth(only_arg: Bool) -> Bool {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Bool {\n  truth(only_arg: y)\n}\n")
+}
+
+fn dre_diag_bool_param_call_grounds() -> Bool {
+  dre_call_is_grounded_for(o: dre_bool_param_source(), wanted: ^truth)
 }

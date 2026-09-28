@@ -1822,6 +1822,10 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
 // typing -- fell through to the undecidable-accepted arm. Giving the reference callable facts does not
 // make this path read them; this is where it reads them. The use keeps its own node and occurrence:
 // only the TYPE is taken from its facts entry, never the declaration's body or identity.
+fn infer_application_callee_use(node: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
+}
+
 fn infer_application_callee_arrow_with_facts(
   node: Node,
   entries: List<InferredFactsEntry>
@@ -2845,10 +2849,19 @@ fn infer_transform_derived_optional(
 // a non-Arrow operator, or a return the language join does not denote stays on the counted
 // frontier: Absent here, never an admission.
 fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+  match infer_application_callee_use(node: node) {
+    Absent => optional_absent()
+    Present { value: callee_use } =>
   match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => optional_absent()
     Present { value: arrow } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: arrow) {
+      // THE GROUNDING QUESTION IS ABOUT THE CALLEE USE, THE TYPE COMES FROM ITS EVIDENCE. This lookup
+      // was keyed by `arrow`. That was right while an arrow could only be the callee node itself, and
+      // wrong as soon as the arrow may be a DECLARATION's Arrow reached through the use's facts: that
+      // node belongs to the declaring module, is not a node of this tree, and so has no entry here --
+      // the lookup answered Absent and the application dropped to the frontier however well the callee
+      // was typed. The use and its type evidence are two things; only the first has facts in this tree.
+      match lookup_inferred_facts_in_entries(entries: entries, key: callee_use) {
         Absent => optional_absent()
         Present { value: arrow_facts } =>
           if !inferred_facts_grounding_derived(facts: arrow_facts) {
@@ -2871,6 +2884,7 @@ fn infer_transform_application_optional(node: Node, entries: List<InferredFactsE
             }
           }
       }
+  }
   }
 }
 
