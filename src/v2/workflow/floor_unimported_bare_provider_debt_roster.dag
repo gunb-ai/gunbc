@@ -560,7 +560,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/declaration_fork_census.dag", name: "map_insert", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/e0599_emitter_decision_census.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/e0599_emitter_decision_census.dag", name: "skip", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/e0599_probe_census.dag", name: "skip", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/e0599_probe_census.dag", name: "skip", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/emission_entry_instrument.dag", name: "append", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/module_impact_query_front_door.dag", name: "members", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/instruments/multi_module_compile_fixture.dag", name: "any", standing: ActiveDebt },

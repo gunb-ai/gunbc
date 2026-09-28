@@ -74,50 +74,60 @@ fn module_item_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEn
   )
 }
 
-fn next_module_item_start(
-  items: List<OccurrenceIndexEntry>,
-  after: Int,
-  fallback: Int
-) -> Int {
-  fold(
-    items,
-    init: fallback,
-    f: (best, entry) =>
-      let start = entry.projection.diagnostic_span.start
-      if start > after && start < best { start } else { best }
-  )
+// AN ITEM'S EXTENT, FOR EVERY ITEM IN ONE PASS OVER THE ENTRIES. A module item's subject span runs
+// from its own start to the furthest end of any entry that starts at or after it and before the next
+// item's start (or the source's end). So every entry belongs to exactly one item: the one with the
+// largest start at or before its own. Bucketing each entry there once answers every item's extent.
+// The per-item form asked the whole entry list again for each item, and asked the whole item list
+// again for each item's limit -- items x entries plus items x items per module, on every ingest.
+fn item_start_at_or_before(starts: List<Int>, x: Int, lo: Int, hi: Int) -> Int? {
+  if lo >= hi {
+    if lo == 0 { none } else { starts |> get(lo - 1) }
+  } else {
+    let mid = (lo + hi) / 2
+    match starts |> get(mid) {
+      Present { value: s } =>
+        if s <= x { item_start_at_or_before(starts: starts, x: x, lo: mid + 1, hi: hi) }
+        else { item_start_at_or_before(starts: starts, x: x, lo: lo, hi: mid) }
+      Absent => none
+    }
+  }
 }
 
-fn module_item_extent_end(
+fn module_item_extent_ends(
   entries: List<OccurrenceIndexEntry>,
-  start: Int,
-  limit: Int,
-  own_end: Int
-) -> Int {
+  item_starts: List<Int>,
+  source_length: Int
+) -> Map<Int, Int> {
+  let item_count = count(item_starts)
   fold(
     entries,
-    init: own_end,
-    f: (best, entry) =>
+    init: empty_map(),
+    f: (acc, entry) =>
       let entry_start = entry.projection.diagnostic_span.start
       let entry_end = entry.projection.diagnostic_span.end
-      if entry_start >= start && entry_start < limit && entry_end > best { entry_end } else { best }
+      if entry_start >= source_length { acc } else {
+        match item_start_at_or_before(starts: item_starts, x: entry_start, lo: 0, hi: item_count) {
+          Present { value: item_start } =>
+            match map_get(acc, item_start) {
+              Present { value: best } => if entry_end > best { map_insert(acc, item_start, entry_end) } else { acc }
+              Absent => map_insert(acc, item_start, entry_end)
+            }
+          Absent => acc
+        }
+      }
   )
 }
 
-// A module item's occurrence span is a START MARKER, not an extent: `data alpha` spans the `data` keyword and `fn go` spans the `fn` keyword. Attachment needs an extent, because the rule that keeps body prose from being filed against the next unrelated declaration is containment.
-
-// The extent is derived rather than invented. An item runs from its own start to the furthest end of any occurrence lying between it and the next module item — those occurrences are precisely its own nested structure, since a sibling item's structure cannot begin before that sibling does. Taking the next item's start as the end instead would be wrong in the ordinary case: the whitespace and the leading comment BELONGING TO the next item sit in that gap, so a comment written to describe `type Thing` would fall inside `data alpha` and be refused as body grain.
-
-// The module itself is rostered with its raw span and no derived extent. Its true extent is the whole file, which would swallow every capture; a degenerate span makes the two cases that matter come out right, since a comment above `module` still finds the module as its nearest following subject and a comment on the line immediately after `module` also attaches to the module when no blank line separates them (std.source_annotation `module_header_gap_subject`).
-
-// DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the
-// successor is a neighbor lookup and the extent is read rather than derived.
 fn annotation_subjects(
   transport: OccurrenceTransport,
   source_length: Int
 ) -> List<AnnotationSubject> {
   let entries = transport.index.entries
-  let items = module_item_entries(transport: transport)
+  let item_starts = module_item_entries(transport: transport)
+    |> map(item => item.projection.diagnostic_span.start)
+    |> sort_by(start => start)
+  let extent_ends = module_item_extent_ends(entries: entries, item_starts: item_starts, source_length: source_length)
   fold(
     entries,
     init: [],
@@ -127,7 +137,10 @@ fn annotation_subjects(
       if depth == 0 {
         list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span, module_root: true })
       } else if depth == 1 {
-        let limit = next_module_item_start(items: items, after: span.start, fallback: source_length)
+        let extent_end = match map_get(extent_ends, span.start) {
+          Present { value: bucket_end } => if bucket_end > span.end { bucket_end } else { span.end }
+          Absent => span.end
+        }
         list_push(
           acc,
           AnnotationSubject {
@@ -135,7 +148,7 @@ fn annotation_subjects(
             span: SourceSpan {
               file: span.file,
               start: span.start,
-              end: module_item_extent_end(entries: entries, start: span.start, limit: limit, own_end: span.end),
+              end: extent_end,
             },
             module_root: false,
           }
