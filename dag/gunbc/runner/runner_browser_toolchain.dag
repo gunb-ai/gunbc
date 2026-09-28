@@ -1,13 +1,15 @@
 module gunbc.runner_browser_toolchain
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, FilePath, list_length }
+import extdeps.shell
+import std.string_type { String }
 import extdeps.posix.test_utility { test_exists_command }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim, list_append }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import v2.std.orchestration { EnvBinding, EnvSet }
-import extdeps.exec.command { ArgvCommand, env_prefixed_command_in }
+import extdeps.exec.command { ArgvCommand, env_prefixed_command_in, env_cleared_command_in }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions { SelfHosted }
 import extdeps.automation.playwright {
@@ -18,16 +20,23 @@ import extdeps.automation.playwright {
   playwright_browsers_path_env, PlaywrightHostLibraryPackage,
   playwright_chromium_install_deps_ubuntu2404_arm64, playwright_package_for_soname,
 }
-import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34, chromium_version_command }
+import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34, chromium_version_command, chromium_version_line }
 import extdeps.tools.node {
   NodeReleaseArchive, node_v24_21_0_linux_arm64, node_release_archive_strip_components,
   node_release_binary_relative, node_version_command, node_eval_command,
 }
 import extdeps.tools.unzip { unzip_cli_tool, unzip_extract_command }
-import extdeps.tools.ldd { ldd_command, ldd_unresolved_sonames }
+import extdeps.tools.ldd { ldd_command }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.findutils { find_regular_files_sha256_command, find_owner_executable_files_command, find_symlink_targets_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { content_hash_atom, content_hash_validate_lower_hex_syntax }
 import extdeps.tools { apt_package_of }
 import extdeps.apt { package_xz_utils }
 import gunbc.command_runner {
@@ -110,7 +119,7 @@ data chromium_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = Bro
   sha256: "b5ad7d8fe70f230b34198ddb5626d717c016db2f627cb44b922babbcaf3479b9",
   byte_count: byte_size(count: 204732694),
   observed_on: "2026-09-28",
-  observed_by: "session witty-crane-254: curl -fsSL of the download url, then sha256sum",
+  observed_by: "gunbc.runner_browser_toolchain runner_browser_toolchain_archive_sha256_of_wet (curl -fsL of the download url, then sha256sum), first run 2026-09-28",
 }
 
 data chromium_headless_shell_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = BrowserArchiveDigestReceipt {
@@ -118,24 +127,54 @@ data chromium_headless_shell_1234_linux_arm64_digest_receipt: BrowserArchiveDige
   sha256: "b03443e1e1a60d06e07b6cdfe650b8c2bfcbb3db497d2b652f73dc6912f4ae15",
   byte_count: byte_size(count: 116380215),
   observed_on: "2026-09-28",
-  observed_by: "session witty-crane-254: curl -fsSL of the download url, then sha256sum",
+  observed_by: "gunbc.runner_browser_toolchain runner_browser_toolchain_archive_sha256_of_wet (curl -fsL of the download url, then sha256sum), first run 2026-09-28",
+}
+
+fn write_digest_receipt(receipt: String, line: String) -> ProcessExit {
+  let w = Filesystem.Write(path: receipt, content: concat(line, "\n"))
+  if w.success { ExitSuccess } else { exit_failure(reason: join(["the digest receipt could not be written at ", receipt, ": ", w.error, " (", line, ")"], "")) }
+}
+
+// THE PRODUCER THE TWO RECEIPTS ABOVE CITE: fetch a url to a path and print its sha256, so the
+// observation is re-derivable by anyone rather than carried on a session's word.
+fn runner_browser_toolchain_archive_sha256_of_wet(url: String, destination: String, receipt: String) -> ProcessExit {
+  match run_shell_command_capture(command: curl_download_command(url: url, destination: destination), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } => exit_failure(reason: join(["fetch failed (exit ", to_string(c), "): ", trim(s: e)], ""))
+    _ =>
+      match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: _, reason: r } => exit_failure(reason: r)
+        Sha256FileDigest { digest: d } => write_digest_receipt(receipt: receipt, line: join(["archive_sha256=", d.hex as String, " url=", url], ""))
+      }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
 // WHERE: the typed location (the consumer seam)
 // ---------------------------------------------------------------------------------------------
 
-// THE LOCATION IS DERIVED FROM THE PINS AND THE HOST'S JOB USER, AND IT IS ABSOLUTE. It replaces
+// THE LOCATION IS DERIVED FROM THE RECIPE AND THE HOST'S JOB USER, AND IT IS ABSOLUTE. It replaces
 // the GUNBC_KVM_STILL_TOOLCHAIN convention, under which a consumer learned where the toolchain was
-// from whatever a boot step exported -- an undeclared fact that could name any directory. The floor
-// job isolates HOME under RUNNER_TEMP (gunbc.toolchain_workflow_steps), so the root is NOT read
-// from HOME: it is the job user's home by gunbc.fleet_posix_accounts fleet_posix_home_directory,
-// which both the converge and every consumer derive the same way.
+// from whatever a boot step exported. The floor job isolates HOME under RUNNER_TEMP
+// (gunbc.toolchain_workflow_steps), so the base is NOT read from HOME: it is the job user's home by
+// gunbc.fleet_posix_accounts fleet_posix_home_directory, which the converge and every consumer derive
+// the same way.
 //
-// THE DIRECTORY NAME CARRIES EVERY PIN THAT DECIDES ITS CONTENTS, so a pin bump installs beside the
-// old tree instead of mutating it under a running consumer, and a consumer built against one pin
-// can never read another pin's tree.
+// THE TREE IS NAMED BY ITS WHOLE RECIPE (side-chat review of gunbc#12500, finding 2). An earlier
+// revision named it by the Playwright and Node versions only, so a digest-only pin change selected
+// the same directory and extracted into a tree a consumer might be running. The name is now the
+// structural content hash (std.content_hash content_hash_atom) of the recipe text -- every archive's
+// file name, url, pin, destination and extraction, and the pinned tree digest -- so ANY change to
+// what the tree is made of names a different tree. The name is a discriminator between recipes, not
+// the admission: admission is the sha256 of the tree's content against its pin (tree_admission_of).
+//
+// NOTHING SHARED IS WRITTEN BESIDE THE TREE EXCEPT THE RETAINED ARCHIVES (each verified against its
+// own pin before use). Every other write is PER INVOCATION (side-chat review 5334435195): a readback
+// writes its manifest, probe page and decoy into its own temporary directory, and a converge stages
+// into its own mktemp directory under the base -- the same file system as the tree, so publication
+// is one rename -- so two consumers, or a consumer and a converge, never share scratch.
 type RunnerBrowserToolchainLocation {
+  recipe: NonEmptyStr
+  base: NonEmptyStr
   root: NonEmptyStr
   archives: NonEmptyStr
   node_binary: NonEmptyStr
@@ -146,26 +185,22 @@ type RunnerBrowserToolchainLocation {
   headless_shell: NonEmptyStr
 }
 
-fn runner_browser_toolchain_root(job_user: NonEmptyStr) -> String {
-  join([
-    fleet_posix_home_directory(login: job_user) as String,
-    "/.local/share/gunbc-browser-toolchain/playwright-",
-    runner_browser_toolchain_automation.version as String,
-    "-node-", runner_browser_toolchain_node.version as String,
-    "-", runner_browser_toolchain_node.platform_arch as String,
-  ], "")
+fn runner_browser_toolchain_base(job_user: NonEmptyStr) -> String {
+  join([fleet_posix_home_directory(login: job_user) as String, "/.local/share/gunbc-browser-toolchain"], "")
 }
 
 fn browser_download_executable(browsers_path: String, download: PlaywrightBrowserDownload) -> String {
   join([browsers_path, "/", download.install_directory as String, "/", download.executable_relative as String], "")
 }
 
-fn runner_browser_toolchain_location(job_user: NonEmptyStr) -> RunnerBrowserToolchainLocation {
-  let root = runner_browser_toolchain_root(job_user: job_user)
+fn runner_browser_toolchain_location_at(base: String, recipe: NonEmptyStr) -> RunnerBrowserToolchainLocation {
+  let root = join([base, "/", recipe as String], "")
   let browsers = join([root, "/ms-playwright"], "")
   RunnerBrowserToolchainLocation {
+    recipe: recipe,
+    base: base as NonEmptyStr,
     root: root as NonEmptyStr,
-    archives: join([root, "/archives"], "") as NonEmptyStr,
+    archives: join([base, "/archives"], "") as NonEmptyStr,
     node_binary: join([root, "/node/", node_release_binary_relative as String], "") as NonEmptyStr,
     node_path: join([root, "/node_modules"], "") as NonEmptyStr,
     playwright_module: join([root, "/node_modules/playwright"], "") as NonEmptyStr,
@@ -173,6 +208,13 @@ fn runner_browser_toolchain_location(job_user: NonEmptyStr) -> RunnerBrowserTool
     chromium: browser_download_executable(browsers_path: browsers, download: playwright_chromium_1234_linux_arm64) as NonEmptyStr,
     headless_shell: browser_download_executable(browsers_path: browsers, download: playwright_chromium_headless_shell_1234_linux_arm64) as NonEmptyStr,
   }
+}
+
+fn runner_browser_toolchain_location(job_user: NonEmptyStr) -> RunnerBrowserToolchainLocation {
+  runner_browser_toolchain_location_at(
+    base: runner_browser_toolchain_base(job_user: job_user),
+    recipe: runner_browser_toolchain_recipe_identity(archives: runner_browser_toolchain_archives, tree_sha256: runner_browser_toolchain_tree_sha256),
+  )
 }
 
 // THE ENVIRONMENT A CONSUMER RUNS NODE UNDER: only PLAYWRIGHT_BROWSERS_PATH, pointing Playwright's
@@ -191,8 +233,13 @@ fn runner_browser_toolchain_env(location: RunnerBrowserToolchainLocation) -> Lis
   ]
 }
 
-// `node -e <script> <operands>` under that environment, with the pinned node binary, started in a
-// directory the caller names. This is the command a consumer runs; it is not free to pick a node
+// `node -e <script> <operands>` under ONLY that environment (env -i), with the pinned node binary,
+// started in a directory the caller names. The environment is CLEARED rather than overlaid (side-chat
+// review 5334435195): an inherited NODE_OPTIONS can --require a preload that answers the probe's
+// expected title, width and resolved path without the declared package or a browser ever running,
+// and require.resolve cannot tell. The admitted startup inputs are exactly: the node binary by
+// absolute path, its argv, the working directory, PLAYWRIGHT_BROWSERS_PATH, and HOME set to that
+// working directory. Nothing else of the caller's environment reaches node or the browser it launches. This is the command a consumer runs; it is not free to pick a node
 // from PATH, a package from elsewhere, or to inherit a working directory it did not choose.
 fn runner_browser_toolchain_node_command(
   location: RunnerBrowserToolchainLocation,
@@ -200,9 +247,9 @@ fn runner_browser_toolchain_node_command(
   script: String,
   operands: List<String>,
 ) -> ArgvCommand {
-  env_prefixed_command_in(
+  env_cleared_command_in(
     directory: directory,
-    bindings: runner_browser_toolchain_env(location: location),
+    bindings: list_append(left: runner_browser_toolchain_env(location: location), right: [EnvSet { name: "HOME", value: directory }]),
     command: node_eval_command(node_binary: location.node_binary, script: script, operands: operands),
   )
 }
@@ -310,15 +357,12 @@ type BrowserToolchainExtraction
   = ExtractTar { strip_components: Int }
   | ExtractZip
 
-// placed_marker_relative names a file inside the destination that exists only once extraction
-// completed; an archive is treated as placed when it verifies AND that file is present.
 type BrowserToolchainArchive {
   file_name: NonEmptyStr
   url: NonEmptyStr
   pin: ArchiveDigestPin
   destination_relative: NonEmptyStr
   extraction: BrowserToolchainExtraction
-  placed_marker_relative: NonEmptyStr
 }
 
 fn npm_tarball_archive(t: PlaywrightNpmTarball) -> BrowserToolchainArchive {
@@ -328,7 +372,6 @@ fn npm_tarball_archive(t: PlaywrightNpmTarball) -> BrowserToolchainArchive {
     pin: ArchiveNpmIntegrity { wire: t.integrity },
     destination_relative: join(["node_modules/", t.package as String], "") as NonEmptyStr,
     extraction: ExtractTar { strip_components: playwright_npm_tarball_strip_components },
-    placed_marker_relative: join(["node_modules/", t.package as String, "/package.json"], "") as NonEmptyStr,
   }
 }
 
@@ -339,7 +382,6 @@ fn browser_zip_archive(r: BrowserArchiveDigestReceipt) -> BrowserToolchainArchiv
     pin: ArchiveSha256 { hex: r.sha256 },
     destination_relative: join(["ms-playwright/", r.download.install_directory as String], "") as NonEmptyStr,
     extraction: ExtractZip,
-    placed_marker_relative: join(["ms-playwright/", r.download.install_directory as String, "/", r.download.executable_relative as String], "") as NonEmptyStr,
   }
 }
 
@@ -350,7 +392,6 @@ fn node_release_archive(n: NodeReleaseArchive) -> BrowserToolchainArchive {
     pin: ArchiveSha256 { hex: n.sha256 },
     destination_relative: "node",
     extraction: ExtractTar { strip_components: node_release_archive_strip_components },
-    placed_marker_relative: join(["node/", node_release_binary_relative as String], "") as NonEmptyStr,
   }
 }
 
@@ -366,12 +407,8 @@ fn archive_path(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArc
   join([location.archives as String, "/", a.file_name as String], "")
 }
 
-fn archive_destination(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> String {
-  join([location.root as String, "/", a.destination_relative as String], "")
-}
-
-fn archive_placed_marker(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> String {
-  join([location.root as String, "/", a.placed_marker_relative as String], "")
+fn archive_destination_in(tree: String, a: BrowserToolchainArchive) -> String {
+  join([tree, "/", a.destination_relative as String], "")
 }
 
 fn archive_fetch_commands(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> List<ArgvCommand> {
@@ -381,8 +418,8 @@ fn archive_fetch_commands(location: RunnerBrowserToolchainLocation, a: BrowserTo
   ]
 }
 
-fn archive_install_commands(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> List<ArgvCommand> {
-  let dest = archive_destination(location: location, a: a)
+fn archive_install_commands_into(location: RunnerBrowserToolchainLocation, tree: String, a: BrowserToolchainArchive) -> List<ArgvCommand> {
+  let dest = archive_destination_in(tree: tree, a: a)
   [
     mkdir_parents_command(path: dest),
     match a.extraction {
@@ -390,6 +427,161 @@ fn archive_install_commands(location: RunnerBrowserToolchainLocation, a: Browser
       ExtractZip => unzip_extract_command(archive: archive_path(location: location, a: a), into_directory: dest)
     },
   ]
+}
+
+// THE RECIPE TEXT: one line per archive in placement order, then the pinned tree digest. Its
+// structural hash names the tree (runner_browser_toolchain_location).
+fn archive_pin_text(pin: ArchiveDigestPin) -> String {
+  match pin {
+    ArchiveSha256 { hex: h } => concat("sha256:", h as String)
+    ArchiveNpmIntegrity { wire: w } => concat("npm:", w as String)
+  }
+}
+
+fn archive_extraction_text(e: BrowserToolchainExtraction) -> String {
+  match e {
+    ExtractTar { strip_components: n } => concat("tar-strip-", to_string(n))
+    ExtractZip => "zip"
+  }
+}
+
+fn runner_browser_toolchain_recipe_text(archives: List<BrowserToolchainArchive>, tree_sha256: NonEmptyStr) -> String {
+  join(list_append(
+    left: map(archives, a => join([a.file_name as String, a.url as String, archive_pin_text(pin: a.pin), a.destination_relative as String, archive_extraction_text(e: a.extraction)], " ")),
+    right: [concat("tree:", tree_sha256 as String)],
+  ), "\n")
+}
+
+fn runner_browser_toolchain_recipe_identity(archives: List<BrowserToolchainArchive>, tree_sha256: NonEmptyStr) -> NonEmptyStr {
+  ((content_hash_atom(value: runner_browser_toolchain_recipe_text(archives: archives, tree_sha256: tree_sha256) as NonEmptyStr).digest as String) as NonEmptyStr)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE INSTALLED TREE: its content digest, and admission against the pin
+// ---------------------------------------------------------------------------------------------
+
+// WHAT THE MANIFEST COVERS, EXACTLY: the byte content of every regular file, the owner-execute bit of
+// every regular file, and the target of every symbolic link, each by path relative to the tree. It
+// does NOT cover other permission bits, ownership, timestamps, extended attributes, or directories
+// as such (an added EMPTY directory does not change it); those are outside this admission.
+//
+// THE TREE, NOT THE ARCHIVES, IS WHAT A CONSUMER EXECUTES (side-chat review of gunbc#12500, finding
+// 2). Retained archives that verify and one marker file that exists establish neither complete
+// extraction nor unchanged extracted content: the reviewer altered and deleted an extracted index.js
+// and both facts stayed true. So a tree is admitted by the sha256 of its CONTENT: every regular
+// file's sha256, every owner-executable file and every symlink target, each keyed by its path
+// relative to the tree, sorted bytewise (LC_ALL=C) and hashed once. Any altered, missing, added or
+// re-permissioned file, or a retargeted link, changes it; a partial extraction cannot equal it.
+//
+// THE PIN IS A RECEIPT OF THIS REPOSITORY'S OBSERVATION, like the zip digests: the digest of the tree
+// the pinned archives extract to, computed by this module's own tree_sha256_wet over a tree extracted
+// from exactly those archives in this layout (session witty-crane-254, 2026-09-28: the five archives
+// verified against their pins, the tarballs extracted with GNU tar 1.35 at their declared strip depth,
+// the zips extracted with each entry's recorded Unix mode; 5,445 files, 90 owner-executable, 3
+// symlinks). Re-derived by runner_browser_toolchain_tree_sha256_of_wet. A converge whose staged tree
+// does not reproduce it refuses before publication, naming the digest it observed.
+data runner_browser_toolchain_tree_sha256: NonEmptyStr = "829fefb8a71c317c9c45775878c93778967a93f993cd5ba099bde893c241b2cb"
+
+type TreeDigestObservation
+  = TreeDigestObserved { hex: NonEmptyStr }
+  | TreeDigestUnobservable { reason: String }
+
+type TreeAdmission
+  = TreeAdmitted
+  | TreeAbsent { tree: NonEmptyStr }
+  | TreeContentMismatch { tree: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+  | TreeUnobservable { tree: NonEmptyStr, reason: String }
+
+fn tree_admission_of(tree: NonEmptyStr, present: Bool, pinned: NonEmptyStr, observation: TreeDigestObservation) -> TreeAdmission {
+  if present == false {
+    TreeAbsent { tree: tree }
+  } else {
+    match observation {
+      TreeDigestUnobservable { reason: r } => TreeUnobservable { tree: tree, reason: r }
+      TreeDigestObserved { hex: h } =>
+        if (h as String) == (pinned as String) { TreeAdmitted } else { TreeContentMismatch { tree: tree, expected: pinned, observed: h } }
+    }
+  }
+}
+
+fn tree_admitted(a: TreeAdmission) -> Bool {
+  match a { TreeAdmitted => true  _ => false }
+}
+
+fn tree_admission_text(a: TreeAdmission) -> String {
+  match a {
+    TreeAdmitted => "tree=admitted"
+    TreeAbsent { tree: t } => join(["tree=absent ", t as String], "")
+    TreeContentMismatch { tree: t, expected: e, observed: o } => join(["TreeContentMismatch -- ", t as String, " hashes to ", o as String, ", not the pinned ", e as String, "; nothing in it is executed"], "")
+    TreeUnobservable { tree: t, reason: r } => join(["tree=unobservable ", t as String, " (", r, "); nothing in it is executed"], "")
+  }
+}
+
+// The three find reads, joined. sha256sum prints `<hex>  <absolute path>`; the tree prefix is removed
+// so the manifest is a property of the tree's content, not of where it sits.
+fn tree_manifest_text_of(tree: String, sha_lines: String, exec_lines: String, link_lines: String) -> String {
+  join([
+    replace(s: sha_lines, from: concat("  ", concat(tree, "/")), to: "  "),
+    exec_lines,
+    link_lines,
+  ], "\n")
+}
+
+fn capture_or_empty(command: ArgvCommand) -> VersionCapture {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => CapturedText { text: t }
+    ProcessOutputAbsent => CapturedText { text: "" }
+    ProcessRefused { exit_code: c, stderr: e } => CaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
+  }
+}
+
+fn tree_sha256_wet(tree: String, manifest_path: String) -> TreeDigestObservation {
+  match capture_or_empty(command: find_regular_files_sha256_command(root: tree)) {
+    CaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("hashing the tree's files failed: ", r) }
+    CapturedText { text: shas } =>
+      match capture_or_empty(command: find_owner_executable_files_command(root: tree)) {
+        CaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("listing the tree's executable files failed: ", r) }
+        CapturedText { text: execs } =>
+          match capture_or_empty(command: find_symlink_targets_command(root: tree)) {
+            CaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("listing the tree's symlinks failed: ", r) }
+            CapturedText { text: links } => {
+              let wrote = Filesystem.Write(path: manifest_path, content: tree_manifest_text_of(tree: tree, sha_lines: shas, exec_lines: execs, link_lines: links))
+              if wrote.success == false {
+                TreeDigestUnobservable { reason: concat("the tree manifest could not be written at ", manifest_path) }
+              } else {
+                match run_shell_command_capture(command: env_prefixed_command_in(directory: "/", bindings: [EnvSet { name: "LC_ALL", value: "C" }], command: sort_in_place_command(path: manifest_path)), transport: LocalExec) {
+                  ProcessRefused { exit_code: c, stderr: e } => TreeDigestUnobservable { reason: join(["sorting the tree manifest failed (exit ", to_string(c), "): ", trim(s: e)], "") }
+                  _ =>
+                    match sha256sum_file_digest_via_shell(path: manifest_path as NonEmptyStr) {
+                      Sha256FileDigestUnavailable { path: _, reason: r } => TreeDigestUnobservable { reason: r }
+                      Sha256FileDigest { digest: d } => TreeDigestObserved { hex: d.hex }
+                    }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// The manifest path is the caller's own per-invocation scratch, so this reader writes nothing shared.
+fn admit_tree_wet(tree: NonEmptyStr, manifest_path: String, pinned: NonEmptyStr) -> TreeAdmission {
+  let present = path_exists_wet(path: tree as String)
+  tree_admission_of(
+    tree: tree,
+    present: present,
+    pinned: pinned,
+    observation: if present { tree_sha256_wet(tree: tree as String, manifest_path: manifest_path) } else { TreeDigestUnobservable { reason: "absent" } },
+  )
+}
+
+// THE ENTRY THAT COMPUTED THE PIN, and that re-derives it: the content digest of any tree in this
+// layout, by the same function admission uses.
+fn runner_browser_toolchain_tree_sha256_of_wet(tree: String, manifest: String, receipt: String) -> ProcessExit {
+  match tree_sha256_wet(tree: tree, manifest_path: manifest) {
+    TreeDigestUnobservable { reason: r } => exit_failure(reason: r)
+    TreeDigestObserved { hex: h } => write_digest_receipt(receipt: receipt, line: join(["tree_sha256=", h as String, " tree=", tree], ""))
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -460,11 +652,6 @@ fn apt_outcome_text(o: BrowserToolchainAptOutcome) -> String {
 // READBACK
 // ---------------------------------------------------------------------------------------------
 
-type ArchiveReadback {
-  archive: NonEmptyStr
-  verdict: ArchiveDigestVerdict
-}
-
 type VersionReadback
   = VersionMatches { subject: NonEmptyStr, observed: String }
   | VersionMismatch { subject: NonEmptyStr, expected: String, observed: String }
@@ -483,84 +670,139 @@ type HostLibraryReadback
   | HostLibrariesMissing { binary: NonEmptyStr, missing: List<MissingHostLibrary> }
   | HostLibrariesUnreadable { binary: NonEmptyStr, reason: String }
 
-// THE ROUTE, NOT ONLY THE ANSWER. The launch probe loads a page this converge wrote to the host's
-// disk, through the pinned node, the pinned Playwright and the pinned headless shell, and reports
-// the page's title and the rendered width of an element whose width only layout can produce. A
-// title alone could come back from a browser that parsed but never laid out; a positive width
-// cannot.
+// THE ROUTE, NOT ONLY THE ANSWER. The launch probe loads a page the readback wrote, through the
+// pinned node, the pinned Playwright (required by absolute path) and the pinned headless shell, and
+// reports three lines: the title, the laid-out width of an element whose declared width is
+// browser_toolchain_probe_width_px, and the file require() resolved for Playwright. Rendered means
+// all three are exactly what the probe declares -- the title, the declared width, and the entry
+// file of the converged package -- never "no recognized failure".
 type BrowserLaunchReadback
   = BrowserLaunchRendered { title: String, rendered_width: String, resolved_module: String }
   | BrowserLaunchWrongPage { observed: String }
-  | BrowserLaunchWrongModule { resolved: String, expected_under: String }
+  | BrowserLaunchWrongModule { resolved: String, expected: String }
   | BrowserLaunchRefused { reason: String }
   | BrowserLaunchNotAttempted { reason: String }
 
 type RunnerBrowserToolchainStanding {
   host: NonEmptyStr
   location: RunnerBrowserToolchainLocation
-  archives: List<ArchiveReadback>
+  tree: TreeAdmission
   versions: List<VersionReadback>
   libraries: List<HostLibraryReadback>
   launch: BrowserLaunchReadback
 }
 
-fn missing_host_libraries_of(output: String) -> List<MissingHostLibrary> {
-  map(ldd_unresolved_sonames(output: output), s => MissingHostLibrary {
-    soname: s as NonEmptyStr,
-    package: playwright_package_for_soname(soname: s),
-  })
+// LDD OUTPUT IS ACCEPTED LINE BY LINE AS RECOGNIZED EVIDENCE OR NOT AT ALL (finding 4). A line is
+// a resolved dependency (`<soname> => <path> (0x...)`), the vdso or the loader (`<path> (0x...)`),
+// or an unresolved one (`<soname> => not found`). Any other non-empty line -- "not a dynamic
+// executable", a loader error, truncation -- makes the whole reading unreadable rather than
+// resolved, and so does empty output: absence of a recognized failure is not a positive reading.
+type LddLine
+  = LddLineResolved
+  | LddLineMissing { soname: String }
+  | LddLineUnrecognized { line: String }
+
+// THE COMPLETE DECLARED SHAPES, WORD BY WORD (side-chat review 5334435195): `<soname> => not found`
+// (four words), `<soname> => <path> (0x<hex>)` (four words), or `<path> (0x<hex>)` (two words, the vdso
+// and the loader), where the address is "(0x", lower-case hex, ")" and nothing else. A line that
+// merely contains " (0x" -- truncation, garbage -- is unrecognized.
+fn ldd_words_of(line: String) -> List<String> {
+  fold(split(trim(s: line), " "), init: [], f: (acc, w) => if w == "" { acc } else { list_append(left: acc, right: [w]) })
+}
+
+fn ldd_address_word(w: String) -> Bool {
+  let inner = replace(s: replace(s: w, from: "(0x", to: ""), from: ")", to: "")
+  inner != "" && w == concat(concat("(0x", inner), ")") && content_hash_validate_lower_hex_syntax(text: inner)
+}
+
+fn ldd_line_of(line: String) -> LddLine {
+  match ldd_words_of(line: line) {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Cons { head: d, tail: Empty } } } } =>
+      if b == "=>" && c == "not" && d == "found" {
+        LddLineMissing { soname: a }
+      } else if b == "=>" && ldd_address_word(w: d) {
+        LddLineResolved
+      } else {
+        LddLineUnrecognized { line: trim(s: line) }
+      }
+    Cons { head: _, tail: Cons { head: addr, tail: Empty } } =>
+      if ldd_address_word(w: addr) { LddLineResolved } else { LddLineUnrecognized { line: trim(s: line) } }
+    _ => LddLineUnrecognized { line: trim(s: line) }
+  }
 }
 
 fn host_library_readback_of(binary: NonEmptyStr, ldd_output: String) -> HostLibraryReadback {
-  match missing_host_libraries_of(output: ldd_output) {
-    Empty => HostLibrariesResolved { binary: binary }
-    Cons { head: _, tail: _ } => HostLibrariesMissing { binary: binary, missing: missing_host_libraries_of(output: ldd_output) }
+  let lines = fold(split(ldd_output, "\n"), init: [], f: (acc, l) => if trim(s: l) == "" { acc } else { list_append(left: acc, right: [l]) })
+  let classified = map(lines, l => ldd_line_of(line: l))
+  let unrecognized = fold(classified, init: [], f: (acc, c) => match c { LddLineUnrecognized { line: _ } => list_append(left: acc, right: [c])  _ => acc })
+  let missing = fold(classified, init: [], f: (acc, c) => match c {
+    LddLineMissing { soname: so } => list_append(left: acc, right: [MissingHostLibrary { soname: so as NonEmptyStr, package: playwright_package_for_soname(soname: so) }])
+    _ => acc
+  })
+  match lines {
+    Empty => HostLibrariesUnreadable { binary: binary, reason: "ldd printed nothing" }
+    Cons { head: _, tail: _ } =>
+      match unrecognized {
+        Cons { head: LddLineUnrecognized { line: l }, tail: _ } => HostLibrariesUnreadable { binary: binary, reason: concat("ldd printed a line that is neither a resolved nor an unresolved dependency: ", l) }
+        _ =>
+          match missing {
+            Empty => HostLibrariesResolved { binary: binary }
+            Cons { head: _, tail: _ } => HostLibrariesMissing { binary: binary, missing: missing }
+          }
+      }
   }
 }
 
-fn version_readback_of(subject: NonEmptyStr, expected: String, output: String) -> VersionReadback {
-  let line = match first(split(trim(s: output), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
-  if line == "" {
-    VersionUnreadable { subject: subject, reason: "the version command printed nothing" }
-  } else if string_contains(s: line, pattern: expected) {
-    VersionMatches { subject: subject, observed: line }
-  } else {
-    VersionMismatch { subject: subject, expected: expected, observed: line }
-  }
-}
-
-// EXACT FOR node AND FOR THE PACKAGES, because those print the version and nothing else; CONTAINED
-// for Chromium, whose line is "Chromium <version> ..." -- the version_readback_of test is a
-// containment, and the two exact subjects are held to equality by this wrapper.
+// EXACT MEANS THE WHOLE OUTPUT (finding 4): one line, equal to the expected text. A second line, a
+// suffix or a substring match is a mismatch, carrying what was observed.
 fn exact_version_readback_of(subject: NonEmptyStr, expected: String, output: String) -> VersionReadback {
-  match version_readback_of(subject: subject, expected: expected, output: output) {
-    VersionMatches { subject: s, observed: o } =>
-      if o == expected { VersionMatches { subject: s, observed: o } } else { VersionMismatch { subject: s, expected: expected, observed: o } }
-    other => other
+  let t = trim(s: output)
+  if t == "" {
+    VersionUnreadable { subject: subject, reason: "the version command printed nothing" }
+  } else if t == expected {
+    VersionMatches { subject: subject, observed: t }
+  } else {
+    VersionMismatch { subject: subject, expected: expected, observed: t }
   }
 }
 
 data browser_toolchain_probe_title: String = "gunbc-browser-toolchain-inhabitance"
 
-data browser_toolchain_probe_page: String = "<!doctype html><html><head><title>gunbc-browser-toolchain-inhabitance</title></head><body><div id=\"probe\" style=\"width:137px;height:11px\">rendered</div></body></html>"
+data browser_toolchain_probe_width_px: String = "137"
 
-// Filesystem.Write creates no parent directory (run 36372647500 on srv1 refused the launch with
-// ENOENT for exactly this), so the probe directory is created first, by the same mkdir builder the
-// archive install uses.
-fn browser_toolchain_probe_dir(location: RunnerBrowserToolchainLocation) -> String {
-  join([location.root as String, "/probe"], "")
+data browser_toolchain_probe_page: String = join([
+  "<!doctype html><html><head><title>", browser_toolchain_probe_title,
+  "</title></head><body><div id=\"probe\" style=\"width:", browser_toolchain_probe_width_px,
+  "px;height:11px\">rendered</div></body></html>",
+], "")
+
+fn browser_toolchain_probe_page_path(scratch: String) -> String {
+  join([scratch, "/inhabitance.html"], "")
 }
 
-fn browser_toolchain_probe_page_path(location: RunnerBrowserToolchainLocation) -> String {
-  join([browser_toolchain_probe_dir(location: location), "/inhabitance.html"], "")
+// THE PROBE IS JAVASCRIPT HANDED TO node AS A STRING, AND THAT IS A DECLARED SCAFFOLD, NOT THE
+// TERMINAL SHAPE (review 72115): no .dag realization drives a browser, and no grammar rows emit
+// ECMAScript (extdeps.languages.ecmascript declares the subject only). The launch script and the
+// package-version script are the two strings it covers.
+// ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_87357a75,
+// DEFAULT-APPROVED on recommendation A, 2026-09-28, after the operator did not answer within the
+// default window -- not an explicit operator ruling. An explicit ruling covering this and the two
+// sibling scaffolds (gunbc#12490, gunbc#12492) has been requested; review 72121 on gunbc#12490 holds
+// that a default approval is insufficient for §5.
+data runner_browser_toolchain_probe_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.runner_browser_toolchain",
+    decl_name: "runner_browser_toolchain_probe_script_dissolution_trigger",
+    field: WholeDeclaration
+  }
 }
+
+data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script and browser_toolchain_package_version_script -- node -e script strings. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
 // headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page and the
-// Playwright module are operands (process.argv[1], process.argv[2]), never spliced into the program,
-// and the script prints three lines: the page title, the laid-out width of the probe element, and
-// the file require() actually resolved for Playwright -- so the readback asserts the ROUTE (the
-// converged package was the one loaded), not only that some browser rendered.
+// Playwright module are operands (process.argv[1], process.argv[2]), never spliced into the program.
 data browser_toolchain_launch_script: String = "const m = process.argv[2]; const { chromium } = require(m); (async () => { const b = await chromium.launch({ headless: true }); try { const p = await b.newPage(); await p.goto('file://' + process.argv[1]); const w = await p.evaluate(() => document.getElementById('probe').getBoundingClientRect().width); console.log([await p.title(), String(w), require.resolve(m)].join('\\n')); } finally { await b.close(); } })().catch(e => { console.error(String(e && e.stack || e)); process.exit(1); });"
 
 // `require('<dir>/package.json').version`, the directory an operand.
@@ -568,40 +810,48 @@ data browser_toolchain_package_version_script: String = "console.log(require(pro
 
 // A DECOY PLAYWRIGHT, PLANTED WHERE A SHADOWING WORKSPACE PACKAGE WOULD SIT. The readback runs node
 // with this directory as its working directory, so a bare require('playwright') would resolve here
-// first. Its entry point throws, and its package.json names a version no pin carries, so if any
-// readback reaches it the launch refuses and the version reads back mismatched. This is the
-// discriminating control for the absolute-path resolution above, executed on every converge.
-data browser_toolchain_decoy_version: String = "0.0.0-gunbc-decoy"
-
+// first. Its entry point throws, and its package.json names a version no pin carries. Together with
+// the resolved-identity check below (the launch must report the converged package's own entry file),
+// this discriminates the absolute-path resolution on every readback.
 data browser_toolchain_decoy_package_json: String = "{\"name\":\"playwright\",\"version\":\"0.0.0-gunbc-decoy\",\"main\":\"index.js\"}"
 
 data browser_toolchain_decoy_index: String = "throw new Error('gunbc decoy playwright resolved: a workspace package shadowed the converged toolchain');"
 
-fn browser_toolchain_decoy_root(location: RunnerBrowserToolchainLocation) -> String {
-  join([location.root as String, "/probe/decoy-workspace"], "")
+fn browser_toolchain_decoy_root(scratch: String) -> String {
+  join([scratch, "/decoy-workspace"], "")
 }
 
-fn browser_toolchain_decoy_package_dir(location: RunnerBrowserToolchainLocation) -> String {
-  join([browser_toolchain_decoy_root(location: location), "/node_modules/playwright"], "")
+fn browser_toolchain_decoy_package_dir(scratch: String) -> String {
+  join([browser_toolchain_decoy_root(scratch: scratch), "/node_modules/playwright"], "")
 }
 
-fn launch_readback_of(output: String, expected_module_dir: String) -> BrowserLaunchReadback {
+// THE RESOLVED IDENTITY IS THE CONVERGED PACKAGE'S ENTRY FILE, EXACTLY (finding 1): playwright's
+// package.json main is index.js, so require.resolve of the absolute module path must answer
+// <playwright_module>/index.js -- not merely some path that is not the decoy.
+fn browser_toolchain_expected_resolution(location: RunnerBrowserToolchainLocation) -> String {
+  join([location.playwright_module as String, "/index.js"], "")
+}
+
+// ONE COMPLETE RESPONSE, EXACTLY THREE LINES, EACH EQUAL TO WHAT THE PROBE DECLARES (finding 4). A
+// truncated, extended, NaN, negative or merely non-zero reading is the wrong page, carrying what was
+// observed.
+fn launch_readback_of(output: String, expected_resolution: String) -> BrowserLaunchReadback {
   match split(trim(s: output), "\n") {
-    Cons { head: t, tail: Cons { head: w, tail: Cons { head: r, tail: _ } } } =>
-      launch_readback_of_lines(output: output, title: trim(s: t), width: trim(s: w), resolved: trim(s: r), expected_module_dir: expected_module_dir)
+    Cons { head: t, tail: Cons { head: w, tail: Cons { head: r, tail: Empty } } } =>
+      if t != browser_toolchain_probe_title || w != browser_toolchain_probe_width_px {
+        BrowserLaunchWrongPage { observed: trim(s: output) }
+      } else if r != expected_resolution {
+        BrowserLaunchWrongModule { resolved: r, expected: expected_resolution }
+      } else {
+        BrowserLaunchRendered { title: t, rendered_width: w, resolved_module: r }
+      }
     _ => BrowserLaunchWrongPage { observed: trim(s: output) }
   }
 }
 
-fn launch_readback_of_lines(output: String, title: String, width: String, resolved: String, expected_module_dir: String) -> BrowserLaunchReadback {
-  if title != browser_toolchain_probe_title || width == "" || width == "0" {
-    BrowserLaunchWrongPage { observed: trim(s: output) }
-  } else if starts_with(s: resolved, prefix: concat(expected_module_dir, "/")) == false {
-    BrowserLaunchWrongModule { resolved: resolved, expected_under: expected_module_dir }
-  } else {
-    BrowserLaunchRendered { title: title, rendered_width: width, resolved_module: resolved }
-  }
-}
+type VersionCapture
+  = CapturedText { text: String }
+  | CaptureRefused { reason: String }
 
 fn capture_text(command: ArgvCommand) -> VersionCapture {
   match run_shell_command_capture(command: command, transport: LocalExec) {
@@ -611,15 +861,10 @@ fn capture_text(command: ArgvCommand) -> VersionCapture {
   }
 }
 
-type VersionCapture
-  = CapturedText { text: String }
-  | CaptureRefused { reason: String }
-
-fn version_readback_wet(subject: NonEmptyStr, expected: String, command: ArgvCommand, exact: Bool) -> VersionReadback {
+fn version_readback_wet(subject: NonEmptyStr, expected: String, command: ArgvCommand) -> VersionReadback {
   match capture_text(command: command) {
     CaptureRefused { reason: r } => VersionUnreadable { subject: subject, reason: r }
-    CapturedText { text: t } =>
-      if exact { exact_version_readback_of(subject: subject, expected: expected, output: t) } else { version_readback_of(subject: subject, expected: expected, output: t) }
+    CapturedText { text: t } => exact_version_readback_of(subject: subject, expected: expected, output: t)
   }
 }
 
@@ -630,114 +875,115 @@ fn library_readback_wet(binary: NonEmptyStr) -> HostLibraryReadback {
   }
 }
 
-fn package_version_command(location: RunnerBrowserToolchainLocation, package: String) -> ArgvCommand {
+fn package_version_command(location: RunnerBrowserToolchainLocation, scratch: String, package: String) -> ArgvCommand {
   runner_browser_toolchain_node_command(
     location: location,
-    directory: browser_toolchain_decoy_root(location: location),
+    directory: browser_toolchain_decoy_root(scratch: scratch),
     script: browser_toolchain_package_version_script,
     operands: [join([location.node_path as String, "/", package], "")],
   )
 }
 
-// PLANTED BEFORE ANY node INVOCATION OF THE READBACK, so the version reads and the launch all run
-// with the decoy in their working directory. A failure to plant it refuses the readback: without
-// the decoy the resolution control did not run, and that must not read as though it passed.
-fn plant_decoy_wet(location: RunnerBrowserToolchainLocation) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(location: location)), transport: LocalExec))
-    && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(location: location), "/package.json"], ""), content: browser_toolchain_decoy_package_json).success
-    && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(location: location), "/index.js"], ""), content: browser_toolchain_decoy_index).success
+fn plant_probe_wet(scratch: String) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(scratch: scratch)), transport: LocalExec))
+    && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/package.json"], ""), content: browser_toolchain_decoy_package_json).success
+    && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/index.js"], ""), content: browser_toolchain_decoy_index).success
+    && Filesystem.Write(path: browser_toolchain_probe_page_path(scratch: scratch), content: browser_toolchain_probe_page).success
 }
 
 fn libraries_resolved(libraries: List<HostLibraryReadback>) -> Bool {
-  fold(libraries, init: true, f: (acc, l) => acc && match l { HostLibrariesResolved { binary: _ } => true  _ => false })
-}
-
-fn archives_verified(archives: List<ArchiveReadback>) -> Bool {
-  fold(archives, init: true, f: (acc, a) => acc && match a.verdict { ArchiveDigestMatches => true  _ => false })
+  match libraries {
+    Empty => false
+    Cons { head: _, tail: _ } => fold(libraries, init: true, f: (acc, l) => acc && match l { HostLibrariesResolved { binary: _ } => true  _ => false })
+  }
 }
 
 fn versions_match(versions: List<VersionReadback>) -> Bool {
-  fold(versions, init: true, f: (acc, v) => acc && match v { VersionMatches { subject: _, observed: _ } => true  _ => false })
+  match versions {
+    Empty => false
+    Cons { head: _, tail: _ } => fold(versions, init: true, f: (acc, v) => acc && match v { VersionMatches { subject: _, observed: _ } => true  _ => false })
+  }
 }
 
-// THE LAUNCH IS ATTEMPTED ONLY OVER A TOOLCHAIN WHOSE BYTES, VERSIONS AND LIBRARIES ALREADY READ
-// BACK CLEAN. A launch over a mismatched archive would exercise bytes nobody pinned, and a launch
-// with a library missing fails for a reason the library readback already names with its location.
-fn runner_browser_toolchain_readback_wet(host: NonEmptyStr, location: RunnerBrowserToolchainLocation) -> RunnerBrowserToolchainStanding {
-  let archives = map(runner_browser_toolchain_archives, a => ArchiveReadback {
-    archive: a.file_name,
-    verdict: verify_archive_digest(archive: archive_path(location: location, a: a) as NonEmptyStr, pin: a.pin),
-  })
-  let decoy = plant_decoy_wet(location: location)
-  let versions = if decoy == false {
-    [VersionUnreadable { subject: "playwright-resolution-decoy", reason: join(["the decoy workspace package could not be planted at ", browser_toolchain_decoy_package_dir(location: location), ", so the shadowing control did not run"], "") }]
-  } else { [
-    version_readback_wet(subject: "node", expected: runner_browser_toolchain_node.version as String, command: node_version_command(node_binary: location.node_binary), exact: true),
-    version_readback_wet(subject: "playwright-core", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, package: "playwright-core"), exact: true),
-    version_readback_wet(subject: "playwright", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, package: "playwright"), exact: true),
-  ] }
-  let libraries = [
-    library_readback_wet(binary: location.headless_shell),
-    library_readback_wet(binary: location.chromium),
-  ]
-  let clean = archives_verified(archives: archives) && versions_match(versions: versions) && libraries_resolved(libraries: libraries)
-  let chromium_version = if clean {
-    version_readback_wet(subject: "chromium", expected: runner_browser_toolchain_browser.version as String, command: chromium_version_command(binary: location.chromium), exact: false)
-  } else {
-    VersionUnreadable { subject: "chromium", reason: "not read: an archive, a package version or a host library did not read back clean" }
-  }
-  let launch = if clean && versions_match(versions: [chromium_version]) {
-    let made = process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_probe_dir(location: location)), transport: LocalExec))
-    if made == false {
-      BrowserLaunchRefused { reason: concat("the probe directory could not be created: ", browser_toolchain_probe_dir(location: location)) }
-    } else {
-      let wrote = Filesystem.Write(path: browser_toolchain_probe_page_path(location: location), content: browser_toolchain_probe_page)
-      if wrote.success == false {
-        BrowserLaunchRefused { reason: concat("the probe page could not be written: ", wrote.error) }
-      } else {
-        match capture_text(command: runner_browser_toolchain_node_command(
-          location: location,
-          directory: browser_toolchain_decoy_root(location: location),
-          script: browser_toolchain_launch_script,
-          operands: [browser_toolchain_probe_page_path(location: location), location.playwright_module as String],
-        )) {
-          CaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
-          CapturedText { text: t } => launch_readback_of(output: t, expected_module_dir: location.playwright_module as String)
-        }
-      }
+// NOTHING IN THE TREE IS EXECUTED UNTIL THE TREE IS ADMITTED (finding 2). The admission -- the tree's
+// content digest against its pin -- is computed first, and every candidate execution (node for the
+// versions, ldd and chromium, the launch) sits in the admitted branch. A tree that is absent,
+// altered, partially extracted or unobservable yields a standing with no executions at all.
+// EVERY READBACK OWNS ITS SCRATCH: its manifest, probe page and decoy live in a temporary directory
+// created for this invocation and removed after it, so concurrent consumers never share a file.
+fn runner_browser_toolchain_readback_at_wet(host: NonEmptyStr, location: RunnerBrowserToolchainLocation, pinned: NonEmptyStr) -> RunnerBrowserToolchainStanding {
+  let scratch_dir = shell.Mktemp.Dir()
+  if scratch_dir.success == false {
+    RunnerBrowserToolchainStanding {
+      host: host, location: location, tree: TreeUnobservable { tree: location.root, reason: "no per-invocation scratch directory could be created" }, versions: [], libraries: [],
+      launch: BrowserLaunchNotAttempted { reason: "no scratch directory, so nothing was read or executed" },
     }
   } else {
-    BrowserLaunchNotAttempted { reason: "an archive, a version or a host library did not read back clean, so the launch would not exercise the pinned toolchain" }
+    let standing = runner_browser_toolchain_readback_in_wet(host: host, location: location, pinned: pinned, scratch: trim(s: scratch_dir.path as String))
+    let cleaned = shell.Remove.RecursiveForce(path: scratch_dir.path)
+    standing
   }
-  RunnerBrowserToolchainStanding {
-    host: host,
-    location: location,
-    archives: archives,
-    versions: list_append(left: versions, right: [chromium_version]),
-    libraries: libraries,
-    launch: launch,
+}
+
+fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerBrowserToolchainLocation, pinned: NonEmptyStr, scratch: String) -> RunnerBrowserToolchainStanding {
+  let admission = admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree.manifest"], ""), pinned: pinned)
+  if tree_admitted(a: admission) == false {
+    RunnerBrowserToolchainStanding {
+      host: host, location: location, tree: admission, versions: [], libraries: [],
+      launch: BrowserLaunchNotAttempted { reason: "the tree is not admitted, so nothing in it was executed" },
+    }
+  } else if plant_probe_wet(scratch: scratch) == false {
+    RunnerBrowserToolchainStanding {
+      host: host, location: location, tree: admission, versions: [], libraries: [],
+      launch: BrowserLaunchRefused { reason: join(["the probe page and decoy could not be written under ", scratch, ", so the resolution control could not run"], "") },
+    }
+  } else {
+    let libraries = [
+      library_readback_wet(binary: location.headless_shell),
+      library_readback_wet(binary: location.chromium),
+    ]
+    let versions = [
+      version_readback_wet(subject: "node", expected: runner_browser_toolchain_node.version as String, command: node_version_command(node_binary: location.node_binary)),
+      version_readback_wet(subject: "playwright-core", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, scratch: scratch, package: "playwright-core")),
+      version_readback_wet(subject: "playwright", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, scratch: scratch, package: "playwright")),
+      if libraries_resolved(libraries: libraries) {
+        version_readback_wet(subject: "chromium", expected: chromium_version_line(build: runner_browser_toolchain_browser), command: chromium_version_command(binary: location.chromium))
+      } else {
+        VersionUnreadable { subject: "chromium", reason: "not run: a host library did not resolve" }
+      },
+    ]
+    let launch = if versions_match(versions: versions) && libraries_resolved(libraries: libraries) {
+      match capture_text(command: runner_browser_toolchain_node_command(
+        location: location,
+        directory: browser_toolchain_decoy_root(scratch: scratch),
+        script: browser_toolchain_launch_script,
+        operands: [browser_toolchain_probe_page_path(scratch: scratch), location.playwright_module as String],
+      )) {
+        CaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
+        CapturedText { text: t } => launch_readback_of(output: t, expected_resolution: browser_toolchain_expected_resolution(location: location))
+      }
+    } else {
+      BrowserLaunchNotAttempted { reason: "a version or a host library did not read back, so the launch would not exercise the pinned toolchain" }
+    }
+    RunnerBrowserToolchainStanding { host: host, location: location, tree: admission, versions: versions, libraries: libraries, launch: launch }
   }
+}
+
+fn runner_browser_toolchain_readback_wet(host: NonEmptyStr, location: RunnerBrowserToolchainLocation) -> RunnerBrowserToolchainStanding {
+  runner_browser_toolchain_readback_at_wet(host: host, location: location, pinned: runner_browser_toolchain_tree_sha256)
 }
 
 fn runner_browser_toolchain_ready(s: RunnerBrowserToolchainStanding) -> Bool {
-  archives_verified(archives: s.archives)
+  tree_admitted(a: s.tree)
     && versions_match(versions: s.versions)
     && libraries_resolved(libraries: s.libraries)
     && match s.launch { BrowserLaunchRendered { title: _, rendered_width: _, resolved_module: _ } => true  _ => false }
 }
 
-fn archive_readback_text(a: ArchiveReadback) -> String {
-  concat(concat(a.archive as String, "="), match a.verdict {
-    ArchiveDigestMatches => "verified"
-    ArchiveDigestMismatch => "DIGEST-MISMATCH"
-    ArchiveDigestUnverifiable { reason: r } => concat("unverifiable:", r)
-  })
-}
-
 fn version_readback_text(v: VersionReadback) -> String {
   match v {
     VersionMatches { subject: s, observed: o } => join([s as String, "=", o], "")
-    VersionMismatch { subject: s, expected: e, observed: o } => join([s as String, "=VERSION-MISMATCH(expected ", e, ", observed '", o, "')"], "")
+    VersionMismatch { subject: s, expected: e, observed: o } => join([s as String, "=VERSION-MISMATCH(expected '", e, "', observed '", o, "')"], "")
     VersionUnreadable { subject: s, reason: r } => join([s as String, "=unreadable(", r, ")"], "")
   }
 }
@@ -758,7 +1004,7 @@ fn library_readback_text(l: HostLibraryReadback) -> String {
 fn launch_readback_text(l: BrowserLaunchReadback) -> String {
   match l {
     BrowserLaunchRendered { title: t, rendered_width: w, resolved_module: m } => join(["launch=rendered title='", t, "' probe-width=", w, " playwright-resolved=", m], "")
-    BrowserLaunchWrongModule { resolved: r, expected_under: e } => join(["launch=WRONG-MODULE playwright resolved to '", r, "', not under ", e], "")
+    BrowserLaunchWrongModule { resolved: r, expected: e } => join(["launch=WRONG-MODULE playwright resolved to '", r, "', expected '", e, "'"], "")
     BrowserLaunchWrongPage { observed: o } => join(["launch=WRONG-PAGE observed '", o, "'"], "")
     BrowserLaunchRefused { reason: r } => join(["launch=refused (", r, ")"], "")
     BrowserLaunchNotAttempted { reason: r } => join(["launch=not-attempted (", r, ")"], "")
@@ -768,7 +1014,7 @@ fn launch_readback_text(l: BrowserLaunchReadback) -> String {
 fn runner_browser_toolchain_standing_text(s: RunnerBrowserToolchainStanding) -> String {
   join([
     "host=", s.host as String, " root=", s.location.root as String, "\n",
-    join(map(s.archives, a => archive_readback_text(a: a)), "\n"), "\n",
+    tree_admission_text(a: s.tree), "\n",
     join(map(s.versions, v => version_readback_text(v: v)), "\n"), "\n",
     join(map(s.libraries, l => library_readback_text(l: l)), "\n"), "\n",
     launch_readback_text(l: s.launch), "\n",
@@ -783,8 +1029,9 @@ fn runner_browser_toolchain_standing_text(s: RunnerBrowserToolchainStanding) -> 
 // WHAT A CONSUMER RECEIVES: a location it may run, or the reason it may not. The KVM observer reads
 // this instead of GUNBC_KVM_STILL_TOOLCHAIN. It names the host it runs on (hostname, the machine's
 // own answer), is admitted only inside the floor pool, and is handed the location ONLY over a
-// standing that read back ready -- so a consumer never launches a browser the converge did not
-// place, or one whose bytes have since changed.
+// standing that read back ready -- the tree admitted by content, then every version, library and
+// the render -- so a consumer never launches a browser the converge did not place, or one whose
+// bytes have since changed.
 type RunnerBrowserToolchainResolution
   = BrowserToolchainReady { location: RunnerBrowserToolchainLocation, standing: RunnerBrowserToolchainStanding }
   | BrowserToolchainNotReady { standing: RunnerBrowserToolchainStanding }
@@ -814,28 +1061,46 @@ fn runner_browser_toolchain_here_wet() -> RunnerBrowserToolchainResolution {
 }
 
 // ---------------------------------------------------------------------------------------------
-// CONVERGE
+// CONVERGE: stage, admit the staged tree, publish, admit the published tree
 // ---------------------------------------------------------------------------------------------
 
-// AN ARCHIVE IS LEFT ALONE WHEN ITS RETAINED BYTES VERIFY AND ITS EXTRACTION IS PRESENT; otherwise
-// it goes through the shared fetch-verify-install fold. So a second run on a converged host fetches
-// nothing and extracts nothing, and a run over a tree whose archive was tampered with re-fetches it
-// and refuses if the fresh bytes do not verify either.
-type ArchivePlacement
-  = ArchiveAlreadyPlaced { archive: NonEmptyStr }
-  | ArchivePlacedNow { archive: NonEmptyStr, outcome: VerifiedArchiveInstallOutcome }
+// AN ADMITTED TREE IS LEFT ALONE: the no-op repeat. Otherwise the tree is BUILT BESIDE, NEVER IN
+// PLACE: the staging directory is emptied, every archive goes through the shared fetch-verify-install
+// fold into it (a retained archive whose bytes already verify is not re-fetched: the same fold runs
+// with no fetch leg), the STAGED tree must be admitted against the pin, and only then is it
+// published by one rename over the tree path. A staged tree that does not reproduce the pin is never
+// published, so a consumer can only ever find the admitted content or no tree.
+type ArchivePlacement {
+  archive: NonEmptyStr
+  outcome: VerifiedArchiveInstallOutcome
+}
+
+type ToolchainPlacement
+  = ToolchainAlreadyAdmitted
+  | ToolchainPublished { archives: List<ArchivePlacement> }
+  | ToolchainPlacementRefused { archives: List<ArchivePlacement>, cause: String }
 
 fn archive_placement_holds(p: ArchivePlacement) -> Bool {
+  match p.outcome { ArchiveInstalled => true  _ => false }
+}
+
+fn toolchain_placement_holds(p: ToolchainPlacement) -> Bool {
   match p {
-    ArchiveAlreadyPlaced { archive: _ } => true
-    ArchivePlacedNow { archive: _, outcome: o } => match o { ArchiveInstalled => true  _ => false }
+    ToolchainAlreadyAdmitted => true
+    ToolchainPublished { archives: _ } => true
+    ToolchainPlacementRefused { archives: _, cause: _ } => false
   }
 }
 
-fn archive_placement_text(p: ArchivePlacement) -> String {
+fn archive_placements_text(ps: List<ArchivePlacement>) -> String {
+  join(map(ps, a => join([a.archive as String, "=", verified_archive_install_text(outcome: a.outcome)], "")), " ")
+}
+
+fn toolchain_placement_text(p: ToolchainPlacement) -> String {
   match p {
-    ArchiveAlreadyPlaced { archive: a } => join([a as String, "=already-placed"], "")
-    ArchivePlacedNow { archive: a, outcome: o } => join([a as String, "=", verified_archive_install_text(outcome: o)], "")
+    ToolchainAlreadyAdmitted => "placement=already-admitted (no fetch, no extraction)"
+    ToolchainPublished { archives: ps } => join(["placement=published ", archive_placements_text(ps: ps)], "")
+    ToolchainPlacementRefused { archives: ps, cause: c } => join(["placement=REFUSED (", c, ") ", archive_placements_text(ps: ps)], "")
   }
 }
 
@@ -843,40 +1108,114 @@ fn path_exists_wet(path: String) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
 }
 
-fn place_archive_wet(location: RunnerBrowserToolchainLocation, a: BrowserToolchainArchive) -> ArchivePlacement {
+fn stage_archive_wet(location: RunnerBrowserToolchainLocation, staging: String, a: BrowserToolchainArchive) -> ArchivePlacement {
   let retained = match verify_archive_digest(archive: archive_path(location: location, a: a) as NonEmptyStr, pin: a.pin) {
-    ArchiveDigestMatches => path_exists_wet(path: archive_placed_marker(location: location, a: a))
+    ArchiveDigestMatches => true
     _ => false
   }
-  if retained {
-    ArchiveAlreadyPlaced { archive: a.file_name }
-  } else {
-    ArchivePlacedNow {
-      archive: a.file_name,
-      outcome: verified_archive_install(
-        fetch: archive_fetch_commands(location: location, a: a),
-        archive: archive_path(location: location, a: a) as NonEmptyStr,
-        pin: a.pin,
-        install: archive_install_commands(location: location, a: a),
-      ),
-    }
+  ArchivePlacement {
+    archive: a.file_name,
+    outcome: verified_archive_install(
+      fetch: if retained { [] } else { archive_fetch_commands(location: location, a: a) },
+      archive: archive_path(location: location, a: a) as NonEmptyStr,
+      pin: a.pin,
+      install: archive_install_commands_into(location: location, tree: staging, a: a),
+    ),
   }
 }
 
-// THE ARCHIVES ARE PLACED IN ORDER AND THE FIRST REFUSAL STOPS THE REST, so a digest mismatch on
-// one archive is never followed by extracting the next as if the toolchain were whole.
-fn place_archives_wet(location: RunnerBrowserToolchainLocation) -> List<ArchivePlacement> {
-  fold(runner_browser_toolchain_archives, init: [], f: (acc, a) =>
+// IN ORDER, AND THE FIRST REFUSAL STOPS THE REST.
+fn stage_archives_wet(location: RunnerBrowserToolchainLocation, staging: String, archives: List<BrowserToolchainArchive>) -> List<ArchivePlacement> {
+  fold(archives, init: [], f: (acc, a) =>
     if fold(acc, init: true, f: (ok, p) => ok && archive_placement_holds(p: p)) {
-      list_append(left: acc, right: [place_archive_wet(location: location, a: a)])
+      list_append(left: acc, right: [stage_archive_wet(location: location, staging: staging, a: a)])
     } else {
       acc
     })
 }
 
-fn all_placed(ps: List<ArchivePlacement>) -> Bool {
-  list_length(ps) == list_length(runner_browser_toolchain_archives)
-    && fold(ps, init: true, f: (ok, p) => ok && archive_placement_holds(p: p))
+fn all_staged(ps: List<ArchivePlacement>, archives: List<BrowserToolchainArchive>) -> Bool {
+  list_length(ps) == list_length(archives) && fold(ps, init: true, f: (ok, p) => ok && archive_placement_holds(p: p))
+}
+
+fn run_ok(command: ArgvCommand) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+}
+
+// PUBLICATION NEVER DELETES A TREE A CONSUMER COULD HAVE BEEN HANDED (side-chat review 5334435195).
+// A consumer is only ever handed an ADMITTED tree, and an admitted tree is never replaced (placement
+// returns early on it). So publication meets one of two states: no tree -- rename the admitted stage
+// into place; mv -T onto a path a concurrent converge published first fails, and the readback then
+// judges that converge's tree like any other -- or a tree whose content does NOT match the pin --
+// rename it aside to a name unique to this invocation, rename the stage into place, then remove the
+// retired tree, which no consumer can hold as admitted. A tree whose admission could not be OBSERVED
+// is neither: placement refuses rather than rebuild over something it could not read.
+fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String, replacing_mismatched: Bool) -> Bool {
+  let retired = concat(staging, ".retired")
+  if replacing_mismatched {
+    run_ok(command: mv_exact_destination_command(source: location.root as String, destination: retired))
+      && run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String))
+      && run_ok(command: rm_recursive_force_command(path: retired))
+  } else {
+    run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String))
+  }
+}
+
+// EVERY CONVERGE OWNS ITS SCRATCH AND ITS STAGING: manifests in a temporary directory of its own,
+// the stage in a mktemp directory under the base (the tree's own file system, so publication is one
+// rename), both removed on every path.
+fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr) -> ToolchainPlacement {
+  let scratch_dir = shell.Mktemp.Dir()
+  if scratch_dir.success == false {
+    ToolchainPlacementRefused { archives: [], cause: "no per-invocation scratch directory could be created" }
+  } else {
+    let placement = place_toolchain_in_wet(location: location, archives: archives, pinned: pinned, scratch: trim(s: scratch_dir.path as String))
+    let cleaned = shell.Remove.RecursiveForce(path: scratch_dir.path)
+    placement
+  }
+}
+
+fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String, staging: String, replacing: Bool) -> ToolchainPlacement {
+  let staged = stage_archives_wet(location: location, staging: staging, archives: archives)
+  if all_staged(ps: staged, archives: archives) == false {
+    ToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
+  } else {
+    match admit_tree_wet(tree: staging as NonEmptyStr, manifest_path: join([scratch, "/staging.manifest"], ""), pinned: pinned) {
+      TreeAdmitted =>
+        if publish_staged_wet(location: location, staging: staging, replacing_mismatched: replacing) {
+          ToolchainPublished { archives: staged }
+        } else {
+          ToolchainPlacementRefused { archives: staged, cause: join(["the admitted staged tree could not be published over ", location.root as String, " (a concurrent converge may have published first; the readback decides)"], "") }
+        }
+      other => ToolchainPlacementRefused { archives: staged, cause: concat("the staged tree was not admitted, so it was not published: ", tree_admission_text(a: other)) }
+    }
+  }
+}
+
+fn place_toolchain_in_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String) -> ToolchainPlacement {
+  match admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree.manifest"], ""), pinned: pinned) {
+    TreeAdmitted => ToolchainAlreadyAdmitted
+    TreeUnobservable { tree: t, reason: r } =>
+      ToolchainPlacementRefused { archives: [], cause: join(["the existing tree's admission could not be observed (", r, "), so it is neither rebuilt nor replaced: ", t as String], "") }
+    TreeAbsent { tree: _ } => stage_in_fresh_directory_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, replacing: false)
+    TreeContentMismatch { tree: _, expected: _, observed: _ } => stage_in_fresh_directory_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, replacing: true)
+  }
+}
+
+fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String, replacing: Bool) -> ToolchainPlacement {
+  if run_ok(command: mkdir_parents_command(path: location.base as String)) == false {
+    ToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
+  } else {
+    let made = shell.Mktemp.DirWithTemplate(template: join([location.base as String, "/staging.XXXXXXXX"], "") as FilePath)
+    if made.success == false {
+      ToolchainPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
+    } else {
+      let staging = trim(s: made.path as String)
+      let result = stage_and_publish_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, staging: staging, replacing: replacing)
+      let dropped = run_ok(command: rm_recursive_force_command(path: staging))
+      result
+    }
+  }
 }
 
 data runner_browser_toolchain_converge_attempt_raw: String = "runner-browser-toolchain-converge-ci"
@@ -896,8 +1235,9 @@ fn browser_toolchain_admin_transport(host: NonEmptyStr, context: FleetSshExecuti
 // ONE HOST PER RUN, the host the dispatch selected and the machine confirms (the sealed binding of
 // gunbc.runner_microvm_host_ready, reused rather than re-derived: a run that would mutate one
 // machine under another's name refuses before anything is fetched). Then: admitted to the floor
-// pool, the apt half over the administrator edge, the archives as the job user into the job user's
-// root, and the readback. THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the binding.
+// pool, the apt half over the administrator edge, placement as the job user, and the readback --
+// which runs ONLY when the apt half held and placement held, so a failed prerequisite or placement
+// never executes a candidate. THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the binding.
 fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
 {
   match microvm_host_binding_wet() {
@@ -912,20 +1252,34 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
             FleetSshContextReady { context: context, receipt: context_receipt } => {
               let apt = converge_browser_toolchain_apt(transport: browser_toolchain_admin_transport(host: host, context: context))
               let apt_ok = fold(apt, init: true, f: (ok, o) => ok && apt_outcome_holds(o: o))
-              let placements = if apt_ok { place_archives_wet(location: location) } else { [] }
-              let standing = runner_browser_toolchain_readback_wet(host: host, location: location)
+              let placement = if apt_ok {
+                place_toolchain_wet(location: location, archives: runner_browser_toolchain_archives, pinned: runner_browser_toolchain_tree_sha256)
+              } else {
+                ToolchainPlacementRefused { archives: [], cause: "an apt prerequisite did not hold" }
+              }
+              let standing = if toolchain_placement_holds(p: placement) {
+                Present { value: runner_browser_toolchain_readback_wet(host: host, location: location) }
+              } else {
+                none
+              }
+              let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
+              let readback_text = match standing {
+                Present { value: st } => runner_browser_toolchain_standing_text(s: st)
+                Absent => "readback=not-run (placement did not hold, so no candidate was executed)\nstanding=not-ready"
+              }
               let body = join([
                 "runner_browser_toolchain_converge host=", host as String,
+                " recipe=", location.recipe as String,
                 " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                 context_receipt,
                 "apt: ", join(map(apt, o => apt_outcome_text(o: o)), " "), "\n",
-                "archives: ", if apt_ok { join(map(placements, p => archive_placement_text(p: p)), " ") } else { "not-placed (an apt prerequisite did not hold)" }, "\n",
-                runner_browser_toolchain_standing_text(s: standing), "\n",
+                toolchain_placement_text(p: placement), "\n",
+                readback_text, "\n",
               ], "")
               let w = Filesystem.Write(path: runner_browser_toolchain_converge_receipt_path, content: body)
               if w.success == false {
                 exit_failure(reason: join(["runner_browser_toolchain_converge: receipt write failed: ", w.error, "\n", body], ""))
-              } else if apt_ok && all_placed(ps: placements) && runner_browser_toolchain_ready(s: standing) {
+              } else if apt_ok && toolchain_placement_holds(p: placement) && ready {
                 ExitSuccess
               } else {
                 exit_failure(reason: body)

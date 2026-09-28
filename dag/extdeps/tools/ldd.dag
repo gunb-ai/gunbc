@@ -1,8 +1,7 @@
 module extdeps.tools.ldd
 
-import std.types { String, NonEmptyStr, List }
-import std.algebra { trim, list_append }
-import v2.std.optional { Present, Absent }
+import std.types { NonEmptyStr, List }
+import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -35,24 +34,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 fn ldd_command(binary: String) -> ArgvCommand {
   argv_command(program: ldd_program, arguments: [binary])
-}
-
-data ldd_not_found_marker: String = "=> not found"
-
-// The soname of every `<soname> => not found` line, in output order. A line is read by its marker
-// and its first whitespace-separated word, which is exactly the shape glibc prints.
-fn ldd_unresolved_sonames(output: String) -> List<String> {
-  fold(
-    split(output, "\n"),
-    init: [],
-    f: (acc, line) =>
-      if string_contains(s: line, pattern: ldd_not_found_marker) {
-        match first(split(trim(s: line), " ")) {
-          Present { value: soname } => if trim(s: soname) == "" { acc } else { list_append(left: acc, right: [trim(s: soname)]) }
-          Absent => acc
-        }
-      } else {
-        acc
-      },
-  )
 }

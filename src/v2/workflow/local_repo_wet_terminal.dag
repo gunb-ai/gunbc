@@ -723,6 +723,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "the_candidate_starts_with_only_the_admitted_environment_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "the_candidate_starts_with_only_the_admitted_environment_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",

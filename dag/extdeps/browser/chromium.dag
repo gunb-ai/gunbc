@@ -71,3 +71,10 @@ data chromium_identity_boundary_note: NonEmptyStr = "ChromiumBuild names the Chr
 fn chromium_version_command(binary: NonEmptyStr) -> ArgvCommand {
   argv_command(program: binary, arguments: ["--version"])
 }
+
+// The whole --version line of a Chromium project build, exactly: "Chromium <version>" (observed
+// "Chromium 151.0.7922.34" from the Playwright build of revision 1234, fleet-converge run
+// 36377598915). A readback compares the entire trimmed output to this, never a substring.
+fn chromium_version_line(build: ChromiumBuild) -> String {
+  concat("Chromium ", build.version as String)
+}
