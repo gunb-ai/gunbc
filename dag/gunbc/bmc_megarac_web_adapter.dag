@@ -74,3 +74,32 @@ data megarac_web_transport_scaffold: Disposition = Scaffold {
 data megarac_web_transport_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.bmc_megarac_web_adapter megarac_web_transport_script -- the HTTP+WebSocket transport over the model's rendered script is a node -e string. DISSOLVES WHEN `gunbc serve` (or a typed serve realization) answers WebSocket upgrades and holds a connection open across requests, so each request is decoded, handed to the gunbc.bmc_model transition and encoded in .dag per request, rather than replayed from a pre-rendered script")
 
 data megarac_web_transport_script: String = "const http=require('http');const crypto=require('crypto');const fs=require('fs');const [port,port2,scriptPath,logPath]=process.argv.slice(1);const S=\{};for(const l of fs.readFileSync(scriptPath,'utf8').split('\\n'))\{const i=l.indexOf('=');if(i>0)S[l.slice(0,i)]=l.slice(i+1)}function log(m)\{fs.appendFileSync(logPath,Date.now()+' '+m+'\\n')}const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64');http.createServer((q,r)=>\{r.writeHead(200,\{'Content-Type':'image/png'});r.end(png)}).listen(+port2,'127.0.0.1');const taint=S.canvas_readable!=='1'?\"const i=new Image();i.onload=()=>x.drawImage(i,0,0);i.src='http://localhost:\"+port2+\"/x.png';\":'';const viewer=\"<!doctype html><canvas id=\\\"kvm\\\" width=\\\"1\\\" height=\\\"1\\\"></canvas><script>const c=document.getElementById('kvm');const x=c.getContext('2d');const ws=new WebSocket('ws://'+location.host+'\"+S.kvm_path+\"');ws.onmessage=()=>\{c.width=800;c.height=600;x.fillStyle='#036';x.fillRect(0,0,800,600);\"+taint+\"};</script>\";const s=http.createServer((q,r)=>\{ if(q.url==='/')\{r.end('<html></html>');return} if(q.url==='/viewer.html')\{r.writeHead(200,\{'Content-Type':'text/html'});r.end(viewer);return} if(q.url==='/api/session'&&q.method==='POST')\{log('login');r.writeHead(+S.login_status,\{'Content-Type':'application/json'});r.end(S.login_body);return} if(q.url==='/api/session'&&q.method==='DELETE')\{log('logout');r.writeHead(+S.logout_status,\{'Content-Type':'application/json'});r.end('\{}');return} if(q.url==='/api/settings/services')\{log('services');r.writeHead(200,\{'Content-Type':'application/json'});r.end(S.services_body);return} r.writeHead(404);r.end()});s.on('upgrade',(q,sock)=>\{if(q.url!==S.kvm_path||S.kvm_accept!=='1')\{log('kvm-refused');sock.destroy();return} const k=crypto.createHash('sha1').update(q.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64'); sock.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: '+k+'\\r\\n\\r\\n'); sock.write(Buffer.from([0x81,0x05,0x66,0x72,0x61,0x6d,0x65]));log('kvm-open'); if(S.kvm_close_after_seconds!=='none')\{setTimeout(()=>\{log('kvm-closed-by-controller');sock.destroy()},1000*Number(S.kvm_close_after_seconds))}});s.listen(+port,'127.0.0.1',()=>log('listening'));"
+
+// THE TRANSPORT'S LAUNCH AND STOP: the script file the adapter rendered, served on two loopback
+// ports (the second only serves the cross-origin image an unreadable canvas is drawn from), with the
+// transport's own request log and its pid beside them.
+service gunbc.bmc_megarac_web.transport {
+  operation Start {
+    input { script: NonEmptyStr, port: NonEmptyStr, image_port: NonEmptyStr, script_path: NonEmptyStr, log_path: NonEmptyStr, pid_path: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["bash", "-c", "node -e \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" > /dev/null 2>&1 < /dev/null & echo $! > \"$6\"; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do grep -q listening \"$5\" 2>/dev/null && exit 0; sleep 0.25; done; exit 1", "megarac-web-transport", "{script}", "{port}", "{image_port}", "{script_path}", "{log_path}", "{pid_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "the transport did not report listening"
+    }
+  }
+
+  operation Stop {
+    input { pid_path: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell {
+      argv: ["bash", "-c", "[ -f \"$1\" ] && kill \"$(cat \"$1\")\" 2>/dev/null; exit 0", "megarac-web-transport-stop", "{pid_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "stop failed"
+    }
+  }
+}
