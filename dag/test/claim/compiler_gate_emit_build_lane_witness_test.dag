@@ -16,6 +16,8 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_lane_result_expression,
   compiler_gate_aggregate_step_env,
   compiler_gate_aggregate_script_lines,
+  compiler_gate_aggregate_script_lines_for, compiler_gate_aggregate_step_env_for,
+  compiler_gate_blocking_rows_of, CompilerGateLaneStanding, GateArmStrict,
   compiler_gate_blocking_rows, compiler_gate_lane_rows,
   compiler_gate_same_repo_expression, compiler_gate_floor_job_condition,
   compiler_gate_emit_build_notice_step,
@@ -126,13 +128,17 @@ test fn the_emit_build_lane_is_a_job_and_is_rostered() -> Bool {
     )
 }
 
-// AND IT IS DELIBERATELY NOT BLOCKING TODAY, which is the operator ruling this change implements.
-// The claim is written so that FLIPPING the row to LaneBlocks reddens it: the follow-up that
-// makes the lane required must come here and say so, rather than leaving a stale claim asserting
-// a standing the workflow no longer has.
-test fn the_emit_build_lane_is_announced_and_does_not_block_yet() -> Bool {
-  (any(compiler_gate_blocking_job_ids(), id => id == compiler_gate_emit_build_job_id) == false)
-    && (any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id) == false)
+// AND IT BLOCKS, since the 2026-09-27 operator ruling that made the native route a required lane.
+// The claim reads the LIVE roster and the LIVE aggregate, so reverting the row to
+// LaneAnnouncedNotBlocking reds it on every surface the gate actually consults: the needs edge,
+// the variable, and both arms of the script.
+test fn the_emit_build_lane_blocks() -> Bool {
+  let script = join(compiler_gate_aggregate_script_lines(), "\n")
+  any(compiler_gate_blocking_job_ids(), id => id == compiler_gate_emit_build_job_id)
+    && any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id)
+    && any(compiler_gate_aggregate_step_env(), e => e.key == "EMIT_BUILD")
+    && string_contains(s: script, pattern: "[ \"$EMIT_BUILD\" = failure ]")
+    && string_contains(s: script, pattern: "[ \"$EMIT_BUILD\" != success ]")
 }
 
 // THE ESTABLISHED LANES STILL BLOCK, NAMED RATHER THAN COUNTED. Without this, the claim above would
@@ -143,7 +149,7 @@ test fn the_emit_build_lane_is_announced_and_does_not_block_yet() -> Bool {
 // ruling that moved it beside the floor.
 test fn the_established_lanes_still_block() -> Bool {
   let blocking = compiler_gate_blocking_job_ids()
-  let established = [compiler_gate_job_id, compiler_gate_clippy_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id]
+  let established = [compiler_gate_job_id, compiler_gate_clippy_job_id, compiler_gate_emit_build_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id]
   all(established, id => any(blocking, b => b == id))
     && all(blocking, b => any(established, id => id == b))
     && all(blocking, id => any(compiler_gate_aggregate_job().needs, n => n == id))
@@ -241,14 +247,26 @@ test fn every_blocking_lane_is_read_by_a_conditional() -> Bool {
     string_contains(s: script, pattern: join(["\"$", row.var_name, "\" = failure"], "")))
 }
 
-// AND THE ANNOUNCED LANE REACHES NEITHER SURFACE. Without this the two claims above would be
-// satisfied by a gate that also read a lane it must not yet block on -- whose variable would
-// render EMPTY, compare unequal to `success`, and refuse every run.
+// AN ANNOUNCED LANE REACHES NO SURFACE OF THE GATE -- a LAW over any roster, so it is stated over a
+// SUPPLIED LaneAnnouncedNotBlocking row rather than over a live lane, which today has none. Were an
+// announced lane bound, its variable would render EMPTY, compare unequal to `success`, and refuse
+// every run. The positive half renders the SAME row as LaneBlocks and requires it to reach every
+// surface, so the claim cannot pass by the builders emitting nothing for that row.
+fn announced_probe_row(standing: CompilerGateLaneStanding) -> CompilerGateLaneRow {
+  CompilerGateLaneRow { job_id: "probe-lane", var_name: "PROBE_LANE", standing: standing, arm: GateArmStrict }
+}
+
 test fn w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause() -> Bool {
-  let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  let env = compiler_gate_aggregate_step_env()
-  (any(env, e => e.key == "EMIT_BUILD") == false)
-    && (string_contains(s: script, pattern: "EMIT_BUILD") == false)
+  let announced = [announced_probe_row(standing: LaneAnnouncedNotBlocking { flip_trigger: "Sufficient for: probe" })]
+  let blocking = [announced_probe_row(standing: LaneBlocks)]
+  let announced_script = join(compiler_gate_aggregate_script_lines_for(rows: announced), "\n")
+  let blocking_script = join(compiler_gate_aggregate_script_lines_for(rows: blocking), "\n")
+  (any(compiler_gate_aggregate_step_env_for(rows: announced), e => e.key == "PROBE_LANE") == false)
+    && (string_contains(s: announced_script, pattern: "PROBE_LANE") == false)
+    && (length(xs: compiler_gate_blocking_rows_of(rows: announced)) == 0)
+    && any(compiler_gate_aggregate_step_env_for(rows: blocking), e => e.key == "PROBE_LANE")
+    && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" = failure ]")
+    && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" != success ]")
 }
 
 // THE FORK CARVE-OUT IS A ROW FIELD, SO IT TRAVELS WITH ITS LANE. The fleet lane legitimately

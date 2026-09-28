@@ -1080,11 +1080,20 @@ fn compiler_gate_var_report(row: CompilerGateLaneRow) -> String {
 }
 
 fn compiler_gate_blocking_rows() -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_lane_rows(), predicate: compiler_gate_lane_blocks)
+  compiler_gate_blocking_rows_of(rows: compiler_gate_lane_rows())
 }
 
-fn compiler_gate_strict_rows() -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+// THE AGGREGATE IS A FUNCTION OF A SUPPLIED ROSTER, and the live gate is that function applied to
+// `compiler_gate_lane_rows`. The roster is the one input every surface below derives from, so
+// taking it as a parameter lets a witness state a LAW over any roster -- an announced lane binds no
+// variable, a blocking lane is read by every arm -- over a supplied row, while the live claims
+// assert which lanes block today (DESIGN section 3: a witness discriminates at one interface).
+fn compiler_gate_blocking_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
+  filter(xs: rows, predicate: compiler_gate_lane_blocks)
+}
+
+fn compiler_gate_strict_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
+  filter(xs: compiler_gate_blocking_rows_of(rows: rows), predicate: fn(row) {
     match row.arm {
       GateArmStrict => true
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => false
@@ -1092,8 +1101,8 @@ fn compiler_gate_strict_rows() -> List<CompilerGateLaneRow> {
   })
 }
 
-fn compiler_gate_fork_rows() -> List<CompilerGateLaneRow> {
-  filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+fn compiler_gate_fork_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerGateLaneRow> {
+  filter(xs: compiler_gate_blocking_rows_of(rows: rows), predicate: fn(row) {
     match row.arm {
       GateArmStrict => false
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => true
@@ -1119,20 +1128,20 @@ fn compiler_gate_not_success_clause(row: CompilerGateLaneRow) -> String {
   join(["[ ", compiler_gate_var_read(row: row), " != success ]"], "")
 }
 
-fn compiler_gate_echo_line() -> String {
+fn compiler_gate_echo_line(rows: List<CompilerGateLaneRow>) -> String {
   join([
     "echo \"required lanes: ",
-    compiler_gate_report_text(rows: compiler_gate_blocking_rows()),
+    compiler_gate_report_text(rows: compiler_gate_blocking_rows_of(rows: rows)),
     " (same_repo=$SAME_REPO)\""
   ], "")
 }
 
-fn compiler_gate_failure_line() -> String {
+fn compiler_gate_failure_line(rows: List<CompilerGateLaneRow>) -> String {
   join([
     "if ",
-    join(list_map(xs: compiler_gate_blocking_rows(), f: compiler_gate_is_failure_clause), " || "),
+    join(list_map(xs: compiler_gate_blocking_rows_of(rows: rows), f: compiler_gate_is_failure_clause), " || "),
     "; then echo \"::error::a required lane concluded failure (",
-    compiler_gate_report_text(rows: compiler_gate_blocking_rows()),
+    compiler_gate_report_text(rows: compiler_gate_blocking_rows_of(rows: rows)),
     ") - open that job's log\" >&2; exit 1; fi"
   ], "")
 }
@@ -1141,12 +1150,12 @@ fn compiler_gate_failure_line() -> String {
 // there are two: a lane that FAILED is a verdict about the diff, and a lane that produced no
 // conclusion of its own leaves the head UNOBSERVED. Both block; they send a reader to different
 // places.
-fn compiler_gate_unobserved_line() -> String {
+fn compiler_gate_unobserved_line(rows: List<CompilerGateLaneRow>) -> String {
   join([
     "if ",
-    join(list_map(xs: compiler_gate_strict_rows(), f: compiler_gate_not_success_clause), " || "),
+    join(list_map(xs: compiler_gate_strict_rows_of(rows: rows), f: compiler_gate_not_success_clause), " || "),
     "; then echo \"::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (",
-    compiler_gate_report_text(rows: compiler_gate_strict_rows()),
+    compiler_gate_report_text(rows: compiler_gate_strict_rows_of(rows: rows)),
     ")\" >&2; exit 1; fi"
   ], "")
 }
@@ -1166,9 +1175,13 @@ fn compiler_gate_fork_line(row: CompilerGateLaneRow) -> String {
 }
 
 fn compiler_gate_aggregate_script_lines() -> List<String> {
+  compiler_gate_aggregate_script_lines_for(rows: compiler_gate_lane_rows())
+}
+
+fn compiler_gate_aggregate_script_lines_for(rows: List<CompilerGateLaneRow>) -> List<String> {
   list_append(
-    left: [compiler_gate_echo_line(), compiler_gate_failure_line(), compiler_gate_unobserved_line()],
-    right: list_map(xs: compiler_gate_fork_rows(), f: compiler_gate_fork_line)
+    left: [compiler_gate_echo_line(rows: rows), compiler_gate_failure_line(rows: rows), compiler_gate_unobserved_line(rows: rows)],
+    right: list_map(xs: compiler_gate_fork_rows_of(rows: rows), f: compiler_gate_fork_line)
   )
 }
 
@@ -1198,8 +1211,12 @@ fn compiler_gate_same_repo_expression() -> String {
 }
 
 fn compiler_gate_aggregate_step_env() -> List<YamlKeyValue> {
+  compiler_gate_aggregate_step_env_for(rows: compiler_gate_lane_rows())
+}
+
+fn compiler_gate_aggregate_step_env_for(rows: List<CompilerGateLaneRow>) -> List<YamlKeyValue> {
   list_append(
-    left: list_map(xs: compiler_gate_blocking_rows(), f: fn(row) {
+    left: list_map(xs: compiler_gate_blocking_rows_of(rows: rows), f: fn(row) {
       kv(key: row.var_name, value: yaml_string(s: compiler_gate_lane_result_expression(job_id: row.job_id)))
     }),
     right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression()))]
