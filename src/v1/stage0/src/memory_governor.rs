@@ -2198,11 +2198,19 @@ mod tests {
             ..public_root()
         };
         let refused = admit(Some(public_peak() * 4), &private_spelling);
-        assert!(matches!(
-            &refused,
-            WholeCorpusCompileAdmission::RefusedDemandsForAnotherRepository { projected_repositories, .. }
-                if projected_repositories == &vec!["gunbc".to_string()]
-        ));
+        // The projection's repositories, one per row (`gunbc.whole_corpus_compile_admission`
+        // `whole_corpus_compile_demand_repositories`), so the list grows with the committed
+        // projection's rows; the claim is that every one of them is this repository, as the
+        // model witness `refuses_as_another_repository` states it, not how many rows there are.
+        assert!(
+            matches!(
+                &refused,
+                WholeCorpusCompileAdmission::RefusedDemandsForAnotherRepository { projected_repositories, .. }
+                    if !projected_repositories.is_empty()
+                        && projected_repositories.iter().all(|r| r == "gunbc")
+            ),
+            "{refused:?}"
+        );
         assert!(whole_corpus_compile_refusal_diagnostic(&refused)
             .expect("refusal must diagnose")
             .contains("WholeCorpusCompileDemandsForAnotherRepository"));

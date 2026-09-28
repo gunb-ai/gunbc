@@ -1585,11 +1585,15 @@ mod process_cwd_mutation_reachability_gate {
         // Raw strings span lines and suppress every escape, so the open hash count has to
         // survive across lines exactly the way a block comment does.
         let mut in_raw: Option<usize> = None;
+        // An ordinary string literal spans lines too (a wrapped `format!` template), so it
+        // carries across lines exactly like a raw string. Reset per line, a `{` on a
+        // continuation line counted as code: the depth never returned to zero, declaration
+        // bodies ran to end of file, and the closure absorbed half the crate.
+        let mut in_string = false;
         for line in text.split('\n') {
             let chars: Vec<char> = line.chars().collect();
             let mut kept = String::with_capacity(line.len());
             let mut i = 0usize;
-            let mut in_string = false;
             let mut in_char = false;
             while i < chars.len() {
                 let c = chars[i];
@@ -2101,6 +2105,34 @@ mod process_cwd_mutation_reachability_gate {
     ///
     /// Each case below is asserted on a projection, not on the live file, so the control keeps its
     /// discriminating power when the file's own raw strings change.
+    #[test]
+    fn a_multi_line_string_does_not_shift_brace_depth() {
+        let wrapped = concat!(
+            "fn outer() {\n",
+            "    let s = format!(\"head {} \\\n",
+            "         tail }} {}\", a, b);\n",
+            "}\n",
+            "fn later() {\n",
+            "}\n"
+        );
+        let code = code_projection(wrapped);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "a brace on a string's continuation line must not leak into the depth array: {depths:?}"
+        );
+        let decls = declarations(&wrapped.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let outer = decls
+            .iter()
+            .find(|d| d.name == "outer")
+            .expect("outer declared");
+        assert_eq!(
+            outer.end, 4,
+            "outer's body must close at its own brace: {depths:?}"
+        );
+    }
+
     #[test]
     fn a_raw_string_neither_shifts_brace_depth_nor_seeds_a_call_edge() {
         let unbalanced = concat!(
@@ -27738,7 +27770,8 @@ impl ShardStyle {
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        floor_diff_edits_from_diff_text_with_base_names, list_value_from_vec,
+        floor_diff_edits_from_diff_text_with_base_names,
+        floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
         parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
         rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
@@ -28086,6 +28119,22 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         (src, dest, diff.to_string())
     }
 
+    // The rename destination's new-side content, SUPPLIED rather than read from the live
+    // tree (DESIGN §3 witness rule): the live file has since gained further test fns, which
+    // the fixed base census does not name, so reading it enrolled them and the fixture no
+    // longer isolated the rename. The two test fns sit at the lines the diff's hunks name.
+    fn machine_shape_rename_dest_sources(dest: &str) -> std::collections::HashMap<String, String> {
+        let mut content = String::from("module v2.test.claim.machine_shape_construction_wall\n");
+        while content.lines().count() < 80 {
+            content.push('\n');
+        }
+        content.push_str(
+            "test fn gate_red_synthetic_machine_shape_call() -> Bool {\n  true\n}\n\n\n\n\n\n\
+             test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {\n  true\n}\n",
+        );
+        std::collections::HashMap::from([(dest.to_string(), content)])
+    }
+
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
     // SOURCE path or every moved fn is gated as new.
     #[test]
@@ -28105,8 +28154,11 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             ]),
         );
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("a rename-destination diff must attribute, not refuse");
+        let sources = machine_shape_rename_dest_sources(dest);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index, &diff, &at_base, &sources,
+        )
+        .expect("a rename-destination diff must attribute, not refuse");
         let enrolled: HashSet<String> = edits
             .enrolled_test_fns
             .iter()
@@ -28130,8 +28182,11 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
         );
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("a rename-destination diff must attribute, not refuse");
+        let sources = machine_shape_rename_dest_sources(dest);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index, &diff, &at_base, &sources,
+        )
+        .expect("a rename-destination diff must attribute, not refuse");
         let enrolled: HashSet<String> = edits
             .enrolled_test_fns
             .iter()
@@ -31832,6 +31887,10 @@ mod construction_authority_graph_tests {
         let roots = vec![
             ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
+            // The seed's own modules: `v1.std.core` (src/v1/00_core.dag) declares
+            // `CompilerDiagnostic` and `diagnostic_disposition`, which corpus authorities cite.
+            // Without this root a real declaration read as dangling.
+            ws.join("src/v1").to_string_lossy().into_owned(),
         ];
         let unresolved =
             construction_authority_graph_unresolved(&roots).expect("corpus walk must succeed");

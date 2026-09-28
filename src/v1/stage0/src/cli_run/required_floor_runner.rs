@@ -996,6 +996,27 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     )
 }
 
+/// `floor_diff_edits_from_diff_text_with_base_names` with each changed path's new-side
+/// content SUPPLIED rather than read from the working tree.
+#[cfg(test)]
+pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+    base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
+    sources: &std::collections::HashMap<String, String>,
+) -> Result<FloorDiffEdits, String> {
+    floor_diff_edits_from_line_ranges_reading(
+        index,
+        &parse_unified_diff_line_ranges(diff_text),
+        &parse_unified_diff_changed_new_lines(diff_text),
+        &parse_unified_diff_departed_paths(diff_text),
+        &parse_unified_diff_added_paths(diff_text),
+        Some(base_test_decl_names),
+        &parse_unified_diff_rename_sources(diff_text),
+        &|path: &str| Ok(sources.get(path).cloned()),
+    )
+}
+
 // Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
 // §6–§7)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
 // reason, dissolve-on trigger and census. Read it there; it is not restated here.
@@ -1007,6 +1028,44 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
     rename_from: &std::collections::HashMap<String, String>,
+) -> Result<FloorDiffEdits, String> {
+    floor_diff_edits_from_line_ranges_reading(
+        index,
+        line_ranges_by_file,
+        changed_new_lines_by_file,
+        departed_paths,
+        added_paths,
+        base_test_decl_names,
+        rename_from,
+        &read_working_tree_source,
+    )
+}
+
+/// The production reader: a changed path's content at the working tree. `Ok(None)` is
+/// "absent from the tree", which the caller dispositions against the diff's departed set.
+fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
+    let disk_path = process_workspace_root().join(file_norm);
+    if !disk_path.is_file() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&disk_path)
+        .map(Some)
+        .map_err(|e| format!("read failed for {file_norm}: {e}"))
+}
+
+/// Attribution over a supplied reader of each changed path's new-side content. The
+/// interface is diff + census + content -> edits, so a witness supplies the content as a
+/// value (DESIGN §3 witness rule) rather than reading whatever the live tree now holds.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn floor_diff_edits_from_line_ranges_reading(
+    index: &MultiEntryIndex,
+    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
+    departed_paths: &HashSet<String>,
+    added_paths: &HashSet<String>,
+    base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
+    read_source: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -1036,8 +1095,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             continue;
         }
         let file_norm = normalize_repo_path(file_path);
-        let disk_path = process_workspace_root().join(&file_norm);
-        if !disk_path.is_file() {
+        let Some(content) = read_source(&file_norm)? else {
             if departed_paths.contains(&file_norm) {
                 // Departed per the diff (deletion / rename-from): its decl set
                 // is empty by construction — the file has no declarations to
@@ -1053,15 +1111,11 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                  content changes but the path is absent from the working tree \
                  and the diff does not mark it departed (deletion/rename)"
             ));
-        }
+        };
         let resolve_index = if file_norm.starts_with("src/v1/") {
             v1_attribution_index.as_ref().expect("v1 attribution index")
         } else {
             index
-        };
-        let content = match std::fs::read_to_string(&disk_path) {
-            Ok(c) => c,
-            Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
         // Attribution is a PARSE-grade fact: it needs each touched file's
         // declaration line map (names + spans + data/fn kind), never its typecheck.
