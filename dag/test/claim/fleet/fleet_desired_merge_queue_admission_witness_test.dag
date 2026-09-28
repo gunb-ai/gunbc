@@ -381,5 +381,6 @@ test fn the_live_merge_group_run_list_decoded_from_the_wire_admits_its_revision(
         _ => false
       }
     WitnessRefused { diagnostic: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }

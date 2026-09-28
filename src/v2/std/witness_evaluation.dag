@@ -4,6 +4,8 @@ import std.types { Bool, List }
 import std.effect_grant { Envelope }
 import extdeps.transports.rest { RestExchangeFixture }
 import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, AmbiguousIntent }
+import v2.std.operation_realization { OperationRealization, DispatchRecord }
+import std.measure { Second }
 
 // A witness evaluation is an ordinary scoped evaluation whose effects are supplied by an existing
 // Envelope. Envelope already owns its Frame, so this carrier does not duplicate a separately
@@ -13,14 +15,22 @@ import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, Ambiguou
 // control semantics: later deterministic environment and filesystem replay bindings extend the same
 // carrier rather than minting another catch primitive.
 
-type WitnessEvaluationFrame {
+// realization, when present, is a modeled operation realization (v2.std.operation_realization) whose
+// state S the frame owns for its dynamic extent. Every arm of the result carries the dispatch log the
+// dispatcher wrote and the state the model ended in, so a refusal still reports what was issued
+// before it. A worker killed between an effect and its reply is WitnessInterrupted, never a
+// manufactured return: the enclosing witness is the supervisor that keeps the state and the log and
+// may resume a second attempt from that state in a new frame.
+type WitnessEvaluationFrame<S> {
   envelope: Envelope
   rest_fixtures: List<RestExchangeFixture>
+  realization: OperationRealization<S>?
 }
 
-type WitnessEvaluation<A>
-  = WitnessReturned { value: A }
-  | WitnessRefused { diagnostic: Diagnostic }
+type WitnessEvaluation<A, S>
+  = WitnessReturned { value: A, route: List<DispatchRecord>, state: S? }
+  | WitnessRefused { diagnostic: Diagnostic, route: List<DispatchRecord>, state: S? }
+  | WitnessInterrupted { at: DispatchRecord, route: List<DispatchRecord>, state: S, now: Second }
 
 // The v1 interpreter realizes this generic boundary by installing the frame for the dynamic extent
 // of subject(), returning its value or converting the interpreter refusal to a located Diagnostic,
@@ -31,7 +41,10 @@ type WitnessEvaluation<A>
 // than open-ended. LANE: ROADMAP `v1-materialization-kernel`
 // (docs/plans/witness-realization-plan.md), counted against `v1-honest-frontier` and terminating at
 // `v1-interpreter-quarantine` then `v1-interpreter-delete`. WHAT IS DEFERRED, exactly: the
-// dynamic-extent install/remove of a frame, and nothing else - the policy this boundary exists to
+// dynamic-extent install/remove of a frame, and -- since gunbc#12486 -- the dispatch of a frame's modeled
+// operation realization (admission, exclusive consultation, the dispatch log and the virtual clock
+// cursor; gunbc.modeled_operation_realization_seed_growth modeled_operation_realization_seed_growth_justification),
+// and nothing else - the policy this boundary exists to
 // serve is modeled here and in extdeps.transports.rest, and the interpreter calls
 // rest_exchange_resolution back into .dag rather than deciding replay itself. DELETION CONDITION,
 // by execution: witnesses emit to native code and the emitted runtime realizes the frame, at which
@@ -75,11 +88,11 @@ fn witness_frame_unrealized_diagnostic() -> Diagnostic {
   }
 }
 
-fn evaluate_in_witness_frame<A>(
-  frame: WitnessEvaluationFrame,
+fn evaluate_in_witness_frame<A, S>(
+  frame: WitnessEvaluationFrame<S>,
   subject: fn(Bool) -> A,
-) -> WitnessEvaluation<A> {
-  WitnessRefused { diagnostic: witness_frame_unrealized_diagnostic() }
+) -> WitnessEvaluation<A, S> {
+  WitnessRefused { diagnostic: witness_frame_unrealized_diagnostic(), route: [], state: none }
 }
 
 // An executing-scope observation proves that a temporary frame was removed. The pure/default answer is false; the interpreter realization returns true only while evaluate_in_witness_frame is applying its subject.

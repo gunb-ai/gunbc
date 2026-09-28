@@ -608,6 +608,10 @@ import v2.std.collection { List }
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 MATCH-ARM LIST ROW: v2.test.claim.body_lowering.match_arm_list_structure mals_lowered and
+// mals_third_arm_malformed each tokenize and parse one inline module and call one producer
+// (body_lower_match_arms_optional) on its match capture; the stored value is the lowered arm list
+// (Nodes, no resolution context and no closure), portable for the same reason vpw_normalized is.
 // THE XL-2 BOUND-VALUE RESOLVE ROW IS THE SAME GROUND AT ELEVEN SPECIMENS:
 // v2.test.claim.namespace_xl0.bound_value_resolve_refusal bvr_outcomes drives one front end over
 // eleven inline modules and stores one verdict arm per module, portable for the same reason.
@@ -680,6 +684,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
+  "v2.test.claim.body_lowering.function_value_body.fvb_outcomes",
+  "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_outcomes",
   "test.claim.roadmap_authority.withheld_sized_subject_verdict",
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_normalized",
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_outcome",
@@ -689,6 +695,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
+  "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
+  "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
@@ -1126,7 +1134,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // the admission criterion above rather than defended by the family aggregate.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
-  "v2.compiler.translate.grammar_relation_row_for_emitted",
+  "v2.compiler.target_serialize.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
   "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness",
   "v2.std.compilers.target_model.target_project_arrow_body_to_value_expression"
@@ -1315,7 +1323,7 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 // it neither cost nor saved anything over those modules. Refusing a different admitted producer
 // for touching one of them would charge it with a harm measured to be zero, which is a fabricated
 // subject, and this is not hypothetical -- run 33696651737 refused
-// v2.compiler.translate.grammar_relation_row_for_emitted on exactly that overlap, and the same
+// v2.compiler.target_serialize.grammar_relation_row_for_emitted on exactly that overlap, and the same
 // overlap is present in the main-vintage run 33671317370, so it is a standing property of the
 // corpus rather than one run's accident.
 //
@@ -1325,7 +1333,7 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 //
 // WHAT IS NOT CLAIMED BY THIS PREDICATE, stated because the same run that motivated it could be
 // misread as clearing the producer it refused. Nothing here says
-// v2.compiler.translate.grammar_relation_row_for_emitted earns its enrolment. The core_edges
+// v2.compiler.target_serialize.grammar_relation_row_for_emitted earns its enrolment. The core_edges
 // measurement measures a DIFFERENT producer and says nothing about that key's own serving cost
 // over v2.test.manual.rust_add_emit_translate; what it establishes is only that the overlap is
 // not EVIDENCE of a cost, because the row overlapped measured none. Whether that key beats

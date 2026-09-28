@@ -71,9 +71,7 @@ import gunbc.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
   host_usable_ram_ceiling_bytes,
 }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-}
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, session_admission_oomd_ceiling,
 }

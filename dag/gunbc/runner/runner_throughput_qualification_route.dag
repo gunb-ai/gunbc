@@ -9,10 +9,8 @@ import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
-import gunbc.runner_slot_allocation {
-  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-  gunbc_runner_slot_desired, runner_host_label, runner_label_set_union,
-}
+import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
+import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification {
   WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
   RouteLegStanding, LegBoundToAuthority, LegAwaitingAuthority, leg_is_bound,
@@ -87,7 +85,7 @@ fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {
 
 // ── THE EPHEMERAL SLOT IS THE FLEET SLOT SHAPE RENDERED AS A TRANSIENT UNIT ───────────────────
 //
-// `gunbc.runner_slot_allocation gunbc_runner_slot_desired` is the one authority for MemoryMax,
+// `gunbc.runner_slot_desired gunbc_runner_slot_desired` is the one authority for MemoryMax,
 // MemoryHigh, MemorySwapMax, TasksMax, CPUWeight and the CPU quota the fleet's slots run under.
 // The permanent slots reach systemd as a unit file; this one reaches it as `systemd-run`
 // properties, and both spell every property through `extdeps.systemd systemd_unit_property_wire`.
