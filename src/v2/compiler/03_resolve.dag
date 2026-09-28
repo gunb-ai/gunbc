@@ -110,6 +110,11 @@ import v2.std.node {
   fold_node,
   match_arm_body,
   match_arm_pattern,
+  arrow_first_positional_target,
+  arrow_signature_order_label,
+  FirstPositionalAbsent,
+  FirstPositionalFound,
+  edge_label_of,
   node_with_occurrence_id,
   well_formed,
 }
@@ -248,17 +253,13 @@ fn namespace_bindings_augment_from_module_atoms(
 fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match n.kind {
     TypeNode { connective: Arrow } =>
-      if count(n.children) >= 1 {
-        match first(n.children) {
-          Present { value: e0 } =>
-            harvest_direct_atom_binding(
-              root: e0.target,
-              acc: harvest_conj_named_bindings(root: e0.target, acc: acc)
-            )
-          Absent => acc
-        }
-      } else {
-        acc
+      match arrow_first_positional_target(children: n.children) {
+        FirstPositionalFound { target: domain } =>
+          harvest_direct_atom_binding(
+            root: domain,
+            acc: harvest_conj_named_bindings(root: domain, acc: acc)
+          )
+        FirstPositionalAbsent => acc
       }
     _ => acc
   }
@@ -1575,13 +1576,9 @@ fn domain_root_has_named_bindings(root: Node) -> Bool {
 fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } =>
-      if count(n.children) >= 1 {
-        match first(n.children) {
-          Present { value: e0 } => domain_root_has_named_bindings(root: e0.target)
-          Absent => false
-        }
-      } else {
-        false
+      match arrow_first_positional_target(children: n.children) {
+        FirstPositionalFound { target: domain } => domain_root_has_named_bindings(root: domain)
+        FirstPositionalAbsent => false
       }
     _ => false
   }
@@ -1707,6 +1704,11 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 
 // The Arrow's own <T> binders are checked from the OUTER context: the frame they open must not
 // answer for them, or every binder would read as shadowing itself.
+// THE DECLARED ORDER IS LABELS, NOT REFERENCES. The ^arrow_signature_order_edge's atoms name the
+// domain's binders (v2.std.compilers.body_lowering signature_order_edge); walking them
+// under scope_body would resolve each against a parameter or, spelled like a free name, against the
+// enclosing scope, and a minted anonymous label against nothing. It is carried unwalked; the Arrow
+// wall (v2.std.node arrow_signature_order_conforms) is its check.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
@@ -1717,6 +1719,8 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
       Named { name: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
+        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
         } else {
           child_walk_step(
             w: acc,

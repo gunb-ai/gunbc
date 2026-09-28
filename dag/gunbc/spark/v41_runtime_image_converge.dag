@@ -532,6 +532,24 @@ data v41_arm_a_produced_image: V41ProducedImageHeld = V41ProducedImageHeld {
   receipt_run: "36207135528" as NonEmptyStr,
 }
 
+// THE PRODUCTION V4.1 IMAGE: fleet-converge run 36327364664 (spark_v41_runtime_image_build on srv8,
+// from main with the design-B cutover's patch set, #12359), whose receipt reads: produced runtime
+// tag=gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e
+// config_digest=sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3
+// build_key=3cedb66f0ec0869e source_head=d2d649e674c75425d2d6975c87eb89fd4d55fff8
+// worktree_diff_sha256=e967c37917e4e8b5c13834df8f319a653094a9b6679b1325b3ed7c77a40f57f0, and "probe
+// identity JOINED to the produced image" at the same digest. This is the image the distribution mode
+// moves to srv5-8; arm A's row above stays as the upstream-pinned image's receipt.
+data v41_production_produced_image: V41ProducedImageHeld = V41ProducedImageHeld {
+  observed: v41_observed_source_identity_of(
+    revision_head: "d2d649e674c75425d2d6975c87eb89fd4d55fff8" as NonEmptyStr,
+    worktree_diff_sha256: Sha256Digest { hex: "e967c37917e4e8b5c13834df8f319a653094a9b6679b1325b3ed7c77a40f57f0" as Sha256DigestHex },
+  ),
+  config: OciSha256Digest(Sha256Digest { hex: "5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" as Sha256DigestHex }),
+  held_on: "srv8" as HostIdentity,
+  receipt_run: "36327364664" as NonEmptyStr,
+}
+
 fn v41_produced_image_subject(p: V41ProducedImageHeld) -> VllmImageDistributionSubject {
   VllmImageDistributionSubject {
     tag: vllm_image_tag_for_key(r: v41_candidate_recipe(), key: v41_patched_image_build_key(r: v41_candidate_recipe(), observed: p.observed)),
@@ -612,7 +630,7 @@ fn v41_distribute_to(target_host: HostIdentity, p: V41ProducedImageHeld) -> Proc
 // states and checks it on every filesystem a copy lands on before a byte moves.
 fn v41_runtime_image_distribute_ci_wet() -> ProcessExit
 {
-  let p = v41_arm_a_produced_image
+  let p = v41_production_produced_image
   match spark_converge_target_selection(execute_apply: true) {
     SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
     SparkConvergeTargetAllObserveOnly =>

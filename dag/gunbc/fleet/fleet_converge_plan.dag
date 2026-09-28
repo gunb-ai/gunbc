@@ -163,7 +163,7 @@ import gunbc.host_converge {
   systemd_memory_swap_max_property,
   systemd_tasks_max_property,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,

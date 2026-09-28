@@ -62,6 +62,7 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.compilers.body_lowering { declared_signature }
 import v2.std.compilers.lexing {
   AnnotationRule,
   CharClassPattern,
@@ -90,7 +91,6 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_member,
   lex_rule_set_token_class_member,
-  symbol_intern_lexeme
 }
 import v2.std.node {
   Arrow,
@@ -110,6 +110,7 @@ import v2.std.node {
   TypeNode,
   is_empty_conj_root,
   node_lowered_from,
+  symbol_intern_lexeme,
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
@@ -157,7 +158,7 @@ import v2.std.compilers.target_model {
   BlockEvaluationMode,
   ValueProducing,
   derive_bodied_arrow_scaffold}
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_node }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_map }
 import v2.std.diagnostic {
@@ -181,6 +182,7 @@ import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
   integer_decimal_magnitude_node_to_int,
+  integer_int_type_node,
   integer_string_to_decimal_digits_optional,
   DecimalMagnitude,
   DecimalNonZero,
@@ -3311,7 +3313,7 @@ fn dag_zip_fold_closure_edges() -> List<Edge> {
 }
 
 // The field of an inhabitant record whose target is the type the record declares; every other
-// field states a fact about that type (std.kind roster_member_kind).
+// field states a fact about that type (std.kind roster_kind_index).
 fn dag_declared_inhabitants_subject_field() -> Symbol {
   ^dag_inhabitant_field_atom
 }
@@ -3630,7 +3632,11 @@ fn dag_int_type_binding() -> Symbol {
 
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
 // surface spelling "Int" to the canonical binding symbol (dag_binding_spellings); what that
-// binding DENOTES is the Int inhabitant declared at dag_declared_inhabitants_core. Every
+// binding DENOTES is the value type its std authority owns: v2.std.integer integer_int_type_node
+// for Int, v2.std.logic bool_node for Bool. A row points at the authority and never mints a node
+// of its own. Until 2026-09-26 the Int row returned dag_int_inhabitant_node -- the roster's
+// RECORD about Int, not the Int type -- while every value-type consumer used the atom; that fork
+// is what this join now closes (docs/plans/arrow-elimination-model.md). Every
 // hand-rolled fixture facts lookup re-authors this join (dag_add_canonical_grounding_for,
 // record_construct_canonical_grounding_for); the authority declares it once and infer consumes it
 // (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
@@ -3639,7 +3645,9 @@ fn dag_int_type_binding() -> Symbol {
 // completed state).
 fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
   if sym == dag_int_type_binding() {
-    optional_present(value: dag_int_inhabitant_node())
+    optional_present(value: integer_int_type_node())
+  } else if sym == ^dag_binding_type_bool {
+    optional_present(value: bool_node())
   } else {
     optional_absent()
   }
@@ -3989,15 +3997,22 @@ fn dag_type_atom_node(identity: Symbol) -> Node {
   }
 }
 
+// A DECLARED ARROW FOR A FIXTURE, built the way the declared-signature lowering builds one: the
+// domain and its declared order come from one mint (v2.std.compilers.body_lowering
+// declared_signature), so a fixture
+// cannot build a domain and an order that disagree. `domain` is the AUTHORED parameter list, in the
+// order the fixture declares it; it is never a canonicalized node, whose label-sorted sequence is not
+// a declared order. A fixture that tests a malformed order builds its Arrow by hand, and says so.
 fn dag_arrow_with_body_node(
   domain: Node,
   return_type_binding: Symbol,
   body: Node
 ) -> Node {
+  let signature = declared_signature(params: domain.children, source: domain)
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: domain },
+      signature.domain,
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
@@ -4006,6 +4021,7 @@ fn dag_arrow_with_body_node(
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
       },
+      signature.order,
       Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ],
     occurrence_id: OccurrenceSynthetic

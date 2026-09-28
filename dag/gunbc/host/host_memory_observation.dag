@@ -16,7 +16,7 @@ import gunbc.fleet_intent_network {
 // here came from gunbc.ci_floor_measurement and the extraction is the whole
 // change: these are per-host kernel observations and operator allowances that depend on nothing
 // about a runner slot, while the rows they sat beside (the cgroup caps, the floor peak receipts)
-// derive from gunbc.runner_slot_allocation gunbc_runner_slot_desired. Co-locating the two made
+// derive from gunbc.runner_slot_desired gunbc_runner_slot_desired. Co-locating the two made
 // gunbc.ci_floor_measurement import the slot authority, which in turn made these facts unreachable
 // FROM that authority -- the cycle named in gunbc.runner_slot_allocation
 // host_runner_memory_envelope_bytes as its dissolve-on: "the usable-RAM and fixed-overhead facts

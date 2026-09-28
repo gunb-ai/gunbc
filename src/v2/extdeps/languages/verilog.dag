@@ -22,7 +22,7 @@ import v2.std.compilers.target_model {
   TokenClassEmitTransform,
   render_target_text
 }
-import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.compiler.target_serialize { target_serialize_relation_row_from_model_bounded }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar {
   StampClass,
