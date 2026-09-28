@@ -26,7 +26,7 @@ test fn the_wall_clock_renders_utc_like_date() -> Bool {
 
 // A NEGATIVE STEP IS A WALL CLOCK THAT WENT BACKWARDS while virtual time moved forward.
 test fn a_backward_step_reads_earlier_while_virtual_time_advances() -> Bool {
-  let clock = ModeledWallClock { unix_at_origin: 1790000000, step_seconds: 0 - 120 }
+  let clock = ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0 - 120) }
   wall_clock_unix(clock: clock, now: second(count: 60)) == 1789999940
 }
 
