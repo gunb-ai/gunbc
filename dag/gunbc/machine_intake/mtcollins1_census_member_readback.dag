@@ -274,7 +274,7 @@ fn remote(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCom
 fn read_member_remote(target: SshTarget, context: FleetSshExecutionContext, iso_path: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> MemberReading {
   let scratch = member_scratch_path(side: side, member: member)
   let cleared = remote(target: target, context: context, command: rm_force_command(path: scratch))
-  let extract = remote(target: target, context: context, command: xorriso_extract_command(iso_path: iso_path as String, iso_internal_path: census_iso_member_path(member: member) as String, destination: scratch))
+  let extract = remote(target: target, context: context, command: xorriso_extract_command(iso_path: iso_path, iso_internal_path: census_iso_member_path(member: member), destination: scratch as NonEmptyStr))
   let measure = remote(target: target, context: context, command: sha256sum_file_command(path: scratch))
   let removed = remote(target: target, context: context, command: rm_force_command(path: scratch))
   member_reading_of(cleared: cleared, extract: extract, measure: measure, removed: removed)
