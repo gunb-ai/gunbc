@@ -1040,7 +1040,7 @@ test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting
 // amending the dated 2026-09-27 liveness matrix. The witness holds both halves: the matrix
 // join cannot drift, and the only non-matrix rows are w1 and w2 with their plan shapes.
 test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
-  let five_each = length(spark_workload_variants) == 7 && length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
+  let five_each = length(spark_workload_variants) == 8 && length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
   let names_join = all(arm_experiment_2026_09_27_liveness_repro_matrix, r => any(spark_workload_variants, v => v.name == r.variant))
   let a_ok = match spark_workload_variant_named(name: "a-repro-six-full-window" as NonEmptyStr) {
     Present { value: v } => v.seat_count == 6 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && !v.watchdog
@@ -1094,10 +1094,14 @@ test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
     Present { value: v } => v.seat_count == 1 && v.window_tokens == 262144 && v.mode == SparkCacheReuseQualification && !v.watchdog
     Absent => false
   }
+  let q_ok = match spark_workload_variant_named(name: "q-eight-concurrent-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 8 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && v.watchdog
+    Absent => false
+  }
   let only_qualification_beyond_matrix = all(
     filter(spark_workload_variants, v => !any(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == v.name)),
-    v => (v.name as String) == "w1-cold-single-full-window" || (v.name as String) == "w2-cache-reuse-full-window")
-  five_each && names_join && only_qualification_beyond_matrix && a_ok && b_ok && c_ok && d_ok && e_ok && w1_ok && w2_ok && active_ok
+    v => (v.name as String) == "w1-cold-single-full-window" || (v.name as String) == "w2-cache-reuse-full-window" || (v.name as String) == "q-eight-concurrent-full-window")
+  five_each && names_join && only_qualification_beyond_matrix && a_ok && b_ok && c_ok && d_ok && e_ok && w1_ok && w2_ok && q_ok && active_ok
 }
 
 // VARIANT b RENDERS FIVE SEATS AND THE UNCHANGED BUDGET: the prefill script's seat loop bounds at
