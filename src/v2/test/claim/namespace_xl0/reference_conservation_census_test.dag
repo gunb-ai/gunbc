@@ -1,0 +1,82 @@
+module v2.test.claim.namespace_xl0.reference_conservation_census
+
+import extdeps.filesystem.filesystem_io { FilesystemReadRefused, filesystem_listing_observation }
+import v2.compiler.reference_conservation_census {
+  SamplePathMissing,
+  SamplePathSubjectRefused,
+  SamplePathUnreadable,
+  sample_path_observation_of,
+  sample_path_parts
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS FOR THE SAMPLE CENSUS'S PATH OBSERVATION (review 5330814496). The listing and the read
+// must name the same file: the parent a path is listed in is the one it spells, root and all.
+// Every observation is SUPPLIED at the interface (sample_path_observation_of is pure); the host calls
+// that produce them are two lines in reference_conservation_path_observation.
+
+fn parts_are(path: String, directory: String, name: String) -> Bool {
+  let p = sample_path_parts(path: path)
+  p.directory == directory && p.name == name
+}
+
+test fn an_absolute_path_keeps_its_root_holds() -> Bool {
+  parts_are(path: "/tmp/rc/probe.dag", directory: "/tmp/rc", name: "probe.dag")
+}
+
+test fn a_file_at_the_root_lists_the_root_holds() -> Bool {
+  parts_are(path: "/probe.dag", directory: "/", name: "probe.dag")
+}
+
+test fn a_bare_name_lists_the_current_directory_holds() -> Bool {
+  parts_are(path: "probe.dag", directory: ".", name: "probe.dag")
+}
+
+test fn a_relative_path_lists_its_relative_parent_holds() -> Bool {
+  parts_are(path: "dag/std/stack.dag", directory: "dag/std", name: "stack.dag")
+}
+
+// AN UNREADABLE ABSOLUTE FILE IS UNREADABLE, WITH ITS CAUSE: its own parent lists it, its read is
+// refused.
+test fn an_unreadable_absolute_file_is_unreadable_with_its_cause_holds() -> Bool {
+  match sample_path_observation_of(
+    path: "/tmp/rc/probe.dag",
+    listing: filesystem_listing_observation(directory: "/tmp/rc", success: true, entries: "probe.dag", error: ""),
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" }
+  ) {
+    SamplePathUnreadable { path: _, cause: c } => string_contains(s: c, pattern: "Permission denied")
+    _ => false
+  }
+}
+
+// THE MISMATCHED SUBJECT THE BUG PRODUCED: the unreadable absolute file above, observed against a
+// listing of the unrelated, empty RELATIVE directory the old split named. Asking that listing about
+// the entry would read "absent" and report a stale pin; the observation refuses the mismatch
+// instead, and never answers SamplePathMissing.
+test fn a_listing_of_another_directory_refuses_rather_than_reading_absent_holds() -> Bool {
+  match sample_path_observation_of(
+    path: "/tmp/rc/probe.dag",
+    listing: filesystem_listing_observation(directory: "tmp/rc", success: true, entries: "", error: ""),
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" }
+  ) {
+    SamplePathSubjectRefused { path: _, cause: _ } => true
+    SamplePathMissing { path: _ } => false
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR ABSENCE: the right parent, listed, without the entry, is a stale pin.
+test fn a_file_its_own_parent_does_not_list_is_missing_holds() -> Bool {
+  match sample_path_observation_of(
+    path: "/tmp/rc/probe.dag",
+    listing: filesystem_listing_observation(directory: "/tmp/rc", success: true, entries: "other.dag", error: ""),
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" }
+  ) {
+    SamplePathMissing { path: _ } => true
+    _ => false
+  }
+}

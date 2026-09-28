@@ -16,6 +16,7 @@ import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  node_inferred_subtree_nodes,
   Arrow,
   Atom,
   Conj,
@@ -85,9 +86,11 @@ fn product_introduction_census_step(
   }
 }
 
+// THE CENSUS COUNTS THE PRODUCTS INFER IS ASKED TO DERIVE (v2.std.node node_inferred_subtree_nodes):
+// the declared-order edge's label list is not one.
 fn product_introduction_census(inferred: InferredTree) -> ProductIntroductionCensus {
   fold_list(
-    xs: node_subtree_nodes(root: inferred.root),
+    xs: node_inferred_subtree_nodes(root: inferred.root),
     empty: ProductIntroductionCensus {
       conjs: 0,
       conjs_derived: 0,
