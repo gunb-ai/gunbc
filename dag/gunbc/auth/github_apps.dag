@@ -43,7 +43,7 @@ data gunbai_bot_declared: DeclaredGitHubApp = DeclaredGitHubApp {
   owner_login: "gunb-ai",
   app_id: GitHubAppId { value: 3909950 },
   client_id: "Iv23lidZeLYckmtvN3e8",
-  slug: "gunbai",
+  slug: "gunbai-bot",
 }
 
 data gunbai_ci_declared: DeclaredGitHubApp = DeclaredGitHubApp {

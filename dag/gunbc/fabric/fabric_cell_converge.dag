@@ -16,18 +16,8 @@ import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_ownership }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_instance_name_prefix, runner_slot_identity_equal }
-import gunbc.runner_slot_allocation {
-  fabric_execution_slot_identities,
-  gunbc_runner_slot_desired_for,
-  RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-  runner_slot_membership,
-  SlotMembershipWidthUnresolved,
-  runner_width_unresolved_cause_text,
-  CommittedSlotMember,
-  SlotOutsideCommittedPopulation,
-  SlotServesFabricExecution,
-  SlotServesGitHubActions,
-}
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities, gunbc_runner_slot_desired_for, runner_slot_membership, SlotMembershipWidthUnresolved, runner_width_unresolved_cause_text, CommittedSlotMember, SlotOutsideCommittedPopulation, SlotServesFabricExecution, SlotServesGitHubActions }
+import gunbc.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 
 data fabric_cell_converge_authority_disposition: ConstructionMechanism = SingleAuthority
 

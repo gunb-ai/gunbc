@@ -110,6 +110,30 @@ fn interface_change_propagates(site: InterfaceReadSite, binding: InterfaceConsum
   }
 }
 
+// WHO CONSUMES THE REACHED SET DECIDES WHETHER A BODY READ PROPAGATES, and it is the only fact
+// that differs between the two walks. Strict preparation asks "can this reader fail to
+// typecheck": a body-only change cannot make a caller's caller refuse, so the walk above stops
+// at interfaces. Claim execution asks "can this claim's VERDICT change": every body its
+// evaluation runs is an input, so a body read propagates exactly like an interface read.
+// gunbc#12361 is the specimen: body edits to `v2.std.node` `arrow_signature_edges_conform` and
+// `v2.compiler.eval` `eval_bind_arrow_params` changed ten claims' verdicts across untouched
+// files while no signature they spell moved, so the compile walk correctly planned none of them.
+// The read-binding rule (`interface_read_disposition`) is shared; only propagation is keyed.
+type ReachConsumer
+  = StrictPreparation
+  | ClaimExecution
+
+fn reach_propagates(
+  consumer: ReachConsumer,
+  site: InterfaceReadSite,
+  binding: InterfaceConsumerBinding,
+) -> Bool {
+  match consumer {
+    StrictPreparation => interface_change_propagates(site: site, binding: binding)
+    ClaimExecution => true
+  }
+}
+
 // WHICH CHANNEL SUPPLIED A READ. The parser's own type occurrences and match-arm heads are
 // genuine reads; a name occurrence from the tree walk also collects binders and labels, so an
 // UNRESOLVED name occurrence is not evidence of a read and does not plan its module -- otherwise

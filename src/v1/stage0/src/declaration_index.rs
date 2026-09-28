@@ -195,6 +195,11 @@ pub struct ModuleDeclarationRecord {
     pub decl_fields: BTreeMap<String, BTreeSet<String>>,
     pub imports: Vec<ImportClaim>,
     pub cited: Vec<CitedSymbol>,
+    /// Top-level `data` declarations in source order: (name, declared-type spelling), the
+    /// spelling from `coproduct_reflection::data_item_declared_type_name`. Recorded from the
+    /// sweep's own parse so the rostered-row join reads it here instead of parsing the pool
+    /// again.
+    pub data_decl_types: Vec<(String, String)>,
     /// Callee spellings authored in this module. Used only to partition cited authorities by
     /// whether the citing module also calls the cited declaration; it is not a resolver.
     pub called: BTreeSet<String>,
@@ -1275,10 +1280,19 @@ pub fn record_from_module(
     let mut admitted_callers: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
     let mut arm_interfaces: BTreeMap<(String, String), String> = BTreeMap::new();
     let mut coproduct_residuals: BTreeMap<String, String> = BTreeMap::new();
+    let mut data_decl_types: Vec<(String, String)> = Vec::new();
     for item in module_items(module.clone()).iter() {
         let name = authored_name_at(source_indices.clone(), item.clone());
         if name.is_empty() {
             continue;
+        }
+        if crate::v1_compiler_infer_items::item_kind(item.clone())
+            == crate::v1_compiler_infer_items::ItemKind::DataItem
+        {
+            data_decl_types.push((
+                name.clone(),
+                crate::coproduct_reflection::data_item_declared_type_name(item, source_indices),
+            ));
         }
         interface_regions.push(interface_region(item, &name));
         if let Some(admitted) = admitted_callers_of(item, source_indices) {
@@ -1424,6 +1438,7 @@ pub fn record_from_module(
         decl_fields,
         imports,
         cited,
+        data_decl_types,
     }
 }
 

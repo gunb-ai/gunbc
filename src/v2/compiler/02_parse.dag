@@ -53,6 +53,8 @@ import v2.std.node {
   node_with_occurrence_id,
   symbol_identity_digest,
   well_formed,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
@@ -112,10 +114,8 @@ import v2.std.compilers.lexing {
   Lexeme,
   Token,
   TokenStream,
-  symbol_intern_lexeme,
-  symbol_lexeme,
   token_stream_remaining,
-  token_stream_remaining_count
+  token_stream_remaining_count,
 }
 import v2.std.grammar {
   Choice,
