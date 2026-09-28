@@ -149,7 +149,7 @@ type CgroupMemoryReading
 
 // THE UNIT'S PROPERTIES AS systemd REPORTS THEM AFTER THE RUN STARTED -- what bound the run, as
 // opposed to what was asked for. The join compares them to the selected slot. THE CPU QUOTA IS
-// CARRIED AS A PROJECTION of gunbc.runner_slot_allocation RunnerSlotCpuQuota: a thread count when
+// CARRIED AS A PROJECTION of gunbc.runner_slot_desired RunnerSlotCpuQuota: a thread count when
 // a ceiling is declared, absent when the fleet declares none (SlotCpuQuotaUnbounded), the same
 // projection on both sides of the join; gunbc.runner_throughput_selection performs it for the
 // selected side, and the producer reads CPUQuotaPerSecUSec=infinity as absent for the observed.

@@ -1,11 +1,7 @@
 module test.claim.printed_chassis_artifact_registration_witness_test
 
-import gunbc.generated_artifact {
-  GeneratedArtifact, CouponCadQueryProgramArtifact,
-  generated_artifact_registry, artifact_eq, artifact_path,
-  artifact_commit_policy, CommitPolicy, CommitRequired, NotCommitted,
-  artifact_is_committed, committed_generated_artifacts
-}
+import gunbc.generated_artifact { GeneratedArtifact, CouponCadQueryProgramArtifact, artifact_eq, artifact_path, artifact_commit_policy, CommitPolicy, CommitRequired, NotCommitted, artifact_is_committed }
+import gunbc.generated_artifact_registry { generated_artifact_registry, committed_generated_artifacts }
 import gunbc.generated_artifact_emit {
   ArtifactGenerationOutcome, ArtifactGenerated, ArtifactGenerationRefused,
   artifact_generate

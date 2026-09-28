@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci_spec { generated_artifact_author_regen_command }
-import gunbc.generated_artifact { heal_regenerated_after_provisional_merge_paths }
+import gunbc.generated_artifact_registry { heal_regenerated_after_provisional_merge_paths }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
 import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
 import std.dissolution { dissolution_description }
