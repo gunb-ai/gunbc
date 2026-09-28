@@ -12,6 +12,7 @@ import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
+import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -58,6 +59,7 @@ import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member 
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -1000,6 +1002,11 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = Gunbc
   function: "mtcollins1_census_image_publish_wet",
 }
 
+data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
+  function: "mtcollins1_census_member_readback_wet",
+}
+
 data gunbc_ci_spark_grant_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_grant_install.dag",
   function: "spark_grant_install_ci_wet",
@@ -1045,6 +1052,14 @@ data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
   function: "v41_runtime_image_distribute_ci_wet",
+}
+
+// THE V4.1 FOUR-RANK LAUNCH ON GROUP A (gunbc.spark.v41_group_a_launch): the held image read back on
+// every host, the registry read inside its digest, occupancy read, and only on admission the Engram
+// staging and the arm transaction. The same prelude: the session host is the dispatch's target.
+data gunbc_ci_spark_v41_group_a_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_group_a_launch.dag",
+  function: "v41_group_a_launch_ci_wet",
 }
 
 // THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
@@ -1267,6 +1282,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
+    gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
     gunbc_ci_spark_serving_apply_target,
@@ -2583,6 +2599,18 @@ fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
   )
 }
 
+// The member readback reaches srv2 over fleet SSH (the mode consumes the fleet key, see
+// gunbc.fleet_converge_workflow) and touches no controller or credential: no prelude.
+fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_census_member_readback_target.entry,
+    function: gunbc_ci_mtcollins1_census_member_readback_target.function,
+    claim_run: false,
+    receipt_rel: census_member_readback_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_guest_image_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2631,6 +2659,17 @@ fn gunbc_ci_spark_v41_runtime_image_distribute_invoke() -> String {
     function: gunbc_ci_spark_v41_runtime_image_distribute_target.function,
     claim_run: false,
     receipt_rel: v41_distribution_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_group_a_launch_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_group_a_launch_target.entry,
+    function: gunbc_ci_spark_v41_group_a_launch_target.function,
+    claim_run: false,
+    receipt_rel: v41_group_a_launch_receipt_path
   )
 }
 

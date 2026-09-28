@@ -15377,7 +15377,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn a_refused_row_that_measured_no_effect_transfers_nothing_through_its_carriers() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
@@ -15399,7 +15399,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn the_same_overlap_under_a_measured_cost_verdict_still_stops_the_line() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
@@ -15431,7 +15431,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn a_different_producer_merely_sharing_a_carrier_module_does_not_refuse() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),

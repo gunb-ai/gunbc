@@ -1,16 +1,8 @@
 module gunbc.generated_workflow_provenance
 
 import std.types { String, List }
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  generated_artifact_registry,
-  WitnessFloorYamlArtifact,
-  FleetConvergeYamlArtifact,
-  FleetDesiredAdmissionYamlArtifact,
-  MicrovmShakedownYamlArtifact,
-  HealWorkflowYamlArtifact,
-  HealPublisherWorkflowYamlArtifact,
-}
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact }
+import gunbc.generated_artifact_registry { generated_artifact_registry }
 import v2.std.optional { Present, Absent }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
@@ -32,7 +24,7 @@ type GeneratedWorkflowProvenance {
 // test.claim.action_use_admission_witness). This list is NOT a second authority for that
 // population: test.claim.action_use_admission_witness
 // generated_workflow_artifacts_are_exactly_the_registry_workflows joins it to
-// gunbc.generated_artifact generated_artifact_registry by identity in BOTH directions, so a row
+// gunbc.generated_artifact_registry generated_artifact_registry by identity in BOTH directions, so a row
 // that outlives its generator (the direction that would let the census skip a hand-authored file)
 // refuses, as does a generated workflow missing here.
 // DERIVED FROM THE MATCH, BECAUSE AUTHORING BOTH IS ONE FACT SPELLED TWICE.

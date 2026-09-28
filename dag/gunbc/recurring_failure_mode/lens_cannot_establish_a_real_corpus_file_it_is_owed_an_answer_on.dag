@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on: RecurringFailureMode = RecurringFailureMode {
+  identity: "lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on" as NonEmptyStr,
+
+  receipts: [
+    "**a source-reading lens answers NotEstablished on a real, compiling corpus file, so every property it exists to decide is cannot-tell there, while an answer is owed** (the lens reaches its analysis only through the v2 front end -- tokenize, parse, normalize -- and when any stage rejects a file the seed compiles, the lens reports the file as not established rather than as clean or convicted).",
+
+    "INVALID STATE: a module the seed accepts and emits, which the v2 front end the lenses read through rejects. The lens's refusal is honest and typed (v2.lens.common.source_analysis_standing SourceAnalysisNotEstablishedCause), so this is not a silent green; the defect is that the refusal is the ONLY answer available for that file, so no lens can be enrolled as that file's control.",
+
+    "HARM: a cost or safety class the lens exists to rank cannot be discriminated on exactly the files a change touches, so a fix to that class lands at construction with no executing discriminator, and a regression back to the defective shape would not go red. The gap is invisible on dashboards because NotEstablished is counted, not failed.",
+
+    "DISTINGUISHING FACTS, and why this is not [[fold_shape_visible_to_no_lens]]: that class is a fold the front end ACCEPTS whose call is erased before any lens runs, so the tree exists and the site is missing. Here there is no tree at all: a front-end stage rejects the whole file. It is also not [[mandatory_gate_refuses_the_corpus_it_is_mandatory_on]]: nothing is registered as mandatory on this file; the lens is simply unable to read it when someone needs it to.",
+
+    "SPECIMEN, gunbc#12469, measured: v2.lens.complexity_accumulator_copy.corpus_gate corpus_file_standing on src/v2/workflow/bash_emit.dag returns CorpusFileNotEstablished { cause: SourceNormalizationRejected } -- tokenize and parse accept it, v2.compiler.normalize normalize rejects it -- for both the reversed-fold join (list_append prepending onto the accumulator) and the single join() replacement, so the lens could not serve as the copied-once versus growing-accumulator control the review asked for, and the fix landed at construction with no executing discriminator (eager-owl-205 ruling).",
+
+    "RUNG FOUND AT: 1 -- the refusal is typed and located. CEILING: 3 or better; the front end is fully modeled, so which constructs normalize rejects is decidable. NEXT-RUNG TRIGGER: the v2 front end normalizes src/v2/workflow/bash_emit.dag, so the accumulator-copy lens returns Established or Refuted on it -- sufficient to go red on the reversed-fold form of bash_emit_program_sequence -- and the file is enrolled in the accumulator-copy roster (v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash). The located normalize rejection (which construct, which diagnostic) is the first thing to read; it is not yet recorded here because the lens standing carries only the stage.",
+  ],
+
+  evidence: [],
+}
