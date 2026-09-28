@@ -1,0 +1,130 @@
+module test.claim.fabric.fabric_store_operation_admission_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Secret, List }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { serialize_content_hash }
+import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree }
+import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, intent_frame_head }
+import extdeps.crypto.mac { MacKey, HmacSha256 }
+import gunbc.durable_cas_file_store { GenerationPresent }
+import gunbc.auth.approval_broker { BrokerApproved, ExecutionObligation }
+import gunbc.auth.approval_decision_store { StoredApprovalRequest, EscalationDecided, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, stored_request_json, approval_mac_key_id }
+import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_id, approval_store_receipt_mac_key_path, issue_store_receipt_over, StoreReceiptIssued, StoreReceiptRefused }
+import gunbc.spark.pair_serving_d0 { d0_required_scope }
+import gunbc.fabric_store_operation_admission {
+  protected_head_of, ConsentClaimSlotHead, ConsentFilingSlotHead, AuthorityPartitionHead,
+  admit_store_operation, intent_digest, StoreOperationAdmitted, StoreOperationRefused, StoreOperationCredential, StoreOperationAdmission,
+  NoOperationCredential, PresentedApproval,
+  ApprovalAbsent, IntentNotTheApprovedRevision, IntentScopeNotAdmissible, OperationUnclassifiable, ReceiptKeyUnavailable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WALL OVER SUPPLIED READINGS (§3: one interface). A consent-slot write needs no decoded event,
+// so these claims exercise the approval path end to end with a REAL minted receipt: the broker's
+// mint (gunbc.auth.approval_store_receipt issue_store_receipt_over) over a filing whose revision is
+// the digest of a D0-framed intent, then this module's check at the store.
+
+data fw_receipt_key_hex: String = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+data fw_consent_head: String = "cas-slot-scoped-authorization-esc-d0-1"
+
+fn fw_receipt_key() -> MacKey {
+  MacKey { id: approval_store_receipt_mac_key_id, suite: HmacSha256, material: fw_receipt_key_hex as Secret }
+}
+
+fn fw_other_scope() -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "something_else"] }, action: ("other-operation" as NonEmptyStr) as AuthorizedAction }
+}
+
+fn fw_intent(scope: AuthorizationScope) -> String {
+  match intent_frame_head(schema: "witness-intent/v1" as NonEmptyStr, scopes: [scope]) {
+    Present { value: h } => join([h, "\ntarget=group-a\nattempt=tx-d0\n"], "")
+    Absent => ""
+  }
+}
+
+// A receipt over exactly this intent's digest, minted by the broker's own fold.
+fn fw_receipt_over(intent: String) -> StoreOperationCredentialOrNone {
+  match intent_digest(text: intent) {
+    Absent => NoReceipt
+    Present { value: d } => {
+      let revision = serialize_content_hash(hash: d)
+      let filed = StoredApprovalRequest {
+        escalation_id: "esc-d0-1", request_revision: revision, attempt: ("tx-d0" as NonEmptyStr) as AttemptIdentity,
+        requester: "witness", purpose: "witness d0", destructive: true,
+        issued_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T01:00:00Z", key_id: approval_mac_key_id,
+      }
+      let slot = EscalationDecided { decision: BrokerApproved {
+        escalation_id: "esc-d0-1", revision: revision, decided_by: "operator", decided_at: "2026-09-28T00:10:00Z",
+        obligation: ExecutionObligation { authority: "gunbc.auth.scoped_authorization", intent_revision: revision, execute_by: "2026-09-28T01:00:00Z" },
+      } }
+      match issue_store_receipt_over(slot: slot, filing: GenerationPresent { content: stored_request_json(r: filed) as NonEmptyStr }, attempt: ("tx-d0" as NonEmptyStr) as AttemptIdentity, keyring: ApprovalKeyLoaded { key: fw_receipt_key() }) {
+        StoreReceiptIssued { receipt: r } => HaveReceipt { credential: PresentedApproval { receipt: r, intent_text: intent } }
+        StoreReceiptRefused { refusal: _ } => NoReceipt
+      }
+    }
+  }
+}
+
+type StoreOperationCredentialOrNone
+  = HaveReceipt { credential: StoreOperationCredential }
+  | NoReceipt
+
+fn fw_admit(credential: StoreOperationCredential) -> StoreOperationAdmission {
+  admit_store_operation(
+    head: ConsentClaimSlotHead, target_text: "", credential: credential,
+    principal_grants: [] as List<Grant>,
+    receipt_keyring: ApprovalKeyLoaded { key: fw_receipt_key() },
+    observed_at: "2026-09-28T00:20:00Z",
+  )
+}
+
+// THE POSITIVE CONTROL: a receipt the broker minted over an approved intent that states D0's scope
+// admits a D0 consent-slot write at the store.
+test fn a_receipt_over_an_intent_stating_the_d0_scope_admits_a_consent_write() -> Bool {
+  match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+    NoReceipt => false
+    HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationAdmitted { operation: _ } => true  _ => false }
+  }
+}
+
+// THE RED: the same protected write with no credential refuses -- a rostered writer holding no
+// approval for the operation is refused at the store (d0_store_operation_wall's trigger).
+test fn a_consent_write_with_no_approval_is_refused_at_the_store() -> Bool {
+  match fw_admit(credential: NoOperationCredential) { StoreOperationRefused { operation: _, refusal: ApprovalAbsent } => true  _ => false }
+}
+
+// A GENUINE RECEIPT DOES NOT CARRY ANOTHER OPERATION: an approved intent stating another scope is
+// refused, and an intent that is not the approved revision (edited after approval) is refused.
+test fn a_receipt_for_another_scope_or_an_edited_intent_is_refused() -> Bool {
+  let other = match fw_receipt_over(intent: fw_intent(scope: fw_other_scope())) {
+    NoReceipt => false
+    HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationRefused { operation: _, refusal: IntentScopeNotAdmissible { stated: _, admissible: _ } } => true  _ => false }
+  }
+  let edited = match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+    NoReceipt => false
+    HaveReceipt { credential: c } => match c {
+      PresentedApproval { receipt: r, intent_text: t } =>
+        match fw_admit(credential: PresentedApproval { receipt: r, intent_text: join([t, "attempt=tx-other\n"], "") }) { StoreOperationRefused { operation: _, refusal: IntentNotTheApprovedRevision } => true  _ => false }
+      NoOperationCredential => false
+    }
+  }
+  other && edited
+}
+
+// THE HEADS: the three protected families are recognized and an ordinary head is not; an authority
+// write whose object is not an event is refused rather than classified by guess; no receipt key
+// refuses rather than admitting.
+test fn protected_heads_are_recognized_and_unclassifiable_objects_refuse() -> Bool {
+  (match protected_head_of(name: fw_consent_head) { Present { value: ConsentClaimSlotHead } => true  _ => false })
+    && (match protected_head_of(name: "cas-slot-pair-serving-d0-filing-esc-d0-1") { Present { value: ConsentFilingSlotHead } => true  _ => false })
+    && (match protected_head_of(name: "pair-serving-authority-group-a") { Present { value: AuthorityPartitionHead } => true  _ => false })
+    && (match protected_head_of(name: "harness-seat-group-a") { Absent => true  Present { value: _ } => false })
+    && (match admit_store_operation(head: AuthorityPartitionHead, target_text: "not an event", credential: NoOperationCredential, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyLoaded { key: fw_receipt_key() }, observed_at: "2026-09-28T00:20:00Z") { StoreOperationRefused { operation: _, refusal: OperationUnclassifiable { reason: _ } } => true  _ => false })
+    && (match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+          NoReceipt => false
+          HaveReceipt { credential: c } => match admit_store_operation(head: ConsentClaimSlotHead, target_text: "", credential: c, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }, observed_at: "2026-09-28T00:20:00Z") { StoreOperationRefused { operation: _, refusal: ReceiptKeyUnavailable } => true  _ => false }
+        })
+}
