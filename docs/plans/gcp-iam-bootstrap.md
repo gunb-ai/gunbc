@@ -25,6 +25,13 @@ The token file must be private and short-lived. No token belongs in a command
 argument, source file, receipt, or GitHub variable. The ongoing workflow never
 falls back to this operator token. No service-account key is created.
 
+The operator needs existing authority to create/read the declared identities,
+custom roles, and deny policy, update the specified resource policies, and
+impersonate the observer/apply accounts for readback. GCP's
+[Deny Admin documentation](https://docs.cloud.google.com/iam/docs/deny-access)
+names `roles/iam.denyAdmin` for managing deny policies. Bootstrap does not grant
+administrative permissions to its operator to overcome a refusal.
+
 ## What bootstrap owns
 
 1. Create or exactly read back the dedicated IAM workflow pool/provider and its
@@ -93,3 +100,12 @@ API contracts follow Google Cloud's official references for
 [project policy updates](https://docs.cloud.google.com/resource-manager/reference/rest/v1/projects/setIamPolicy),
 [workload identity pools](https://docs.cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools),
 and [deny policy creation](https://docs.cloud.google.com/iam/docs/reference/rest/v2/policies/createPolicy).
+
+## Current commissioning standing
+
+The 2026-09-28 run completed identity and exact custom-role readback, then GCP
+refused deny-policy creation with HTTP 403, `iam.denypolicies.create` missing.
+Capability bindings, account-context probes, and workflow-trust grants were not
+reached. See `receipts/gcp-iam-bootstrap-2026-09-28/README.md`. Resume requires an
+authorized administrator credential with the missing authority; successful source
+tests are not evidence that the approval workflow is operational.
