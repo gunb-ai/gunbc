@@ -60,3 +60,20 @@ test fn one_resolution_refuses_where_selection_refused() -> Bool {
     Violates { diagnostic: _ } => true
   }
 }
+
+// An exhausted budget refuses on the direct route exactly as it does on the reselecting route: the
+// same located reason, never a spelling rendered past the bound.
+test fn derived_row_refuses_an_exhausted_budget_as_the_reselecting_serializer_does() -> Bool {
+  let row = one_resolution_row()
+  let target = verilog_target_model_with_single_row(row: row)
+  match target_serialize_derived_row_bounded(remaining: 0, target: target, row: row) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: direct } =>
+      match target_serialize_relation_row_from_model_bounded(0, target, verilog_interlock_emitted()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: reselected } =>
+          direct.head.reason == ^translate_serialize_recursion_limit_exhausted
+            && reselected.head.reason == direct.head.reason
+      }
+  }
+}
