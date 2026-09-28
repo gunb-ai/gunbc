@@ -391,17 +391,15 @@ fn template_param_position(t: AlgebraFieldTemplate, admits: fn(AlgebraTypeTempla
   scan.found
 }
 
-fn param_is_callable(p: AlgebraTypeTemplate) -> Bool {
-  match p {
-    CallableOf { params: _, return_type: _ } => true
-    _ => false
-  }
-}
-
 // The position of a template's step -- its first callable parameter -- in the free-call signature
 // the row declares. Absent when the row takes no callable.
 fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
-  template_param_position(t: t, admits: fn(p) { param_is_callable(p: p) })
+  template_param_position(t: t, admits: fn(p) {
+    match p {
+      CallableOf { params: _, return_type: _ } => true
+      _ => false
+    }
+  })
 }
 
 // The position of the collection a template iterates: its receiver slot.
@@ -429,7 +427,12 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
       if acc_type == ReceiverSelf {
         none
       } else {
-        template_param_position(t: t, admits: fn(p) { (p == acc_type) && !param_is_callable(p: p) })
+        template_param_position(t: t, admits: fn(p) {
+          match p {
+            CallableOf { params: _, return_type: _ } => false
+            _ => p == acc_type
+          }
+        })
       }
   }
 }

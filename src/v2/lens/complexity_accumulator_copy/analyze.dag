@@ -612,7 +612,7 @@ fn lowered_loop_carrier_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
-// Only a Loop's iterated body repeats (v2.std.node loop_edge_is_iterated_body). Its other edges --
+// Only a Loop's iterated body repeats (v2.std.node loop_edge_role). Its other edges --
 // the domain, evaluated once, and the bound, carrier and realized-declaration atoms -- are analyzed
 // under the ENCLOSING iteration state, so a copy written in a fold's collection expression is not
 // reported as per-iteration work.
@@ -624,8 +624,16 @@ fn analyze_loop_children(
   here: List<v2.lens.complexity_accumulator_copy.Finding>
 ) -> List<v2.lens.complexity_accumulator_copy.Finding> {
   fold(n.children, init: here, f: fn(acc, e) {
+    let iterating = match loop_edge_role(e: e) {
+      LoopIteratedBody => true
+      LoopDomainValue => enclosing
+      LoopBoundMeasure => enclosing
+      LoopCarrierBinder => enclosing
+      LoopRealizedDeclaration => enclosing
+      LoopEdgeUnrecognized => enclosing
+    }
     append_findings(
-      fresh: analyze(node: e.target, carriers: carriers, bindings: bindings, iterating: loop_edge_is_iterated_body(e: e) || enclosing),
+      fresh: analyze(node: e.target, carriers: carriers, bindings: bindings, iterating: iterating),
       acc: acc
     )
   })
