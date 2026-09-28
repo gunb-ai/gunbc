@@ -137,9 +137,12 @@ test fn fold_call_lowers_to_terminating_loop() -> Bool {
   match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: call } =>
-      match fold_call_to_loop(fold_call: call) {
-        Accepted { value: loop, diagnostics: _ } =>
-          is_proven_termination(m: loop_multiplicity(n: loop))
+      match fold_call_to_encoding(fold_call: call) {
+        Accepted { value: encoding, diagnostics: _ } =>
+          match fold_recurrence_loop(encoding: encoding) {
+            Present { value: loop } => is_proven_termination(m: loop_multiplicity(n: loop))
+            Absent => false
+          }
         Rejected { diagnostics: _ } => false
       }
   }
@@ -149,8 +152,8 @@ fn lowered_fixture_loop() -> Optional<Node> {
   match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => Absent
     Present { value: call } =>
-      match fold_call_to_loop(fold_call: call) {
-        Accepted { value: loop, diagnostics: _ } => Present { value: loop }
+      match fold_call_to_encoding(fold_call: call) {
+        Accepted { value: encoding, diagnostics: _ } => fold_recurrence_loop(encoding: encoding)
         Rejected { diagnostics: _ } => Absent
       }
   }
@@ -221,7 +224,7 @@ test fn non_fold_call_refuses() -> Bool {
   match ingest_and_locate(source_text: non_fold_snippet, file: ^g_probe_file) {
     Absent => false
     Present { value: call } =>
-      outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+      outcome_is_rejected(o: fold_call_to_encoding(fold_call: call))
   }
 }
 
@@ -229,7 +232,7 @@ test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
   match ingest_and_locate(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file) {
     Absent => false
     Present { value: call } =>
-      outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+      outcome_is_rejected(o: fold_call_to_encoding(fold_call: call))
   }
 }
 
@@ -237,7 +240,7 @@ test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
 // THE CONFLATED ARM, SPLIT -- and what each half of this block is pinning.
 //
 // bodyless_fold_call_refuses_no_loop_fabricated above is UNCHANGED and still
-// green: fold_call_to_loop is the two-state projection and every non-lowered
+// green: fold_call_to_encoding is the two-state projection and every non-lowered
 // arm is still a refusal there, so the no-fabrication property this file has
 // always asserted is asserted in exactly the same words against exactly the
 // same function. What the split adds is the DISPOSITION NAME, which is a
@@ -264,7 +267,8 @@ fn is_step_form_unresolved(source_text: String, file: Symbol) -> Bool {
         FoldCallStepFormUnresolved { diagnostic: _ } => true
         FoldCallStepShapeInvalid { diagnostic: _ } => false
         FoldCallNotAFold { diagnostic: _ } => false
-        FoldCallLowered { seam_loop: _ } => false
+        FoldCallLowered { operands: _ } => false
+        FoldCallOperandAbsent { diagnostic: _ } => false
       }
   }
 }
@@ -277,7 +281,8 @@ fn is_step_shape_invalid(source_text: String, file: Symbol) -> Bool {
         FoldCallStepShapeInvalid { diagnostic: _ } => true
         FoldCallStepFormUnresolved { diagnostic: _ } => false
         FoldCallNotAFold { diagnostic: _ } => false
-        FoldCallLowered { seam_loop: _ } => false
+        FoldCallLowered { operands: _ } => false
+        FoldCallOperandAbsent { diagnostic: _ } => false
       }
   }
 }
@@ -285,7 +290,7 @@ fn is_step_shape_invalid(source_text: String, file: Symbol) -> Bool {
 fn fabricates_no_loop(source_text: String, file: Symbol) -> Bool {
   match ingest_and_locate(source_text: source_text, file: file) {
     Absent => false
-    Present { value: call } => outcome_is_rejected(o: fold_call_to_loop(fold_call: call))
+    Present { value: call } => outcome_is_rejected(o: fold_call_to_encoding(fold_call: call))
   }
 }
 
@@ -320,13 +325,13 @@ test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
 //
 // WHAT WAS HERE, AND WHY ONE CLAIM REPLACES IT RATHER THAN FOUR. A single
 // `split_dispositions_fabricate_no_loop` re-ingested all four snippets to ask
-// whether `fold_call_to_loop` rejects them -- four crossings of the ingest and
+// whether `fold_call_to_encoding` rejects them -- four crossings of the ingest and
 // lowering apparatus, and the corpus's second most expensive witness at
 // cpu_ms=4058 against a 1552ms disclosure line, measured from the required
 // floor's own `[over-cost]` line on run 32915551049.
 //
 // SPLITTING IT INTO FOUR WITNESSES WOULD HAVE DIVIDED THAT COST RATHER THAN
-// REMOVING IT, and bought little: `fold_call_to_loop` is an exhaustive
+// REMOVING IT, and bought little: `fold_call_to_encoding` is an exhaustive
 // projection over `FoldCallLowering` with NO fixture-dependent behaviour once
 // the variant is selected, and three of the four snippets select the SAME
 // variant. Three witnesses re-proving one arm is the redundancy DESIGN §2
@@ -364,7 +369,12 @@ fn well_formed_fold_lowers_through_the_split() -> Bool {
     Absent => false
     Present { value: l } =>
       match l {
-        FoldCallLowered { seam_loop: loop } => is_proven_termination(m: loop_multiplicity(n: loop))
+        FoldCallLowered { operands: o } =>
+          match fold_recurrence_loop(encoding: fold_recurrence_encoding(operands: o)) {
+            Present { value: loop } => is_proven_termination(m: loop_multiplicity(n: loop))
+            Absent => false
+          }
+        FoldCallOperandAbsent { diagnostic: _ } => false
         FoldCallStepFormUnresolved { diagnostic: _ } => false
         FoldCallStepShapeInvalid { diagnostic: _ } => false
         FoldCallNotAFold { diagnostic: _ } => false
@@ -399,7 +409,8 @@ fn lowered_loop_of(source_text: String, file: Symbol) -> Optional<Node> {
     Absent => Absent
     Present { value: l } =>
       match l {
-        FoldCallLowered { seam_loop: loop } => Present { value: loop }
+        FoldCallLowered { operands: o } => fold_recurrence_loop(encoding: fold_recurrence_encoding(operands: o))
+        FoldCallOperandAbsent { diagnostic: _ } => Absent
         FoldCallStepFormUnresolved { diagnostic: _ } => Absent
         FoldCallStepShapeInvalid { diagnostic: _ } => Absent
         FoldCallNotAFold { diagnostic: _ } => Absent
@@ -428,7 +439,8 @@ fn non_fold_call_selects_not_a_fold() -> Bool {
     Present { value: l } =>
       match l {
         FoldCallNotAFold { diagnostic: _ } => true
-        FoldCallLowered { seam_loop: _ } => false
+        FoldCallLowered { operands: _ } => false
+        FoldCallOperandAbsent { diagnostic: _ } => false
         FoldCallStepFormUnresolved { diagnostic: _ } => false
         FoldCallStepShapeInvalid { diagnostic: _ } => false
       }

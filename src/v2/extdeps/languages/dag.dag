@@ -2978,7 +2978,8 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
       ^dag_binding_pick_lit_two,
       ^dag_binding_type_bool,
       ^bool_node_symbol,
-      ^dag_loop_measure_sym
+      ^dag_loop_measure_sym,
+      ^dag_surface_fold_iteration_measure
     ]
   )
 }
