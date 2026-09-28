@@ -1346,6 +1346,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: MarginLeft, value: scale_var(t: space_2)),
       decl(prop: Color, value: "var(--issue-action)"),
     ] },
+    StaticRule { selector: ClassSelector { name: "issue-assignee-text" }, decls: [
+      decl(prop: MarginLeft, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--issue-text)"),
+    ] },
     StaticRule { selector: ClassSelector { name: "issue-event-history" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),

@@ -884,7 +884,8 @@ fn serve_issue_detail_response_over(
     events: envelopes,
     viewer: viewer,
     recents: recents,
-    csrf: csrf)
+    csrf: csrf,
+    profiles: serve_profiles_for_instance(instance: instance))
   match try_serialize_html_source(node: page) {
     EmitOk { html } =>
       serve_text_response_with_headers(
@@ -898,6 +899,16 @@ fn serve_issue_detail_response_over(
       content_type: text_plain_utf8,
       body: page_render_refusal_body(reason: reason),
     )
+  }
+}
+
+// THE AUTH PROFILE ROSTER, read once per render under the never-blocks law: the store's refusal
+// (or absence) degrades to the empty roster — the page renders every assignee surface's fallback
+// exactly as before, never a failed page on a profile read.
+fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
+  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+    ProfileStoreRead { profiles } => profiles
+    ProfileStoreUnread { step: _, reason: _ } => []
   }
 }
 
@@ -933,7 +944,7 @@ fn serve_issue_assignment_context_over(
             serve_text_response_with_headers(
               status: 200,
               content_type: application_json_utf8,
-              body: inline_assignment_context_body(session: session, events: envelopes, recents: recents),
+              body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance)),
               headers: [ServeResponseHeaderNoStore])
         }
       }
@@ -1135,7 +1146,12 @@ fn issue_form_field_value_strip_cr(value: String) -> String {
 // dispatches); the fabric endpoint drives the SAME admission the /dispatch route answers and the
 // response renders what came back — admitted (the attempt renders on the Work tab), actuation
 // failure (502, the assignment stands), or the typed refusal: the issue STAYS with Fabric and the
-// body names the located waiting condition, never "assignment failed".
+// body names the located waiting condition, never "assignment failed". THE CONFIRMATION NAMES THE
+// PERSON, NOT THE PRINCIPAL: the profile store is read ONCE and the assignee renders through its
+// display — "name (email)" when the store carries both, the email when only the email, the name
+// when only the name, else the principal label. THE LABEL IS THE IDENTITY, THE DISPLAY IS
+// PRESENTATION: principal_ref_label stays out of the visible text whenever a profile exists (the
+// label remains only as the no-profile fallback, where it is the only spelling known).
 fn serve_assignment_launch_follow_through(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -1143,28 +1159,64 @@ fn serve_assignment_launch_follow_through(
   assignee: PrincipalRef,
   event_id: String,
 ) -> ServeHttpResponse {
+  let assignee_display = assignment_confirmation_display(assignee: assignee, profiles: serve_profiles_for_instance(instance: instance))
   if principal_ref_eq(a: assignee, b: fabric_workflow_principal) {
     serve_fabric_assignment_response(
       node_id: node_id,
-      assignee: assignee,
+      assignee_display: assignee_display,
       event_id: event_id,
       outcome: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
     )
   } else {
-    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\n"], ""))
+    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
   }
 }
 
-fn serve_fabric_assignment_response(node_id: String, assignee: PrincipalRef, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
+// THE CONFIRMATION'S DISPLAY RESOLUTION over the read-once roster: the first profile matching the
+// assignee principal by principal_ref_eq contributes name and email; nothing known falls back to
+// the principal label.
+fn assignment_confirmation_display(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> String {
+  match assignment_confirmation_profile(assignee: assignee, profiles: profiles) {
+    Absent => principal_ref_label(p: assignee)
+    Present { value: p } =>
+      match p.name {
+        Present { value: n } => match p.email {
+          Present { value: e } => join([n, " (", e as String, ")"], "")
+          Absent => n
+        }
+        Absent => match p.email {
+          Present { value: e } => e as String
+          Absent => principal_ref_label(p: assignee)
+        }
+      }
+  }
+}
+
+// THE ROSTER WALK: the first profile whose principal equals the assignee wins. (The Present
+// binder rides the short spelling p: the binder spelling 'profile' is a named resolver failure
+// mode — gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup.)
+fn assignment_confirmation_profile(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> PrincipalProfile? {
+  match profiles.first() {
+    Absent => none
+    Present { value: p } =>
+      if principal_ref_eq(a: p.principal, b: assignee) {
+        Present { value: p }
+      } else {
+        assignment_confirmation_profile(assignee: assignee, profiles: profiles.skip(n: 1))
+      }
+  }
+}
+
+fn serve_fabric_assignment_response(node_id: String, assignee_display: String, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
   match outcome {
     Spawned { node_id: _, session_name, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
     SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
-      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>
-      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", principal_ref_label(p: assignee), " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
+      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
   }
 }
 

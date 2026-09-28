@@ -53,7 +53,7 @@ test fn inline_choices_pin_fabric_then_self_and_deduplicate_recents() -> Bool {
 }
 
 test fn assignment_context_carries_session_proof_and_revision_without_email_identity_inference() -> Bool {
-  let body = inline_assignment_context_body(session: tracker_session_fixture(), events: [], recents: [LegacyEmailPrincipal { email: "unknown@example.test", authentication_unestablished: true }])
+  let body = inline_assignment_context_body(session: tracker_session_fixture(), events: [], recents: [LegacyEmailPrincipal { email: "unknown@example.test", authentication_unestablished: true }], profiles: [])
   string_contains(s: body, pattern: "tracker-fixture-csrf")
     && string_contains(s: body, pattern: "expected_revision")
     && string_contains(s: body, pattern: "fabric@gunb.ai")
