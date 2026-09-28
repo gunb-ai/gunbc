@@ -60,9 +60,23 @@ data group_b_restoration_window_tokens: Nat = 262144
 // at exactly the place the number changed.
 data group_b_restoration_seats: Nat = group_b_kv_inventory_tokens / group_b_restoration_window_tokens
 
+// THE EXPERIMENT SUBJECT MOVES TO EIGHT (owner directive 2026-09-28, "could we move to 262k x 8
+// now"), authorized by the EXACT HYBRID BLOCK FOLD, not the linear token inventory: the
+// allocation-plan fold prices eight full-window seats at 984 of 1035 allocator blocks (95.07%,
+// a 4.93% reserve) on the limiting rank, because the exact roster (fixed KDA state, growing
+// sparse MLA, pooled KPool, fixed tail) prices a seat below the linear 262144-token figure the
+// floor derivation uses. The derived SIX stays as the restoration floor above; eight is the
+// experiment subject. What the override does NOT mint: the profile-shape binding at
+// max-num-seqs 8 (the activation/CUDA-graph receipt is a six-seat capture; an eight-seat plan
+// needs its own), the eight-way liveness observation, and the SERVICE PROMISE — the arm stays
+// Unestablished, the wet qualification at eight is the next single-owner run, and the block
+// fold's own reserve (51 blocks) marks eight as the hard ceiling, not the normal-service
+// candidate (seven under a one-full-seat reserve is the named middle standing).
+data group_b_experiment_subject_seats: Nat = 8
+
 data group_b_restoration_intent_admission: ServingCapacityIntentAdmission = uniform_cold_seats(
   each: token_count(count: 262144),
-  seats: group_b_restoration_seats,
+  seats: group_b_experiment_subject_seats,
   max_batched_tokens: token_count(count: 2048),
 )
 
