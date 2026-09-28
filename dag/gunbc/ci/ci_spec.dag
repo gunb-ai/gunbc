@@ -55,7 +55,6 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script }
-import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_still_provision_lines }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
@@ -2811,7 +2810,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SOL_LOSS_NOTED=\"$RUNNER_TEMP/mtcollins1-sol-loss.noted\"; rm -f \"$SOL_LOSS_NOTED\"") },
     Do { run: ci_retry_body_run(command: "sol_loss_notice() { [ -s \"$SOL_LOSS\" ] && [ ! -e \"$SOL_LOSS_NOTED\" ] || return 1; : > \"$SOL_LOSS_NOTED\"; m=$(head -c 4000 \"$SOL_LOSS\" | tr -d '\\r\\n'); m=$\{m//\\%/%25\}; printf '::error title=mtcollins1 SOL observation lost::%s\\n' \"$m\"; { printf '### mtcollins1 SOL observation lost\\n\\n'; cat \"$SOL_LOSS\"; } >> \"$GITHUB_STEP_SUMMARY\"; }") },
     Do { run: ci_retry_body_run(command: "( while :; do sol_loss_notice && exit 0; sleep 1; done ) & SOL_LOSS_WATCH=$!") },
-  ]).concat(map(mtcollins1_kvm_still_provision_lines(), l => Do { run: ci_retry_body_run(command: l) }))
+  ])
 }
 
 data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaffold {

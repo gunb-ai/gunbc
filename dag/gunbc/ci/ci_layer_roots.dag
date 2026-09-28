@@ -1078,11 +1078,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: "SUBSTANTIATED per-row: every fn runs the real held KVM observer (node + headless Chromium from the declared Playwright toolchain, gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_still_toolchain) against a loopback controller served from gunbc.bmc_model through gunbc.bmc_megarac_web_adapter, and writes only inside a mktemp directory it removes. The hermetic envelope refuses its process launches, and the local-repo wet lane's runner does not carry the browser toolchain, so enrolling it there would be a standing red about the runner rather than the observer. Executed by local recipe (gunbc run --claim-run on a host with GUNBC_KVM_STILL_TOOLCHAIN bound); receipts are posted on the PR that changes the observer.",
     dissolution: unbound_dissolution(description: "the required floor's wet lane provisions the declared browser toolchain (or a typed browser-automation realization runs hermetically against gunbc.bmc_model); then these fns enrol on local_repo_wet_schedule and this row deletes")},
   WitnessExclusionRow {
-    pattern: "mtcollins1_kvm_real_still_wet_witness_test.dag",
-    classification: OfflineLocalRecipe,
-    reason: "SUBSTANTIATED per-row: the one claim acquires a real still from the mtcollins1 BMC (192.168.1.228) -- web login, KVM viewer seat only if free, one canvas read, logout; no power, media, boot-device or SOL command. It needs the BMC credential and the browser toolchain, which exist only in the srv1 boot step's environment, so no CI lane can host it. It is the hardware half of the pairing obligation whose process half is mtcollins1_kvm_observer_protocol_wet_witness_test.dag.",
-    dissolution: unbound_dissolution(description: "a scheduled srv1 hardware lane admits read-only BMC witnesses under the unit hold; then this claim enrols there and this row deletes")},
-  WitnessExclusionRow {
     pattern: "sol_hold_stdin_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,

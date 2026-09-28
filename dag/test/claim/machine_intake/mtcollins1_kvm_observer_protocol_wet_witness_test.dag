@@ -23,8 +23,9 @@ import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundar
 // the boot runs -- in headless Chromium against a loopback controller whose every answer is a
 // gunbc.bmc_model transition (gunbc.bmc_megarac_web_adapter), so the observer and the one BMC model
 // cannot drift. It needs the declared toolchain on GUNBC_KVM_STILL_TOOLCHAIN; without it the observer
-// refuses and every control here is RED, never skipped. The hardware half -- one read-only still from
-// the real controller -- is test.claim.machine_intake.mtcollins1_kvm_real_still_wet_witness.
+// refuses and every control here is RED, never skipped. The hardware half is the boot itself: its
+// receipt carries the observer's established line and first hash-bound still (REAL ROUTE UNEXECUTED
+// until the first hold-lifted boot runs it).
 
 fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
   BmcWorld {

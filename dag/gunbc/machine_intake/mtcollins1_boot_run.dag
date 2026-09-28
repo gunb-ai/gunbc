@@ -87,8 +87,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
-  kvm_boundary_events, kvm_journal_events_at, kvm_event_text,
-  mtcollins1_bmc_firmware, mtcollins1_kvm_still_toolchain_dir_env, mtcollins1_kvm_still_allowance, mtcollins1_kvm_still_provision_allowance,
+  kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
+  mtcollins1_bmc_firmware, mtcollins1_kvm_still_toolchain_dir_env, mtcollins1_kvm_still_allowance,
 }
 
 data mtcollins1_boot_label: String = "mtcollins1 boot"
@@ -128,7 +128,6 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: mtcollins1_boot_diagnostics_allowance())
-    + second_count(s: mtcollins1_kvm_still_provision_allowance)
     + second_count(s: mtcollins1_kvm_still_allowance())
   minute(count: (secs + 59) / 60)
 }
@@ -1874,6 +1873,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     concat("attempt=", attempt_identity_text(a: run)),
     concat("exit=", exit_word),
     bundle_write_receipt_line(w: write),
+    kvm_observer_receipt_line(rec: attempt.screen),
     concat("findings=", if count(findings) == 0 { "none" } else { join(findings, "; ") }),
   ], "\n")
   let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)

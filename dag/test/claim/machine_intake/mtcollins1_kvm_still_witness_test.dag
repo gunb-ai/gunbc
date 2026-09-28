@@ -19,7 +19,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverEstablished, KvmObserverRefused, KvmObserverPending, KvmObserverNotStarted, KvmObserverStarted,
   KvmStillHashed, KvmStillUnhashed, KvmInstant,
   kvm_journal_event, kvm_journal_events, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
-  mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_still_provision_lines, mtcollins1_kvm_still_toolchain,
+  mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, 
   mtcollins1_kvm_observer_dir, kvm_observer_trigger, kvm_released_text,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
@@ -127,14 +127,4 @@ test fn the_start_refuses_without_driving_when_firmware_or_credential_is_missing
 // RETAINED WITH THE BUNDLE: the observer's directory sits under the boot's upload prefix.
 test fn the_observer_directory_is_retained_with_the_boot_artifacts() -> Bool {
   starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36335369059"), prefix: mtcollins1_boot_retained_artifact_prefix)
-}
-
-// THE TOOLCHAIN PIN HAS ONE HOME, and install failure only warns.
-test fn provisioning_installs_the_declared_playwright_and_only_warns_on_failure() -> Bool {
-  let lines = join(mtcollins1_kvm_still_provision_lines(), "\n")
-  let v = mtcollins1_kvm_still_toolchain.automation.version as String
-  string_contains(s: lines, pattern: concat("-playwright-", v))
-    && string_contains(s: lines, pattern: concat("kvm-still-provision \"$KVM_STILL_DIR\" ", v))
-    && string_contains(s: lines, pattern: "|| echo \"::warning")
-    && string_contains(s: lines, pattern: "export GUNBC_KVM_STILL_TOOLCHAIN=")
 }

@@ -6,13 +6,12 @@ import std.measure { Second, second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.crypto.hash { Digest }
 import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
 import extdeps.automation.playwright { PlaywrightBuild, PlaywrightBrowserBinaryProvenance, PlaywrightManagedChromiumDownload, playwright_1_62_1 }
 import extdeps.bmc.megarac {
-  MegaRacScreenCaptureLookup, ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
+  ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
   ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing, megarac_firmware_0_32,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
@@ -66,20 +65,10 @@ data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
 // package under <dir>/node_modules, which the capture puts on NODE_PATH.
 data mtcollins1_kvm_still_toolchain_dir_env: NonEmptyStr = "GUNBC_KVM_STILL_TOOLCHAIN"
 
-// PROVISIONING THE DECLARED TOOLCHAIN ON THE RUNNER, as the boot step's prelude lines. The version
-// is read off mtcollins1_kvm_still_toolchain, so the pin has one home. It is bounded and it is NOT a
-// gate: a runner that cannot install (no npm, no network, Chromium's system libraries missing) warns
-// in the run log and the stills record the refusal the capture then meets; the boot is untouched.
-data mtcollins1_kvm_still_provision_allowance: Second = second(count: 300)
-
-fn mtcollins1_kvm_still_provision_lines() -> List<String> {
-  let version = mtcollins1_kvm_still_toolchain.automation.version as String
-  [
-    concat("KVM_STILL_DIR=\"$\{RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/gunbc-kvm-still-playwright-", version, "\""),
-    concat("timeout ", coreutils_duration_operand(d: mtcollins1_kvm_still_provision_allowance), " bash -c 'npm install --silent --no-save --prefix \"$1\" \"playwright@$2\" && \"$1/node_modules/.bin/playwright\" install chromium chromium-headless-shell' kvm-still-provision \"$KVM_STILL_DIR\" ", version, " || echo \"::warning title=mtcollins1 KVM still toolchain::playwright ", version, " not provisioned; each still will record why it was not captured\""),
-    concat("export ", mtcollins1_kvm_still_toolchain_dir_env as String, "=\"$KVM_STILL_DIR\""),
-  ]
-}
+// THE TOOLCHAIN IS NOT PROVISIONED HERE (eager-owl-205, 2026-09-28). A boot-step `npm install` is an
+// undeclared toolchain on a fleet host; the runner toolchain and its converge are their own modeled
+// route (a separate lane). Until that route binds GUNBC_KVM_STILL_TOOLCHAIN on the runner, the
+// observer refuses with cause=toolchain, which the bundle records and the boot ignores.
 
 // DRIVING THE VENDOR'S VIEWER IS REALIZATION, NOT THE MEGARAC INTERFACE. The steps are the UI's own,
 // recovered from the served bundles cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute: POST
@@ -631,6 +620,20 @@ fn kvm_observer_record_text(rec: KvmObserverRecord) -> String {
         },
       ], "\n")
   }
+}
+
+// THE RECEIPT LINE: the executed real route (eager-owl-205, 2026-09-28). The boot runs the observer
+// against the real controller under the job's workload-identity credential, and its receipt carries
+// the established line and the first hash-bound still -- or, verbatim, why there is none.
+fn kvm_observer_receipt_line(rec: KvmObserverRecord) -> String {
+  concat("screen=", match rec.start {
+    KvmObserverNotStarted { reason: r } => concat("observer not started: ", r as String)
+    KvmObserverStarted { dir: _, standing: s, checked_at: _ } =>
+      concat(kvm_standing_text(s: s), "; ", match filter(rec.stills, x => match x { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }).first() {
+        Present { value: x } => concat("first hash-bound still ", kvm_retained_still_text(s: x))
+        Absent => "no hash-bound still"
+      })
+  })
 }
 
 // DECLARED FRONTIER: READING THE STILL. Interpretation -- a model on the fabric reading a retained
