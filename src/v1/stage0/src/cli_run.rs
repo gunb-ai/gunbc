@@ -221,7 +221,7 @@ pub mod floor_memory_supervisor;
 pub mod target_invocation_host;
 
 #[path = "generated_artifact_boundary_host.rs"]
-mod generated_artifact_boundary_host;
+pub(crate) mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
 
@@ -41590,11 +41590,35 @@ pub fn assemble_prepared_subject_from_corpus(
                 .map(|(_, sf)| sf.path.replace('\\', "/"))
                 .collect();
             let seeds = seed_paths.len();
+            // A CORPUS KEY IS NOT A CWD PATH. `sf.path` is the index's workspace-relative key,
+            // and the entry loader opens its argument as a filesystem path, so a bare key names
+            // a file only while the process cwd happens to be the workspace root. That coincidence
+            // made every unit test of this arm enter the root with a process-wide
+            // `set_current_dir` under the parallel runner. The key is anchored at the root the
+            // index was keyed against instead, so the read no longer depends on ambient state.
+            let entry_at = |key: &str| -> String {
+                let p = Path::new(key);
+                if p.is_absolute() {
+                    key.to_string()
+                } else {
+                    process_workspace_root()
+                        .join(p)
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            };
             let mut keep: HashSet<String> = HashSet::new();
             for path in &seed_paths {
-                collect_both_closure_module_names_for_entry(entry_index, path, &mut keep).map_err(
-                    |e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"),
-                )?;
+                collect_both_closure_module_names_for_entry(
+                    entry_index,
+                    &entry_at(path),
+                    &mut keep,
+                )
+                .map_err(|e| {
+                    format!(
+                        "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"
+                    )
+                })?;
             }
             // TWO MORE EDGE KINDS, TO A JOINT FIXPOINT, because the loader's both-closure is
             // narrower than the claim scope the fold will build over this subject:
@@ -41637,7 +41661,7 @@ pub fn assemble_prepared_subject_from_corpus(
                 ancestors.dedup();
                 for name in ancestors {
                     let path = full_index[&name].path.replace('\\', "/");
-                    collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
+                    collect_both_closure_module_names_for_entry(entry_index, &entry_at(&path), &mut keep)
                         .map_err(|e| {
                             format!(
                                 "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"
@@ -41676,13 +41700,17 @@ pub fn assemble_prepared_subject_from_corpus(
                         }
                         bare_pulled_modules += 1;
                         let path = full_index[target].path.replace('\\', "/");
-                        collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
-                            .map_err(|e| {
-                                format!(
-                                    "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
+                        collect_both_closure_module_names_for_entry(
+                            entry_index,
+                            &entry_at(&path),
+                            &mut keep,
+                        )
+                        .map_err(|e| {
+                            format!(
+                                "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
                                      entry={path} — {e}"
-                                )
-                            })?;
+                            )
+                        })?;
                         keep.insert(target.clone());
                     }
                 }

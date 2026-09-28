@@ -157,7 +157,8 @@ import gunbc.fleet_converge_plan {
 import gunbc.fabric_cell_effect {
   fabric_cell_realization, CellPlanRealizable, CellPlanRefused, fabric_cell_slice_desired_directives_for_slot,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_committed_width, gunbc_runner_slot_desired, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner_width_transition { required_retirees_for_host, RetireesKnown, RetireesUnresolved }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.runner_host_deploy {
