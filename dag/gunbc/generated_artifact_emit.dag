@@ -8,7 +8,7 @@ import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefuse
 import gunbc.approve_ios_swift_wire { expected_approve_ios_wire_swift }
 import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, NativeFrontierWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler }
 import gunbc.generated_artifact_registry { committed_generated_artifacts, heal_regenerated_after_provisional_merge_paths }
 import gunbc.whole_corpus_compile_demand_projection { expected_whole_corpus_compile_measured_root_demands_json }
 import gunbc.generated_workflow_provenance {
@@ -20,7 +20,6 @@ import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConverg
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import gunbc.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
-import gunbc.native_frontier_workflow { expected_native_frontier_workflow_yml, NativeFrontierWorkflowGenerated, NativeFrontierWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
 import gunbc.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.compiler_gate_workflow { expected_compiler_gate_yml }
@@ -101,10 +100,6 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
       HealWorkflowGenerated { content } => artifact_generated(content: content)
       HealWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    NativeFrontierWorkflowYamlArtifact => match expected_native_frontier_workflow_yml() {
-      NativeFrontierWorkflowGenerated { content } => artifact_generated(content: content)
-      NativeFrontierWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
     HealPublisherWorkflowYamlArtifact => match expected_heal_publisher_workflow_yml() {
       HealPublisherWorkflowGenerated { content } => artifact_generated(content: content)
@@ -262,7 +257,6 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     MicrovmShakedownYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealPublisherWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    NativeFrontierWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     CargoConfigArtifact => true
