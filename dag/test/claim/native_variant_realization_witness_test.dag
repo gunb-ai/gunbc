@@ -34,3 +34,4 @@ test fn local_coproduct_with_true_false_arms_keeps_its_enum() -> Bool {
     ["true => ", "false => "]
   )
 }
+

@@ -9408,6 +9408,12 @@ pub fn resolve_pattern_subject(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PatternParentReading {
+    pub parent_enum: Option<String>,
+    pub identity: Rc<VariantParentIdentity>,
+}
+
 pub fn annotate_pattern_parent_enums(
     pattern: Rc<MatchPattern>,
     scrutinee_subject: Rc<PatternSubject>,
@@ -9422,7 +9428,7 @@ pub fn annotate_pattern_parent_enums(
             } => {
                 let resolved_scrut =
                     resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
-                let inferred_parent = match (*resolved_scrut.clone()).clone() {
+                let parent_reading = match (*resolved_scrut.clone()).clone() {
                     PatternSubject::PatternResolved {
                         node: resolved_scrut_node,
                         ..
@@ -9448,62 +9454,62 @@ pub fn annotate_pattern_parent_enums(
                             && ((variant_name.clone() == "Present".to_string())
                                 || (variant_name.clone() == "Absent".to_string())))
                         {
-                            Some("Optional".to_string())
+                            Rc::new(PatternParentReading {
+    parent_enum: Some("Optional".to_string()),
+    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the arm belongs to the optional wrapper, not to the scrutinee's declared coproduct".to_string(),
+}),
+})
                         } else {
                             if witness_container_subject.clone() {
-                                Some("Witness".to_string())
+                                Rc::new(PatternParentReading {
+    parent_enum: Some("Witness".to_string()),
+    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the arm belongs to the witness wrapper, not to the scrutinee's declared coproduct".to_string(),
+}),
+})
                             } else {
                                 {
                                     let is_coproduct = (resolved_scrut_node.connective.clone()
                                         == Connective::Disj);
                                     if is_coproduct.clone() {
-                                        Some(scrutinee_name.clone())
+                                        Rc::new(PatternParentReading {
+                                            parent_enum: Some(scrutinee_name.clone()),
+                                            identity: variant_parent_identity_of(
+                                                Some(resolved_scrut_node.clone()),
+                                                scope.clone(),
+                                            ),
+                                        })
                                     } else {
-                                        std::option::Option::None
+                                        Rc::new(PatternParentReading {
+    parent_enum: std::option::Option::None,
+    identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+    cause: "the scrutinee's resolved type is not a coproduct declaration".to_string(),
+}),
+})
                                     }
                                 }
                             }
                         }
                     }
-                    PatternSubject::PatternDynamic { span: _, .. } => std::option::Option::None,
-                    PatternSubject::PatternLookupBlocked => std::option::Option::None,
-                };
-                let annotated_variant_name = variant_name.clone();
-                let wrapper_parent = match inferred_parent.clone() {
-                    Some(p) => {
-                        ((p.clone() == "Optional".to_string())
-                            || (p.clone() == "Witness".to_string()))
-                    }
-                    std::option::Option::None => false,
-                };
-                let parent_identity = if wrapper_parent.clone() {
-                    Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-    cause: "the arm belongs to the optional or witness wrapper, not to the scrutinee's declared coproduct".to_string(),
-})
-                } else {
-                    match (*resolved_scrut.clone()).clone() {
-                        PatternSubject::PatternResolved { node: r, .. } => {
-                            let scrutinee_is_coproduct = (r.connective.clone() == Connective::Disj);
-                            if scrutinee_is_coproduct.clone() {
-                                variant_parent_identity_of(Some(r.clone()), scope.clone())
-                            } else {
-                                Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-    cause: "the scrutinee's resolved type is not a coproduct declaration".to_string(),
-})
-                            }
-                        }
-                        PatternSubject::PatternDynamic { span: _, .. } => {
-                            Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+                    PatternSubject::PatternDynamic { span: _, .. } => {
+                        Rc::new(PatternParentReading {
+                            parent_enum: std::option::Option::None,
+                            identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
                                 cause: "the scrutinee's type is dynamic".to_string(),
-                            })
-                        }
-                        PatternSubject::PatternLookupBlocked => {
-                            Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-                                cause: "the scrutinee's type lookup was blocked".to_string(),
-                            })
-                        }
+                            }),
+                        })
                     }
+                    PatternSubject::PatternLookupBlocked => Rc::new(PatternParentReading {
+                        parent_enum: std::option::Option::None,
+                        identity: Rc::new(VariantParentIdentity::VariantParentUnrecovered {
+                            cause: "the scrutinee's type lookup was blocked".to_string(),
+                        }),
+                    }),
                 };
+                let inferred_parent = parent_reading.parent_enum.clone();
+                let parent_identity = parent_reading.identity.clone();
+                let annotated_variant_name = variant_name.clone();
                 let variant_lookup = crate::v1_compiler_infer_patterns::lookup_variant_in_type(
                     resolved_scrut.clone(),
                     variant_name.clone(),

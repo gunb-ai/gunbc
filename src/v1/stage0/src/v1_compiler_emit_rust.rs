@@ -119,7 +119,9 @@ pub use crate::std_target_representation::variant_value_realization_refusal_mess
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
-use crate::std_target_representation::VariantParentIdentity::VariantParentUnrecovered;
+use crate::std_target_representation::VariantParentIdentity::{
+    VariantParentBeforeInference, VariantParentUnrecovered,
+};
 use crate::std_target_representation::VariantValueRealization::{
     VariantParentIdentityUnavailable, VariantRealizesAsTargetValue, VariantRealizesStructurally,
     VariantTargetValueAmbiguous, VariantTargetValueUnbound,
@@ -22467,6 +22469,16 @@ pub fn is_simple_type_node(
 }
 
 pub fn rust_native_variant_spelling(
+    parent: Rc<VariantParentIdentity>,
+    leaf_name: String,
+) -> Option<String> {
+    match (*parent.clone()).clone() {
+    VariantParentIdentity::VariantParentBeforeInference => Some(emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: `".to_string(), leaf_name.clone()), "` reached emission without inference having read which coproduct it belongs to (VariantParentBeforeInference); an unread occurrence is refused rather than rendered as either the native value or its enum path".to_string()))),
+    _ => rust_native_variant_spelling_of_read(parent.clone(), leaf_name.clone()),
+}
+}
+
+pub fn rust_native_variant_spelling_of_read(
     parent: Rc<VariantParentIdentity>,
     leaf_name: String,
 ) -> Option<String> {

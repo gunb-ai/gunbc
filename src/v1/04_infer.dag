@@ -6392,47 +6392,43 @@ fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject)
   }
 }
 
+// WHICH PARENT A VARIANT PATTERN WAS READ AGAINST, decided ONCE: the label the emitter spells
+// (parent_enum) and the identity the realization rows are keyed on come out of the same branch, so
+// the wrapper arms (optional, witness) carry their own unrecovered cause and nothing downstream
+// re-derives wrapper-ness by comparing the label as a string (review 72323).
+type PatternParentReading {
+  parent_enum: String?
+  identity: VariantParentIdentity
+}
+
 fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: PatternSubject, scope: InferScope) -> MatchPattern {
   match pattern {
     VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let inferred_parent = match resolved_scrut {
+      let parent_reading = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
           let scrutinee_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node)
           let optional_cardinality_subject = resolved_scrut_node.return_cardinality == CardOptional && scrutinee_name != "Optional"
           let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
           if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
-            Present { value: "Optional" }
+            PatternParentReading { parent_enum: Present { value: "Optional" }, identity: VariantParentUnrecovered { cause: "the arm belongs to the optional wrapper, not to the scrutinee's declared coproduct" as NonEmptyStr } }
           } else if witness_container_subject {
-            Present { value: "Witness" }
+            PatternParentReading { parent_enum: Present { value: "Witness" }, identity: VariantParentUnrecovered { cause: "the arm belongs to the witness wrapper, not to the scrutinee's declared coproduct" as NonEmptyStr } }
           } else {
             let is_coproduct = resolved_scrut_node.connective == Disj
             if is_coproduct {
-              Present { value: scrutinee_name }
-            } else { none }
+              PatternParentReading { parent_enum: Present { value: scrutinee_name }, identity: variant_parent_identity_of(owner: Present { value: resolved_scrut_node }, scope: scope) }
+            } else {
+              PatternParentReading { parent_enum: none, identity: VariantParentUnrecovered { cause: "the scrutinee's resolved type is not a coproduct declaration" as NonEmptyStr } }
+            }
           }
-        PatternDynamic { span: _ } => none
-        PatternLookupBlocked => none
+        PatternDynamic { span: _ } => PatternParentReading { parent_enum: none, identity: VariantParentUnrecovered { cause: "the scrutinee's type is dynamic" as NonEmptyStr } }
+        PatternLookupBlocked => PatternParentReading { parent_enum: none, identity: VariantParentUnrecovered { cause: "the scrutinee's type lookup was blocked" as NonEmptyStr } }
       }
+      let inferred_parent = parent_reading.parent_enum
+      let parent_identity = parent_reading.identity
       let annotated_variant_name = variant_name
-      let wrapper_parent = match inferred_parent {
-        Present { value: p } => p == "Optional" || p == "Witness"
-        Absent => false
-      }
-      let parent_identity = if wrapper_parent {
-        VariantParentUnrecovered { cause: "the arm belongs to the optional or witness wrapper, not to the scrutinee's declared coproduct" as NonEmptyStr }
-      } else { match resolved_scrut {
-        PatternResolved { node: r } =>
-          let scrutinee_is_coproduct = r.connective == Disj
-          if scrutinee_is_coproduct {
-            variant_parent_identity_of(owner: Present { value: r }, scope: scope)
-          } else {
-            VariantParentUnrecovered { cause: "the scrutinee's resolved type is not a coproduct declaration" as NonEmptyStr }
-          }
-        PatternDynamic { span: _ } => VariantParentUnrecovered { cause: "the scrutinee's type is dynamic" as NonEmptyStr }
-        PatternLookupBlocked => VariantParentUnrecovered { cause: "the scrutinee's type lookup was blocked" as NonEmptyStr }
-      } }
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>

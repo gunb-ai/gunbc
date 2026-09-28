@@ -3,7 +3,7 @@ module v1.compiler.emit_rust
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
-  VariantParentIdentity, VariantParentUnrecovered, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
+  VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message }
 import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
 import std.repair_input_origin {
@@ -10519,6 +10519,15 @@ fn is_simple_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bo
 // carried; see rust_variant_arm_is_bound_somewhere for why an unidentified occurrence refuses only
 // when its arm is one a row binds.
 fn rust_native_variant_spelling(parent: VariantParentIdentity, leaf_name: String) -> String? {
+  match parent {
+    VariantParentBeforeInference =>
+      Present { value: emit_rust_compile_error_expr(message: concat("variant realization: `", leaf_name, "` reached emission without inference having read which coproduct it belongs to (VariantParentBeforeInference); an unread occurrence is refused rather than rendered as either the native value or its enum path")) }
+    _ => rust_native_variant_spelling_of_read(parent: parent, leaf_name: leaf_name)
+  }
+}
+
+// An occurrence inference has read: Identified, or Unrecovered with its cause.
+fn rust_native_variant_spelling_of_read(parent: VariantParentIdentity, leaf_name: String) -> String? {
   let r = rust_variant_value_realization(parent: parent, variant: leaf_name)
   match r {
     VariantRealizesAsTargetValue { value_spelling: s } => Present { value: s as String }
