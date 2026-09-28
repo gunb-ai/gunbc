@@ -97,7 +97,7 @@ fn authenticated_session_json(session: AuthenticatedSession) -> String {
     json_kv(key: "auth_method", value: json_string(s: session_auth_method_label(method: session.auth_method))),
     json_kv(key: "client", value: json_string(s: session_client_label(client: session.client) as String)),
     json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
-  ], session_profile_picture_members(picture: session.profile.picture)), concat(session_profile_name_members(name: session.profile.name), session_profile_email_members(email: session.profile.email))))
+  ], session_profile_picture_members(picture: session.profile.picture)), concat(session_profile_name_members(name: session.profile.name), session_profile_email_members(email: session.profile.email)))))
 }
 
 // THE OPTIONAL PICTURE MEMBER, emitted only when the login projected one: absence is the

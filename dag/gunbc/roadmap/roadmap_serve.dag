@@ -1,6 +1,10 @@
 module gunbc.roadmap_serve
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.auth.profile_projection {
+  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all,
+  ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
+}
 import gunbc.roadmap_allocation_page { allocation_page, allocation_client_path }
 import gunbc.roadmap_allocation_client { allocation_client_source }
 
@@ -2752,7 +2756,24 @@ fn auth_callback_seat_session(instance: HostDashboardInstance, transaction: Oidc
         SessionStoreSaveRefused { step: s, reason: r } =>
           serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["login refused: the session could not be persisted (", s, "): ", r, "\n"], ""))
         SessionStoreSaved { session_id: _ } =>
-          serve_text_response_with_headers(
+          let profile_upsert = profile_store_upsert_from_session(layout: profile_store_layout_for_instance(instance: instance), session: session)
+          match profile_upsert {
+            ProfileStoreUpserted { principal: _ } =>
+              auth_login_redirect_after_seat(transaction: transaction, config: config, session: session)
+            ProfileStoreUpsertRefused { step: _, reason: _ } =>
+              auth_login_redirect_after_seat(transaction: transaction, config: config, session: session)
+          }
+      }
+  }
+}
+
+// THE PROFILE UPSERT'S STANDING, named and consumed: a seated login projects its profile
+// members into the durable profile projection (the picker's and the assignee cell's display
+// source), merge-retain so an omitted member never erases an observation. The upsert NEVER
+// gates the login — a refused projection write still redirects — but its refusal is an
+// explicit match arm, never a discarded result.
+fn auth_login_redirect_after_seat(transaction: OidcLoginTransaction, config: OidcDeploymentConfig, session: AuthenticatedSession) -> ServeHttpResponse {
+  serve_text_response_with_headers(
             status: 302,
             content_type: text_plain_utf8,
             body: join(["login complete: redirecting to ", transaction.return_path.path as String, "\n"], ""),
@@ -2763,8 +2784,6 @@ fn auth_callback_seat_session(instance: HostDashboardInstance, transaction: Oidc
               },
             ],
           )
-      }
-  }
 }
 
 fn session_refusal_reason(c: SessionRefusalCause) -> String {
