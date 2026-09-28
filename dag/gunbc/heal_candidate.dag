@@ -193,12 +193,20 @@ type DriftedPath
   = DriftedPathObserved { decision: CandidateEntryDecision, content: String }
   | DriftedPathRefused { cause: String }
 
-fn observe_path_drift(path: String) -> DriftedPath {
-  let written = Filesystem.Read(path: path)
+// A PATH IS REPOSITORY-RELATIVE AND THE ROOT IS WHERE THAT REPOSITORY IS CHECKED OUT. The public
+// producer runs at its own checkout root ("."); gunbc-private's runs from a public compose with the
+// private checkout beside it, so both the bytes and the index are read under the root while the
+// candidate still names the path the repository itself knows.
+fn rooted_path(root: String, path: String) -> String {
+  if root == "." { path } else { join([root, "/", path], "") }
+}
+
+fn observe_path_drift(root: String, path: String) -> DriftedPath {
+  let written = Filesystem.Read(path: rooted_path(root: root, path: path))
   if !written.success {
     DriftedPathRefused { cause: join(["HealCandidateRegeneratedFileUnreadable: ", path, ": ", written.error], "") }
   } else {
-    let listed = git.Core.LsFilesStageZPathspecInRepo(repo: "." as FilePath, pathspec: git_pathspec_literal(path: path))
+    let listed = git.Core.LsFilesStageZPathspecInRepo(repo: root as FilePath, pathspec: git_pathspec_literal(path: path))
     if !listed.success {
       DriftedPathRefused { cause: join(["HealCandidateIndexUnreadable: ", path, ": ", trim(s: listed.stderr)], "") }
     } else {
@@ -249,12 +257,12 @@ fn candidate_proposable_paths() -> List<String> {
   proposable_paths_of(paths: committed_generated_artifact_paths())
 }
 
-fn observe_drift_population(paths: List<String>) -> DriftPopulation {
+fn observe_drift_population(root: String, paths: List<String>) -> DriftPopulation {
   fold(paths, init: DriftPopulationObserved { drifted: [] }, f: fn(acc, path) {
     match acc {
       DriftPopulationRefused { cause } => DriftPopulationRefused { cause: cause }
       DriftPopulationObserved { drifted } =>
-        match observe_path_drift(path: path) {
+        match observe_path_drift(root: root, path: path) {
           DriftedPathRefused { cause } => DriftPopulationRefused { cause: cause }
           DriftedPathObserved { decision, content } =>
             match decision {
@@ -370,19 +378,25 @@ fn heal_candidate_declaration_wet() -> RequiredEnv {
 // at all, so no partial candidate can reach the publisher; but those states also exit non-zero, and
 // the publisher only runs when this phase concluded success.
 fn heal_candidate_produce_wet() -> ProcessExit {
+  heal_candidate_produce_over(root: ".", paths: candidate_proposable_paths())
+}
+
+// THE ROSTER IS THE CALLER'S AND IS FILTERED HERE, so every repository's producer proposes only what
+// a publisher can accept (proposable_paths_of, above) whatever roster it brings.
+fn heal_candidate_produce_over(root: String, paths: List<String>) -> ProcessExit {
   match prepare_candidate_directory() {
     CandidateWriteRefused { cause } => exit_failure(reason: cause)
     CandidateWritten =>
-      match observe_drift_population(paths: candidate_proposable_paths()) {
+      match observe_drift_population(root: root, paths: proposable_paths_of(paths: paths)) {
         DriftPopulationRefused { cause } => exit_failure(reason: cause)
         DriftPopulationObserved { drifted } =>
           if count(drifted) == 0 {
-            heal_candidate_write_wet(drifted: drifted, declaration: "")
+            heal_candidate_write_wet(root: root, drifted: drifted, declaration: "")
           } else {
             match heal_candidate_declaration_wet() {
               RequiredEnvRefused { cause } => exit_failure(reason: cause)
               RequiredEnvFound { value: declaration } =>
-                heal_candidate_write_wet(drifted: drifted, declaration: declaration as String)
+                heal_candidate_write_wet(root: root, drifted: drifted, declaration: declaration as String)
             }
           }
       }
@@ -396,8 +410,8 @@ fn heal_candidate_produce_wet() -> ProcessExit {
 // rare one. The declaration stays MANDATORY for a candidate that names paths: a commit that does not
 // say what it repaired is refused at admission by RepairDeclarationMissing, and an empty candidate
 // never reaches admission because gunbc.heal_publication takes the no-op arm first.
-fn heal_candidate_write_wet(drifted: List<DriftedEntry>, declaration: String) -> ProcessExit {
-  let head = git.Inspect.HeadCommit()
+fn heal_candidate_write_wet(root: String, drifted: List<DriftedEntry>, declaration: String) -> ProcessExit {
+  let head = git.Inspect.HeadCommitIn(repository_path: root)
   if !head.success {
     exit_failure(reason: "HealCandidateContextUnreadable: the checked-out head did not resolve")
   } else {

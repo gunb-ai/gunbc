@@ -674,7 +674,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust WITH the seed crate (v1-compiler path dependency) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",
+    reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust with the seed's committed stage0 mirror src/v1/stage0/src/std_logic.rs as the oracle module (no v1-compiler path dependency, so the seed crate is not built) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
@@ -1069,6 +1069,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "durable_cas_file_store_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "sol_hold_stdin_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
