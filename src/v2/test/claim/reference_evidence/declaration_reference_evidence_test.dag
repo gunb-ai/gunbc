@@ -390,3 +390,67 @@ test fn dre_a_bool_declared_int_body_still_refuses_holds() -> Bool {
 test fn dre_an_int_declared_bool_body_still_refuses_holds() -> Bool {
   dre_infer_refuses(o: dre_int_declared_bool_body())
 }
+
+// A SECOND SOURCE FILE, so a reference can cross a module boundary.
+fn dre_file(src: String, id: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: "src/v2/pilot/declaration_reference_evidence_pilot.dag" },
+    compilation_unit: id,
+    source_root: V2Tree
+  }
+}
+
+// UNRESOLVED SIGNATURE: readable shape, unavailable type evidence. The parameter's declared type names
+// nothing, so the signature's structure reads while its meaning does not. A permissive fallback would
+// ground this; it must stay underived.
+fn dre_unresolved_signature_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn opaque(only_arg: Nonexistent) -> Int {\n  1\n}\n\nfn consumer(y: Int) -> Int {\n  opaque(only_arg: y)\n}\n")
+}
+
+test fn dre_an_unresolved_signature_does_not_ground_holds() -> Bool {
+  match dre_single_use_domain_labels(o: dre_unresolved_signature_source(), wanted: ^opaque) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// INVALID ARGUMENT: a Bool passed where the declared parameter is Int. The call must not ground on a
+// contract its argument does not satisfy.
+fn dre_invalid_argument_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn wants_int(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Int {\n  wants_int(only_arg: y)\n}\n")
+}
+
+test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
+  dre_call_is_grounded_for(o: dre_invalid_argument_source(), wanted: ^wants_int) == false
+}
+
+// IMPORTED REFERENCE, AND THE QUALIFIED IDENTITY DISCRIMINATOR. The same mechanism across a module
+// boundary: local and imported references reach the declaration by the same route, since the declaring
+// path is what the lookup uses either way.
+//
+// QUALIFIED BY MUTATION, unlike the earlier single-module attempt that could not be. Repointing this
+// reference's lookup at a DIFFERENT EXISTING declaration -- m.app rather than m.lib.helper, so the
+// lookup still SUCCEEDS -- turns this row red while the same-module call stays green. So it detects
+// wrong-declaration selection rather than missing evidence, which is the property a leaf-keyed lookup
+// would violate and an absent-path mutation could never establish.
+fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: dre_file(src: "module m.lib\n\nfn helper(only_arg: Int) -> Int {\n  only_arg\n}\n", id: ^dre_imported_lib_cu),
+      tail: Cons {
+        head: dre_file(src: "module m.app\n\nimport m.lib { helper }\n\nfn consumer(y: Int) -> Int {\n  helper(only_arg: y)\n}\n", id: ^dre_imported_app_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^m, tail: Cons { head: ^app, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn dre_an_imported_reference_grounds_the_same_way_holds() -> Bool {
+  dre_call_is_grounded_for(o: dre_imported_reference_source(), wanted: ^helper)
+}
