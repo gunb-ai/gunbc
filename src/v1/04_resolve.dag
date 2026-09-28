@@ -1193,7 +1193,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let ch = texpr.children
       let r = match ch |> first { Present { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let tr = match ch |> skip(1) |> first { Present { value: target } => resolve_node(n: target, env: env, module_name: module_name)  Absent => NodeResolveResult { resolved: unit_type, diagnostics: [] } }
-      ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: [r.expr, tr.resolved], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
+      ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: concat([r.expr, tr.resolved], ch |> skip(2)), inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
     ExprForEach =>
       let ch = texpr.children
       let cr = match ch |> first { Present { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }

@@ -3510,7 +3510,16 @@ pub fn resolve_expr_types(
                     expr: crate::v1_std_core::make_expr_node(
                         texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprCast),
-                        Rc::new(vec![r.expr.clone(), tr.resolved.clone()]),
+                        v1_rt::concat(
+                            Rc::new(vec![r.expr.clone(), tr.resolved.clone()]),
+                            Rc::new(
+                                ch.clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(2 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
                     ),

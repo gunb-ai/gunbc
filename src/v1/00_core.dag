@@ -1555,7 +1555,8 @@ data expr_child_roles: Map<String, List<ChildRole>> = {
   ],
   "ExprCast": [
     ChildRole { name: "expr", accessor: "cast_expr", position: 0, required: true },
-    ChildRole { name: "target", accessor: "cast_target", position: 1, required: true }
+    ChildRole { name: "target", accessor: "cast_target", position: 1, required: true },
+    ChildRole { name: "plan", accessor: "cast_plan", position: 2, required: false }
   ],
   "ExprForEach": [
     ChildRole { name: "collection", accessor: "foreach_collection", position: 0, required: true },
@@ -1905,6 +1906,7 @@ fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -
 
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
 fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
+fn cast_plan(texpr: Node) -> List<Node> { texpr.children |> skip(2) }
 
 fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }

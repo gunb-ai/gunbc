@@ -29,6 +29,10 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+use crate::std_conversion_plan::ConversionPhase::ProveRefinement;
+use crate::std_conversion_plan::ConversionPlanLookup::PlanFound;
+pub use crate::std_conversion_plan::{conversion_plan_for, conversion_plans};
+pub use crate::std_conversion_plan::{ConversionPhase, ConversionPlanLookup};
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -3546,6 +3550,54 @@ pub fn where_refinement_brand_nominal_verdict(
     } else {
         BrandNominalVerdict::BrandNominalIrrelevant
     }
+}
+
+pub fn cast_plan_phase_diags(
+    plan_nodes: Rc<Vec<Rc<Node>>>,
+    target_type: Rc<Node>,
+    target_name: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+    type_env: Rc<TypeEnv>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for pn in plan_nodes.iter().cloned() {
+            __result.extend((*match crate::v1_std_core::expr_literal_string_optional(pn.clone()) {
+    Some(plan_name) => match (*crate::std_conversion_plan::conversion_plan_for(conversion_plans(), plan_name.clone())).clone() {
+    ConversionPlanLookup::PlanFound { plan: plan, .. } => Rc::new({ let mut __result = Vec::new(); for ph in plan.phases.clone().iter().cloned() { __result.extend((*match (*ph.clone()).clone() {
+    ConversionPhase::ProveRefinement => {
+        let formal_resolved = match crate::v1_compiler_infer_env::lookup_type_for(type_env.clone(), target_type.clone()) {
+    Some(resolved) => resolved.clone(),
+    std::option::Option::None => target_type.clone(),
+};
+if ((type_where_refinement_predicates_transitive(formal_resolved.clone(), type_env.clone()).len() as i64) == 0) {
+            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cast via '".to_string(), plan_name.clone()), "' onto ".to_string()), target_name.clone()), ": the plan's ProveRefinement phase has no where-refinement to prove on the target".to_string()),
+    span: pn.span.clone(),
+}), module_name.clone())])
+        } else {
+            Rc::new(vec![])
+        }
+},
+    _ => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cast via '".to_string(), plan_name.clone()), "' onto ".to_string()), target_name.clone()), ": the v1 seed realizes only the ProveRefinement phase of a conversion plan".to_string()),
+    span: pn.span.clone(),
+}), module_name.clone())]),
+}).iter().cloned()); } __result }),
+    _ => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat("cast via '".to_string(), plan_name.clone()), "': not exactly one row of std.conversion_plan conversion_plans".to_string()),
+    span: pn.span.clone(),
+}), module_name.clone())]),
+},
+    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: "malformed cast plan child".to_string(),
+    span: pn.span.clone(),
+}), module_name.clone())]),
+}).iter().cloned());
+        }
+        __result
+    })
 }
 
 pub fn where_refinement_mismatch_diags(
@@ -13923,10 +13975,22 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 scope.module_name.clone(),
                 scope.type_env.clone(),
             );
+            let plan_nodes = crate::v1_std_core::cast_plan(texpr.clone());
+            let cast_plan_diags = cast_plan_phase_diags(
+                plan_nodes.clone(),
+                target_type.clone(),
+                target_name.clone(),
+                span.clone(),
+                scope.module_name.clone(),
+                scope.type_env.clone(),
+            );
             let cast_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprCast),
-                Rc::new(vec![inner_typed.clone(), target_type.clone()]),
+                v1_rt::concat(
+                    Rc::new(vec![inner_typed.clone(), target_type.clone()]),
+                    plan_nodes.clone(),
+                ),
                 Some(Rc::new(InferredNode::Resolved {
                     node: target_type.clone(),
                 })),
@@ -13937,12 +14001,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
-                            cast_optional_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                                cast_optional_diags.clone(),
+                            ),
+                            cast_sole_ctor_diags.clone(),
                         ),
-                        cast_sole_ctor_diags.clone(),
+                        cast_refinement_diags.clone(),
                     ),
-                    cast_refinement_diags.clone(),
+                    cast_plan_diags.clone(),
                 ),
             })
         }

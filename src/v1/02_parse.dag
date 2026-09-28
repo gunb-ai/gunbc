@@ -5301,16 +5301,20 @@ fn is_variant_pattern_start(name: String) -> Bool {
 
 type CastViaResult {
   tokens: TokenStream
+  ctx: ParseContext
+  plan: List<Node>
   err: ErrorNode?
 }
 
 // `e as T via <plan>`: `via` is read only in this position, so it stays an ordinary identifier
 // everywhere else. The plan name must resolve in std.conversion_plan conversion_plans -- the one
-// roster v2 reads too. SEED LIMITATION: v1 does not model plans; the cast node is unchanged and
-// `via refine` is realized by the existing checked as-cast into a where-refinement in 04_infer.
-fn parse_cast_via(tokens: TokenStream) -> CastViaResult {
+// roster v2 reads too. The named plan rides on the cast as its optional third child (the `plan`
+// ChildRole), a string literal carrying the plan identity, so infer can refuse a plan whose phases
+// the cast cannot discharge. v1 realizes the ProveRefinement phase through its existing checked
+// as-cast into a where-refinement.
+fn parse_cast_via(tokens: TokenStream, ctx: ParseContext) -> CastViaResult {
   if !tok_is_ident_text(tok: token_stream_first(stream: tokens), text: "via") {
-    CastViaResult { tokens: tokens, err: none }
+    CastViaResult { tokens: tokens, ctx: ctx, plan: [], err: none }
   } else {
     let rest = token_stream_advance(stream: tokens, n: 1)
     let name_tok = token_stream_first(stream: rest)
@@ -5318,17 +5322,21 @@ fn parse_cast_via(tokens: TokenStream) -> CastViaResult {
     match name_tok {
       Present { value: nt } => {
         if !is_ident_shape(shape: nt.shape) {
-          CastViaResult { tokens: rest, err: Present { value: parse_error(msg: "expected a conversion plan name after `via`", span: name_span) } }
+          CastViaResult { tokens: rest, ctx: ctx, plan: [], err: Present { value: parse_error(msg: "expected a conversion plan name after `via`", span: name_span) } }
         } else {
           let after = token_stream_advance(stream: rest, n: 1)
           match conversion_plan_for(plans: conversion_plans, identity: nt.text) {
-            PlanFound { plan: _ } => CastViaResult { tokens: after, err: none }
-            PlanUnknown => CastViaResult { tokens: after, err: Present { value: parse_error(msg: concat("unknown conversion plan '", nt.text, "' after `via`: not a row of std.conversion_plan conversion_plans"), span: name_span) } }
-            PlanDuplicated { count: c } => CastViaResult { tokens: after, err: Present { value: parse_error(msg: concat("conversion plan '", nt.text, "' is declared ", to_string(value: c), " times in std.conversion_plan conversion_plans"), span: name_span) } }
+            PlanFound { plan: _ } => {
+              let minted = mint_parsed_node_identity(ctx: ctx)
+              let plan_node = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprLiteral { value: LitStr { value: nt.text } }, children: [], inferred: none, span: name_span)
+              CastViaResult { tokens: after, ctx: minted.ctx, plan: [plan_node], err: none }
+            }
+            PlanUnknown => CastViaResult { tokens: after, ctx: ctx, plan: [], err: Present { value: parse_error(msg: concat("unknown conversion plan '", nt.text, "' after `via`: not a row of std.conversion_plan conversion_plans"), span: name_span) } }
+            PlanDuplicated { count: c } => CastViaResult { tokens: after, ctx: ctx, plan: [], err: Present { value: parse_error(msg: concat("conversion plan '", nt.text, "' is declared ", to_string(value: c), " times in std.conversion_plan conversion_plans"), span: name_span) } }
           }
         }
       }
-      Absent => CastViaResult { tokens: rest, err: Present { value: parse_error(msg: "expected a conversion plan name after `via`", span: name_span) } }
+      Absent => CastViaResult { tokens: rest, ctx: ctx, plan: [], err: Present { value: parse_error(msg: "expected a conversion plan name after `via`", span: name_span) } }
     }
   }
 }
@@ -5357,10 +5365,10 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
         } else {
           let r = parse_type_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
           if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-          let v = parse_cast_via(tokens: r.tokens)
-          if has_err(err: v.err) { return PostfixResult { expr: lhs, changed: false, tokens: v.tokens, ctx: r.ctx, err: v.err } }
-          let minted = mint_parsed_node_identity(ctx: r.ctx)
-          PostfixResult { expr: make_expr_node(occurrence_identity: minted.identity, expr_data: ExprCast, children: [lhs, r.type_expr], inferred: none, span: span), changed: true, tokens: v.tokens, ctx: minted.ctx, err: none }
+          let v = parse_cast_via(tokens: r.tokens, ctx: r.ctx)
+          if has_err(err: v.err) { return PostfixResult { expr: lhs, changed: false, tokens: v.tokens, ctx: v.ctx, err: v.err } }
+          let minted = mint_parsed_node_identity(ctx: v.ctx)
+          PostfixResult { expr: make_expr_node(occurrence_identity: minted.identity, expr_data: ExprCast, children: concat([lhs, r.type_expr], v.plan), inferred: none, span: span), changed: true, tokens: v.tokens, ctx: minted.ctx, err: none }
         }
       } else {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }

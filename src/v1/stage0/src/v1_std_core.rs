@@ -2315,7 +2315,7 @@ pub struct ChildRole {
 pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
-            serde_json::from_str("{\"ExprFieldAccess\": [{\"name\": \"base\", \"accessor\": \"field_access_base\", \"position\": 0, \"required\": true}], \"ExprBinOp\": [{\"name\": \"left\", \"accessor\": \"binop_left\", \"position\": 0, \"required\": true}, {\"name\": \"right\", \"accessor\": \"binop_right\", \"position\": 1, \"required\": true}], \"ExprUnaryOp\": [{\"name\": \"operand\", \"accessor\": \"unaryop_operand\", \"position\": 0, \"required\": true}], \"ExprIf\": [{\"name\": \"condition\", \"accessor\": \"if_condition\", \"position\": 0, \"required\": true}, {\"name\": \"then\", \"accessor\": \"if_then_branch\", \"position\": 1, \"required\": true}, {\"name\": \"else\", \"accessor\": \"if_else_branch\", \"position\": 2, \"required\": false}], \"ExprMatch\": [{\"name\": \"scrutinee\", \"accessor\": \"match_scrutinee\", \"position\": 0, \"required\": true}], \"ExprLet\": [{\"name\": \"value\", \"accessor\": \"let_value\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"let_body\", \"position\": 1, \"required\": false}], \"ExprLambda\": [{\"name\": \"body\", \"accessor\": \"lambda_body\", \"position\": 0, \"required\": true}], \"ExprMethodCall\": [{\"name\": \"receiver\", \"accessor\": \"method_receiver\", \"position\": 0, \"required\": true}], \"ExprCast\": [{\"name\": \"expr\", \"accessor\": \"cast_expr\", \"position\": 0, \"required\": true}, {\"name\": \"target\", \"accessor\": \"cast_target\", \"position\": 1, \"required\": true}], \"ExprForEach\": [{\"name\": \"collection\", \"accessor\": \"foreach_collection\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"foreach_body\", \"position\": 1, \"required\": true}], \"ExprIndex\": [{\"name\": \"base\", \"accessor\": \"index_base\", \"position\": 0, \"required\": true}, {\"name\": \"index\", \"accessor\": \"index_expr\", \"position\": 1, \"required\": true}], \"ExprSlice\": [{\"name\": \"base\", \"accessor\": \"slice_base\", \"position\": 0, \"required\": true}, {\"name\": \"start\", \"accessor\": \"slice_start\", \"position\": 1, \"required\": true}, {\"name\": \"end\", \"accessor\": \"slice_end\", \"position\": 2, \"required\": true}], \"ExprReturn\": [{\"name\": \"value\", \"accessor\": \"return_value\", \"position\": 0, \"required\": true}]}")
+            serde_json::from_str("{\"ExprFieldAccess\": [{\"name\": \"base\", \"accessor\": \"field_access_base\", \"position\": 0, \"required\": true}], \"ExprBinOp\": [{\"name\": \"left\", \"accessor\": \"binop_left\", \"position\": 0, \"required\": true}, {\"name\": \"right\", \"accessor\": \"binop_right\", \"position\": 1, \"required\": true}], \"ExprUnaryOp\": [{\"name\": \"operand\", \"accessor\": \"unaryop_operand\", \"position\": 0, \"required\": true}], \"ExprIf\": [{\"name\": \"condition\", \"accessor\": \"if_condition\", \"position\": 0, \"required\": true}, {\"name\": \"then\", \"accessor\": \"if_then_branch\", \"position\": 1, \"required\": true}, {\"name\": \"else\", \"accessor\": \"if_else_branch\", \"position\": 2, \"required\": false}], \"ExprMatch\": [{\"name\": \"scrutinee\", \"accessor\": \"match_scrutinee\", \"position\": 0, \"required\": true}], \"ExprLet\": [{\"name\": \"value\", \"accessor\": \"let_value\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"let_body\", \"position\": 1, \"required\": false}], \"ExprLambda\": [{\"name\": \"body\", \"accessor\": \"lambda_body\", \"position\": 0, \"required\": true}], \"ExprMethodCall\": [{\"name\": \"receiver\", \"accessor\": \"method_receiver\", \"position\": 0, \"required\": true}], \"ExprCast\": [{\"name\": \"expr\", \"accessor\": \"cast_expr\", \"position\": 0, \"required\": true}, {\"name\": \"target\", \"accessor\": \"cast_target\", \"position\": 1, \"required\": true}, {\"name\": \"plan\", \"accessor\": \"cast_plan\", \"position\": 2, \"required\": false}], \"ExprForEach\": [{\"name\": \"collection\", \"accessor\": \"foreach_collection\", \"position\": 0, \"required\": true}, {\"name\": \"body\", \"accessor\": \"foreach_body\", \"position\": 1, \"required\": true}], \"ExprIndex\": [{\"name\": \"base\", \"accessor\": \"index_base\", \"position\": 0, \"required\": true}, {\"name\": \"index\", \"accessor\": \"index_expr\", \"position\": 1, \"required\": true}], \"ExprSlice\": [{\"name\": \"base\", \"accessor\": \"slice_base\", \"position\": 0, \"required\": true}, {\"name\": \"start\", \"accessor\": \"slice_start\", \"position\": 1, \"required\": true}, {\"name\": \"end\", \"accessor\": \"slice_end\", \"position\": 2, \"required\": true}], \"ExprReturn\": [{\"name\": \"value\", \"accessor\": \"return_value\", \"position\": 0, \"required\": true}]}")
                 .expect("valid data definition")
         };
     }
@@ -2961,6 +2961,18 @@ pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
 
 pub fn cast_target(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr.clone(), 1, "cast target".to_string())
+}
+
+pub fn cast_plan(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new(
+        texpr
+            .children
+            .clone()
+            .iter()
+            .cloned()
+            .skip(2 as usize)
+            .collect::<Vec<_>>(),
+    )
 }
 
 pub fn foreach_collection(texpr: Rc<Node>) -> Rc<Node> {
