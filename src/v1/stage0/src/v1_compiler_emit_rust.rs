@@ -68,14 +68,11 @@ pub use crate::gunbc_structural_realization_bindings::{
 };
 pub use crate::std_algebra::AlgebraFieldTemplate;
 pub use crate::std_algebra::{is_collection_filter_template, trim};
-use crate::std_coercion::TextRepresentation::{CodePointSequence, HostText, NotText};
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 use crate::std_coercion::TypeRealizationDecision::*;
-pub use crate::std_coercion::{
-    TextRepresentation, TypeDeclarationProvenance, TypeRealizationDecision,
-};
+pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
@@ -135,7 +132,7 @@ pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
     provenance_declares_structurally, realization_host_numeric_spelling,
     realization_is_host_numeric, realized_checkpoint, rust_lookup_exact_binding, target_callable,
-    text_representation_of_type, type_realization_decision, type_reference_realization,
+    type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
@@ -1348,6 +1345,28 @@ pub fn rust_seed_host_container_base(name: String) -> Option<String> {
     }
 }
 
+pub fn rust_host_text_carrier_elem_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.children.clone().first().cloned() {
+        Some(ch) => crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone()),
+        std::option::Option::None => match crate::v1_std_core::find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => match applied.children.clone().first().cloned() {
+                Some(ach) => {
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), ach.clone())
+                }
+                std::option::Option::None => "".to_string(),
+            },
+            std::option::Option::None => "".to_string(),
+        },
+    }
+}
+
 pub fn is_host_text_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1356,13 +1375,28 @@ pub fn is_host_text_carrier_type(
         if (n.connective.clone() == Connective::Arrow) {
             return false;
         }
-        match crate::v1_compiler_coercion::text_representation_of_type(
-            n.clone(),
-            source_indices.clone(),
-        ) {
-            TextRepresentation::HostText => true,
-            TextRepresentation::CodePointSequence => false,
-            TextRepresentation::NotText => false,
+        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (nm.clone() == "String".to_string()) {
+            !crate::v1_compiler_coercion::provenance_declares_structurally(
+                "String".to_string(),
+                crate::v1_std_core::type_reference_provenance(n.clone()),
+            )
+        } else {
+            if ((nm.clone() == "FreeMonoid".to_string()) || (nm.clone() == "List".to_string())) {
+                if (rust_host_text_carrier_elem_name(n.clone(), source_indices.clone())
+                    != "Char".to_string())
+                {
+                    false
+                } else {
+                    match (*crate::v1_std_core::type_reference_provenance(n.clone())).clone() {
+                        TypeDeclarationProvenance::CorpusDeclared { decl_file: _, .. } => false,
+                        TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
+                        TypeDeclarationProvenance::DeclarationIdentityAbsent => true,
+                    }
+                }
+            } else {
+                false
+            }
         }
     }
 }

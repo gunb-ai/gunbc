@@ -660,6 +660,7 @@ pub fn enum_field_type_consistent(
                     crate::v1_compiler_infer_types::child_type_node(field_child.clone()),
                     expected.clone(),
                     source_indices.clone(),
+                    std::option::Option::None,
                 ),
                 std::option::Option::None => false,
             }) {

@@ -2,7 +2,7 @@ module v1.compiler.infer_types
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -20,7 +20,6 @@ import std.algebra {
 
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
-import v1.compiler.coercion { text_representations_cross }
 
 import std.coercion { SubtractionRefinement, SubtractionStaysInOperandAlgebra, SubtractionEscapesTo, SubtractionRefinementAmbiguous, dag_subtraction_refinement }
 
@@ -923,7 +922,19 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
   }
 }
 
-fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+// The text judgment asks the corpus declaration index, which lives on the TypeEnv. Every checker
+// call site passes its env. The one caller that holds none -- v1.compiler.emit_info's variant
+// field-summary builder, which runs without a census and asks whether a shared field has one type,
+// not whether a value crosses a representation boundary -- passes none, and the judgment is not
+// asked there (declared on gunbc.rung_drop text_boundary_identity_wall).
+fn text_crossing_in_optional_env(left: Node, right: Node, env: TypeEnv?) -> Bool {
+  match env {
+    Present { value: e } => text_crossing_by_identity(left: left, right: right, env: e)
+    Absent => false
+  }
+}
+
+fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv?) -> Bool {
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
@@ -934,11 +945,11 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
   let left_is_unit = is_unit_like(n: left)
   if left_err || right_err { true }
   else if left_tv || right_tv { true }
-  else if text_representations_cross(left: left, right: right, source_indices: source_indices) { false }
+  else if text_crossing_in_optional_env(left: left, right: right, env: env) { false }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else if left.connective == Arrow && (right.connective == Arrow) {
-    callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_compatible(left: a, right: b, source_indices: source_indices))
+    callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_compatible(left: a, right: b, source_indices: source_indices, env: env))
   }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
@@ -955,7 +966,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
                 let left_el_is_unit = is_unit_like(n: left_el)
                 let right_el_is_unit = is_unit_like(n: right_el)
                 if left_el_is_unit || right_el_is_unit { true }
-                else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+                else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices, env: env) }
               Absent => true
             }
           Absent => true
@@ -975,7 +986,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
               let left_el = child_type_node(ch: left_ch)
               let right_el = child_type_node(ch: right_ch)
               if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
-              else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices) }
+              else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices, env: env) }
             Absent => true
           }
         Absent => true
@@ -987,7 +998,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       let left_inner_is_unit = is_unit_like(n: left_inner)
       let right_inner_is_unit = is_unit_like(n: right_inner)
       if left_inner_is_unit || right_inner_is_unit { true }
-      else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
+      else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices, env: env) }
     }
     else if left_opt || right_opt { false }
     else {
@@ -1028,7 +1039,7 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   else { left }
 }
 
-fn node_type_equals(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn node_type_equals(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv?) -> Bool {
   let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
@@ -1043,18 +1054,20 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
   else if left_opt && right_is_unit_eq { true }
   else if left_is_unit_eq && right_opt { true }
   else if left_opt && right_opt {
-    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right), source_indices: source_indices)
+    node_type_equals_core(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right), source_indices: source_indices, env: env)
   }
   else {
-    node_type_equals_core(left: left, right: right, source_indices: source_indices)
+    node_type_equals_core(left: left, right: right, source_indices: source_indices, env: env)
   }
 }
 
-// TEXT REPRESENTATIONS ARE COMPARED BY WHAT THEY DENOTE, NOT BY SPELLING (XL-0T ruling B;
-// gunbc.rung_drop text_boundary_identity_wall). Kernel String is host text and a corpus-declared
-// FreeMonoid<Char> is a code-point sequence; v1.compiler.coercion text_representations_cross asks
-// the one authority the Rust renderer also reads, so node_type_equals_core refuses the pairing
-// before any leaf-name arm can match `String` against `String`. A kernel LITERAL never reaches this
+// TEXT REPRESENTATIONS ARE COMPARED BY THE DECLARATION THEY RESOLVE TO, NOT BY SPELLING (XL-0T
+// ruling B; gunbc.rung_drop text_boundary_identity_wall; review 72252). Kernel String is host text
+// and std.algebra FreeMonoid over std.types Char is a code-point sequence; v1.compiler.infer_env
+// text_crossing_by_identity reads each side's declaration by its declaring span or qualified name,
+// never by re-resolving the spelling in this comparison's scope, and refuses the pairing (or a text
+// side against an unidentified one) before any leaf-name arm can match `String` against `String`.
+// That is why these relations carry the TypeEnv: the corpus-wide declaration index lives there. A kernel LITERAL never reaches this
 // point at a code-point-sequence boundary -- v1.compiler.infer literal_boundary_elaboration has
 // already replaced it with its unfold image, typed as the destination -- so what this refuses is
 // exactly the NON-literal crossing, which has no declared route. The wall was once landed in these
@@ -1093,12 +1106,12 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
   }
 }
 
-fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if text_representations_cross(left: left, right: right, source_indices: source_indices) {
+fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv?) -> Bool {
+  if text_crossing_in_optional_env(left: left, right: right, env: env) {
     false
   } else if left.connective == Arrow || (right.connective == Arrow) {
     left.connective == right.connective
-      && callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices))
+      && callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, env: env))
   } else {
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
@@ -1116,7 +1129,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
     else {
       left.children |> enumerate |> all(pair =>
         match right.children |> skip(pair.first) |> first {
-          Present { value: right_child } => node_type_equals(left: pair.second, right: right_child, source_indices: source_indices)
+          Present { value: right_child } => node_type_equals(left: pair.second, right: right_child, source_indices: source_indices, env: env)
           Absent => false
         }
       )
@@ -1137,7 +1150,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
         match left.children |> first {
           Present { value: left_ch } =>
             match right.children |> first {
-              Present { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch), source_indices: source_indices)
+              Present { value: right_ch } => node_type_equals(left: child_type_node(ch: left_ch), right: child_type_node(ch: right_ch), source_indices: source_indices, env: env)
               Absent => false
             }
           Absent => false
@@ -1156,7 +1169,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
                     Present { value: left_second } =>
                       match right.children |> skip(1) |> first {
                         Present { value: right_second } =>
-                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first), source_indices: source_indices) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second), source_indices: source_indices)
+                          node_type_equals(left: child_type_node(ch: left_first), right: child_type_node(ch: right_first), source_indices: source_indices, env: env) && node_type_equals(left: child_type_node(ch: left_second), right: child_type_node(ch: right_second), source_indices: source_indices, env: env)
                         Absent => false
                       }
                     Absent => false
@@ -1170,7 +1183,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
         }
       }
       else if left.params |> count > 0 && right.params |> count > 0 {
-        callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices))
+        callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, env: env))
       }
       else {
         false

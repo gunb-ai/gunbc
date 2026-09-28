@@ -3,6 +3,7 @@
 
 pub use crate::std_types::is_ordered_element_collection;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_types::{
     for_each_element_type_node, node_is_element_collection, node_is_keyed_collection,
     node_type_equals, normalize_access_type_node, resolved_type,
@@ -101,6 +102,7 @@ pub fn check_index_access_node(
     span: Rc<SourceSpan>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Option<Rc<TypeEnv>>,
 ) -> Rc<AccessCheckResultNode> {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(base_type.clone());
@@ -110,11 +112,13 @@ pub fn check_index_access_node(
             normed.clone(),
             string_type(),
             source_indices.clone(),
+            env.clone(),
         );
         let index_is_int = crate::v1_compiler_infer_types::node_type_equals(
             normed_index.clone(),
             int_type(),
             source_indices.clone(),
+            env.clone(),
         );
         if base_is_string.clone() {
             {
@@ -141,6 +145,7 @@ pub fn check_index_access_node(
                         parts.key_type.clone(),
                         normed_index.clone(),
                         source_indices.clone(),
+                        env.clone(),
                     ) {
                         Rc::new(vec![])
                     } else {
@@ -220,6 +225,7 @@ pub fn check_slice_access_node(
     span: Rc<SourceSpan>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Option<Rc<TypeEnv>>,
 ) -> Rc<AccessCheckResultNode> {
     {
         let normed_base =
@@ -228,6 +234,7 @@ pub fn check_slice_access_node(
             normed_base.clone(),
             string_type(),
             source_indices.clone(),
+            env.clone(),
         );
         let base_is_list = (crate::std_types::is_ordered_element_collection(
             crate::v1_std_core::authored_name_at(source_indices.clone(), normed_base.clone()),
@@ -250,6 +257,7 @@ pub fn check_slice_access_node(
             normed_start.clone(),
             int_type(),
             source_indices.clone(),
+            env.clone(),
         ) {
             Rc::new(vec![])
         } else {
@@ -265,6 +273,7 @@ pub fn check_slice_access_node(
             normed_end.clone(),
             int_type(),
             source_indices.clone(),
+            env.clone(),
         ) {
             Rc::new(vec![])
         } else {

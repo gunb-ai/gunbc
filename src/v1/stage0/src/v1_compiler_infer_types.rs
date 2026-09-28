@@ -37,8 +37,7 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
-pub use crate::v1_compiler_coercion::text_representations_cross;
-pub use crate::v1_compiler_infer_env::type_reference_declaration_ref;
+pub use crate::v1_compiler_infer_env::{text_crossing_by_identity, type_reference_declaration_ref};
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -2405,10 +2404,26 @@ pub fn node_type_shape(
     })
 }
 
+pub fn text_crossing_in_optional_env(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    env: Option<Rc<TypeEnv>>,
+) -> bool {
+    match env.clone() {
+        Some(e) => crate::v1_compiler_infer_env::text_crossing_by_identity(
+            left.clone(),
+            right.clone(),
+            e.clone(),
+        ),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn node_type_compatible(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Option<Rc<TypeEnv>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
@@ -2441,11 +2456,7 @@ pub fn node_type_compatible(
             if (left_tv.clone() || right_tv.clone()) {
                 true
             } else {
-                if crate::v1_compiler_coercion::text_representations_cross(
-                    left.clone(),
-                    right.clone(),
-                    source_indices.clone(),
-                ) {
+                if text_crossing_in_optional_env(left.clone(), right.clone(), env.clone()) {
                     false
                 } else {
                     if (left_opt.clone() && right_is_unit.clone()) {
@@ -2462,6 +2473,7 @@ pub fn node_type_compatible(
                                         a.clone(),
                                         b.clone(),
                                         source_indices.clone(),
+                                        env.clone(),
                                     )
                                 })
                             } else {
@@ -2505,6 +2517,7 @@ pub fn node_type_compatible(
                                                                     left_el.clone(),
                                                                     right_el.clone(),
                                                                     source_indices.clone(),
+                                                                    env.clone(),
                                                                 )
                                                             }
                                                         }
@@ -2558,6 +2571,7 @@ pub fn node_type_compatible(
                                                                     left_el.clone(),
                                                                     right_el.clone(),
                                                                     source_indices.clone(),
+                                                                    env.clone(),
                                                                 )
                                                             }
                                                         }
@@ -2584,6 +2598,7 @@ pub fn node_type_compatible(
                                                             left_inner.clone(),
                                                             right_inner.clone(),
                                                             source_indices.clone(),
+                                                            env.clone(),
                                                         )
                                                     }
                                                 }
@@ -2687,6 +2702,7 @@ pub fn node_type_equals(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Option<Rc<TypeEnv>>,
 ) -> bool {
     {
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
@@ -2733,12 +2749,14 @@ pub fn node_type_equals(
                                     crate::v1_std_core::with_required_cardinality(left.clone()),
                                     crate::v1_std_core::with_required_cardinality(right.clone()),
                                     source_indices.clone(),
+                                    env.clone(),
                                 )
                             } else {
                                 node_type_equals_core(
                                     left.clone(),
                                     right.clone(),
                                     source_indices.clone(),
+                                    env.clone(),
                                 )
                             }
                         }
@@ -2819,12 +2837,9 @@ pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Option<Rc<TypeEnv>>,
 ) -> bool {
-    if crate::v1_compiler_coercion::text_representations_cross(
-        left.clone(),
-        right.clone(),
-        source_indices.clone(),
-    ) {
+    if text_crossing_in_optional_env(left.clone(), right.clone(), env.clone()) {
         false
     } else {
         if ((left.connective.clone() == Connective::Arrow)
@@ -2832,7 +2847,7 @@ pub fn node_type_equals_core(
         {
             ((left.connective.clone() == right.connective.clone())
                 && callable_signatures_agree(left.clone(), right.clone(), |a, b| {
-                    node_type_equals(a.clone(), b.clone(), source_indices.clone())
+                    node_type_equals(a.clone(), b.clone(), source_indices.clone(), env.clone())
                 }))
         } else {
             {
@@ -2894,6 +2909,7 @@ pub fn node_type_equals_core(
                                                     pair.1.clone(),
                                                     right_child.clone(),
                                                     source_indices.clone(),
+                                                    env.clone(),
                                                 ),
                                                 std::option::Option::None => false,
                                             }) {
@@ -2939,6 +2955,7 @@ pub fn node_type_equals_core(
                                                             child_type_node(left_ch.clone()),
                                                             child_type_node(right_ch.clone()),
                                                             source_indices.clone(),
+                                                            env.clone(),
                                                         ),
                                                         std::option::Option::None => false,
                                                     }
@@ -2991,6 +3008,7 @@ pub fn node_type_equals_core(
                                                                                 right_first.clone(),
                                                                             ),
                                                                             source_indices.clone(),
+                                                                            env.clone(),
                                                                         ) && node_type_equals(
                                                                             child_type_node(
                                                                                 left_second.clone(),
@@ -3000,6 +3018,7 @@ pub fn node_type_equals_core(
                                                                                     .clone(),
                                                                             ),
                                                                             source_indices.clone(),
+                                                                            env.clone(),
                                                                         ))
                                                                     }
                                                                     std::option::Option::None => {
@@ -3027,6 +3046,7 @@ pub fn node_type_equals_core(
                                                                 a.clone(),
                                                                 b.clone(),
                                                                 source_indices.clone(),
+                                                                env.clone(),
                                                             )
                                                         },
                                                     )

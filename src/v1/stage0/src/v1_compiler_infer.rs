@@ -19,7 +19,9 @@ pub use crate::std_algebra::carrier_container_equality_rows;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 use crate::std_coercion::SubtractionRefinement::SubtractionRefinementAmbiguous;
-use crate::std_coercion::TextRepresentation::{CodePointSequence, HostText, NotText};
+use crate::std_coercion::TextRepresentation::{
+    CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
+};
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
@@ -86,9 +88,7 @@ pub use crate::std_types::{
     container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
-pub use crate::v1_compiler_coercion::{
-    provenance_realizes_natively, text_representation_of_type, text_representations_cross,
-};
+pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -119,7 +119,8 @@ pub use crate::v1_compiler_infer_env::{
     qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
     qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    type_reference_declaration, type_reference_declaration_ref, unit_variant_index_shadow_insert,
+    text_crossing_by_identity, text_representation_by_identity, type_reference_declaration,
+    type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -254,9 +255,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
     ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation, TypeArgumentArityMismatch,
-    TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType,
-    VariantCollision,
+    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
+    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -1958,14 +1959,43 @@ pub fn declared_type_conformance_diags(
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
+    v1_rt::concat(
+        text_unjudged_advisories(
+            crate::v1_compiler_infer_env::text_representation_by_identity(
+                declared.clone(),
+                scope.type_env.clone(),
+            ),
+            crate::v1_compiler_infer_env::text_representation_by_identity(
+                produced.clone(),
+                scope.type_env.clone(),
+            ),
+            "a declared type".to_string(),
+            span.clone(),
+            scope.module_name.clone(),
+        ),
+        declared_type_conformance_diags_core(
+            declared.clone(),
+            produced.clone(),
+            span.clone(),
+            scope.clone(),
+        ),
+    )
+}
+
+pub fn declared_type_conformance_diags_core(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let both_ground = (conformance_ground_type(declared.clone(), si.clone())
             && conformance_ground_type(produced.clone(), si.clone()));
-        if crate::v1_compiler_coercion::text_representations_cross(
+        if crate::v1_compiler_infer_env::text_crossing_by_identity(
             declared.clone(),
             produced.clone(),
-            si.clone(),
+            scope.type_env.clone(),
         ) {
             Rc::new(vec![type_mismatch_error(
                 crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()),
@@ -2069,6 +2099,7 @@ pub fn declared_type_conformance_diags(
                                         declared.clone(),
                                         produced.clone(),
                                         si.clone(),
+                                        Some(scope.type_env.clone()),
                                     ) {
                                         Rc::new(vec![])
                                     } else {
@@ -2644,6 +2675,7 @@ pub fn set_element_types_mismatch(
     recv_elem: Rc<Node>,
     operand_elem: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Option<Rc<TypeEnv>>,
 ) -> bool {
     ((set_element_type_is_concrete(recv_elem.clone())
         && set_element_type_is_concrete(operand_elem.clone()))
@@ -2651,6 +2683,7 @@ pub fn set_element_types_mismatch(
             recv_elem.clone(),
             operand_elem.clone(),
             source_indices.clone(),
+            env.clone(),
         ))
 }
 
@@ -3804,6 +3837,7 @@ pub fn match_arm_types_are_proven_disjoint(
                     unified_arm_type.clone(),
                     arm_type.clone(),
                     source_indices.clone(),
+                    Some(scope.type_env.clone()),
                 ) == false))
         }
     }
@@ -7427,6 +7461,7 @@ pub fn callable_component_ground_mismatch(
                         formal_part.clone(),
                         instantiated.clone(),
                         source_indices.clone(),
+                        std::option::Option::None,
                     )
                 } else {
                     false
@@ -7687,10 +7722,10 @@ pub fn direct_call_arg_type_mismatch(
                         {
                             false
                         } else {
-                            (((crate::v1_compiler_coercion::text_representations_cross(
+                            (((crate::v1_compiler_infer_env::text_crossing_by_identity(
                                 formal.clone(),
                                 actual.clone(),
-                                source_indices.clone(),
+                                type_env.clone(),
                             ) || nominal_call_arg_brand_mismatch(
                                 formal.clone(),
                                 actual.clone(),
@@ -8372,45 +8407,10 @@ pub fn argument_text_representation(
     type_env: Rc<TypeEnv>,
     module_name: String,
 ) -> TextRepresentation {
-    {
-        let raw = expression_value_type(value.clone());
-        let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-            raw.clone(),
-            type_env.clone(),
-            module_name.clone(),
-        );
-        let raw_rep = crate::v1_compiler_coercion::text_representation_of_type(
-            raw.clone(),
-            type_env.source_indices.clone(),
-        );
-        let peeled_rep = crate::v1_compiler_coercion::text_representation_of_type(
-            peeled.clone(),
-            type_env.source_indices.clone(),
-        );
-        let raw_is_kernel_mint =
-            match (*crate::v1_std_core::type_reference_provenance(raw.clone())).clone() {
-                TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => true,
-                TypeDeclarationProvenance::CorpusDeclared { decl_file: _, .. } => false,
-                TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
-            };
-        match raw_rep.clone() {
-            TextRepresentation::CodePointSequence => TextRepresentation::CodePointSequence,
-            TextRepresentation::HostText => {
-                if raw_is_kernel_mint.clone() {
-                    TextRepresentation::HostText
-                } else {
-                    match peeled_rep.clone() {
-                        TextRepresentation::CodePointSequence => {
-                            TextRepresentation::CodePointSequence
-                        }
-                        TextRepresentation::HostText => TextRepresentation::HostText,
-                        TextRepresentation::NotText => TextRepresentation::HostText,
-                    }
-                }
-            }
-            TextRepresentation::NotText => peeled_rep.clone(),
-        }
-    }
+    crate::v1_compiler_infer_env::text_representation_by_identity(
+        expression_value_type(value.clone()),
+        type_env.clone(),
+    )
 }
 
 pub fn text_representation_is_text(r: TextRepresentation) -> bool {
@@ -8418,6 +8418,51 @@ pub fn text_representation_is_text(r: TextRepresentation) -> bool {
         TextRepresentation::NotText => false,
         TextRepresentation::HostText => true,
         TextRepresentation::CodePointSequence => true,
+        TextRepresentation::TextRepresentationUnidentified => false,
+    }
+}
+
+pub fn text_unjudged_advisories(
+    a: TextRepresentation,
+    b: TextRepresentation,
+    position: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let a_text = text_representation_is_text(a.clone());
+        let b_text = text_representation_is_text(b.clone());
+        let a_unid = match a.clone() {
+            TextRepresentation::TextRepresentationUnidentified => true,
+            _ => false,
+        };
+        let b_unid = match b.clone() {
+            TextRepresentation::TextRepresentationUnidentified => true,
+            _ => false,
+        };
+        if ((a_text.clone() && b_unid.clone()) || (b_text.clone() && a_unid.clone())) {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(
+                    CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary {
+                        position: position.clone(),
+                        span: span.clone(),
+                    },
+                ),
+                module_name.clone(),
+            )])
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn text_representations_both_code_point(a: TextRepresentation, b: TextRepresentation) -> bool {
+    match a.clone() {
+        TextRepresentation::CodePointSequence => match b.clone() {
+            TextRepresentation::CodePointSequence => true,
+            _ => false,
+        },
+        _ => false,
     }
 }
 
@@ -8426,14 +8471,17 @@ pub fn text_representations_disagree(a: TextRepresentation, b: TextRepresentatio
         TextRepresentation::NotText => false,
         TextRepresentation::HostText => match b.clone() {
             TextRepresentation::CodePointSequence => true,
+            TextRepresentation::TextRepresentationUnidentified => false,
             TextRepresentation::HostText => false,
             TextRepresentation::NotText => false,
         },
         TextRepresentation::CodePointSequence => match b.clone() {
             TextRepresentation::HostText => true,
+            TextRepresentation::TextRepresentationUnidentified => false,
             TextRepresentation::CodePointSequence => false,
             TextRepresentation::NotText => false,
         },
+        TextRepresentation::TextRepresentationUnidentified => false,
     }
 }
 
@@ -8463,19 +8511,20 @@ if match (*actual_expr.expr_data.clone()).clone() {
                     {
                         let actual_raw = expression_value_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-let formal_text = if (formal_code_point_view(app.formal.clone(), source_indices.clone()) != std::option::Option::None) {
+let formal_text = if (formal_code_point_view(app.formal.clone(), type_env.clone()) != std::option::Option::None) {
                             TextRepresentation::CodePointSequence
                         } else {
-                            crate::v1_compiler_coercion::text_representation_of_type(formal.clone(), source_indices.clone())
+                            crate::v1_compiler_infer_env::text_representation_by_identity(formal.clone(), type_env.clone())
                         };
 let actual_text = argument_text_representation(actual_expr.clone(), type_env.clone(), module_name.clone());
-if text_representations_disagree(formal_text.clone(), actual_text.clone()) {
+let unjudged = text_unjudged_advisories(formal_text.clone(), actual_text.clone(), "a call argument".to_string(), actual_expr.span.clone(), module_name.clone());
+v1_rt::concat(unjudged.clone(), if text_representations_disagree(formal_text.clone(), actual_text.clone()) {
                             Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text representation crossing at a call argument: declared ".to_string(), crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone())), ", produced ".to_string()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone())), " -- host text and a code-point sequence (FreeMonoid<Char>) meet only through the Unicode scalar unfold, which is applied to a host value at a code-point formal; a code-point sequence has no declared route into host text".to_string()),
     span: actual_expr.span.clone(),
 }), module_name.clone())])
                         } else {
-                            if (text_representation_is_text(formal_text.clone()) && text_representation_is_text(actual_text.clone())) {
+                            if text_representations_both_code_point(formal_text.clone(), actual_text.clone()) {
                                 Rc::new(vec![])
                             } else {
                                 if direct_call_arg_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()) {
@@ -8484,7 +8533,7 @@ if text_representations_disagree(formal_text.clone(), actual_text.clone()) {
                                     Rc::new(vec![])
                                 }
                             }
-                        }
+                        })
 }
                 }
 },
@@ -8552,6 +8601,10 @@ match value.inferred.clone().as_deref().cloned() {
     TextRepresentation::CodePointSequence => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("text representation crossing: argument '".to_string(), bound_name.clone()), "' of ".to_string()), func_name.clone()), " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence".to_string()), value.span.clone(), scope.module_name.clone())]),
     TextRepresentation::HostText => Rc::new(vec![]),
     TextRepresentation::NotText => Rc::new(vec![]),
+    TextRepresentation::TextRepresentationUnidentified => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary {
+    position: v1_rt::concat("argument '".to_string(), v1_rt::concat(bound_name.clone(), v1_rt::concat("' of ".to_string(), func_name.clone()))),
+    span: value.span.clone(),
+}), scope.module_name.clone())]),
 },
     _ => Rc::new(vec![]),
 }
@@ -8822,6 +8875,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                         re.clone(),
                                         oe.clone(),
                                         scope.type_env.clone().source_indices.clone(),
+                                        Some(scope.type_env.clone()),
                                     ),
                                     std::option::Option::None => false,
                                 },
@@ -10523,41 +10577,39 @@ pub fn host_text_unfolded_at_code_point_boundary(
             }
             TextRepresentation::CodePointSequence => value.clone(),
             TextRepresentation::NotText => value.clone(),
+            TextRepresentation::TextRepresentationUnidentified => value.clone(),
         },
         _ => value.clone(),
     }
 }
 
-pub fn formal_code_point_view(
-    formal: Rc<ResolvedFormal>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match crate::v1_compiler_coercion::text_representation_of_type(
+pub fn formal_code_point_view(formal: Rc<ResolvedFormal>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::text_representation_by_identity(
         formal.declared_type.clone(),
-        source_indices.clone(),
+        env.clone(),
     ) {
         TextRepresentation::HostText => std::option::Option::None,
-        _ => formal_code_point_view_peeled(formal.clone(), source_indices.clone()),
+        _ => formal_code_point_view_peeled(formal.clone(), env.clone()),
     }
 }
 
 pub fn formal_code_point_view_peeled(
     formal: Rc<ResolvedFormal>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
-    match crate::v1_compiler_coercion::text_representation_of_type(
+    match crate::v1_compiler_infer_env::text_representation_by_identity(
         formal.declaration_bound_conformance.clone(),
-        source_indices.clone(),
+        env.clone(),
     ) {
         TextRepresentation::CodePointSequence => Some(formal.declaration_bound_conformance.clone()),
-        _ => match crate::v1_compiler_coercion::text_representation_of_type(
+        _ => match crate::v1_compiler_infer_env::text_representation_by_identity(
             formal.substitution_basis.clone(),
-            source_indices.clone(),
+            env.clone(),
         ) {
             TextRepresentation::CodePointSequence => Some(formal.substitution_basis.clone()),
-            _ => match crate::v1_compiler_coercion::text_representation_of_type(
+            _ => match crate::v1_compiler_infer_env::text_representation_by_identity(
                 formal.declared_type.clone(),
-                source_indices.clone(),
+                env.clone(),
             ) {
                 TextRepresentation::CodePointSequence => Some(formal.declared_type.clone()),
                 _ => std::option::Option::None,
@@ -10664,10 +10716,9 @@ pub fn infer_call_arguments_generic_pass(
                     .skip(formal_index.clone() as usize)
                     .next()
                 {
-                    Some(carried) => formal_code_point_view(
-                        carried.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ),
+                    Some(carried) => {
+                        formal_code_point_view(carried.clone(), scope.type_env.clone())
+                    }
                     std::option::Option::None => std::option::Option::None,
                 },
                 CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
@@ -10992,13 +11043,14 @@ pub fn literal_boundary_elaboration(
             } else {
                 {
                     let is_code_point_sequence =
-                        match crate::v1_compiler_coercion::text_representation_of_type(
+                        match crate::v1_compiler_infer_env::text_representation_by_identity(
                             exp.clone(),
-                            scope.type_env.clone().source_indices.clone(),
+                            scope.type_env.clone(),
                         ) {
                             TextRepresentation::CodePointSequence => true,
                             TextRepresentation::HostText => false,
                             TextRepresentation::NotText => false,
+                            TextRepresentation::TextRepresentationUnidentified => false,
                         };
                     let identified = if is_code_point_sequence.clone() {
                         Some(code_point_sequence_structure_ref())
@@ -13459,6 +13511,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         then_rt.clone(),
                         else_rt.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        Some(scope.type_env.clone()),
                     ) {
                         Rc::new(vec![])
                     } else {
@@ -14424,6 +14477,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         span.clone(),
                         scope.module_name.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        Some(scope.type_env.clone()),
                     )),
                     _ => std::option::Option::None,
                 },
@@ -14491,6 +14545,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 span.clone(),
                                 scope.module_name.clone(),
                                 scope.type_env.clone().source_indices.clone(),
+                                Some(scope.type_env.clone()),
                             ))
                         }
                         _ => std::option::Option::None,
@@ -15933,7 +15988,7 @@ let field_type_diags = match field_declared_type.clone() {
 if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) {
                     Rc::new(vec![])
                 } else {
-                    if crate::v1_compiler_infer_types::node_type_compatible(expected_node.clone(), got_node.clone(), scope.type_env.clone().source_indices.clone()) {
+                    if crate::v1_compiler_infer_types::node_type_compatible(expected_node.clone(), got_node.clone(), scope.type_env.clone().source_indices.clone(), Some(scope.type_env.clone())) {
                         Rc::new(vec![])
                     } else {
                         if declared_alias_target_matches_produced(expected_node.clone(), got_node.clone(), scope.type_env.clone()) {

@@ -148,11 +148,11 @@ import v1.compiler.coercion {
   coerce_primitive_type, is_copy, target_callable, rust_lookup_exact_binding,
   declaration_realizes_natively_on_rust, type_reference_realization, declaration_realization,
   type_realization_decision, realized_checkpoint, realization_host_numeric_spelling,
-  realization_is_host_numeric, provenance_declares_structurally, text_representation_of_type
+  realization_is_host_numeric, provenance_declares_structurally
 }
 import std.coercion {
   TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
-  TypeRealizationDecision, HostText, CodePointSequence, NotText
+  TypeRealizationDecision
 }
 import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
@@ -901,15 +901,30 @@ fn rust_seed_host_container_base(name: String) -> String? {
   }
 }
 
+fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.children |> first {
+    Present { value: ch } => authored_name_at(source_indices: source_indices, node: ch)
+    Absent =>
+      match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+        Present { value: applied } =>
+          match applied.children |> first {
+            Present { value: ach } => authored_name_at(source_indices: source_indices, node: ach)
+            Absent => ""
+          }
+        Absent => ""
+      }
+  }
+}
 
 // An arrow is never a text carrier, whatever its authored name resolves to: `fn(String) -> String`
 // answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
 // argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
 //
-// THE ANSWER IS v1.compiler.coercion text_representation_of_type, the one authority the type
-// checker's compatibility relation also reads, so a pairing the checker admits is one this renderer
-// realizes with one carrier (gunbc.rung_drop text_boundary_identity_wall). The history below is why
-// that authority keys as it does.
+// NOT YET THE CHECKER'S AUTHORITY, AND DECLARED AS SUCH (gunbc.rung_drop text_boundary_identity_wall):
+// the checker decides text representation by declaration identity (v1.compiler.infer_env
+// text_representation_by_identity), which needs the TypeEnv census; these renderers hold no env, so
+// this arm keeps its provenance-keyed answer, measured to render the self-host crate byte-identically
+// to the pre-change emitter. The trigger that unifies them is the render paths carrying the env.
 //
 // The String arm is keyed on the resolved declaration's PROVENANCE, never on the spelling alone
 // (DESIGN section 3, and gunbc.recurring_failure_mode
@@ -939,10 +954,21 @@ fn rust_seed_host_container_base(name: String) -> String? {
 // before this gate, Agrees after).
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.connective == Arrow { return false }
-  match text_representation_of_type(n: n, source_indices: source_indices) {
-    HostText => true
-    CodePointSequence => false
-    NotText => false
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  if nm == "String" {
+    !provenance_declares_structurally(dag_name: "String", p: type_reference_provenance(n: n))
+  } else if nm == "FreeMonoid" || nm == "List" {
+    if rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) != "Char" {
+      false
+    } else {
+      match type_reference_provenance(n: n) {
+        CorpusDeclared { decl_file: _ } => false
+        KernelMinted { minted_name: _ } => true
+        DeclarationIdentityAbsent => true
+      }
+    }
+  } else {
+    false
   }
 }
 

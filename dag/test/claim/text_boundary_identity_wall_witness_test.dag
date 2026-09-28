@@ -174,3 +174,28 @@ test fn e_bare_string_parameter_beside_a_text_import_takes_a_host_literal() -> B
     ["vec![46]"]
   )
 }
+
+// SPELLING COLLISIONS -- the classifier decides by DECLARATION, so a user type that merely shares a
+// spelling is not text (review 72252). Each fixture declares its own `type Char { c: Int }`; a
+// spelling-keyed classifier read `List<Char>` as a code-point sequence and unfolded host text into
+// a list of user records, ADMITTING what the base compiler refused.
+test fn x_host_value_at_a_list_of_a_user_char_refuses() -> Bool {
+  refuses(source: "module probe_collision_a\ntype Char { c: Int }\nfn take(xs: List<Char>) -> Int { 0 }\nfn f(s: String) -> Int { take(xs: s) }\n")
+}
+
+test fn x_host_literal_at_a_list_of_a_user_char_refuses() -> Bool {
+  refuses(source: "module probe_collision_b\ntype Char { c: Int }\nfn take(xs: List<Char>) -> Int { 0 }\nfn f() -> Int { take(xs: \"hi\") }\n")
+}
+
+
+// REFINEMENT PEELING (v1.compiler.infer_env is_where_refinement_node): a refinement has its base's
+// representation, so std.types NonEmptyStr (`String where non_empty`) at a code-point formal
+// unfolds exactly as a String does.
+test fn u_refined_host_value_at_qualified_text_parameter_unfolds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_unfold_refined_probe\nimport std.types { NonEmptyStr }\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: NonEmptyStr) -> Int { take(t: s) }\n",
+    "src/test_claim_text_unfold_refined_probe.rs",
+    [".chars().map(|c| c as i64)"],
+    ["take(s)", "take(s.clone())"]
+  )
+}

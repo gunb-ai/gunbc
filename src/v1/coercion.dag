@@ -2,7 +2,7 @@ module v1.compiler.coercion
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
-import v1.std.core { qualified_last_segment, Node, Resolved, declaration_provenance_of, type_reference_provenance, NewlineIndex, authored_name_at, find_property }
+import v1.std.core { qualified_last_segment, Node, Resolved, declaration_provenance_of, type_reference_provenance }
 
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, TypeRealizationDecision,
@@ -10,8 +10,7 @@ import std.coercion {
   ExactSourceIdentityAbsent, BareRowMigratedToExactBinding, BoundRepresentationHasNoRealizationRow,
   ExactBindingAmbiguousForOneDeclaration, RealizationGround, GroundedByCheckpointRow,
   GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow, TypeDeclarationProvenance,
-  CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
-  TextRepresentation, HostText, CodePointSequence, NotText
+  CorpusDeclared, KernelMinted, DeclarationIdentityAbsent
 }
 
 import std.decl_ref { DeclarationRef }
@@ -180,97 +179,6 @@ fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenan
     CorpusDeclared { decl_file: f } => structural_declaration_modules_for(dag_name: dag_name) |> any(m => contains(f, m))
     KernelMinted { minted_name: _ } => false
     DeclarationIdentityAbsent => false
-  }
-}
-
-// WHICH TEXT REPRESENTATION A TYPE NODE DENOTES (std.coercion TextRepresentation). ONE authority,
-// read by the type-compatibility relation (v1.compiler.infer_types node_type_equals_core) and by the
-// Rust renderer (v1.compiler.emit_rust is_host_text_carrier_type), so the checker cannot admit a
-// pairing the emitted program then refuses.
-//
-// Keyed on the resolved declaration's provenance and its element, never on the spelling alone. A
-// corpus-declared text carrier over Char is the code-point sequence WHATEVER it is spelled: a
-// resolved `String<Char>` reference (a local `type String = FreeMonoid<Char>` keeps the alias name
-// and carries the Char element), a peeled `FreeMonoid<Char>` -- read from the node's resolved name as
-// well as its authored spelling, since a local `type Text = FreeMonoid<Char>` resolves to a
-// FreeMonoid node that keeps the authored spelling Text -- or a List<Char>. The
-// spelling String with no element is structural only where its declaration is on the structural
-// roster (structural_declaration_modules_for); an undotted kernel mint, or a reference whose
-// declaration is absent, is host text -- the same answer the renderer has always given those nodes.
-fn text_carrier_element_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  match n.children |> first {
-    Present { value: ch } => authored_name_at(source_indices: source_indices, node: ch)
-    Absent =>
-      match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-        Present { value: applied } =>
-          match applied.children |> first {
-            Present { value: ach } => authored_name_at(source_indices: source_indices, node: ach)
-            Absent => ""
-          }
-        Absent => ""
-      }
-  }
-}
-
-// A dotted kernel mint is not the kernel: the resolver mints a stand-in on the reference span for a
-// QUALIFIED structural reference (v2.std.text.String arrives as a kernel-minted
-// std.algebra.FreeMonoid<Char>), so it names the corpus declaration exactly as CorpusDeclared does.
-// Only an undotted mint -- the kernel's own String, or a bare List<Char> the seed mints -- is host.
-fn provenance_is_corpus_declared(p: TypeDeclarationProvenance) -> Bool {
-  match p {
-    CorpusDeclared { decl_file: _ } => true
-    KernelMinted { minted_name: m } => contains(m, ".")
-    DeclarationIdentityAbsent => false
-  }
-}
-
-// A QUALIFIED `...String` SPELLING, written directly or reached through a local alias (`type
-// LocalText = v2.std.text.String`, which resolves to a
-// childless leaf that keeps its authored spelling and carries the qualified target only as its
-// name) names its target module. That target is a code-point sequence exactly when its module is on the structural roster.
-// The roster is keyed by file path, so the module path is mapped onto that path here -- the same
-// positional residue structural_declaration_modules_for already declares, not a second authority.
-fn qualified_string_names_structural_declaration(qualified: String) -> Bool {
-  let module_path = substring(s: qualified, start: 0, end: string_length(s: qualified) - string_length(s: ".String"))
-  let module_file = concat(replace(module_path, ".", "/"), ".dag")
-  structural_declaration_modules_for(dag_name: "String") |> any(f => contains(f, module_file))
-}
-
-fn text_representation_of_type(n: Node, source_indices: Map<String, NewlineIndex>) -> TextRepresentation {
-  let authored_full = authored_name_at(source_indices: source_indices, node: n)
-  let authored = qualified_last_segment(name: authored_full)
-  let resolved_name = qualified_last_segment(name: n.name)
-  let element = qualified_last_segment(name: text_carrier_element_name(n: n, source_indices: source_indices))
-  let p = type_reference_provenance(n: n)
-  let is_monoid = authored == "FreeMonoid" || authored == "List" || resolved_name == "FreeMonoid" || resolved_name == "List"
-  if is_monoid {
-    if element != "Char" { NotText }
-    else if provenance_is_corpus_declared(p: p) { CodePointSequence }
-    else { HostText }
-  } else if resolved_name == "String" && authored != "String" && contains(n.name, ".") {
-    if qualified_string_names_structural_declaration(qualified: n.name) { CodePointSequence } else { NotText }
-  } else if authored == "String" && contains(authored_full, ".") {
-    if qualified_string_names_structural_declaration(qualified: authored_full) { CodePointSequence } else { NotText }
-  } else if authored == "String" {
-    if element == "Char" && provenance_is_corpus_declared(p: p) { CodePointSequence }
-    else if element != "" { NotText }
-    else if provenance_declares_structurally(dag_name: "String", p: p) { CodePointSequence }
-    else { HostText }
-  } else {
-    NotText
-  }
-}
-
-// A CROSSING between the two representations: both sides are text and they disagree. Every such
-// pairing is refused by the compatibility relation; the literal half never reaches it, because a
-// kernel literal at a code-point-sequence boundary is elaborated through the unfold first.
-fn text_representations_cross(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let l = text_representation_of_type(n: left, source_indices: source_indices)
-  let r = text_representation_of_type(n: right, source_indices: source_indices)
-  match l {
-    NotText => false
-    HostText => match r { CodePointSequence => true  HostText => false  NotText => false }
-    CodePointSequence => match r { HostText => true  CodePointSequence => false  NotText => false }
   }
 }
 

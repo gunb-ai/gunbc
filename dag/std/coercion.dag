@@ -118,7 +118,11 @@ type TypeDeclarationProvenance
 // value of one representation at a position of the other is therefore a crossing with no route,
 // and the type-compatibility relation refuses it rather than matching the two by spelling.
 // NotText is every other type: this classification says nothing about it.
-type TextRepresentation = HostText | CodePointSequence | NotText
+type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresentationUnidentified
+
+// TextRepresentationUnidentified: the node's declaration could not be read by identity (no declaring
+// span in the global index, no resolvable qualified name, an alias chain that cycles or exceeds its
+// bound). It is never read as NotText: a text boundary refuses a value it cannot identify.
 
 // WHICH STATE A TYPE REFERENCE IS IN WHEN ITS DECLARATION IS ASKED FOR -- the split of the one arm
 // the reference-site read used to answer for two states. v1.std.core type_reference_provenance

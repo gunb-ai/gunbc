@@ -43,6 +43,7 @@ pub enum TextRepresentation {
     HostText,
     CodePointSequence,
     NotText,
+    TextRepresentationUnidentified,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -292,6 +293,8 @@ pub struct HostText;
 pub struct CodePointSequence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NotText;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TextRepresentationUnidentified;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoResolutionBoundAtReference;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

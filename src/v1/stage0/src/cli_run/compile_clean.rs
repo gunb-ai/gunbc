@@ -1050,6 +1050,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         MethodExistenceUndecided { method: s(), receiver_type: s(), span: no_span() },
         MethodExistenceFrontierAdmitted { method: s(), receiver_type: s(), trigger: s(), span: no_span() },
         ReceiverTypeUnestablished { method: s(), span: no_span() },
+        TextRepresentationUnidentifiedAtBoundary { position: s(), span: no_span() },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
@@ -1538,6 +1539,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodNotFound { .. } => "MethodNotFound",
         CompilerDiagnostic::MethodExistenceUndecided { .. } => "MethodExistenceUndecided",
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "ReceiverTypeUnestablished",
+        CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => {
+            "TextRepresentationUnidentifiedAtBoundary"
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
@@ -1644,6 +1648,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodExistenceUndecided { method, .. } => method.clone(),
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
         CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
+        CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { position, .. } => {
+            position.clone()
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::TestCodeReferenceAdmitted { referrer, .. } => referrer.clone(),
