@@ -31,6 +31,7 @@ type FabricStateProvisionRequest
 fn fabric_state_provision_request(attempt: AttemptIdentity) -> FabricStateProvisionRequest {
   let resource = secret_ref_secret_resource(ref: fabric_state_key_secret_ref)
   let intent = serialize_json(v: json_object(members: [
+    json_kv(key: "attempt", value: json_string(s: attempt as String)),
     json_kv(key: "secret", value: json_string(s: resource)),
     json_kv(key: "version", value: json_string(s: fabric_state_key_secret_ref.version as String)),
     json_kv(key: "material", value: json_string(s: "fresh HMAC-SHA256 key; initial version only; no replacement")),

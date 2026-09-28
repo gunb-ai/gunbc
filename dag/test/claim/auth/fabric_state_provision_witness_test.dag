@@ -48,7 +48,7 @@ test fn material_approval_is_bound_to_its_run_attempt() -> Bool {
         let decision = PollApproved { revision: request_revision_of(request: first), decided_by: "fixture-operator",
           decided_at: "2026-09-28T12:00:00Z", execute_by: "2026-09-28T12:05:00Z" }
         match approval_gate_from_poll(poll: decision, request: retry, observed_at: "2026-09-28T12:01:00Z") {
-          GateRefused { cause: _ } => first.subject == retry.subject && first.escalation_id != retry.escalation_id
+          GateRefused { cause: _ } => request_revision_of(request: first) != request_revision_of(request: retry) && first.escalation_id != retry.escalation_id
           GateAdmitted { authorization: _ } => false
         }
       }
