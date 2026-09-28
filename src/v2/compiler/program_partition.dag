@@ -17,10 +17,8 @@ import v2.compiler.infer {
   inferred_facts_subject_node
 }
 import extdeps.communication.medium { Medium }
-import v2.compiler.translate {
-  serialize_concrete_syntax_tokens_to_source,
-  translate_project_transform_in_arrow_scope
-}
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.lens.application { subterm_at }
 import std.algebra { Empty, list_append, list_snoc_item }
