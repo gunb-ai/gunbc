@@ -336,7 +336,7 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // which binary, which handler, which root, which principal, which port. Deploying blue twice at two
 // different commits produces the SAME DeploymentServiceConfig both times, which is what makes it a
 // topology rather than a log.\n\nThe launch identity now travels beside the spec as
-// gunbc.live_deploy.emit ReleaseRevisionBinding, supplied at the apply seam and read only where
+// gunbc.live_deploy.release_locus ReleaseRevisionBinding, supplied at the apply seam and read only where
 // ExecStart is rendered. The retract fold passes RevisionNotInstalled and can therefore not name a
 // revision even by accident — the arm that would render one refuses loudly instead of emitting a
 // plausible line.
@@ -504,7 +504,7 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 //
 // The binary the broker runs is COPIED INTO ITS PER-CANDIDATE RELEASE LOCUS from the verified
 // release-bins artifact in the same job, so it is a function of the revision being deployed --
-// gunbc.live_deploy.emit approval_broker_release_binary_path -- and there is no constant this field
+// gunbc.live_deploy.release_locus approval_broker_release_binary_path -- and there is no constant this field
 // could hold that would be true. Holding the roadmap's path "for shape" is exactly the fork that
 // shipped the hazard: a field read as authoritative while the real answer lived elsewhere.
 //
@@ -518,7 +518,7 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 // DISSOLVES WHEN DeploymentServiceConfig carries the binding rather than a path: a service either
 // runs a constant binary or one resolved per release, and that is a two-armed fact the type can
 // hold. At that point this field becomes PerReleaseBinary and the poison deletes.
-data approval_broker_serve_binary_is_per_release_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker's serve binary was read from DeploymentServiceConfig. The broker runs a binary copied into its per-candidate release locus, so this field holds no constant that is true; gunbc.live_deploy.emit approval_broker_release_binary_path is the authority. This marker is not a valid executable path, so a unit rendered from it fails loudly rather than starting the roadmap's frozen binary against the broker's newer sources (DESIGN section 5)."
+data approval_broker_serve_binary_is_per_release_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker's serve binary was read from DeploymentServiceConfig. The broker runs a binary copied into its per-candidate release locus, so this field holds no constant that is true; gunbc.live_deploy.release_locus approval_broker_release_binary_path is the authority. This marker is not a valid executable path, so a unit rendered from it fails loudly rather than starting the roadmap's frozen binary against the broker's newer sources (DESIGN section 5)."
 
 fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -> DeploymentServiceConfig {
   DeploymentServiceConfig {
