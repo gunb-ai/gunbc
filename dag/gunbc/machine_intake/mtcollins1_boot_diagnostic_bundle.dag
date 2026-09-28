@@ -10,6 +10,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeo
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import gunbc.machine_intake_mtcollins1_boot_phase_timing { MtCollins1BootPhaseTiming, mtcollins1_boot_phase_timing_not_taken, mtcollins1_boot_phase_timing_text }
 import v2.std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -47,6 +48,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 import gunbc.machine_intake_ampere_dram_console_observation {
   AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text,
 }
+import gunbc.machine_intake_kernel_module_decompression_observation { KernelModuleDecompressionObservation, kernel_module_decompression_observation, kernel_module_decompression_text, kernel_module_decompression_findings }
 import gunbc.machine_intake_ampere_socket_console_observation {
   AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, AmpereSocketReferenceComparison,
   ampere_socket_console_observation, ampere_socket_console_text, ampere_socket_reference_comparison, ampere_socket_reference_comparison_text,
@@ -258,7 +260,7 @@ type InventoryReading {
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, modules: KernelModuleDecompressionObservation }
   | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
@@ -333,6 +335,7 @@ type MtCollins1BootRunRecord {
   override_after: BootParam5Reading
   override: BootOverrideConsumption
   power_after: PowerAfterAttempt
+  timing: MtCollins1BootPhaseTiming
 }
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
@@ -343,6 +346,7 @@ fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
     override_after: BootParam5NotTaken { reason: reason },
     override: OverrideNotHandedOff { reason: reason },
     power_after: PowerAfterNotTaken { reason: reason },
+    timing: mtcollins1_boot_phase_timing_not_taken(reason: reason),
   }
 }
 
@@ -456,6 +460,8 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   join([
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
+    "-- phase timing (gunbc.machine_intake_mtcollins1_boot_phase_timing) --",
+    mtcollins1_boot_phase_timing_text(t: r.timing),
     boot_param5_text(label: "before", r: r.override_before),
     boot_param5_text(label: "after", r: r.override_after),
     "-- smpro pass at power on --",
@@ -576,7 +582,7 @@ fn socket_summary_findings(o: AmpereSocketConsoleObservation) -> List<String> {
 
 fn console_findings(c: ConsoleReading) -> List<String> {
   match c {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _ } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), socket_summary_findings(o: o))
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _, modules: m } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), concat(socket_summary_findings(o: o), kernel_module_decompression_findings(o: m)))
     _ => []
   }
 }
@@ -898,8 +904,8 @@ fn firmware_report_text(report: FirmwareConsoleReport) -> String {
 
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d, sockets: o, against_reference: cmp } =>
-      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp))
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d, sockets: o, against_reference: cmp, modules: m } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n", kernel_module_decompression_text(o: m))
     ConsoleExceedsBound { path: p, size: b, bound: bound } =>
       concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
     ConsoleNotRetained { path: p } =>
@@ -1553,6 +1559,7 @@ fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String
       path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines),
       sockets: sockets,
       against_reference: ampere_socket_reference_comparison(reference_path: mtcollins1_census_sol_artifact_path, reference_text: reference.text, read_ok: reference.ok, read_error: reference.error, subject: sockets),
+      modules: kernel_module_decompression_observation(lines: lines),
     }
   }
 }

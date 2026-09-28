@@ -522,6 +522,20 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     for path in d.regressed.iter() {
         message.push_str(&format!("\nheads-reading-differential: REGRESSED {path}"));
     }
+    // DECLARATION-NAME AGREEMENT, printed as host output beside the parse figures rather than
+    // folded into the verdict: `HeadsReadingDifferentialObservation` carries four populations and
+    // this is a fifth, so it has no home in the modeled standing yet. It is the population a pool
+    // name census consumes, which the whole-node `divergent` row cannot isolate. FOLD-IN TRIGGER:
+    // the first consumer that decides on this population (a gate, or step 1's reference-edge name
+    // index claiming its exactness) lands it as a field of `HeadsReadingDifferentialObservation`
+    // with `holds()` requiring it empty; until then it is a reading, not a verdict.
+    message.push_str(&format!(
+        "\nheads-reading-differential: declaration_names_divergent={}",
+        d.declaration_names_divergent.len()
+    ));
+    for row in d.declaration_names_divergent.iter() {
+        message.push_str(&format!("\nheads-reading-differential: NAMES {row}"));
+    }
     // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
     // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
     //
@@ -1034,7 +1048,12 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 ///
 /// `held` and `advanced` are the observation holding: every planned identity reached a terminal
 /// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
-/// roster, which the nightly turns into a pull request. `lost` and `unminted` are the observation
+/// roster, which a reviewed pull request may carry (the nightly only publishes it). An owned
+/// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
+/// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
+/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
+/// `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
@@ -1043,7 +1062,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_frontier(source_roots, &pattern) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
-                "held" | "advanced" => Termination::ObservationHeld,
+                "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
                 "lost" | "unminted" => Termination::ObservationDidNotHold,
                 "not-a-measurement" => Termination::SubjectUnreached,
                 other => {

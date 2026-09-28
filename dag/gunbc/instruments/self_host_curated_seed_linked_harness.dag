@@ -80,7 +80,7 @@ data cssl_closure_assembly_note: String = "Generic closure assembly: the dep pop
 // SCAFFOLD — tracked debt: Cargo.toml TOML markup authored via concat string literals in
 // cssl_v1_compiled_cargo_* (same class as slb_cargo_toml / ssuv_cargo_toml / peh_cargo_toml).
 // Probe-only throwaway measurement — not gate-side substrate. dissolve-on: extdeps cargo manifest
-// grammar rows + bash-emit #5828 OR harness consolidation; until then one concat producer per
+// grammar rows OR harness consolidation; until then one concat producer per
 // variant ([[bin]] witness vs [lib] probe), consumed only via tools.self_host_curated_probe_cargo.
 
 fn cssl_repo_path(root: String, rel: String) -> String {

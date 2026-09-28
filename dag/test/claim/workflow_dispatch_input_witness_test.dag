@@ -457,15 +457,17 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // match alone would stay green over a step whose env no longer hands the dispatch inputs to the
 // admission, or whose run invokes a different entry: it holds that the step reaches the modeled fold
 // (host_reset_return_dispatch_admission_wet reads both env names) with both inputs wired. Control:
-// dropping fleet_converge_reset_observer_dispatch_admission_step() from the own list turns this red.
+// dropping fleet_converge_reset_observer_dispatch_admission_step() from the own list turns this red,
+// and so does removing its own-mode gate (it once ran, for minutes, on every mode's dispatch).
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
   any(
     fleet_converge_build_job_own_steps(),
     st => match st {
-      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
         match i {
           Present { value: v } =>
             v == "reset_observer_dispatch_admission"
+              && (match c { Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn)  Absent => false })
               && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
               && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
               && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
