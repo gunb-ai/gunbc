@@ -19,12 +19,12 @@ import v2.std.compilers.body_lowering {
   application_binding_plan,
   arrow_declared_parameter_order
 }
-import v2.std.compilers.target_model { target_transform_has_named_actual }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  all_edges_positional,
   Arrow,
   Atom,
   ComputationNode,
@@ -110,7 +110,7 @@ fn nab_nodes(o: Outcome<Node>) -> List<Node> {
 fn nab_named_applications(o: Outcome<Node>) -> List<Node> {
   fold(nab_nodes(o: o), init: [], f: fn(acc, m) {
     match m.kind {
-      ComputationNode { behavior: Transform } => if target_transform_has_named_actual(body: m) { concat(acc, [m]) } else { acc }
+      ComputationNode { behavior: Transform } => if !all_edges_positional(children: m.children) { concat(acc, [m]) } else { acc }
       _ => acc
     }
   })
