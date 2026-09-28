@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 repo = Path(__file__).resolve().parents[2]
+subprocess.run(['python3', str(repo/'tools/tests/dag_validation_closure.py'), 'test.manual.issue_command_wet', '--output', 'target/issue-command-wet'], cwd=repo, check=True)
 root = Path(tempfile.mkdtemp(prefix='gunbc-issue-command-'))
 fixture = root/'repo'
 def git(*args, cwd=None):
