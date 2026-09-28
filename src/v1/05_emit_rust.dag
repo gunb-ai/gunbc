@@ -552,6 +552,21 @@ fn is_grounded_coproduct_native_alias(name: String) -> Bool {
     || is_host_diagnostics_carrier_alias(name: name)
 }
 
+// A COPRODUCT THE CORPUS BINDS NATIVELY (gunbc.rust_source_type_bindings, keyed on the declaration)
+// REALIZES ONLY AS ITS HOST SPELLING: no enum is emitted for it, so there is no enum to glob-import
+// and no bridge to convert from. Its arms reach the target as the carrier's values
+// (rust_native_variant_spelling over rust_source_variant_value_rows). This is asked of the
+// declaration by identity; it is not a name in the list above, which is the older spelling-keyed
+// family and is not grown here.
+fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name: String) -> Bool {
+  match rust_lookup_exact_binding(source: Present { value: decl_ref(module_path: module_path, decl_name: decl_name) }) {
+    ResolvedExactBinding { binding: _ } => true
+    ExactBindingAbsent => false
+    ExactBindingAmbiguous { candidate_count: _ } => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+  }
+}
+
 fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) == "Optional" && n.children |> count > 0
 }
@@ -5593,7 +5608,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", uncovered_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item)
-      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item)))
+      && !is_grounded_coproduct_native_alias(name: authored_name(env: scope.type_env, node: item))
+      && !rust_declaration_realizes_as_native_alias(module_path: authored_name(env: scope.type_env, node: m), decl_name: authored_name(env: scope.type_env, node: item)))
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
@@ -6882,7 +6898,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let main_lines = concat(direct_lines, parent_main_lines)
     let variant_lines = parent_list |> flat_map(parent =>
-      if is_grounded_coproduct_native_alias(name: parent) { [] } else {
+      if is_grounded_coproduct_native_alias(name: parent) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: parent) { [] } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
@@ -6916,7 +6932,8 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
-        && !is_grounded_coproduct_native_alias(name: en))
+        && !is_grounded_coproduct_native_alias(name: en)
+        && !rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: en))
       |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
     concat(main_lines, variant_lines, wildcard_enum_lines)
   }
@@ -7403,7 +7420,12 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   let item_text = authored_name(env: env, node: item)
   match item.module_item_kind {
     ModuleItemTypeDeclaration =>
-      if is_type_def_item(item: item) {
+      if is_type_def_item(item: item) && rust_declaration_realizes_as_native_alias(module_path: module_name, decl_name: item_text) {
+        match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
+          Present { value: host } => concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
+          Absent => emit_rust_compile_error_expr(message: concat("declaration '", item_text, "' is bound natively but its binding yields no spelling"))
+        }
+      } else if is_type_def_item(item: item) {
         emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
       } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 

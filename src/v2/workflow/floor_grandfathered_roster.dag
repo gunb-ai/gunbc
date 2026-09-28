@@ -125,6 +125,10 @@ type GrandfatheredRemoval =
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
+    identity: "v2.test.emit.trait_derive_seed_emit_binding_test.bool_supplemental_impl_present" as NonEmptyStr,
+    deleted_in: "the Bool de-fork: std.types Bool realizes only as the host `bool` (v1.compiler.emit_rust rust_declaration_realizes_as_native_alias over its gunbc.rust_source_type_bindings row), so no enum Bool is emitted and the From<Bool> for bool bridge this asserted has nothing to convert from; the bridge (extdeps.languages.rust.emit rust_supplemental_impls_bool_coproduct), its target predicate and scaffold row are deleted with it" as NonEmptyStr
+  },
+  WitnessDeleted {
     identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.bool_row_is_found_by_exact_destination" as NonEmptyStr,
     deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so the row this asserted no longer exists by ruling; its RED successor is v2.test.claim.self_host.peano_nat_structural_realization_test.no_bool_literal_row_exists" as NonEmptyStr
   },
