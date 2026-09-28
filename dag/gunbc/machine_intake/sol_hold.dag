@@ -127,19 +127,19 @@ fn sol_hold_owned_condition() -> Node {
   )
 }
 
-fn sol_hold_record_read() -> List<Node> {
+fn sol_hold_record_read(absent_code: String) -> List<Node> {
   [
     bash_build_assign(name: "f", value: shv(name: "1")),
-    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-f"), shv(name: "f")])), then_stmts: [bash_build_exit(code: "RECORD_ABSENT")]),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-f"), shv(name: "f")])), then_stmts: [bash_build_exit(code: absent_code)]),
     bash_build_assign(name: "p", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f1"), shv(name: "f")]))),
     bash_build_assign(name: "s", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f2"), shv(name: "f")]))),
-    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "p")]), right: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")]))])), then_stmts: [bash_build_exit(code: "RECORD_ABSENT")]),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "p")]), right: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")]))])), then_stmts: [bash_build_exit(code: absent_code)]),
   ]
 }
 
-fn sol_hold_with_absent_code(stmts: List<Node>, code: String) -> String {
+fn sol_hold_rendered(stmts: List<Node>) -> String {
   match bash_emit_stmts(statements: stmts, set_e: false) {
-    Accepted { value: text, diagnostics: _ } => replace(text, "RECORD_ABSENT", code)
+    Accepted { value: text, diagnostics: _ } => text
     Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
   }
 }
@@ -154,7 +154,7 @@ fn sh_wait_gone(seconds: String) -> Node {
 // RELEASE KILLS THE OWNED COLLECTOR AND NOTHING ELSE: TERM, a two-second bounded wait, KILL only if it
 // is still that instance, a one-second wait. Exits 0 when the recorded instance is gone (or the record
 // names no live instance, which is left alone), 1 only when our process survived KILL.
-data mtcollins1_sol_hold_release_script: String = sol_hold_with_absent_code(code: "0", stmts: sol_hold_record_read().concat([
+data mtcollins1_sol_hold_release_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "0").concat([
   bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [sol_hold_owned_condition()])), then_stmts: [bash_build_exit(code: "0")]),
   bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
   sh_wait_gone(seconds: "2"),
@@ -167,7 +167,7 @@ data mtcollins1_sol_hold_release_script: String = sol_hold_with_absent_code(code
 
 // THE OWNED CHECK: exits 0 while the record at $1 names its live instance, 1 otherwise (no record, a
 // gone or replaced process). Signals nothing.
-data mtcollins1_sol_hold_owned_check_script: String = sol_hold_with_absent_code(code: "1", stmts: sol_hold_record_read().concat([
+data mtcollins1_sol_hold_owned_check_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "1").concat([
   bash_build_if_from_stmts(cond: sol_hold_owned_condition(), then_stmts: [bash_build_exit(code: "0")]),
   bash_build_exit(code: "1"),
 ]))
