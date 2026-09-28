@@ -868,11 +868,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_wildcard_total,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/std/float.dag::float_body_is_nan" },
-    reason: nfr_reason_mint_era,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/std/native_agreement.dag::runtime_value_discriminant_octet" },
     reason: nfr_reason_native_agreement_octet,
     dissolution: nfr_dissolve_native_agreement_octet,
