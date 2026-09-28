@@ -3,7 +3,11 @@ module v2.test.claim.callexec.declaration_reference_eval
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree }
-import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.eval {
+  eval,
+  eval_callee_declaration_optional,
+  inputs_root_only
+}
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -36,8 +40,9 @@ import v2.std.node {
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { List, list_at_optional }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 
-import v2.std.runtime { RuntimeValue }
+import v2.std.runtime { RuntimePrimitive, RuntimeValue }
 import v2.std.algebra { fold_list }
 import v2.std.qualified_name {
   declaration_reference_path_optional,
@@ -194,9 +199,97 @@ fn cref_eval_of_the_call() -> Optional<Outcome<RuntimeValue>> {
   }
 }
 
-// THE POSITIVE CONTROL FOR THE FIXTURE ITSELF, so a red below is a statement about eval and not about
-// an assembly that never produced a call. Without this, every claim in this file would pass vacuously
-// on a source that stopped resolving.
+fn cref_zero_arg_source() -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn callee() -> Int {\n  7\n}\n\nfn consumer() -> Int {\n  callee()\n}\n")
+}
+
+fn cref_one_arg_constant_body_source() -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  7\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n")
+}
+
+fn cref_bool_pair_source() -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn consumer() -> Bool {\n  truth(only_arg: 3)\n}\n")
+}
+
+fn cref_unresolved_callee_source() -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn consumer() -> Int {\n  absent_callee(only_arg: 3)\n}\n")
+}
+
+fn cref_inferred_of(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred)
+      }
+  }
+}
+
+fn cref_eval_of(o: Outcome<ResolvedTree>) -> Optional<Outcome<RuntimeValue>> {
+  match cref_inferred_of(o: o) {
+    Absent => optional_absent()
+    Present { value: inferred } =>
+      match cref_first_call_optional(root: inferred.root) {
+        Absent => optional_absent()
+        Present { value: call } =>
+          optional_present(
+            value: eval(
+              tree: inferred,
+              interpretation: v2_evaluator_interpretation(),
+              inputs: inputs_root_only(root: call)
+            )
+          )
+      }
+  }
+}
+
+fn cref_executes(o: Outcome<ResolvedTree>) -> Bool {
+  match cref_eval_of(o: o) {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn cref_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn cref_executes_to(o: Outcome<ResolvedTree>, n: Int) -> Bool {
+  match cref_eval_of(o: o) {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        Accepted { value: v, diagnostics: _ } => cref_runtime_int_equals(value: v, n: n)
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn cref_refusal_reason_is(o: Outcome<ResolvedTree>, wanted: Symbol) -> Bool {
+  match cref_eval_of(o: o) {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ds } => symbol_eq(a: ds.head.reason, b: wanted)
+      }
+  }
+}
+
+// THE FIXTURE'S OWN POSITIVE CONTROL, so a red below is a statement about eval and not about an
+// assembly that stopped producing a call. Without it every claim here could pass vacuously.
 test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
   match cref_inferred() {
     Absent => false
@@ -208,13 +301,11 @@ test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
   }
 }
 
-// WHAT THE NATIVE LOG COULD NOT SAY. The anchor of eval's refusal is a node INSIDE the callee
-// reference's encoded declaring path -- so eval is demanding value-grounding for the internal
-// representation of a declaration identity rather than consuming that identity as a reference. This
-// claim is the comparison that attributes the native refusal, and it is expected to hold until the
-// classifier and the executable-binding connection land; when they do it becomes the regression
-// control that the walk no longer descends into path data.
-test fn cref_the_eval_refusal_anchors_inside_the_declaring_path_holds() -> Bool {
+// THE DENOTATION REACHES EVAL. Infer records the declaration the guarded index lookup returned, and
+// eval's reader finds it. This is the seam the whole repair rests on, so it is asserted directly and
+// not only through the execution claims: if this goes red, the reds below are explained by a missing
+// denotation rather than by the dispatch.
+test fn cref_the_reference_facts_carry_their_declaration_holds() -> Bool {
   match cref_inferred() {
     Absent => false
     Present { value: inferred } =>
@@ -224,21 +315,48 @@ test fn cref_the_eval_refusal_anchors_inside_the_declaring_path_holds() -> Bool 
           match cref_callee_reference_optional(n: call) {
             Absent => false
             Present { value: reference } =>
-              match cref_eval_of_the_call() {
+              match eval_callee_declaration_optional(tree: inferred, callee: reference) {
+                Present { value: _ } => true
                 Absent => false
-                Present { value: outcome } =>
-                  match outcome {
-                    Accepted { value: _, diagnostics: _ } => false
-                    Rejected { diagnostics: ds } =>
-                      match cref_diagnostic_node_optional(d: ds.head) {
-                        Absent => false
-                        Present { value: anchor } =>
-                          symbol_eq(a: ds.head.reason, b: ^eval_rejected_grounding_not_derived)
-                            && cref_node_in(xs: cref_spine_nodes(reference: reference), wanted: anchor)
-                      }
-                  }
               }
           }
       }
   }
+}
+
+// A NAMED CALL EXECUTES, AND EXECUTES TO ITS CALLEE'S VALUE. The value is asserted rather than mere
+// acceptance: any Int-returning path would satisfy "Accepted" while proving nothing about WHICH
+// declaration ran, and 7 is written only in the callee's body.
+test fn cref_a_zero_argument_named_call_executes_to_its_callee_value_holds() -> Bool {
+  cref_executes_to(o: cref_zero_arg_source(), n: 7)
+}
+
+// THE SAME WITH AN ARGUMENT SUPPLIED, which is a separate fact from the zero-argument case because
+// the argument edge is a separate child of the call.
+test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
+  cref_executes_to(o: cref_one_arg_constant_body_source(), n: 7)
+}
+
+// PARAMETER BINDING IS NOT YET DEMONSTRATED, AND THIS IS THE CLAIM THAT WOULD DEMONSTRATE IT. Both
+// executing claims above have CONSTANT bodies, so neither proves the supplied argument reaches the
+// callee's parameter -- a callee ignoring its argument entirely would pass both. This fixture returns
+// its parameter, so its value depends on the argument, and it REFUSES today. Enrolled executed and
+// expected-red rather than deleted, so the gap is counted rather than described.
+test fn cref_a_parameter_bodied_callee_still_refuses_holds() -> Bool {
+  cref_refusal_reason_is(o: cref_source(), wanted: ^eval_rejected_grounding_not_derived)
+}
+
+// A BOOL-RETURNING CALL STILL REFUSES, AND IT IS A DIFFERENT BOUNDARY FROM THE PARAMETER BODY. This
+// callee's body is a constant, so it differs from the executing claim above only in its RETURN TYPE.
+// The call grounds under infer, so this sits downstream of both the reference repair and the dispatch
+// repair. Enrolled executed, not diagnosed further here.
+test fn cref_a_bool_returning_call_still_refuses_holds() -> Bool {
+  cref_refusal_reason_is(o: cref_bool_pair_source(), wanted: ^eval_rejected_grounding_not_derived)
+}
+
+// THE DISCRIMINATING NEGATIVE FOR THE DISPATCH: a callee naming no declaration must refuse rather
+// than execute, fabricate a value, or be looked up as a primitive under a name it does not have.
+// Without this, the repair could have admitted any Conj as a callee and still looked green.
+test fn cref_an_unresolved_callee_does_not_execute_holds() -> Bool {
+  !cref_executes(o: cref_unresolved_callee_source())
 }

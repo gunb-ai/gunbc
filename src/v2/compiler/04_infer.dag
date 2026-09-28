@@ -1,5 +1,6 @@
 module v2.compiler.infer
 
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, TypeDenotationKind, kind_node, roster_member_kind }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, zip_map }
@@ -480,7 +481,8 @@ fn inferred_facts_construction(
     Accepted {
       value: InferredFacts {
         grounding: DerivedGrounding { grounding: grounding },
-        descent: descent
+        descent: descent,
+        denotation: optional_absent()
       },
       diagnostics: None
     }
@@ -505,7 +507,8 @@ fn inferred_facts_not_derived(
   Accepted {
     value: InferredFacts {
       grounding: GroundingNotDerived { node: node },
-      descent: descent
+      descent: descent,
+      denotation: optional_absent()
     },
     diagnostics: Some {
       diagnostics: diagnostics_singleton(
@@ -915,14 +918,41 @@ fn infer_declaration_reference_facts(
             Absent =>
               inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
             Present { value: callable } =>
-              inferred_facts_from_derived_type(
-                node: n,
-                derived_type: callable,
-                descent: Holds { value: descent_proof }
+              infer_facts_denoting(
+                o: inferred_facts_from_derived_type(
+                  node: n,
+                  derived_type: callable,
+                  descent: Holds { value: descent_proof }
+                ),
+                declaration: declared
               )
           }
       }
   }
+}
+
+// THE DENOTATION IS RECORDED HERE AND NOWHERE ELSE, because here is where the GUARDED reader answered.
+// eval cannot ask symbol_index_lookup -- it holds no index -- so without this the only routes open to
+// it are a weaker second resolution authority over the tree (which would accept references the guard
+// refuses, DESIGN section 3) or reading the declaration's body out of the callable TYPE evidence
+// (which conflates two facts). Recording the declaration the lookup returned keeps one authority for
+// "which declaration does this reference name" and leaves eval a consumer of it.
+//
+// ONLY A GROUNDED REFERENCE CARRIES ONE. An underived arm keeps its Absent denotation, so a consumer
+// cannot reach an executable body for a reference whose contract was refused.
+fn infer_facts_denoting(o: Outcome<InferredFacts>, declaration: Node) -> Outcome<InferredFacts> {
+  bind_outcome(
+    o: o,
+    f: fn(facts) {
+      outcome_accepted(
+        value: InferredFacts {
+          grounding: facts.grounding,
+          descent: facts.descent,
+          denotation: optional_present(value: declaration)
+        }
+      )
+    }
+  )
 }
 
 fn lookup_inferred_facts_in_entries(
