@@ -116,7 +116,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_node }
 import v2.std.node {
   Arrow,
   Atom,
@@ -1057,13 +1057,43 @@ fn infer_binding_value_type_witness(binding: Symbol, at: Node) -> Witness<Node> 
 // (positional child 1). Read from the declaration, never from the Arrow's composed evidence, which
 // also carries the body. Absent when the return is not a binding this language's join denotes, and
 // then nothing is derived from it.
+// A RETURN EXPRESSION THAT IS ALREADY AN ESTABLISHED TYPE IS CONSUMED, NOT DENOTED AGAIN. This reader
+// sent every return Atom's identity to dag_binding_denotation, which is a BINDING-to-type operation.
+// Int survived that because its canonical type constructor retains the historical spelling
+// ^dag_binding_type_int, so its binding and type identities coincide and a second denotation is a
+// no-op. Bool does not: it arrives as the DENOTED node (v2.std.logic bool_node, ^bool_node_symbol),
+// the binding lookup answered Absent, and both consumers of this reader lost the return -- the
+// application's result typing dropped to the frontier, and the body-versus-declared-return check
+// skipped its comparison. So Int masked the reader's assumption and Bool exposed it.
+//
+// THE RECOGNITION IS BY AUTHORITY, NOT BY SPELLING. The established case is compared against
+// v2.std.logic's own bool_node() through the existing structural equality, rather than teaching a
+// second meaning for ^bool_node_symbol here or widening dag_binding_denotation to accept a denoted
+// symbol -- that lookup stays strictly binding-to-type. An arbitrary Atom is not a resolved value type
+// and still answers Absent.
+//
+// ORDERED DENOTATION-FIRST so the Int path is byte-identical: only a return the binding lookup cannot
+// denote reaches the established-type question. ONE reader, so introduction and elimination cannot
+// disagree about the same signature.
+fn infer_established_return_type_optional(ret: Node) -> Optional<Node> {
+  if infer_type_equal_ignoring_provenance(a: ret, b: bool_node()) {
+    optional_present(value: bool_node())
+  } else {
+    optional_absent()
+  }
+}
+
 fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
     Absent => Absent
     Present { value: ret } =>
       match infer_atom_binding_sym(node: ret) {
-        Absent => Absent
-        Present { value: binding } => dag_binding_denotation(sym: binding)
+        Absent => infer_established_return_type_optional(ret: ret)
+        Present { value: binding } =>
+          match dag_binding_denotation(sym: binding) {
+            Present { value: denoted } => Present { value: denoted }
+            Absent => infer_established_return_type_optional(ret: ret)
+          }
       }
   }
 }
@@ -2848,6 +2878,12 @@ fn infer_transform_derived_optional(
 // derived -- so arrow introduction has checked its body against that return. An underived callee,
 // a non-Arrow operator, or a return the language join does not denote stays on the counted
 // frontier: Absent here, never an admission.
+// THE GROUNDING QUESTION IS ABOUT THE CALLEE USE, THE TYPE COMES FROM ITS EVIDENCE. The facts lookup
+// below was keyed by `arrow`. That was right while an arrow could only be the callee node itself, and
+// wrong as soon as the arrow may be a DECLARATION's Arrow reached through the use's facts: that node
+// belongs to the declaring module, is not a node of this tree, and so has no entry here -- the lookup
+// answered Absent and the application dropped to the frontier however well the callee was typed. The
+// use and its type evidence are two things; only the first has facts in this tree.
 fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
   match infer_application_callee_use(node: node) {
     Absent => optional_absent()
@@ -2855,12 +2891,6 @@ fn infer_transform_application_optional(node: Node, entries: List<InferredFactsE
   match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => optional_absent()
     Present { value: arrow } =>
-      // THE GROUNDING QUESTION IS ABOUT THE CALLEE USE, THE TYPE COMES FROM ITS EVIDENCE. This lookup
-      // was keyed by `arrow`. That was right while an arrow could only be the callee node itself, and
-      // wrong as soon as the arrow may be a DECLARATION's Arrow reached through the use's facts: that
-      // node belongs to the declaring module, is not a node of this tree, and so has no entry here --
-      // the lookup answered Absent and the application dropped to the frontier however well the callee
-      // was typed. The use and its type evidence are two things; only the first has facts in this tree.
       match lookup_inferred_facts_in_entries(entries: entries, key: callee_use) {
         Absent => optional_absent()
         Present { value: arrow_facts } =>

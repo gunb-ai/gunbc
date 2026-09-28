@@ -263,7 +263,7 @@ fn dre_execution_source() -> Outcome<ResolvedTree> {
 // infer_arrow_declared_return_type -> dag_binding_denotation. Enrolled executed rather than deleted,
 // and NOT diagnosed further here: which binding symbol a Bool return actually carries is the next
 // question, and answering it is a separate change from this one.
-fn dre_a_named_call_to_a_bool_fn_is_grounded_expected_red() -> Bool {
+test fn dre_a_named_call_to_a_bool_fn_is_grounded_holds() -> Bool {
   dre_call_is_grounded_for(o: dre_execution_source(), wanted: ^truth)
 }
 
@@ -307,16 +307,6 @@ fn dre_first_application_for(n: Node, wanted: Symbol) -> Optional<Node> {
   )
 }
 
-fn dre_diag_bool_reference_grounds() -> Bool {
-  match dre_single_use_domain_labels(o: dre_execution_source(), wanted: ^truth) {
-    Absent => false
-    Present { value: labels } =>
-      match labels {
-        Cons { head: first, tail: _ } => first == ^only_arg
-        Empty => false
-      }
-  }
-}
 
 // Bool param AND Bool return, body is the parameter -- the same shape as the working Int case, so the
 // only variable against dre_execution_source is the literal body.
@@ -324,6 +314,81 @@ fn dre_bool_param_source() -> Outcome<ResolvedTree> {
   dre_assemble(src: "module p\n\nfn truth(only_arg: Bool) -> Bool {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Bool {\n  truth(only_arg: y)\n}\n")
 }
 
-fn dre_diag_bool_param_call_grounds() -> Bool {
-  dre_call_is_grounded_for(o: dre_bool_param_source(), wanted: ^truth)
+
+fn dre_return_atom_of(o: Outcome<ResolvedTree>, wanted: Symbol) -> Optional<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } =>
+          match dre_uses_of(root: inferred.root, wanted: wanted) {
+            Empty => optional_absent()
+            Cons { head: use_node, tail: _ } =>
+              match inferred.facts.lookup(use_node) {
+                Absent => optional_absent()
+                Present { value: facts } =>
+                  match facts.grounding {
+                    GroundingNotDerived { node: _ } => optional_absent()
+                    DerivedGrounding { grounding: g } =>
+                      match list_at_optional(xs: node_positional_child_targets(node: g.witness.structural.evidence), index: 1) {
+                        Absent => optional_absent()
+                        Present { value: ret } =>
+                          match ret.kind {
+                            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+                            _ => optional_absent()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+
+
+
+
+
+
+// THE MISMATCH NEGATIVES. Recognising a Bool return must ACTIVATE the body-versus-declared-return
+// check, not merely admit more nodes: infer_arrow_declared_return_type is shared by that check and by
+// application result typing, and while it answered Absent for Bool the check SKIPPED its comparison.
+// So a Bool-declared function with an Int body, and the converse, must still refuse.
+fn dre_bool_declared_int_body() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn wrong(only_arg: Int) -> Bool {\n  only_arg\n}\n")
+}
+
+fn dre_int_declared_bool_body() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn wrong(only_arg: Bool) -> Int {\n  only_arg\n}\n")
+}
+
+fn dre_infer_refuses(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+// EXPECTED RED, AND MEASURED AS PRE-EXISTING. infer ACCEPTS both mismatches. The cause is upstream of
+// the return reader: infer_arrow_body_inhabits_declared_return is only reached when the Arrow has
+// evidence edges; without them the arm answers inferred_facts_not_derived, which is the frontier, and
+// a frontier is not a refusal -- so the comparison never runs. Verified by reverting ONLY the return
+// reader and re-running: both rows fail identically, so this change neither causes nor repairs it.
+//
+// WHY THEY ARE ENROLLED ANYWAY: they are the controls that would catch a return-type recognition that
+// admitted nodes without activating the check. They cannot discharge that duty while the check is
+// unreachable, and saying so is more useful than deleting them -- when the evidence-edge condition is
+// repaired, these rows become the guard for it without anyone rediscovering the shape.
+fn dre_a_bool_declared_int_body_still_refuses_expected_red() -> Bool {
+  dre_infer_refuses(o: dre_bool_declared_int_body())
+}
+
+fn dre_an_int_declared_bool_body_still_refuses_expected_red() -> Bool {
+  dre_infer_refuses(o: dre_int_declared_bool_body())
 }
