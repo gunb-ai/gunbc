@@ -37,6 +37,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.emit { serialize_json_object, json_kv, json_string }
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import std.content_hash { content_hash_atom, content_hash_validate_lower_hex_syntax }
 import extdeps.tools { apt_package_of }
 import extdeps.apt { package_xz_utils }
@@ -230,17 +232,33 @@ fn runner_browser_toolchain_location(job_user: NonEmptyStr) -> RunnerBrowserTool
 //   HOME                      the working directory
 //   PATH                      runner_browser_toolchain_system_path, a fixed value -- ldd is a shell
 //                             script, and a declared search path is not an inherited one
+//   PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
+//                             so Playwright writes nothing into the admitted tree (see below)
 //
 // NODE_PATH IS DELIBERATELY NOT SET: node consults it only AFTER walking node_modules upward from the
 // working directory, so it cannot pin the package. Playwright is required by the ABSOLUTE path
 // location.playwright_module, passed as an operand.
 data runner_browser_toolchain_system_path: String = "/usr/sbin:/usr/bin:/sbin:/bin"
 
+// PLAYWRIGHT MUST NOT WRITE INTO THE ADMITTED TREE, AND ON ITS OWN IT DOES (fleet-converge run
+// 36469030109, srv1): on the first launch Playwright's registry validates the executable's host
+// requirements and then writes an empty DEPENDENCIES_VALIDATED marker into the browser's install
+// directory (packages/playwright-core/src/server/registry/index.ts
+// _validateHostRequirementsForExecutableIfNeeded), rewriting it every 30 days. That one file moved the
+// srv1 tree from the pinned 829fefb8... to 89e3b24d... -- reproduced exactly by adding the empty marker
+// to a locally extracted tree -- so every later admission refused and every consumer read NotReady.
+// The state is EXCLUDED at its source rather than re-admitted: PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS
+// (the same function's documented skip) stops both the check and the write. The check it skips is not
+// lost: this module's own library readback runs ldd over both executables under the same declared
+// environment and refuses, naming the soname and its package, before any launch.
+data playwright_skip_host_validation_env: String = "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS"
+
 fn runner_browser_toolchain_env(location: RunnerBrowserToolchainLocation, directory: String) -> List<EnvBinding> {
   [
     EnvSet { name: playwright_browsers_path_env as String, value: location.browsers_path as String },
     EnvSet { name: "HOME", value: directory },
     EnvSet { name: "PATH", value: runner_browser_toolchain_system_path },
+    EnvSet { name: playwright_skip_host_validation_env, value: "1" },
   ]
 }
 
@@ -454,10 +472,17 @@ fn archive_extraction_text(e: BrowserToolchainExtraction) -> String {
   }
 }
 
+// THE LAUNCH POLICY IS PART OF THE RECIPE, because it decides whether the tree stays what was admitted:
+// a recipe whose launches may write into the tree names a different, unstable tree. Folding it in also
+// gives the repaired recipe its own name, so the tree srv1 carries from before the repair (e4ad7f3f559ad5a8,
+// now contested) is left alone and reported as superseded-retained, and the next converge places a fresh
+// one beside it.
+data runner_browser_toolchain_launch_policy_text: String = "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1"
+
 fn runner_browser_toolchain_recipe_text(archives: List<BrowserToolchainArchive>, tree_sha256: NonEmptyStr) -> String {
   join(list_append(
     left: map(archives, a => join([a.file_name as String, a.url as String, archive_pin_text(pin: a.pin), a.destination_relative as String, archive_extraction_text(e: a.extraction)], " ")),
-    right: [concat("tree:", tree_sha256 as String)],
+    right: [concat("tree:", tree_sha256 as String), concat("launch-policy:", runner_browser_toolchain_launch_policy_text)],
   ), "\n")
 }
 
@@ -699,6 +724,7 @@ type RunnerBrowserToolchainStanding {
   versions: List<VersionReadback>
   libraries: List<HostLibraryReadback>
   launch: BrowserLaunchReadback
+  after: TreeAdmission
 }
 
 // LDD OUTPUT IS ACCEPTED LINE BY LINE AS RECOGNIZED EVIDENCE OR NOT AT ALL (finding 4). A line is
@@ -779,11 +805,30 @@ data browser_toolchain_probe_title: String = "gunbc-browser-toolchain-inhabitanc
 
 data browser_toolchain_probe_width_px: String = "137"
 
-data browser_toolchain_probe_page: String = join([
-  "<!doctype html><html><head><title>", browser_toolchain_probe_title,
-  "</title></head><body><div id=\"probe\" style=\"width:", browser_toolchain_probe_width_px,
-  "px;height:11px\">rendered</div></body></html>",
-], "")
+// THE PROBE PAGE IS A MARKUP TREE, SERIALIZED BY extdeps.languages.html (review 72231): a document
+// whose title is the probe title and whose body holds one element of declared geometry. It carries
+// no doctype -- a fixed-width block's laid-out width is the same in either rendering mode, and no
+// Fragment node spells a doctype -- so nothing in it is hand-written markup.
+fn browser_toolchain_probe_fragment() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element { tag: "head", attributes: [], children: [Element { tag: "title", attributes: [], children: [FragmentText { content: browser_toolchain_probe_title }] }] },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          Element {
+            tag: "div",
+            attributes: [attr(name: "id", value: "probe"), attr(name: "style", value: join(["width:", browser_toolchain_probe_width_px, "px;height:11px"], ""))],
+            children: [FragmentText { content: "rendered" }],
+          },
+        ],
+      },
+    ],
+  }
+}
 
 fn browser_toolchain_probe_page_path(scratch: String) -> String {
   join([scratch, "/inhabitance.html"], "")
@@ -908,7 +953,10 @@ fn plant_probe_wet(scratch: String) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(scratch: scratch)), transport: LocalExec))
     && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/package.json"], ""), content: browser_toolchain_decoy_package_json).success
     && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/index.js"], ""), content: browser_toolchain_decoy_index).success
-    && Filesystem.Write(path: browser_toolchain_probe_page_path(scratch: scratch), content: browser_toolchain_probe_page).success
+    && match try_serialize_html_source(node: browser_toolchain_probe_fragment()) {
+      EmitOk { html: h } => Filesystem.Write(path: browser_toolchain_probe_page_path(scratch: scratch), content: h).success
+      EmitRejected { reason: _ } => false
+    }
 }
 
 fn libraries_resolved(libraries: List<HostLibraryReadback>) -> Bool {
@@ -937,6 +985,7 @@ fn runner_browser_toolchain_readback_at_wet(host: NonEmptyStr, location: RunnerB
     RunnerBrowserToolchainStanding {
       host: host, location: location, tree: TreeUnobservable { tree: location.root, reason: "no per-invocation scratch directory could be created" }, versions: [], libraries: [],
       launch: BrowserLaunchNotAttempted { reason: "no scratch directory, so nothing was read or executed" },
+      after: TreeUnobservable { tree: location.root, reason: "no per-invocation scratch directory could be created" },
     }
   } else {
     let standing = runner_browser_toolchain_readback_in_wet(host: host, location: location, pinned: pinned, scratch: trim(s: scratch_dir.path as String))
@@ -945,17 +994,23 @@ fn runner_browser_toolchain_readback_at_wet(host: NonEmptyStr, location: RunnerB
   }
 }
 
+// THE TREE IS ADMITTED AGAIN AFTER EVERY CANDIDATE HAS RUN (eager-owl-205, after run 36469030109):
+// an execution that wrote inside the tree -- a marker, a cache, a lock -- is caught on the run that
+// wrote it, as TreeContentMismatch naming the new digest, instead of on some later consumer's
+// admission after the tree has already been handed out.
 fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerBrowserToolchainLocation, pinned: NonEmptyStr, scratch: String) -> RunnerBrowserToolchainStanding {
   let admission = admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree.manifest"], ""), pinned: pinned)
   if tree_admitted(a: admission) == false {
     RunnerBrowserToolchainStanding {
       host: host, location: location, tree: admission, versions: [], libraries: [],
       launch: BrowserLaunchNotAttempted { reason: "the tree is not admitted, so nothing in it was executed" },
+      after: admission,
     }
   } else if plant_probe_wet(scratch: scratch) == false {
     RunnerBrowserToolchainStanding {
       host: host, location: location, tree: admission, versions: [], libraries: [],
       launch: BrowserLaunchRefused { reason: join(["the probe page and decoy could not be written under ", scratch, ", so the resolution control could not run"], "") },
+      after: admission,
     }
   } else {
     let libraries = [
@@ -985,7 +1040,8 @@ fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerB
     } else {
       BrowserLaunchNotAttempted { reason: "a version or a host library did not read back, so the launch would not exercise the pinned toolchain" }
     }
-    RunnerBrowserToolchainStanding { host: host, location: location, tree: admission, versions: versions, libraries: libraries, launch: launch }
+    let after = admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree-after.manifest"], ""), pinned: pinned)
+    RunnerBrowserToolchainStanding { host: host, location: location, tree: admission, versions: versions, libraries: libraries, launch: launch, after: after }
   }
 }
 
@@ -995,6 +1051,7 @@ fn runner_browser_toolchain_readback_wet(host: NonEmptyStr, location: RunnerBrow
 
 fn runner_browser_toolchain_ready(s: RunnerBrowserToolchainStanding) -> Bool {
   tree_admitted(a: s.tree)
+    && tree_admitted(a: s.after)
     && versions_match(versions: s.versions)
     && libraries_resolved(libraries: s.libraries)
     && match s.launch { BrowserLaunchRendered { title: _, rendered_width: _, resolved_module: _ } => true  _ => false }
@@ -1038,6 +1095,7 @@ fn runner_browser_toolchain_standing_text(s: RunnerBrowserToolchainStanding) -> 
     join(map(s.versions, v => version_readback_text(v: v)), "\n"), "\n",
     join(map(s.libraries, l => library_readback_text(l: l)), "\n"), "\n",
     launch_readback_text(l: s.launch), "\n",
+    "after-execution ", tree_admission_text(a: s.after), "\n",
     if runner_browser_toolchain_ready(s: s) { "standing=ready" } else { "standing=not-ready" },
   ], "")
 }

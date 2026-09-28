@@ -21,10 +21,12 @@ import gunbc.runner_browser_toolchain {
   BrowserToolchainArchive, runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
   tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
+  browser_toolchain_probe_fragment,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
 import extdeps.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import gunbc.verified_archive_install { ArchiveSha256 }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import extdeps.exec.command { argv_words }
 import extdeps.browser.chromium { chromium_151_0_7922_34, chromium_version_line }
 import extdeps.automation.playwright { PlaywrightHostLibraryPackage, playwright_chromium_install_deps_ubuntu2404_arm64 }
@@ -322,6 +324,7 @@ test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() ->
     concat("PLAYWRIGHT_BROWSERS_PATH=", loc.browsers_path as String),
     "HOME=/scratch/decoy",
     "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+    "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1",
     loc.node_binary as String,
     "-e 0 a",
   ], " ")
@@ -334,6 +337,16 @@ test fn only_other_recipe_trees_are_reported_as_superseded() -> Bool {
     entries: ["e4ad7f3f559ad5a8", "archives", "staging.Ab12Cd34", "staging.retiring-x-old", "playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef", ""],
     current: "e4ad7f3f559ad5a8",
   ) == ["playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef"]
+}
+
+// THE PROBE PAGE IS EMITTED, NOT WRITTEN (review 72231): the markup tree serializes through
+// extdeps.languages.html to exactly this document -- the title the launch readback demands and one
+// element of the declared 137 px width.
+test fn the_probe_page_is_emitted_by_the_html_serializer() -> Bool {
+  match try_serialize_html_source(node: browser_toolchain_probe_fragment()) {
+    EmitOk { html: h } => h == "<html><head><title>gunbc-browser-toolchain-inhabitance</title></head><body><div id=\"probe\" style=\"width:137px;height:11px\">rendered</div></body></html>"
+    EmitRejected { reason: _ } => false
+  }
 }
 
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install
