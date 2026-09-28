@@ -549,3 +549,15 @@ test fn the_launch_shape_derives_from_the_plan() -> Bool {
     && token_count_value(t: l.max_num_batched_tokens) == 8192 && basis_point_count(bp: l.gpu_memory_utilization) == 8000
     && match l.prefix_caching { PrefixCachingExplicit { enabled: e } => !e  PrefixCachingOmitted => false }
 }
+
+// ARM B RESOLVES FROM THE PRODUCTION IMAGE'S CONFIG DIGEST.
+test fn arm_b_is_the_production_image() -> Bool {
+  let prod = v41_oci_image_digest(
+    manifest: OciSha256Digest(Sha256Digest { hex: "3333333333333333333333333333333333333333333333333333333333333333" as Sha256DigestHex }),
+    config: OciSha256Digest(Sha256Digest { hex: "5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" as Sha256DigestHex }),
+  )
+  match v41_engram_arm_of(image: prod, bindings: v41_engram_arm_bindings) {
+    Present { value: arm } => match arm { EngramFileBackedReleased => true  EngramUpstreamPinned => false }
+    Absent => false
+  }
+}
