@@ -52,12 +52,13 @@ import gunbc.auth.approval_keyring_pins {
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix,
+  mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_ready_allowance, mtcollins1_sol_notice_final_allowance,
   mtcollins1_boot_sol_capture_path_env,
   mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script }
-import gunbc.machine_intake_mtcollins1_sol_notice { mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_stop_suffix, mtcollins1_sol_notice_ready_suffix }
+import gunbc.machine_intake_mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix, mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
@@ -2799,10 +2800,14 @@ data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: Dissolut
 // does not start until the watcher has published readiness (up to 15 minutes: resolving its entry was
 // measured at 340 s on a loaded host); a watcher that exits or never becomes ready refuses the step
 // before any BMC contact.
+// THE WATCHER IS ONE OWNED SIBLING, SUPERVISED. The step starts it with a fresh token, records the
+// child it started as "<pid> <starttime>" (the boot refuses each further BMC effect unless that record
+// still names a live process: gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_observer_refusal),
+// and starts the boot only when the readiness file holds this step's token and that child is alive.
 // THE TRAP RELEASES FIRST, THEN ASKS THE WATCHER TO STOP, so the exit its own release causes is still
-// published: the watcher's final passes run until that exit is delivered on both channels or five
-// seconds pass. The trap waits eight seconds for it and reports, as an ::error::, a watcher that had
-// not finished. Every fallible trap command carries `|| true` or sits in an `if`: under set -e a failing
+// published, waits mtcollins1_sol_notice_final_allowance for it and COLLECTS ITS EXIT STATUS. The boot's
+// status and the watcher's are kept apart: a failed, killed or unfinished watcher is reported with both
+// and fails the step even when the boot command succeeded; a boot failure is never replaced by it. Every fallible trap command carries `|| true` or sits in an `if`: under set -e a failing
 // command aborts the trap, and a kill of an already-exited watcher once skipped the release.
 // THE TRAP STOPS THE SOL COLLECTOR THROUGH THE HOLD'S OWN RELEASE (gunbc.machine_intake_sol_hold
 // mtcollins1_sol_hold_release_script), not a `kill $(cat pidfile)` of its own: the pid file holds
@@ -2823,7 +2828,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
     Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
     Do { run: ci_retry_body_run(command: concat("SOL_RELEASE='", concat(mtcollins1_sol_hold_release_script, "'"))) },
-    Do { run: ci_retry_body_run(command: join(["trap 'if [ -n \"$\{SOL_WORKFLOW:-\}\" ]; then echo \"", mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_WORKFLOW\" || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; if [ -n \"$\{SOL_NOTICE_WATCH:-\}\" ]; then : > \"$SOL_OUT", mtcollins1_sol_notice_stop_suffix, "\" || true; for i in $(seq 1 40); do kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null || break; sleep 0.2; done; if kill \"$SOL_NOTICE_WATCH\" 2>/dev/null; then echo \"::error::mtcollins1 SOL notice watcher had not finished 8 s after the stop request; see $SOL_DELIVERY\"; fi; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT"], "")) },
+    Do { run: ci_retry_body_run(command: join(["trap 'rc=$?; if [ -n \"$\{SOL_WORKFLOW:-\}\" ]; then echo \"", mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_WORKFLOW\" || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; obs=unstarted; if [ -n \"$\{SOL_NOTICE_WATCH:-\}\" ]; then : > \"$SOL_OUT", mtcollins1_sol_notice_stop_suffix, "\" || true; for i in $(seq 1 ", to_string((second_count(s: mtcollins1_sol_notice_final_allowance) as Int) * 5), "); do kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null || break; sleep 0.2; done; if kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null; then kill \"$SOL_NOTICE_WATCH\" 2>/dev/null || true; obs=unfinished; else wait \"$SOL_NOTICE_WATCH\" && obs=0 || obs=$?; fi; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"; if [ \"$obs\" != 0 ] && [ \"$obs\" != unstarted ]; then echo \"::error::mtcollins1 SOL notice watcher result: $obs (the boot command exited $rc); delivery ledger: $\{SOL_DELIVERY:-unset\}\"; if [ \"$rc\" = 0 ]; then rc=1; fi; fi; exit $rc' EXIT"], "")) },
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
@@ -2831,9 +2836,11 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
     Do { run: ci_retry_body_run(command: join(["SOL_LOSS=\"$SOL_OUT", mtcollins1_sol_incident_suffix, "\"; SOL_CLIENT=\"$SOL_OUT", mtcollins1_sol_client_suffix, "\"; SOL_WORKFLOW=\"$SOL_OUT", mtcollins1_sol_workflow_suffix, "\"; SOL_DELIVERY=\"$SOL_OUT", mtcollins1_sol_delivery_suffix, "\""], "")) },
     Do { run: ci_retry_body_run(command: join([": > \"$SOL_LOSS\"; : > \"$SOL_CLIENT\"; : > \"$SOL_WORKFLOW\"; : > \"$SOL_DELIVERY\"; rm -f \"$SOL_OUT", mtcollins1_sol_notice_file_infix, "\"*"], "")) },
+    Do { run: ci_retry_body_run(command: join(["SOL_NOTICE_TOKEN=$(od -An -N8 -tx8 /dev/urandom | tr -d ' \\n'); [ -n \"$SOL_NOTICE_TOKEN\" ]; export ", mtcollins1_sol_notice_token_env as String, "=\"$SOL_NOTICE_TOKEN\""], "")) },
     gunbc_invoke_root_stamp_step(),
     Do { run: ci_retry_body_run(command: concat(gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_sol_notice_target.entry, function: gunbc_ci_mtcollins1_sol_notice_target.function, claim_run: false), " & SOL_NOTICE_WATCH=$!")) },
-    Do { run: ci_retry_body_run(command: join(["for i in $(seq 1 900); do [ -e \"$SOL_OUT", mtcollins1_sol_notice_ready_suffix, "\" ] && break; kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null || break; sleep 1; done; if [ ! -e \"$SOL_OUT", mtcollins1_sol_notice_ready_suffix, "\" ]; then echo \"::error::mtcollins1 SOL notice watcher is not ready; refusing the boot before any BMC contact\"; exit 1; fi"], "")) },
+    Do { run: ci_retry_body_run(command: join(["if ! ( st=$(cat /proc/$SOL_NOTICE_WATCH/stat) && st=$\{st##*) \} && set -f && set -- $st && printf '%s %s\\n' \"$SOL_NOTICE_WATCH\" \"$\{20\}\" > \"$SOL_OUT", mtcollins1_sol_notice_file_infix, "watcher.tmp\" && mv -T \"$SOL_OUT", mtcollins1_sol_notice_file_infix, "watcher.tmp\" \"$SOL_OUT", mtcollins1_sol_notice_file_infix, "watcher\" ); then echo \"::error::mtcollins1 SOL notice watcher could not be recorded; refusing the boot before any BMC contact\"; exit 1; fi"], "")) },
+    Do { run: ci_retry_body_run(command: join(["for i in $(seq 1 ", to_string(second_count(s: mtcollins1_sol_notice_ready_allowance) as Int), "); do [ \"$(cat \"$SOL_OUT", mtcollins1_sol_notice_ready_suffix, "\" 2>/dev/null)\" = \"$SOL_NOTICE_TOKEN\" ] && break; kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null || break; sleep 1; done; if [ \"$(cat \"$SOL_OUT", mtcollins1_sol_notice_ready_suffix, "\" 2>/dev/null)\" != \"$SOL_NOTICE_TOKEN\" ] || ! kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null; then echo \"::error::mtcollins1 SOL notice watcher is not ready (no readiness under this step's token, or the watcher exited); refusing the boot before any BMC contact\"; exit 1; fi"], "")) },
   ])
 }
 

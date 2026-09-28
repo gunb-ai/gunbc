@@ -131,7 +131,8 @@ type IpmitoolSolActivateRefusal
 data ipmitool_sol_operational_banner: String = "[SOL Session operational."
 
 fn ipmitool_sol_activate_line(output: String, pattern: String) -> String {
-  match filter(split(s: output, delimiter: "\n"), l => string_contains(s: l, pattern: pattern)).first() {
+  let hits: List<String> = filter(split(s: output, delimiter: "\n"), l => string_contains(s: l, pattern: pattern))
+  match hits.first() {
     Present { value: l } => trim(s: l)
     Absent => ""
   }

@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
-import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notice_of, sol_notice_annotation }
+import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
+import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused }
 import extdeps.github.log_annotations { log_annotation_message_line }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -17,7 +18,7 @@ import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_run {
   SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
   SolAcquireStart, sol_acquire_plan,
-  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
+  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance, mtcollins1_sol_notice_ready_allowance, mtcollins1_sol_notice_final_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
   mtcollins1_boot_sol_is_held,
   SolCollectorObservation, SolCollectorHeld, SolCollectorExited, SolCollectorUnrecorded, SolCollectorUnobservable, SolCollectorPathUnset,
@@ -67,7 +68,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // NO APPROVAL WINDOW (operator ruling 2026-09-23): the step budget is the boot's own phases only.
 test fn the_step_timeout_covers_the_boot_phases() -> Bool {
-  let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
+  let covered = (second_count(s: mtcollins1_sol_notice_ready_allowance) as Int)
+    + (second_count(s: mtcollins1_sol_notice_final_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_in_run_smpro_allowance()) as Int)
@@ -932,7 +935,7 @@ test fn a_sol_notice_is_one_escaped_workflow_command() -> Bool {
 // it (at requested strength); one a second after is later and so not its cause; the same second, or an
 // instant that does not order, is unresolved; none at all says so; an incomplete record is no notice.
 fn exit_body(events: String) -> String {
-  match sol_exit_notice_of(client_diagnostics: "gunbc-sol-hold: collector exited status=143 at=2026-09-28T11:00:00Z\n", workflow_events: events) { Present { value: n } => n.body  Absent => "" }
+  match sol_exit_notices_of(client_diagnostics: "gunbc-sol-hold: collector exited status=143 at=2026-09-28T11:00:00Z\n", workflow_events: SolSourceRead { content: events }).first() { Present { value: n } => n.body  Absent => "" }
 }
 
 test fn the_exit_notice_orders_requests_by_instant_not_by_reading() -> Bool {
@@ -940,11 +943,46 @@ test fn the_exit_notice_orders_requests_by_instant_not_by_reading() -> Bool {
   let after = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=2026-09-28T11:00:01Z\n")
   let same = exit_body(events: "gunbc-workflow: collector release requested by the step exit trap at=2026-09-28T11:00:00Z\n")
   let unknown = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=unknown\n")
-  let partial = sol_exit_notice_of(client_diagnostics: "gunbc-sol-hold: collector exited status=1", workflow_events: "")
+  let partial = sol_exit_notices_of(client_diagnostics: "gunbc-sol-hold: collector exited status=1", workflow_events: SolSourceAbsent).first()
   string_contains(s: before, pattern: "after this run's request") && string_contains(s: before, pattern: "(requested, not proven to be the cause)")
     && string_contains(s: after, pattern: "no request of this run preceded it") && string_contains(s: after, pattern: "which therefore did not cause it") && !string_contains(s: after, pattern: "after this run's request")
     && string_contains(s: same, pattern: "in the same second as") && string_contains(s: same, pattern: "unresolved")
     && string_contains(s: unknown, pattern: "order unresolved") && !string_contains(s: unknown, pattern: "after this run's request")
     && string_contains(s: exit_body(events: ""), pattern: "no teardown or release had been requested by this run")
     && (match partial { Present { value: _ } => false  Absent => true })
+}
+
+// EVERY EXIT RECORD IS ITS OWN NOTICE, including two in the same second and two with no orderable
+// instant; an unreadable request history is carried as unresolved, never as "no request was made",
+// while a genuinely absent history is.
+test fn every_exit_record_is_a_distinct_notice_and_unreadable_history_is_unresolved() -> Bool {
+  let two = "gunbc-sol-hold: collector exited status=1 at=2026-09-28T11:00:00Z\ngunbc-sol-hold: collector exited status=143 at=2026-09-28T11:00:00Z\n"
+  let unknown = "gunbc-sol-hold: collector exited status=1 at=unknown\ngunbc-sol-hold: collector exited status=2 at=unknown\n"
+  let same = sol_exit_notices_of(client_diagnostics: two, workflow_events: SolSourceAbsent)
+  let unordered = sol_exit_notices_of(client_diagnostics: unknown, workflow_events: SolSourceAbsent)
+  let hidden = sol_exit_notices_of(client_diagnostics: two, workflow_events: SolSourceUnreadable { path: "/x/capture.workflow", cause: "permission_denied: denied" })
+  map(same, n => n.identity) == ["collector-exited-1", "collector-exited-2"]
+    && map(unordered, n => n.identity) == ["collector-exited-1", "collector-exited-2"]
+    && hidden.all(n => string_contains(s: n.body, pattern: "request history could not be read") && string_contains(s: n.body, pattern: "permission_denied") && !string_contains(s: n.body, pattern: "no teardown or release had been requested"))
+    && same.all(n => string_contains(s: n.body, pattern: "no teardown or release had been requested by this run"))
+}
+
+// THE OBSERVER CHECK ADMITS ONLY THE RECORDED, LIVE WATCHER. Positive: the record's start time matches a
+// running process. Refused: that pid gone, a different start time, a zombie, an unreadable record, an
+// unreadable /proc entry, a record naming no process.
+fn watcher_stat(state: String, start: String) -> String {
+  concat("77 (gunbc) ", state, concat(" 1 77 77 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 ", concat(start, " 12345 67 18446744073709551615\n")))
+}
+
+test fn the_boot_requires_the_recorded_live_watcher() -> Bool {
+  let record = ProcRead { content: "77 5555\n" }
+  let ok = sol_observer_refusal_of(record: record, stat: ProcRead { content: watcher_stat(state: "S", start: "5555") })
+  let gone = sol_observer_refusal_of(record: record, stat: ProcReadRefused { kind: "not_found", error: "No such file" })
+  let reused = sol_observer_refusal_of(record: record, stat: ProcRead { content: watcher_stat(state: "S", start: "9999") })
+  let zombie = sol_observer_refusal_of(record: record, stat: ProcRead { content: watcher_stat(state: "Z", start: "5555") })
+  let unread_stat = sol_observer_refusal_of(record: record, stat: ProcReadRefused { kind: "permission_denied", error: "denied" })
+  let unread_record = sol_observer_refusal_of(record: ProcReadRefused { kind: "not_found", error: "No such file" }, stat: ProcRead { content: "" })
+  let empty = sol_observer_refusal_of(record: ProcRead { content: "" }, stat: ProcRead { content: "" })
+  (match ok { Present { value: _ } => false  _ => true })
+    && [gone, reused, zombie, unread_stat, unread_record, empty].all(r => match r { Present { value: why } => string_contains(s: why, pattern: "the SOL notice watcher is required before a further BMC effect")  _ => false })
 }
