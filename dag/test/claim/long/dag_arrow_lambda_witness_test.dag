@@ -192,3 +192,5 @@ test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
     && parse_accepts_with(source: match_arm_unchanged_source, grammar: pre_repair_grammar())
     && parse_accepts_with(source: sum_decl_unchanged_source, grammar: pre_repair_grammar())
 }
+
+data zz_probe_seed_ch784_21: Int = 0

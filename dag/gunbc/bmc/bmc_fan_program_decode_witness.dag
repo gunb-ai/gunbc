@@ -164,3 +164,5 @@ fn bmc_fan_program_decode_witness() -> ProcessExit {
     exit_failure(reason: "captured fan program decode: completeness, the one-demand-two-actuator shape, the deployed offsets, or the cross-host coefficient agreement changed")
   }
 }
+
+data zz_probe_seed_ch784_4: Int = 0

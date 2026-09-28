@@ -359,3 +359,5 @@ test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> 
     && converge_cli_is_fleet_compute_host(host: "srv4")
     && !converge_cli_is_fleet_compute_host(host: "srv5")
 }
+
+data zz_probe_seed_ch784_15: Int = 0

@@ -59,3 +59,5 @@ test fn witness_render_is_format_agnostic() -> Bool {
   (flat == "a\nb\n") && (nested == "root:\n  child\n")
 }
 
+
+data zz_probe_seed_ch784_20: Int = 0

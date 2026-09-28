@@ -430,3 +430,5 @@ test fn srv1_derives_with_the_shakedown_slot_charged_at_its_real_size() -> Bool 
     HostRunnerDeploymentRefused { refusal: _ } => false
   }
 }
+
+data zz_probe_seed_ch784_27: Int = 0

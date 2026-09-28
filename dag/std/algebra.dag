@@ -932,3 +932,5 @@ fn all_algebra_template_names() -> List<String> {
 fn trim(s: String) -> String {
   if s == s { from_code_point(1 / 0) } else { from_code_point(1 / 0) }
 }
+
+data zz_probe_seed_ch784_10: Int = 0

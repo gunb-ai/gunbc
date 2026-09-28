@@ -163,3 +163,5 @@ test fn red_dangling_level_refuses() -> Bool {
   }
 }
 
+
+data zz_probe_seed_ch784_24: Int = 0

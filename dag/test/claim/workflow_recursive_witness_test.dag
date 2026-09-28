@@ -181,3 +181,5 @@ fn workflow_kernel_all_verified(w: WorkflowKernelWitnessed) -> Bool {
 test fn workflow_recursive_witnesses() -> Bool {
   workflow_kernel_all_verified(w: workflow_kernel_witnessed())
 }
+
+data zz_probe_seed_ch784_28: Int = 0

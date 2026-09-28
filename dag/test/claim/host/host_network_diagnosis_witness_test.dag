@@ -174,3 +174,5 @@ test fn host_network_diagnosis_witnesses() -> Bool {
     && witness_persistence_bar_discriminates()
     && witness_network_axis_cell_refuses_and_counts()
 }
+
+data zz_probe_seed_ch784_18: Int = 0

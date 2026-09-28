@@ -110,3 +110,5 @@ fn metadata_oidc(audience: String) -> { token: Secret }
   response = gcp.Metadata.GetIdentityToken(audience: audience)
   return { token: response.subject_token as String }
 }
+
+data zz_probe_seed_ch784_3: Int = 0

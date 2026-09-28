@@ -66,3 +66,5 @@ test fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
   }
 }
 
+
+data zz_probe_seed_ch784_23: Int = 0

@@ -1074,3 +1074,5 @@ test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
   string_contains(s: claude_wire, pattern: expected)
     && string_contains(s: codex_wire, pattern: expected)
 }
+
+data zz_probe_seed_ch784_25: Int = 0

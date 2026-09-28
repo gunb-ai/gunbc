@@ -149,3 +149,5 @@ test fn typed_liveness_reads_listening_for_jobs_line_via_mocked_journal() -> Boo
     _ => false
   }
 }
+
+data zz_probe_seed_ch784_17: Int = 0

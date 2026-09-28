@@ -37,3 +37,5 @@ test fn cheap_pool_chunk_cap_splits_at_cap() -> Bool {
     && claim_in_pool(c: c, pool: chunks.skip(n: 1).first())
     && cheap_gate_pool_max_claims_per_child > 0
 }
+
+data zz_probe_seed_ch784_13: Int = 0

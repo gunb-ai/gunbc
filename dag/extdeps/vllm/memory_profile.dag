@@ -376,3 +376,5 @@ fn vllm_parse_memory_profile_recommendations(
   }
   }
 }
+
+data zz_probe_seed_ch784_2: Int = 0

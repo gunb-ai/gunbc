@@ -423,3 +423,5 @@ fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
     false => (receipt.fn_unknown * 10000) / receipt.fn_attempted
   }
 }
+
+data zz_probe_seed_ch784_29: Int = 0

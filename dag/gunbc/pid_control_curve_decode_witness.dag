@@ -238,3 +238,5 @@ fn pid_control_curve_decode_witness() -> ProcessExit {
     exit_failure(reason: "phosphor-pid-control curve decode: key-identity pairing, the normalisation-collision refusal, or the two-directional join changed")
   }
 }
+
+data zz_probe_seed_ch784_7: Int = 0

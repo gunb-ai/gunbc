@@ -38,3 +38,5 @@ fn namespace_step0_canary_v1_historical_receipt() -> NamespaceStep0CanaryV1Histo
     }
   }
 }
+
+data zz_probe_seed_ch784_6: Int = 0

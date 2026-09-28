@@ -526,3 +526,5 @@ test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
     peer: peer_test_module()
   ) == "ACCEPTED"
 }
+
+data zz_probe_seed_ch784_30: Int = 0

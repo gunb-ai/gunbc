@@ -200,3 +200,5 @@ test fn w_one_socket_authority_serves_both_families() -> Bool {
     && altra_q6430_catalog.socket == ampere_lga4926_socket
     && altra_declared_contact_count() == 4926
 }
+
+data zz_probe_seed_ch784_11: Int = 0

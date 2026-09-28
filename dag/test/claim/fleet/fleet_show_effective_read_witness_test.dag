@@ -331,3 +331,5 @@ test fn witness_show_property_injection_metachar_refused() -> Bool {
   }
 }
 
+
+data zz_probe_seed_ch784_16: Int = 0

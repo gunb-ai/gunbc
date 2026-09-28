@@ -170,3 +170,5 @@ test fn witness_json_text_parse_agrees_with_lexeme_surface_on_exponents() -> Boo
     by_text == by_lexeme
   })
 }
+
+data zz_probe_seed_ch784_19: Int = 0

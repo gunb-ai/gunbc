@@ -707,3 +707,5 @@ test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
     DemandRosterAmbiguous { cause: _ } => false
   }
 }
+
+data zz_probe_seed_ch784_14: Int = 0

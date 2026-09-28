@@ -49,3 +49,5 @@ fn tailscale_acl_policy_json(policy: TailscaleAclPolicy) -> JsonValue {
 fn expected_tailscale_acl_json() -> String {
   concat(serialize_json(v: tailscale_acl_policy_json(policy: operator_tailscale_acl_policy)), "\n")
 }
+
+data zz_probe_seed_ch784_9: Int = 0

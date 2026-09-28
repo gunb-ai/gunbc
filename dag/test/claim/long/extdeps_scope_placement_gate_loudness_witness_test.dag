@@ -223,3 +223,5 @@ test fn red_failure_reason_never_empty_on_refusal() -> Bool {
          )
        ) != ""
 }
+
+data zz_probe_seed_ch784_22: Int = 0
