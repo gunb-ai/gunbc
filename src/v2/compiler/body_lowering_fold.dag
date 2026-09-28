@@ -7967,25 +7967,28 @@ fn body_lower_type_decl_eq_rhs_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-// A GENERIC `=` DECLARATION CARRIES ITS BINDERS IN A WRAPPER BESIDE WHAT IT DECLARES, never mixed into
-// it (v2.std.type_binder). Three shapes, each with its own wrapper label, decided here from the parse
-// and never later from a target's kind:
+// EVERY `=` OR BODYLESS DECLARATION LOWERS HERE, GENERIC OR NOT, and carries its binders in a wrapper
+// beside what it declares, never mixed into it (v2.std.type_binder). Three shapes, each with its own
+// wrapper label, decided here from the parse and never later from a target's kind:
 //   a MEMBER -- a Disj, or a lowered Conj (a fielded variant, a where-refined body) -- rides under
-//   <type-body> (type_decl_wrapper);
+//   <type-body> (type_decl_wrapper) when the declaration is generic, and is the declaration target
+//   itself when it is not, exactly as a record's is;
 //   an ALIAS -- a single variant with no payload, no where clause and no separator, which
 //   v1.compiler.parse parse_type_body_after_eq reads as type_item_from_alias_rhs -- rides under
 //   <type-alias> (type_alias_wrapper), its right-hand side lowered by the ONE type-expression
 //   lowering fn signatures use, body_lower_type_expr_lowered_optional;
-//   a BODYLESS declaration (`type MachineWidth<bits>`) carries its binders alone
-//   (type_opaque_wrapper).
-// The first cut accepted only the member and refused the rest, because it carried binders AMONG a
-// member's children, which only a Conj or Disj has; the wrapper (gunbc#12240 review 71065) removed
-// that constraint, and nine corpus files -- v2.std.collection's List<T> among them -- refused with it.
-// What still refuses body_lowering_reason_generic_type_decl_member_uncarried is a right-hand side this
-// lowering cannot read as one of the three. A single variant written after a leading `|` is a
-// one-variant coproduct, not an alias: v2.std.compilers.sugar sugar_separated_rhs_as_coproduct has
-// already made it a Disj by the time this lowering runs, so it takes the member arm.
-fn body_lower_generic_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
+//   a BODYLESS declaration (`type MachineWidth<bits>`, `type PointerWidth`) carries its binders
+//   alone (type_opaque_wrapper) -- never an empty member, which would assert a record with no fields.
+// An alias or bodyless declaration with no type parameters carries an EMPTY binder Conj
+// (body_lower_decl_binders): one alias form and one opaque form, whose binder list may be empty.
+// UNTIL THIS WAS ONE PATH, a non-generic alias or bodyless declaration was returned as its unlowered
+// parse shell and accepted (gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2),
+// so infer met grammar tokens where a declaration should stand. What refuses
+// body_lowering_reason_type_decl_member_uncarried is a right-hand side this lowering cannot read as
+// one of the three. A single variant written after a leading `|` is a one-variant coproduct, not an
+// alias: v2.std.compilers.sugar sugar_separated_rhs_as_coproduct has already made it a Disj by the
+// time this lowering runs, so it takes the member arm.
+fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_type_decl_eq_rhs_optional(captured: captured) {
     Present { value: rhs } =>
       match rhs.kind {
@@ -7993,42 +7996,50 @@ fn body_lower_generic_eq_type_decl(shell: Node, captured: Node, type_name: Symbo
           outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
         TypeNode { connective: Conj } =>
           if body_lower_node_is_production_shell(n: rhs) {
-            body_lower_generic_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+            body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
           } else {
             outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
           }
-        _ => body_lower_generic_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        _ => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
       }
     Absent =>
       match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_alias_rhs_lead) {
-        Present { value: _ } => body_lower_generic_type_decl_uncarried(shell: shell)
+        Present { value: _ } => body_lower_type_decl_uncarried(shell: shell)
         Absent =>
-          match type_params {
-            TypeParams { conj: c } =>
-              outcome_accepted(value: body_lower_type_decl_declared(shell: shell, type_name: type_name, target: type_opaque_wrapper(binders: c)))
-            NoTypeParams => body_lower_generic_type_decl_uncarried(shell: shell)
-            TypeParamsUnreadable => body_lower_generic_type_decl_uncarried(shell: shell)
+          match body_lower_decl_binders(shell: shell, type_params: type_params) {
+            Present { value: binders } =>
+              outcome_accepted(value: body_lower_type_decl_declared(shell: shell, type_name: type_name, target: type_opaque_wrapper(binders: binders)))
+            Absent => body_lower_type_decl_uncarried(shell: shell)
           }
       }
   }
 }
 
-fn body_lower_generic_alias_type_decl(shell: Node, type_name: Symbol, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
-  match type_params {
-    TypeParams { conj: c } =>
-      match body_lower_generic_alias_rhs_optional(rhs: rhs) {
+fn body_lower_alias_type_decl(shell: Node, type_name: Symbol, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
+  match body_lower_decl_binders(shell: shell, type_params: type_params) {
+    Absent => body_lower_type_decl_uncarried(shell: shell)
+    Present { value: binders } =>
+      match body_lower_alias_rhs_optional(rhs: rhs) {
         Present { value: aliased } =>
-          outcome_accepted(value: body_lower_type_decl_declared(shell: shell, type_name: type_name, target: type_alias_wrapper(binders: c, aliased: aliased)))
-        Absent => body_lower_generic_type_decl_uncarried(shell: shell)
+          outcome_accepted(value: body_lower_type_decl_declared(shell: shell, type_name: type_name, target: type_alias_wrapper(binders: binders, aliased: aliased)))
+        Absent => body_lower_type_decl_uncarried(shell: shell)
       }
-    NoTypeParams => body_lower_generic_type_decl_uncarried(shell: shell)
-    TypeParamsUnreadable => body_lower_generic_type_decl_uncarried(shell: shell)
+  }
+}
+
+// The binder Conj a wrapper carries: the declared parameters, or an EMPTY Conj located at the
+// declaration when it declares none. Absent only when the parameters could not be read, which refuses.
+fn body_lower_decl_binders(shell: Node, type_params: DeclTypeParams) -> Optional<Node> {
+  match type_params {
+    TypeParams { conj: c } => optional_present(value: c)
+    NoTypeParams => optional_present(value: node_lowered_from(kind: TypeNode { connective: Conj }, children: [], source: shell))
+    TypeParamsUnreadable => optional_absent()
   }
 }
 
 // The aliased type expression, lowered; Absent for anything that is not exactly one: a parse shell with
 // no type expression to lower, or a node that is not a type.
-fn body_lower_generic_alias_rhs_optional(rhs: Node) -> Optional<Node> {
+fn body_lower_alias_rhs_optional(rhs: Node) -> Optional<Node> {
   if body_lower_node_is_production_shell(n: rhs) {
     match body_lower_find_captured(root: rhs, emitted: ^dag_surface_type_expr) {
       ParseSubtreeFound { captured: type_expr } => body_lower_type_expr_lowered_optional(node: type_expr)
@@ -8058,10 +8069,23 @@ fn body_lower_node_is_production_shell(n: Node) -> Bool {
   }
 }
 
-fn body_lower_generic_type_decl_uncarried(shell: Node) -> Outcome<Node> {
+fn body_lower_type_decl_uncarried(shell: Node) -> Outcome<Node> {
   Rejected {
     diagnostics: diagnostics_singleton(d: Diagnostic {
-      reason: ^body_lowering_reason_generic_type_decl_member_uncarried,
+      reason: ^body_lowering_reason_type_decl_member_uncarried,
+      at: node_locus(node: shell),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
+  }
+}
+
+// A type declaration this lowering cannot read -- no captured child, or no declared name -- refuses,
+// located. It was returned as its parse shell and accepted, which is the widening arm DESIGN section 5
+// forbids: every later stage then met grammar tokens where a declaration should stand.
+fn body_lower_type_decl_unreadable(shell: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: ^body_lowering_reason_type_decl_unreadable,
       at: node_locus(node: shell),
       correction: Unavailable { reason: UserInputBoundary }
     })
@@ -8105,10 +8129,10 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
 
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
-    Absent => outcome_accepted(value: shell)
+    Absent => body_lower_type_decl_unreadable(shell: shell)
     Present { value: captured } =>
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
-        Absent => outcome_accepted(value: shell)
+        Absent => body_lower_type_decl_unreadable(shell: shell)
         Present { value: type_name } =>
           body_lower_type_decl_named(shell: shell, captured: captured, type_name: type_name, type_params: body_lower_decl_type_params(captured: captured))
       }
@@ -8132,13 +8156,7 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
       match body_lower_find_where_host_conj(root: captured) {
         Present { value: host } =>
           outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: host, type_params: type_params))
-        Absent =>
-          match type_params {
-            TypeParams { conj: _ } =>
-              body_lower_generic_eq_type_decl(shell: shell, captured: captured, type_name: type_name, type_params: type_params)
-            NoTypeParams => outcome_accepted(value: shell)
-            TypeParamsUnreadable => outcome_accepted(value: shell)
-          }
+        Absent => body_lower_eq_type_decl(shell: shell, captured: captured, type_name: type_name, type_params: type_params)
       }
   }
 }
