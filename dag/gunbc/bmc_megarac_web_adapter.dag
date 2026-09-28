@@ -1,6 +1,7 @@
 module gunbc.bmc_megarac_web_adapter
 
-import std.types { Bool, HttpStatus, Int, List, String }
+import std.types { Bool, HttpStatus, Int, List }
+import std.string_type { String }
 import std.measure { Second, second_count }
 import v2.std.algebra { contains }
 import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_bool, json_string, serialize_json }
