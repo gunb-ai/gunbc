@@ -3,7 +3,8 @@ module gunbc.fabric_writer_roster
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
 import product.placement_supply { HostIdentity }
-import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_binding_for }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric_storage_binding { fabric_storage_binding_for }
 import gunbc.fabric_storage_placement { fabric_storage_placement }
 import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered }
 import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
