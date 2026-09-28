@@ -538,6 +538,24 @@ fn run_claim_timed(
 }
 
 fn print_eval_profile(function: &str) {
+    {
+        let mut v = v1_compiler::v1_interpreter::dag_fn_self_time_take();
+        v.sort_by(|a, b| b.2.cmp(&a.2));
+        for (n, c, ns) in v.iter().take(60) {
+            eprintln!(
+                "[fn-self] {function} {n} calls={c} self_ms={:.3}",
+                *ns as f64 / 1.0e6
+            );
+        }
+        let mut v2 = v.clone();
+        v2.sort_by(|a, b| b.1.cmp(&a.1));
+        for (n, c, ns) in v2.iter().take(40) {
+            eprintln!(
+                "[fn-calls] {function} {n} calls={c} self_ms={:.3}",
+                *ns as f64 / 1.0e6
+            );
+        }
+    }
     use v1_compiler::v1_interpreter::{
         eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
     };

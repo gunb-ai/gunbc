@@ -22103,6 +22103,12 @@ fn record_dag_fn_self_time(name: &str, self_nanos: u64) {
     }
 }
 
+pub fn dag_fn_self_time_take() -> Vec<(String, u64, u64)> {
+    let v = dag_fn_self_time_snapshot();
+    *DAG_FN_SELF_TIME.lock().unwrap() = None;
+    v
+}
+
 pub fn dag_fn_self_time_snapshot() -> Vec<(String, u64, u64)> {
     let guard = DAG_FN_SELF_TIME.lock().unwrap();
     match guard.as_ref() {

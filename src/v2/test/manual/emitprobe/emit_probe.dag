@@ -1,0 +1,26 @@
+module v2.test.manual.emitprobe.emit_probe
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.rust_test { rust_classical_not_ingested_target_model_staging }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.test.long.emit_host_classical_not_ingested_equals_eval { ingested_emit_shape_frontier_tree_from_source, ingested_classical_not_source }
+
+test fn probe_ingest_only_holds() -> Bool {
+  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn probe_ingest_emit_holds() -> Bool {
+  match ingested_emit_shape_frontier_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
