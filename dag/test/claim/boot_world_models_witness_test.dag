@@ -1,0 +1,74 @@
+module test.claim.boot_world_models_witness_test
+
+import std.types { Bool, List, String }
+import std.measure { second }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import gunbc.wall_clock_model { ModeledWallClock, iso8601_utc, wall_clock_unix }
+import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile, remote_request, remote_answer }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_parent, fs_write, fs_list }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MODELS' OWN SEMANTICS, checked apart from any orchestrator run, so a matrix case cannot pass
+// against a model that is wrong in the same direction as the code under test. Reference values for the
+// calendar are independent: Python's datetime.fromtimestamp(t, timezone.utc) for each instant.
+test fn the_wall_clock_renders_utc_like_date() -> Bool {
+  iso8601_utc(unix: 0) == "1970-01-01T00:00:00Z"
+    && iso8601_utc(unix: 951782400) == "2000-02-29T00:00:00Z"
+    && iso8601_utc(unix: 1790000000) == "2026-09-21T14:13:20Z"
+    && iso8601_utc(unix: 4102444799) == "2099-12-31T23:59:59Z"
+    && iso8601_utc(unix: 0 - 1) == "1969-12-31T23:59:59Z"
+}
+
+// A NEGATIVE STEP IS A WALL CLOCK THAT WENT BACKWARDS while virtual time moved forward.
+test fn a_backward_step_reads_earlier_while_virtual_time_advances() -> Bool {
+  let clock = ModeledWallClock { unix_at_origin: 1790000000, step_seconds: 0 - 120 }
+  wall_clock_unix(clock: clock, now: second(count: 60)) == 1789999940
+}
+
+// THE FAR SIDE OF AN SSH REQUEST is the word before the first `--` and everything after it, so a
+// remote command that itself carries `--` keeps it.
+test fn a_remote_request_splits_at_the_first_separator() -> Bool {
+  match remote_request(client_args: ["-o", "BatchMode=yes", "srv2", "--", "sha256sum", "--", "/srv/x"]) {
+    Present { value: r } => r.endpoint == "srv2" && r.words == ["sha256sum", "--", "/srv/x"]
+    Absent => false
+  }
+    && match remote_request(client_args: ["srv2", "cat", "/srv/x"]) { Present { value: _ } => false Absent => true }
+}
+
+// THE REMOTE HOST ANSWERS ONLY THE PRODUCTION BUILDERS' WORDS, in coreutils' formats.
+test fn the_remote_host_answers_production_commands_in_coreutils_format() -> Bool {
+  let host = ModeledRemoteHost { endpoint: "srv2", files: [
+    ModeledRemoteFile { path: "/srv/rec", content: Present { value: "abc\n" }, sha256: none },
+    ModeledRemoteFile { path: "/srv/img", content: Present { value: "bytes" }, sha256: Present { value: "ff00" } },
+    ModeledRemoteFile { path: "/srv/gone", content: none, sha256: none },
+  ] }
+  let cat_ok = match remote_answer(host: host, words: argv_words(command: cat_command(path: "/srv/rec"))) {
+    Present { value: ShellProcessExited { exit_code: 0, stdout: "abc\n", stderr: _ } } => true
+    _ => false
+  }
+  let sum_ok = match remote_answer(host: host, words: argv_words(command: sha256sum_file_command(path: "/srv/img"))) {
+    Present { value: ShellProcessExited { exit_code: 0, stdout: "ff00  /srv/img\n", stderr: _ } } => true
+    _ => false
+  }
+  let gone = match remote_answer(host: host, words: argv_words(command: cat_command(path: "/srv/gone"))) {
+    Present { value: ShellProcessExited { exit_code: 1, stdout: _, stderr: "cat: /srv/gone: No such file or directory\n" } } => true
+    _ => false
+  }
+  let unlisted = match remote_answer(host: host, words: ["rm", "-rf", "/srv"]) { Present { value: _ } => false Absent => true }
+  cat_ok && sum_ok && gone && unlisted
+}
+
+// THE FILESYSTEM'S PARENT RULE: a write under a directory the model does not hold is not_found.
+test fn a_write_needs_its_parent_directory() -> Bool {
+  let fs = ModeledFilesystem { directories: ["/", "/run"], files: [] }
+  fs_parent(path: "/run/sol.pid") == "/run" && fs_parent(path: "/x") == "/" && fs_parent(path: "target/a.pub") == "target"
+    && match fs_write(fs: fs, path: "/var/x", content: "1", create_new: false).observation {
+      extdeps.transports.file.FileOperationFailed { kind: extdeps.filesystem.filesystem_io.FilesystemNotFound, error: _ } => true
+      _ => false
+    }
+}
