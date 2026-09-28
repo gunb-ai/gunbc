@@ -225,8 +225,9 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     runtime namespace. Replaces the former zero-external-dependency constraint (now with standard
 //     deps for v1_rt.rs, which the emitter includes unconditionally).
 //   - CONTROL (a): test.claim.self_host_logic_behavioral_witness /
-//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile WITH
-//     the seed crate (v1-compiler path dependency), run the comparison driver + --inject-fault.
+//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile it with
+//     the seed's committed stage0 mirror of std_logic as the oracle module (no v1-compiler path
+//     dependency), run the comparison driver + --inject-fault.
 //     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
 //     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
 //     cadence is preserved in the exclusion row reason as evidence of the routing gap.
@@ -1058,6 +1059,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_judges_exactly_what_the_runners_log_read_returned" },
+      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
+      function: "the_live_entry_judges_exactly_what_the_runners_log_read_returned",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer" },
+      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
+      function: "the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution",
@@ -1289,6 +1302,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_declared_entry_mode_is_the_published_mode_of_objects_and_heads" },
       entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "a_declared_entry_mode_is_the_published_mode_of_objects_and_heads",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -1730,6 +1767,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_source_patch_converge_witness", function: "red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history" },
+      entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
+      function: "red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_row_store_encode_witness", function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships" },
       entry: "dag/test/claim/spark/v41_row_store_encode_witness_test.dag",
       function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships",
@@ -1793,6 +1836,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution" },
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
       function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_launch_that_cannot_publish_its_pid_stops_the_child_it_created" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_launch_that_cannot_publish_its_pid_stops_the_child_it_created",
       expectation: ExpectedToHold {}
     }
   ]

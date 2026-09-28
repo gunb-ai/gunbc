@@ -1052,6 +1052,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ReceiverTypeUnestablished { method: s(), span: no_span() },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         SiblingOperandEffectOrderUndetermined { construct: s(), first_operand: s(), second_operand: s(), span: no_span() },
+        PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
         FrontierOccurrenceBudgetExceeded { method: s(), receiver_type: s(), declared: 0, observed: 0, span: no_span() },
         TestCodeReferenced { referrer: s(), target: s(), span: no_span() },
         TestCodeReferenceAdmitted { referrer: s(), target: s(), span: no_span() },
@@ -1623,6 +1624,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { .. } => {
             "SiblingOperandEffectOrderUndetermined"
         }
+        CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => {
+            "PresentArmScrutineeTypeUnresolved"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -1755,6 +1759,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { construct, .. } => {
             construct.clone()
         }
+        // The subject is the arm's pattern name; the span locates the match.
+        CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern, .. } => pattern.clone(),
     };
     (class.to_string(), name)
 }

@@ -5,10 +5,8 @@ import std.algebra { Cons, Empty }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.self_host.compiler_closure_emit { emit_compiler_import_closure_from_ingest_located }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.translate {
-  ModuleNotATypeExpression,
-  translate_diagnostic_reason_symbol
-}
+import v2.compiler.translate { translate_diagnostic_reason_symbol }
+import v2.compiler.target_serialize { ModuleNotATypeExpression }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }

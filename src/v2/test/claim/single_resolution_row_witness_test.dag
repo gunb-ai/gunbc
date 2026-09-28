@@ -5,7 +5,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs, derive_grammar_relation_row_node, formal_production_for_lhs_exact }
-import v2.compiler.translate { target_serialize_derived_row_bounded, target_serialize_relation_row_from_model_bounded }
+import v2.compiler.target_serialize { target_serialize_derived_row_bounded, target_serialize_relation_row_from_model_bounded }
 import v2.std.compilers.target_model { render_target_text }
 import v2.extdeps.languages.verilog {
   verilog_emission_formal_productions, verilog_interlock_emitted, verilog_target_model_with_single_row, verilog_conj

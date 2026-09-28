@@ -1,6 +1,6 @@
 module v2.test.manual.fold_call_closure_emit
 
-import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript {
   ts_binding_spellings,
