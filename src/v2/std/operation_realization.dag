@@ -7,6 +7,8 @@ import std.effect_grant {
 }
 import v2.std.operation_argv { OperationRef, BoundOperationInvocation, InputText, InputTextList }
 import std.list { first_duplicate_by_key }
+import std.measure { Second, second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 
 // A MODELED OPERATION REALIZATION: the dry arm of an operation's realization, bound per grant.
@@ -46,13 +48,13 @@ type TransportObservation
 // is a harness fault and is kept apart from a device refusal, which is simply an observation (a
 // nonzero exit, an error body).
 type OperationStep<S>
-  = OperationObserved { observation: TransportObservation, state: S, elapsed_seconds: Int }
+  = OperationObserved { observation: TransportObservation, state: S, elapsed: Second }
   | OperationWorkerKilled { committed: Bool, state: S }
   | OperationHarnessFault { reason: NonEmptyStr }
 
 type OperationCall {
   invocation: BoundOperationInvocation
-  now_seconds: Int
+  now: Second
 }
 
 type OperationBinding<S> {
@@ -67,7 +69,7 @@ type OperationRealization<S> {
   identity: NonEmptyStr
   initial: S
   bindings: List<OperationBinding<S>>
-  advance: fn(S, Int) -> S
+  advance: fn(S, Second) -> S
 }
 
 type DispatchOutcome
@@ -82,8 +84,8 @@ type DispatchRecord {
   ordinal: Int
   invocation: BoundOperationInvocation
   realization: NonEmptyStr
-  dispatched_at: Int
-  completed_at: Int
+  dispatched_at: Second
+  completed_at: Second
   outcome: DispatchOutcome
 }
 
@@ -195,18 +197,27 @@ fn virtual_delay_binding<S>(at: OperationRef, seconds_input: String) -> Operatio
         Absent => OperationHarnessFault { reason: join(["the delay was dispatched without its `", seconds_input, "` input"], "") as NonEmptyStr }
         Present { value: text } => match parse_int(s: text) {
           Absent => OperationHarnessFault { reason: join(["the delay input `", text, "` is not a whole number of seconds"], "") as NonEmptyStr }
-          Present { value: n } =>
-            if n < 0 {
-              OperationHarnessFault { reason: join(["the delay input `", text, "` is negative"], "") as NonEmptyStr }
-            } else {
-              OperationObserved {
-                observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
-                state: state,
-                elapsed_seconds: n,
-              }
+          Present { value: n } => match checked_int_to_nat(n: n) {
+            Absent => OperationHarnessFault { reason: join(["the delay input `", text, "` is not a natural number of seconds"], "") as NonEmptyStr }
+            Present { value: count } => OperationObserved {
+              observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
+              state: state,
+              elapsed: second(count: count),
             }
+          }
         }
       }
     },
   }
+}
+
+// THE VIRTUAL CLOCK IS A Second, AND ITS ARITHMETIC IS HERE, not in the dispatcher: a realization's
+// clock starts at the origin and each observed step advances it by the step's elapsed Second. Both
+// are Nat-counted, so a negative elapsed time or a clock that runs backwards has no constructor.
+fn virtual_clock_origin() -> Second {
+  second(count: 0)
+}
+
+fn virtual_clock_after(now: Second, elapsed: Second) -> Second {
+  second(count: second_count(s: now) + second_count(s: elapsed))
 }
