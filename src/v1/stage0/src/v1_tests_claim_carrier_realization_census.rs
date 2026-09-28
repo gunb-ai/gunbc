@@ -17,7 +17,6 @@ pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeRealizationDecision,
     TypeReferenceIdentity,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;

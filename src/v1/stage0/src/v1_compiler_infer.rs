@@ -57,9 +57,7 @@ use crate::std_kernel_type_name::KernelTypeNameAdmission::{
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
-use crate::std_literal_elaboration::LiteralUnfolding::{
-    BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
-};
+use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
     elaborate_literal_at, literal_elaboration_refusal_message, literal_source_kind_of,
 };
@@ -10950,23 +10948,6 @@ pub fn unfold_literal_image(
 }),
 }), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)".to_string(), span.clone()),
-},
-    LiteralUnfolding::BooleanUnfold { true_variant: t, false_variant: f, .. } => match (*lit.clone()).clone() {
-    LiteralValue::LitBool { value: b, .. } => elaborated_expr_node(if b.clone() {
-        t.decl_name.clone()
-    } else {
-        f.decl_name.clone()
-    }, Rc::new(ExprData::ExprVar {
-    binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
-    parent_enum: elaboration.destination.clone().decl_name.clone(),
-    parent_identity: Rc::new(VariantParentIdentity::VariantParentIdentified {
-    key: Rc::new(VariantParentKey::VariantParentDeclaration {
-    declaration: elaboration.destination.clone(),
-}),
-}),
-})),
-}), Rc::new(vec![]), destination_type.clone(), span.clone()),
-    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)".to_string(), span.clone()),
 },
 }
 }
