@@ -10,7 +10,8 @@ import std.content_hash {
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
 import std.decl_ref { DeclarationRef }
-import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentUnrecovered, VariantParentDeclaration, variant_parent_kernel_key }
+import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
+import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
@@ -756,9 +757,9 @@ fn variant_parent_identity_of(owner: Node?, scope: InferScope) -> VariantParentI
         Absent =>
           match declaration_provenance_of(item: o) {
             KernelMinted { minted_name: m } =>
-              match variant_parent_kernel_key(kernel_name: m) {
-                Present { value: k } => VariantParentIdentified { key: k }
-                Absent => VariantParentUnrecovered { cause: "the owning coproduct is a kernel mint whose name is not a kernel type" as NonEmptyStr }
+              match kernel_type_name(name: m) {
+                KernelTypeNameAdmitted { kernel_name: k } => VariantParentIdentified { key: VariantParentKernelType { kernel_name: k } }
+                NotAKernelTypeName { name: _ } => VariantParentUnrecovered { cause: "the owning coproduct is a kernel mint whose name is not a kernel type" as NonEmptyStr }
               }
             _ => VariantParentUnrecovered { cause: "the owning coproduct is neither an identified corpus declaration nor a kernel type (alias or unresolved)" as NonEmptyStr }
           }

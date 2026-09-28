@@ -2,8 +2,9 @@ module gunbc.rust_source_type_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.target_representation {
-  SourceTypeTargetBinding, SourceVariantTargetValue, VariantParentKey, VariantParentDeclaration, variant_parent_kernel_key, RepresentationValue,
+  SourceTypeTargetBinding, SourceVariantTargetValue, VariantParentKey, VariantParentDeclaration, VariantParentKernelType, RepresentationValue,
   CheckpointRowMigration, CheckpointRowDisposition,
   MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt
 }
@@ -70,7 +71,7 @@ data rust_source_type_binding_rows: List<SourceTypeTargetBinding<RustRepresentat
 // pairing is stated ONCE, below, and keyed twice, because Bool has two identities that reach the
 // emitter: the std.types declaration (bound above, and what a reference inside std.types resolves
 // to) and the kernel mint every other module's `Bool` resolves to (the kernel name, admitted by
-// std.types is_kernel_type -- the same two routes the type level carries as the exact row above and
+// std.kernel_type_name kernel_type_name -- the same two routes the type level carries as the exact row above and
 // the ProvenUniqueKernelBinding verdict below). Keyed on identity, so an unrelated coproduct whose
 // arms are spelled True/False has no row and renders its own enum.
 type BoolArmValue {
@@ -88,9 +89,9 @@ fn rust_bool_variant_rows(parent: VariantParentKey) -> List<SourceVariantTargetV
 }
 
 fn rust_bool_kernel_variant_rows() -> List<SourceVariantTargetValue<RustRepresentation>> {
-  match variant_parent_kernel_key(kernel_name: "Bool") {
-    Present { value: k } => rust_bool_variant_rows(parent: k)
-    Absent => []
+  match kernel_type_name(name: "Bool") {
+    KernelTypeNameAdmitted { kernel_name: k } => rust_bool_variant_rows(parent: VariantParentKernelType { kernel_name: k })
+    NotAKernelTypeName { name: _ } => []
   }
 }
 
