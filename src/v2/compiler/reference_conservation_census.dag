@@ -737,8 +737,11 @@ fn sample_rule_flush(acc: SampleRuleAcc, total: Int) -> FreeMonoid<String> {
   }
 }
 
+// The `.dag` suffix is read with the builtin substring: the bare name ends_with also names a corpus
+// function (gunbc.rust_item_scan), so the floor's import hygiene refuses it unimported here.
 fn sample_file_in_rule_roots(path: String) -> Bool {
-  ends_with(s: path, suffix: ".dag") && (starts_with(s: path, prefix: "dag/") || starts_with(s: path, prefix: "src/v2/"))
+  let n = string_length(s: path)
+  n > 4 && substring(s: path, start: n - 4, end: n) == ".dag" && (starts_with(s: path, prefix: "dag/") || starts_with(s: path, prefix: "src/v2/"))
 }
 
 // THE RULE. Sorting by path makes every stratum one contiguous run -- a stratum's paths share a
