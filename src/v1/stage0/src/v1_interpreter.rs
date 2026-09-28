@@ -8121,6 +8121,24 @@ fn bound_operation_invocation_value(
             continue;
         };
         let bound = match value {
+            // An argv expansion binds as the words a real spawn receives, expanded by the same
+            // seed realization of v2.std.compilers.cli_surface ProcessArgvExpansion the shell
+            // dispatcher uses, never as a rendering of the carrier.
+            Value::Record { type_name, fields }
+                if resolve_sym(*type_name).rsplit('.').next() == Some("ProcessArgvExpansion") =>
+            {
+                let mut words = Vec::new();
+                push_process_argv_expansion(&mut words, &fields)?;
+                variant_value(
+                    ctx,
+                    "OperationInputValue",
+                    "InputTextList",
+                    vec![(
+                        "items",
+                        list_value(words.into_iter().map(str_value).collect::<Vec<_>>()),
+                    )],
+                )
+            }
             Value::List(items) => {
                 let texts: Vec<Value> = items.iter().map(|v| str_value(render_input(v))).collect();
                 variant_value(

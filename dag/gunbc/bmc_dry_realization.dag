@@ -38,26 +38,51 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
   OperationRef { path: bmc_ipmi_operation_path, service: bmc_ipmi_service, operation: operation }
 }
 
-fn exited(stdout: String, world: BmcWorld) -> OperationStep<BmcWorld> {
-  OperationObserved {
-    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: stdout, stderr: "" } },
-    state: world,
-    elapsed: second(count: 1),
+// ONE BMC COMMAND'S RESULT BEFORE IT IS PLACED IN A SCENARIO: the stdout the client would print and the
+// world after it, or a harness fault. Handlers are written over the BMC world alone; bmc_bindings lifts
+// them through a lens into whatever scenario state embeds the world.
+type BmcReply
+  = BmcReplied { stdout: String, world: BmcWorld }
+  | BmcReplyFault { reason: NonEmptyStr }
+
+fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+}
+
+fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  match operation_input_text(invocation: call.invocation, name: "action") {
+    Absent => BmcReplyFault { reason: "ChassisPowerControl was dispatched without an action input" as NonEmptyStr }
+    Present { value: verb } => match ipmi_chassis_control_action_of_verb(verb: verb) {
+      Absent => BmcReplyFault { reason: join(["ChassisPowerControl action `", verb, "` names no IPMI chassis control action the model carries"], "") as NonEmptyStr }
+      Present { value: action } => BmcReplied { stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action).world }
+    }
   }
 }
 
-fn bmc_chassis_status_handler(world: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
-  exited(stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world)
+// One IPMI round trip takes one virtual second.
+fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> fn(S, OperationCall) -> OperationStep<S> {
+  fn(state, call) {
+    match reply(get(state), call) {
+      BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+      BmcReplied { stdout: out, world: w } => OperationObserved {
+        observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
+        state: put(state, w),
+        elapsed: second(count: 1),
+      }
+    }
+  }
+}
+
+fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<OperationBinding<S>> {
+  [
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_status_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_power_control_reply) },
+  ]
 }
 
 fn bmc_chassis_power_control_handler(world: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
-  match operation_input_text(invocation: call.invocation, name: "action") {
-    Absent => OperationHarnessFault { reason: "ChassisPowerControl was dispatched without an action input" as NonEmptyStr }
-    Present { value: verb } => match ipmi_chassis_control_action_of_verb(verb: verb) {
-      Absent => OperationHarnessFault { reason: join(["ChassisPowerControl action `", verb, "` names no IPMI chassis control action the model carries"], "") as NonEmptyStr }
-      Present { value: action } => exited(stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action).world)
-    }
-  }
+  let handler = bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_chassis_power_control_reply)
+  handler(world, call)
 }
 
 fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) -> OperationRealization<BmcWorld> {
@@ -65,11 +90,10 @@ fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) 
     identity: identity,
     initial: initial,
     epoch: epoch,
-    bindings: [
-      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_chassis_status_handler },
-      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_chassis_power_control_handler },
+    bindings: list_append(
+      bmc_bindings(get: fn(w) { w }, put: fn(w, next) { next }),
       virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
-    ],
+    ),
     advance: bmc_advance,
   }
 }

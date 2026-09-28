@@ -1,0 +1,74 @@
+module gunbc.machine_intake_mtcollins1_boot_dry_realization
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { Second }
+import v2.std.operation_realization { OperationRealization, virtual_delay_binding }
+import gunbc.bmc_model { BmcWorld, bmc_advance }
+import gunbc.bmc_dry_realization { bmc_bindings, sleep_delay_seconds_operation }
+import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings }
+import gunbc.process_environment_model { ModeledVariable, environment_binding }
+import gunbc.host_command_model { ModeledInvocation, exact_invocation_binding, local_command_words, shell_exec_run_argv_operation }
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.exec.command { env_prefixed_command }
+import extdeps.tools.env { EnvSet }
+import extdeps.ssh.openssh_client_commands { ssh_add_list_identities_command }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
+import gunbc.remote_host_model { ModeledRemoteHost, remote_host_binding }
+import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
+
+// THE DRY REALIZATION OF ONE mtcollins1 BOOT ATTEMPT'S WHOLE EFFECT DEMAND. The scenario world
+// composes the one BMC model with the worker's filesystem (credential file, unit-hold store, SOL pid
+// and capture files) and its process environment (credential path, SOL paths, run and revision
+// identity). Every transition belongs to its own model; this module only places them side by side and
+// lifts their bindings into the composite state. The real entry --
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 -- runs unchanged over it.
+type MtCollins1BootWorld {
+  bmc: BmcWorld
+  fs: ModeledFilesystem
+  environment: List<ModeledVariable>
+  agent: ModeledSshAgent
+  remote_hosts: List<ModeledRemoteHost>
+  clock: ModeledWallClock
+}
+
+// THE WORKER'S SSH AGENT: whether it holds the fleet automation key. Its listing follows
+// `ssh-add -l`: one `<bits> <fingerprint> <comment> (<type>)` line per identity, exit 0; and with no
+// identities, "The agent has no identities." on stdout with exit 1 (ssh-add(1)).
+type ModeledSshAgent {
+  socket: String
+  holds_fleet_key: Bool
+}
+
+fn agent_listing(agent: ModeledSshAgent) -> ShellExchangeObservation {
+  if agent.holds_fleet_key {
+    ShellProcessExited { exit_code: 0, stdout: join(["256 ", fleet_automation_ssh_key_fingerprint, " fleet-automation@gunbc (ED25519)\n"], ""), stderr: "" }
+  } else {
+    ShellProcessExited { exit_code: 1, stdout: "The agent has no identities.\n", stderr: "" }
+  }
+}
+
+fn boot_world_with_bmc(w: MtCollins1BootWorld, bmc: BmcWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock }
+}
+
+fn boot_world_with_fs(w: MtCollins1BootWorld, fs: ModeledFilesystem) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock }
+}
+
+fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1BootWorld, epoch: Second) -> OperationRealization<MtCollins1BootWorld> {
+  let bmc = bmc_bindings(get: fn(w) { w.bmc }, put: boot_world_with_bmc)
+  let files = filesystem_bindings(get: fn(w) { w.fs }, put: boot_world_with_fs)
+  let local_commands = exact_invocation_binding(at: shell_exec_run_argv_operation, inputs: ["program", "arguments"], table: [
+    ModeledInvocation {
+      words: local_command_words(command: env_prefixed_command(bindings: [EnvSet { name: "SSH_AUTH_SOCK", value: initial.agent.socket }], command: ssh_add_list_identities_command())),
+      answer: fn(w) { agent_listing(agent: w.agent) },
+    },
+  ])
+  OperationRealization {
+    identity: identity,
+    initial: initial,
+    epoch: epoch,
+    bindings: concat(concat(concat(bmc, files), wall_clock_bindings(get: fn(w) { w.clock })), [environment_binding(get: fn(w) { w.environment }), virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"), local_commands, remote_host_binding(get: fn(w) { w.remote_hosts })]),
+    advance: fn(w, now) { boot_world_with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)) },
+  }
+}
