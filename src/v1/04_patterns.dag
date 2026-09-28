@@ -579,7 +579,7 @@ fn pattern_row_is_irrefutable(row: List<MatchPattern>) -> Bool {
 
 fn pattern_matches_constructor(p: MatchPattern, ctor: String) -> Bool {
   match p {
-    VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
+    VariantPattern { name: n, parent_enum: _, field_bindings: _, parent_identity: _ } =>
       variant_pattern_coverage_key(name: n) == variant_pattern_coverage_key(name: ctor)
     LitPattern { value: v } =>
       match v {
@@ -611,7 +611,7 @@ fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<Co
     [concat(fields |> map(f => Wildcard), rest)]
   } else if pattern_matches_constructor(p: head, ctor: ctor) {
     match head {
-      VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
         [concat(fields |> map(f => field_binding_pattern_for(bindings: fbs, field_name: f.name, source_indices: source_indices)), rest)]
       _ => [concat(fields |> map(f => Wildcard), rest)]
     }

@@ -6845,7 +6845,7 @@ fn eval_var(
         }
     };
 
-    if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+    if let Some(VarBindingKind::VariantValueBinding { parent_enum, .. }) = binding_kind {
         // Bounded residual: Nat's intentional native representation is still selected by the
         // arm lexeme because the seed binding carrier lacks exact owner declaration identity.
         // The executable shorthand test and GuaranteeStall keep that silent-wrongness path
@@ -8603,6 +8603,7 @@ fn match_pattern(
             name,
             parent_enum,
             field_bindings,
+            ..
         } => {
             // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
             // containment path, but values are constructed with the bare last segment (the

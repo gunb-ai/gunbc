@@ -16,6 +16,7 @@ import std.coercion {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
+import std.target_representation { VariantParentIdentity }
 import std.induction { SubValueRelation }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -141,7 +142,7 @@ fn has_inferred(n: Node) -> Bool {
 type VarBindingKind
   = LocalValueBinding
   | FunctionValueBinding
-  | VariantValueBinding { parent_enum: String }
+  | VariantValueBinding { parent_enum: String, parent_identity: VariantParentIdentity }
   | MatchBoundBinding
   | ServiceValueBinding
 
@@ -311,7 +312,7 @@ type ExprData
 type MatchPattern
   = Bind { declaration: Node }
   | LitPattern { value: LiteralValue }
-  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node>, parent_identity: VariantParentIdentity }
   | Wildcard
 
 // IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
@@ -326,7 +327,7 @@ fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
   match pattern {
     Wildcard => true
     Bind { declaration: _ } => true
-    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => false
+    VariantPattern { name: _, parent_enum: _, field_bindings: _, parent_identity: _ } => false
     LitPattern { value: _ } => false
   }
 }

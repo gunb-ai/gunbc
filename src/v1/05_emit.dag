@@ -189,7 +189,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
         let base_is_fn = match b.expr_data {
           ExprVar { binding_kind: bk } => match bk {
             Present { value: MatchBoundBinding } => false
-            Present { value: VariantValueBinding { parent_enum: _ } } => false
+            Present { value: VariantValueBinding { parent_enum: _, parent_identity: _ } } => false
             _ => true
           }
           _ => false
@@ -3595,7 +3595,7 @@ fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indi
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: target)
     LitPattern { value: v } => emit_literal(value: v, target: target)
-    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: _ } =>
       emit_unified_variant_pattern(name: n, parent_enum: pe, field_bindings: fbs, target: target, source_indices: source_indices)
     Wildcard => "_"
   }
@@ -3673,7 +3673,7 @@ fn emit_arm_guard(arm: Node, target: RenderTarget, render_guard_expr: fn(Node) -
 
 fn emit_go_match_arm_bindings(arm: Node, indent_level: Int, source_indices: Map<String, NewlineIndex>) -> String {
   match arm_pattern(n: arm) {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       if fbs |> count == 0 { "" } else {
         fbs |> map(fb => concat(make_indent(level: indent_level), emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go), " := __gunbcMatch.", emit_export_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go), "\n")) |> join(separator: "")
       }

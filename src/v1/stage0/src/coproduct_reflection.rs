@@ -2497,6 +2497,9 @@ mod parse_only_uppercase_variant_regression_tests {
             Rc::new(ExprData::ExprVar {
                 binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
                     parent_enum: "Parent".to_string(),
+                    parent_identity: Rc::new(
+                        crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+                    ),
                 })),
             }),
             empty_node_list(),
