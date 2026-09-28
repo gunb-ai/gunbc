@@ -15,14 +15,17 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--binary', default='target/release/gunbc')
 parser.add_argument('--output', required=True)
 parser.add_argument('--timeout', type=int, default=900)
+parser.add_argument('--source-root', action='append')
+parser.add_argument('--entry', default='dag/gunbc/roadmap/roadmap_serve.dag')
 args = parser.parse_args()
 out = Path(args.output)
 out.mkdir(parents=True, exist_ok=True)
 binary = Path(args.binary).resolve()
 revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
 diff = subprocess.check_output(['git', 'diff', 'HEAD', '--', 'dag', 'src/v2'])
-command = [str(binary), 'serve', '--source-root', 'dag', '--source-root', 'src/v2',
-           '--entry', 'dag/gunbc/roadmap/roadmap_serve.dag',
+roots = args.source_root or ['dag', 'src/v2']
+command = [str(binary), 'serve', *[part for root in roots for part in ['--source-root', root]],
+           '--entry', args.entry,
            '--function', 'roadmap_serve_handle_srv2_preview',
            '--host', '127.0.0.1', '--port', '0', '--release-revision', revision]
 receipt = {'revision': revision, 'source_diff_sha256': hashlib.sha256(diff).hexdigest(),

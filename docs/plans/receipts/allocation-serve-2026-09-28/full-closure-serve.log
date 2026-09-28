@@ -1,0 +1,7 @@
+resolved 1031 sources
+✓ typecheck v2.std.compilers.target_model done in 25 seconds
+✓ typecheck v2.compiler.translate done in 6 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds

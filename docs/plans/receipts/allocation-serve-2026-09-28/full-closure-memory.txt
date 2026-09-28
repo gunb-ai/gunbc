@@ -1,0 +1,4 @@
+Result=oom-kill
+MemoryMax=6442450944
+MemorySwapMax=0
+Description=/usr/bin/python3 tools/tests/roadmap_preview_readiness.py --source-root target/preview-full-serve-source --entry target/preview-full-serve-source/gunbc.roadmap_serve.dag --output target/serve-readiness-full-closure

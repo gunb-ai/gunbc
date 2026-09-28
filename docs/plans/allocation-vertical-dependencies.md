@@ -303,3 +303,31 @@ The four launch-directive controls also pass after the record move: exact
 head/host/slot/artifact binding, stale head/foreign owner refusal, foreign
 host/slot/root/artifact refusal, and release-intent settlement identity. These
 are source/fixture controls; no guest was launched.
+
+## Full preview serve integration gate (not passed)
+
+The review correctly identified integrated serve breakage missed by focused tests.
+Source revision `31930c0` supplies the missing `attempt_stale` fields in both sandbox
+row constructors, and missing `headers` fields in three served-observation
+responses plus the static-route response. No auth-flow semantics were changed.
+
+A clean `cargo build --release --bin gunbc -j 1` on this branch succeeded under
+6 GiB/no swap. Its binary then ran the actual
+`roadmap_serve_handle_srv2_preview` entry with `dag` and `src/v2`, loopback and port
+zero. It resolved 1031 sources, but systemd recorded `oom-kill` before readiness.
+A second diagnostic used a byte-identical copy of all 1031 full serve-closure
+modules (not a focused test closure). It progressed through page, component,
+belt and emitter typechecking, but also OOM-killed before readiness at the same
+limit. Thus the constructor repairs do not establish a passing integrated gate.
+
+Reproduction: build the branch binary, then run
+`tools/tests/roadmap_preview_readiness.py --output target/preview-check` in the
+6 GiB/no-swap scope. The helper waits for this child's exact listening announcement
+and stops its own child without sending application requests. Optional source-root
+and entry arguments support the full-closure diagnostic. An OOM may kill the
+supervisor too; retain systemd's scope result as done in these receipts.
+
+Receipts and binary identity: `receipts/allocation-serve-2026-09-28/`.
+No preview units were restarted and the live site was untouched. HOLD remains;
+startup memory must be reduced and the actual readiness gate must pass before
+preview/deployment qualification. No memory ceiling was increased.
