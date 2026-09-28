@@ -122,3 +122,5 @@ fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
   }
 }
 
+
+data zz_probe_surface_change: Int = 0
