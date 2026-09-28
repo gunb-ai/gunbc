@@ -22,9 +22,10 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.roadmap_model { RoadmapEdge, RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap_nesting { RoadmapMembership, declared_roadmap_memberships }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_status { TicketLine }
-import gunbc.roadmap_authority { declared_roadmap_edges, declared_roadmap_nodes }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_project {
   ProjectMembership,
   MembershipStandalone,
@@ -38,29 +39,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import std.content_hash { content_hash_atom }
 
-// THE ALIGNMENT LADDER, MODELED (docs/plans/harness-work-lifecycle.md, "Alignment ladder", owner
-// direction 2026-09-21). Alignment is a recurring workflow responsibility at every level of one
-// DERIVED chain: the task's contract (L2), the motivating project chain above it (L1, the arcs whose
-// completion the task serves), and the root principles (L0, gunbc.design_document, pointed at, never
-// inlined). Every level is accounted for because every level is DERIVED from the authority's own
-// dependency edges -- change a row and the chain's rendering follows; there is no second list to
-// drift. A node nothing depends on chains directly from its task level to the root principles: the
-// honest projectless shape, not an error.
-//
-// THE MEMBERSHIP WALK IS THE ONLY PRODUCER, and it is not re-implemented here. The dependent rule --
-// edge(child: C, parent: P) means C depends on P, so P's motivating project is its DEPENDENT, the
-// arc-that-depends-on-it, nearest first -- is gunbc.roadmap.roadmap_project
-// node_project_membership's single authority (owner ruling 2026-09-20: membership is derived from
-// the dependency edges, never rostered). This module CONSUMES that walk recursively: each step asks
-// who owns the current node, and a node two arcs depend on is MembershipAmbiguous there -- a TYPED
-// outcome, never a silent first(), because choosing would invent which level's intent the work
-// serves. The roadmap graph is acyclic by authority, and the recursion is still fuel-bounded: one
-// fold step per declared edge, so the walk always terminates under a bound the fold never trusts.
-//
-// CONTRIBUTION PRESERVATION: each link carries the node's declared purpose text (headline and
-// boundary brief) projected from its authority row -- the derived statement of what that level
-// contributes to the level above it. Alignment checks read against the carried contribution, never a
-// fresh interpretation invented at check time.
+// The recursive alignment ladder follows authored nesting, never reverse blocking.
+// Each level carries its declared purpose and boundary. Ambiguous ownership refuses.
 type AlignmentChainLink {
   node_id: String
   purpose: String
@@ -82,6 +62,7 @@ type AlignmentChain
       dependents: List<String>,
     }
   | AlignmentChainRowUndeclared { node_id: String }
+  | AlignmentChainCyclic { node_id: String }
 
 fn alignment_root_pointer() -> DeclarationRef {
   decl_ref(module_path: "gunbc.design_document", decl_name: "design_document")
@@ -143,14 +124,14 @@ fn alignment_walk_halt(acc: AlignmentWalk, ambiguous_dependents: List<String>, u
 
 fn alignment_walk_step(
   nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  memberships: List<RoadmapMembership>,
   acc: AlignmentWalk,
-  fuel_edge: RoadmapEdge,
+  fuel_edge: RoadmapMembership,
 ) -> AlignmentWalk {
   if acc.halted {
     acc
   } else {
-    match node_project_membership(node_id: acc.current, edges: edges) {
+    match node_project_membership(node_id: acc.current, memberships: memberships) {
       MembershipStandalone => alignment_walk_halt(acc: acc, ambiguous_dependents: [], undeclared_halt: "")
       MembershipAmbiguous { arcs } => alignment_walk_halt(acc: acc, ambiguous_dependents: arcs, undeclared_halt: "")
       MembershipMember { arc } =>
@@ -175,12 +156,12 @@ fn alignment_walk_step(
 // edge's worth of budget, and a chain longer than the edge population is impossible by acyclicity --
 // the fuel is the honest bound, not a guessed constant. An ambiguous step refuses with the prefix
 // already walked: the fork does not erase the derivation that reached it.
-fn alignment_chain(node_id: String, edges: List<RoadmapEdge>, nodes: List<RoadmapNode>) -> AlignmentChain {
+fn alignment_chain(node_id: String, memberships: List<RoadmapMembership>, nodes: List<RoadmapNode>) -> AlignmentChain {
   match alignment_link_project(node_id: node_id, nodes: nodes) {
     LinkRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
     LinkProjected { link: task } => {
       let walked = fold(
-        edges,
+        memberships,
         init: AlignmentWalk {
           current: node_id,
           projects: [],
@@ -188,7 +169,7 @@ fn alignment_chain(node_id: String, edges: List<RoadmapEdge>, nodes: List<Roadma
           ambiguous_dependents: [],
           undeclared_halt: "",
         },
-        f: (acc, fuel_edge) => alignment_walk_step(nodes: nodes, edges: edges, acc: acc, fuel_edge: fuel_edge),
+        f: (acc, fuel_edge) => alignment_walk_step(nodes: nodes, memberships: memberships, acc: acc, fuel_edge: fuel_edge),
       )
       if count(walked.ambiguous_dependents) > 0 {
         AlignmentChainAmbiguous {
@@ -196,6 +177,8 @@ fn alignment_chain(node_id: String, edges: List<RoadmapEdge>, nodes: List<Roadma
           at: walked.current,
           dependents: walked.ambiguous_dependents,
         }
+      } else if any(walked.projects, p => p.node_id == node_id || count(filter(walked.projects, q => q.node_id == p.node_id)) > 1) {
+        AlignmentChainCyclic { node_id: node_id }
       } else if walked.undeclared_halt != "" {
         AlignmentChainRowUndeclared { node_id: walked.undeclared_halt }
       } else {
@@ -209,13 +192,13 @@ fn alignment_chain(node_id: String, edges: List<RoadmapEdge>, nodes: List<Roadma
   }
 }
 
-// THE AUTHORITY-BOUND DERIVATION. Every production consumer names the node; the edges and rows are
+// THE AUTHORITY-BOUND DERIVATION. Every production consumer names the node; nesting and rows are
 // the declared authority's own, so the chain renders what the authority says NOW, not what a copy
 // said when it was written.
 fn alignment_chain_for(node_id: String) -> AlignmentChain {
   alignment_chain(
     node_id: node_id,
-    edges: declared_roadmap_edges(),
+    memberships: declared_roadmap_memberships(),
     nodes: declared_roadmap_nodes(),
   )
 }
@@ -473,6 +456,7 @@ fn alignment_levels_due(chain: AlignmentResolvedChain, turns_elapsed: Int, state
 type AlignmentRefusal
   = AlignmentChainForked { at: String, dependents: List<String>, walked: List<AlignmentChainLink> }
   | AlignmentRowUndeclared { node_id: String }
+  | AlignmentNestingCyclic { node_id: String }
 
 fn alignment_refusal_reason(cause: AlignmentRefusal) -> String {
   match cause {
@@ -482,6 +466,7 @@ fn alignment_refusal_reason(cause: AlignmentRefusal) -> String {
         " more than one dependent arc (", join(dependents, ", "),
         "); the authority must say which arc owns the delivery before the alignment chain can be read",
       ], "")
+    AlignmentNestingCyclic { node_id } => concat("Cyclic project nesting at ", node_id)
     AlignmentRowUndeclared { node_id } =>
       join([
         "the authority declares no ticket row for node ", node_id,
@@ -591,6 +576,7 @@ fn alignment_resolve_chain(chain: AlignmentChain, turns_elapsed: Int, state: Ali
     }
     AlignmentChainAmbiguous { walked, at, dependents } =>
       AlignmentUnresolved { cause: AlignmentChainForked { at: at, dependents: dependents, walked: walked } }
+    AlignmentChainCyclic { node_id } => AlignmentUnresolved { cause: AlignmentNestingCyclic { node_id: node_id } }
     AlignmentChainRowUndeclared { node_id } =>
       AlignmentUnresolved { cause: AlignmentRowUndeclared { node_id: node_id } }
   }

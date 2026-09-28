@@ -1,5 +1,7 @@
 module test.claim.roadmap.roadmap_submission_witness_test
 
+import gunbc.roadmap_nesting { RoadmapMembership }
+
 // SLICE 2, docs/plans/harness-work-lifecycle.md rule 7: the handoff lifecycle at the real
 // execution boundary, on planted inputs. Each claim names the state it refutes: a terminal worker
 // read as ready, a passed candidate waiting on a discretionary ask, a disabled helper read as
@@ -612,51 +614,51 @@ test fn the_integration_receipt_codec_round_trips_both_states() -> Bool {
 // Membership derivation (owner ruling: derived from the dependency edges, never rostered).
 // ------------------------------------------------------------------------------------------------
 
-fn batch_edges() -> List<RoadmapEdge> {
+fn batch_memberships() -> List<RoadmapMembership> {
   [
-    RoadmapEdge { child: "shell-arc" as RoadmapNodeId, parent: "task-one" as RoadmapNodeId },
-    RoadmapEdge { child: "shell-arc" as RoadmapNodeId, parent: "task-two" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-arc", member: "task-one" },
+    RoadmapMembership { project: "shell-arc", member: "task-two" },
   ]
 }
 
-test fn a_node_the_arc_depends_on_is_a_member_keyed_by_the_arc() -> Bool {
-  match node_project_membership(node_id: "task-one", edges: batch_edges()) {
+test fn an_authored_member_is_keyed_by_its_project() -> Bool {
+  match node_project_membership(node_id: "task-one", memberships: batch_memberships()) {
     MembershipMember { arc } => arc == "shell-arc"
     _ => false
   }
-    && match project_key_for_node(node_id: "task-one", edges: batch_edges()) {
+    && match project_key_for_node(node_id: "task-one", memberships: batch_memberships()) {
       Present { value: key } => key == "shell-arc"
       Absent => false
     }
 }
 
 test fn a_node_with_no_dependent_arc_is_a_project_of_one_keyed_by_itself() -> Bool {
-  match node_project_membership(node_id: "shell-arc", edges: batch_edges()) {
+  match node_project_membership(node_id: "shell-arc", memberships: batch_memberships()) {
     MembershipStandalone => true
     _ => false
   }
-    && match project_key_for_node(node_id: "shell-arc", edges: batch_edges()) {
+    && match project_key_for_node(node_id: "shell-arc", memberships: batch_memberships()) {
       Present { value: key } => key == "shell-arc"
       Absent => false
     }
 }
 
 test fn two_arcs_over_one_node_is_a_typed_ambiguity_not_a_default() -> Bool {
-  let edges = concat(batch_edges(), [
-    RoadmapEdge { child: "other-arc" as RoadmapNodeId, parent: "task-one" as RoadmapNodeId },
+  let edges = concat(batch_memberships(), [
+    RoadmapMembership { project: "other-arc", member: "task-one" },
   ])
-  match node_project_membership(node_id: "task-one", edges: edges) {
+  match node_project_membership(node_id: "task-one", memberships: edges) {
     MembershipAmbiguous { arcs } => count(arcs) == 2
     _ => false
   }
-    && match project_key_for_node(node_id: "task-one", edges: edges) {
+    && match project_key_for_node(node_id: "task-one", memberships: edges) {
       Present { value: _ } => false
       Absent => true
     }
 }
 
-test fn the_project_membership_is_the_arcs_parents_in_declared_order() -> Bool {
-  let members = project_member_ids(arc: "shell-arc", edges: batch_edges())
+test fn project_children_follow_authored_membership_order() -> Bool {
+  let members = project_member_ids(arc: "shell-arc", memberships: batch_memberships())
   count(members) == 2
     && fold(members, init: true, f: fn(ok, m) {
       ok && (m == "task-one" || m == "task-two")

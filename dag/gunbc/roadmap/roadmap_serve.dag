@@ -2,6 +2,7 @@ module gunbc.roadmap_serve
 
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
 
+import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
 import gunbc.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
@@ -862,7 +863,8 @@ fn serve_issue_detail_response_over(
     EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
       body: join(["Issue history unavailable at ", step, ": ", reason, ". No revision-pinned mutations are available."], ""))
     EventsRead { node: _, envelopes } => {
-      let standing = roadmap_node_standing(envs: envelopes)
+      let state = roadmap_issue_state(envs: envelopes)
+      let standing = state.standing
       let standing_key = roadmap_node_standing_key(s: standing)
       if standing_key == "forked" || standing_key == "history_incomplete" {
         serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", roadmap_node_standing_text(s: standing)))
@@ -874,7 +876,7 @@ fn serve_issue_detail_response_over(
         let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) _ => [] }
         let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: [],
           attempts_refused: Present { value: "The per-issue attempt observation is not connected; no claim of zero attempts is made." },
-          standings: StandingsObserved { rows: [NodeStandingRow { node_id: node_id, standing: standing }] },
+          standings: StandingsObserved { rows: [NodeStandingRow { node_id: node_id, standing: standing, assignment: state.assignment }] },
           launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan), stale_nodes: [], events: envelopes,
           viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context)
         let response = serve_page_response_with_status(page: page, status: 200)

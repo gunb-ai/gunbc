@@ -486,30 +486,30 @@ fn roadmap_event_chain(envs: List<RoadmapEventEnvelope>, head: RoadmapEventEnvel
 // and rides the acc until a PublicationObserved spends it.
 type RoadmapStandingAcc {
   standing: RoadmapNodeStanding
-  return_to: EventPrincipal?
+  assignment: IssueAssignmentProjection
 }
 
 fn roadmap_standing_acc_empty() -> RoadmapStandingAcc {
-  RoadmapStandingAcc { standing: NodeOpen, return_to: none }
+  RoadmapStandingAcc { standing: NodeOpen, assignment: roadmap_assignment_empty() }
 }
 
-// THE RETURN-TO-MERGE HANDOFF (owner mandate 2026-09-25): an observed publication moves the
-// holder to the stored return_to and the standing reads READY FOR REVIEW — merge remains the
-// human completion action; publication never closes the issue. A publication on a history with
-// no recorded return_to changes no holder (the acc passes through, honestly).
+// One transition authority produces progress and ownership together. Progress/blocked/handback
+// authors are actors, not implicit assignees. Only explicit assignment transitions change holder.
 fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope) -> RoadmapStandingAcc {
   let e = env.event
   match e.kind {
-    Claimed { assignee, return_to } => RoadmapStandingAcc { standing: NodeClaimed { by: assignee, since: e.recorded_at }, return_to: Present { value: return_to } }
-    Released => RoadmapStandingAcc { standing: NodeOpen, return_to: none }
-    Progress { note } => RoadmapStandingAcc { standing: NodeInProgress { by: e.author, last_note: note }, return_to: acc.return_to }
-    Blocked { reason } => RoadmapStandingAcc { standing: NodeBlocked { by: e.author, reason: reason }, return_to: acc.return_to }
-    HandedBack { reason } => RoadmapStandingAcc { standing: NodeHandedBack { by: e.author, reason: reason }, return_to: acc.return_to }
-    PublicationObserved { pr, head } =>
-      match acc.return_to {
-        Present { value: return_to } => RoadmapStandingAcc { standing: NodeReadyForReview { by: return_to, pr: pr, head: head }, return_to: acc.return_to }
-        Absent => acc
-      }
+    Claimed { assignee, return_to } => RoadmapStandingAcc {
+      standing: NodeClaimed { by: assignee, since: e.recorded_at },
+      assignment: IssueAssignmentProjection { holder: Present { value: assignee }, return_to: Present { value: return_to } } }
+    Released => roadmap_standing_acc_empty()
+    Progress { note } => RoadmapStandingAcc { standing: NodeInProgress { by: e.author, last_note: note }, assignment: acc.assignment }
+    Blocked { reason } => RoadmapStandingAcc { standing: NodeBlocked { by: e.author, reason: reason }, assignment: acc.assignment }
+    HandedBack { reason } => RoadmapStandingAcc { standing: NodeHandedBack { by: e.author, reason: reason }, assignment: acc.assignment }
+    PublicationObserved { pr, head } => match acc.assignment.return_to {
+      Present { value: return_to } => RoadmapStandingAcc { standing: NodeReadyForReview { by: return_to, pr: pr, head: head },
+        assignment: IssueAssignmentProjection { holder: Present { value: return_to }, return_to: acc.assignment.return_to } }
+      Absent => acc
+    }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
@@ -517,24 +517,23 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope)
   }
 }
 
-fn roadmap_node_standing(envs: List<RoadmapEventEnvelope>) -> RoadmapNodeStanding {
+fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
   let missing = roadmap_event_missing_parents(envs: envs)
   if count(missing) > 0 {
-    NodeHistoryIncomplete { missing_parents: missing }
+    RoadmapStandingAcc { standing: NodeHistoryIncomplete { missing_parents: missing }, assignment: roadmap_assignment_empty() }
   } else {
     let heads = roadmap_event_heads(envs: envs)
-    if count(envs) == 0 {
-      NodeOpen
-    } else if count(heads) != 1 {
-      NodeForked { heads: map(heads, h => h.id) }
-    } else {
-      match heads.first() {
-        Absent => NodeOpen
-        Present { value: head } =>
-          (fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env))).standing
-      }
-    }
+    if count(envs) == 0 { roadmap_standing_acc_empty() }
+    else if count(heads) != 1 { RoadmapStandingAcc { standing: NodeForked { heads: map(heads, h => h.id) }, assignment: roadmap_assignment_empty() } }
+    else { match heads.first() {
+      Absent => roadmap_standing_acc_empty()
+      Present { value: head } => fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env))
+    } }
   }
+}
+
+fn roadmap_node_standing(envs: List<RoadmapEventEnvelope>) -> RoadmapNodeStanding {
+  roadmap_issue_state(envs: envs).standing
 }
 
 // ONE ROW PER NODE THAT HAS EVENTS, and the observation that wraps the roster: a reader that could not
@@ -542,6 +541,7 @@ fn roadmap_node_standing(envs: List<RoadmapEventEnvelope>) -> RoadmapNodeStandin
 type NodeStandingRow {
   node_id: String
   standing: RoadmapNodeStanding
+  assignment: IssueAssignmentProjection
 }
 
 type RoadmapStandings
@@ -661,39 +661,16 @@ fn roadmap_assignment_empty() -> IssueAssignmentProjection {
   IssueAssignmentProjection { holder: none, return_to: none }
 }
 
-fn roadmap_assignment_step(acc: IssueAssignmentProjection, env: RoadmapEventEnvelope) -> IssueAssignmentProjection {
-  match env.event.kind {
-    Claimed { assignee, return_to } => IssueAssignmentProjection { holder: Present { value: assignee }, return_to: Present { value: return_to } }
-    Released => roadmap_assignment_empty()
-    Progress { note: _ } => acc
-    Blocked { reason: _ } => acc
-    HandedBack { reason: _ } => acc
-    ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
-    CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
-    CommentEdited { comment: _, body: _ } => acc
-    CommentDeleted { comment: _ } => acc
-    PublicationObserved { pr: _, head: _ } =>
-      match acc.return_to {
-        Present { value: return_to } => IssueAssignmentProjection { holder: Present { value: return_to }, return_to: acc.return_to }
-        Absent => acc
-      }
-  }
+fn roadmap_issue_assignment(envs: List<RoadmapEventEnvelope>) -> IssueAssignmentProjection {
+  roadmap_issue_state(envs: envs).assignment
 }
 
-fn roadmap_issue_assignment(envs: List<RoadmapEventEnvelope>) -> IssueAssignmentProjection {
-  let missing = roadmap_event_missing_parents(envs: envs)
-  if count(missing) > 0 {
-    roadmap_assignment_empty()
-  } else {
-    let heads = roadmap_event_heads(envs: envs)
-    if count(envs) == 0 || count(heads) != 1 {
-      roadmap_assignment_empty()
-    } else {
-      match heads.first() {
-        Absent => roadmap_assignment_empty()
-        Present { value: head } =>
-          fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_assignment_empty(), f: (acc, env) => roadmap_assignment_step(acc: acc, env: env))
-      }
+fn assignment_for_node(standings: RoadmapStandings, node_id: String) -> IssueAssignmentProjection? {
+  match standings {
+    StandingsUnobserved { reason: _ } => none
+    StandingsObserved { rows } => match filter(rows, r => r.node_id == node_id).first() {
+      Present { value: row } => Present { value: row.assignment }
+      Absent => none
     }
   }
 }
@@ -833,4 +810,16 @@ fn issue_comment_anchor(ordinal: Int) -> String {
 // omitted).
 fn roadmap_publication_handoff_event(node: RoadmapNodeId, pr: NonEmptyStr, head: NonEmptyStr, author: EventPrincipal, parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent {
   RoadmapEvent { node: node, author: author, parent: parent, kind: PublicationObserved { pr: pr, head: head }, recorded_at: recorded_at }
+}
+
+// A single issue's audit ordering is causal. Cross-issue recents retain their separate clock
+// ordering; they cannot define a shared causal chain. Invalid histories retain their raw events
+// for diagnosis, and the standing/route boundary refuses to advertise a current issue snapshot.
+fn roadmap_issue_history_newest_first(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEventEnvelope> {
+  let heads = roadmap_event_heads(envs: envs)
+  if count(heads) != 1 || count(roadmap_event_missing_parents(envs: envs)) > 0 { envs }
+  else { match heads.first() {
+    Absent => envs
+    Present { value: head } => fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: [], f: (acc, event) => concat([event], acc))
+  } }
 }

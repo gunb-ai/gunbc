@@ -4,6 +4,7 @@ import std.types { Bool, String, Int, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
 import gunbc.roadmap.roadmap_event_log {
+  roadmap_issue_state, roadmap_issue_history_newest_first,
   RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
   CommentCreated, CommentEdited, CommentDeleted,
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label, event_principal_authenticated,
@@ -384,4 +385,21 @@ test fn the_handoff_event_constructor_records_the_publication_fact() -> Bool {
           && (match envelope.event.kind { PublicationObserved { pr, head } => (pr as String) == "gunb-ai/gunbc#12210" && (head as String) == "52c56a8"  _ => false })
       RoadmapEventUndecodable { reason: _ } => false
     })
+}
+
+test fn progress_actor_does_not_replace_the_committed_holder() -> Bool {
+  let holder = event_principal_authenticated(ref: fabric_workflow_principal())
+  let claim = ev(kind: Claimed { assignee: holder, return_to: human_principal() }, parent: none, author: human_principal(), at: "t9")
+  let progress = ev(kind: Progress { note: "working" }, parent: Present { value: claim.id }, author: human_principal(), at: "t1")
+  let state = roadmap_issue_state(envs: [progress, claim])
+  state.assignment.holder == Present { value: holder }
+    && state.assignment.return_to == Present { value: human_principal() }
+    && match state.standing { NodeInProgress { by, last_note: _ } => by == human_principal() _ => false }
+    && map(roadmap_issue_history_newest_first(envs: [claim, progress]), e => e.id) == [progress.id, claim.id]
+}
+
+test fn unassigned_progress_does_not_create_an_assignment() -> Bool {
+  let progress = ev(kind: Progress { note: "observation without a claim" }, parent: none, author: human_principal(), at: "t1")
+  let state = roadmap_issue_state(envs: [progress])
+  state.assignment.holder == none && roadmap_node_standing_key(s: state.standing) == "in_progress"
 }

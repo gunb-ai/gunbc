@@ -1,5 +1,7 @@
 module gunbc.roadmap_belt_actuate
 
+import gunbc.roadmap_nesting { declared_roadmap_memberships }
+
 import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
@@ -2036,7 +2038,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
   continuation_decision(
     prior: Present { value: PriorAttemptFacts {
       node_id: node.node as String,
-      edges: declared_roadmap_edges(),
+      memberships: declared_roadmap_memberships(),
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worker_terminal: belt_provider_is_terminal(provider: progress.provider),
@@ -5992,10 +5994,10 @@ fn belt_scm_capture_candidate_tree(
   attempt_key: String,
   message: String,
 ) -> BeltScmCapture {
-  match project_key_for_node(node_id: node_id as String, edges: declared_roadmap_edges()) {
+  match project_key_for_node(node_id: node_id as String, memberships: declared_roadmap_memberships()) {
     Absent =>
       ScmCapturePoisoned {
-        detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges: the authority must name one owning arc before a candidate can be captured",
+        detail: "multiple authored parents name this node; project ownership is ambiguous: the authority must name one owning arc before a candidate can be captured",
       }
     Present { value: project_key } =>
   let projects_dir = belt_scm_projects_dir(instance: instance)
@@ -9994,6 +9996,10 @@ fn belt_integrate_candidate_core_for_instance(
   node_id: String,
   attempt_key: String,
 ) -> BeltIntegrationCoreStep {
+  if project_key_for_node(node_id: node_id, memberships: declared_roadmap_memberships()) == none {
+    IntegrationCoreUnreadable { detail: "project nesting is ambiguous or cyclic" }
+  } else {
+
   let worktree = dispatch_worktree_path_for_instance(
     instance: instance,
     node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
@@ -10044,10 +10050,10 @@ fn belt_integrate_candidate_core_for_instance(
             VerificationUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
             VerificationPassedConfirmed => {
               let edges = declared_roadmap_edges()
-              match node_project_membership(node_id: node_id, edges: edges) {
+              match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
                 MembershipAmbiguous { arcs: _ } =>
                   IntegrationCoreUnreadable {
-                    detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges",
+                    detail: "multiple authored parents name this node; project ownership is ambiguous",
                   }
                 membership => {
                   let project_key = match membership {
@@ -10077,6 +10083,7 @@ fn belt_integrate_candidate_core_for_instance(
         }
       }
   }
+  }
 }
 
 fn belt_integrate_candidate_for_instance(
@@ -10090,9 +10097,9 @@ fn belt_integrate_candidate_for_instance(
     IntegrationCoreBlocked { detail } => IntegrationStepBlocked { detail: detail }
     IntegrationCoreIntegrated { project_key } => {
       let edges = declared_roadmap_edges()
-      let members = match node_project_membership(node_id: node_id, edges: edges) {
+      let members = match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
         MembershipStandalone => [node_id]
-        MembershipMember { arc } => project_member_ids(arc: arc, edges: edges)
+        MembershipMember { arc } => project_member_ids(arc: arc, memberships: declared_roadmap_memberships())
         MembershipAmbiguous { arcs: _ } => [node_id]
       }
       match belt_integration_census(instance: instance, member_ids: members) {
@@ -10209,7 +10216,7 @@ fn belt_publish_attempt_for_instance(
           ], ""),
         }
       } else {
-        match node_project_membership(node_id: node_id, edges: declared_roadmap_edges()) {
+        match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
           MembershipMember { arc } =>
             belt_publish_project_for_instance(
               instance: instance,

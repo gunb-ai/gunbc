@@ -1,5 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
+import gunbc.roadmap_nesting { RoadmapMembership }
+
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapEdge }
 import gunbc.roadmap.roadmap_submission {
@@ -49,7 +51,7 @@ type AttemptOrigin
 // starting over from base.
 type PriorAttemptFacts {
   node_id: String
-  edges: List<RoadmapEdge>
+  memberships: List<RoadmapMembership>
   attempt_key: String
   branch: String
   worker_terminal: Bool
@@ -335,7 +337,7 @@ fn continuation_at_cap(prior: PriorAttemptFacts, turn: Int, stall: String) -> Co
 // decomposition edges; a node whose membership is ambiguous has no supervisor to derive, and the
 // decision refuses with the ambiguity named rather than guessing one.
 fn continuation_escalate(prior: PriorAttemptFacts, turn: Int, stall: String) -> ContinuationDecision {
-  match supervisor_target_for(node_id: prior.node_id, edges: prior.edges) {
+  match supervisor_target_for(node_id: prior.node_id, memberships: prior.memberships) {
     Absent =>
       ContinuationRefused {
         reason: join([

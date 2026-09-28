@@ -592,7 +592,7 @@ fn band_entry_has_active(entries: List<WorkBandEntry>) -> Bool {
 test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
   let active_row = fx_row(activity: fx_specimen_activity())
   let idle_row = fx_row(activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [idle_row, active_row], edges: [], program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: [idle_row, active_row], edges: [], program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: []))
   count(ws.active) == 1
     && band_entry_has_active(entries: ws.active)
     && band_entry_row_count(entries: ws.upcoming) == 1
@@ -624,6 +624,7 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     disclosure: base.disclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    assignment: none,
     standing: none,
     attempt_stale: false,
   }
@@ -647,7 +648,7 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
   let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: NoActiveWork)
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m1, lookalike, m2], edges: [], program: none, observation: ObservationsNominal,
-    families: fx_family_decls(), members: fx_family_members())
+    families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
   count(ws.upcoming) == 2
     && (match ws.upcoming.first() {
       Present { value: e } => match e {
@@ -673,7 +674,7 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
 test fn witness_family_membership_is_typed_not_parsed() -> Bool {
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m2], edges: [], program: none, observation: ObservationsNominal,
-    families: fx_family_decls(), members: fx_family_members())
+    families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
   fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
     BandFamily { family } => fold(family.rows, init: false, f: (a, r) =>
       a || r.headline == join([fx_family_claim(), " nested in a subject"], ""))
@@ -686,7 +687,7 @@ test fn witness_active_family_member_leaves_group() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: fx_specimen_activity())
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m1, m2], edges: [], program: none, observation: ObservationsNominal,
-    families: fx_family_decls(), members: fx_family_members())
+    families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
   count(ws.active) == 1
     && (match ws.active.first() {
       Present { value: e } => match e {
@@ -706,7 +707,7 @@ test fn witness_active_family_member_leaves_group() -> Bool {
 test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m1], edges: [], program: none, observation: ObservationsNominal,
-    families: [], members: fx_family_members())
+    families: [], members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
   count(ws.upcoming) == 1
     && (match ws.upcoming.first() {
       Present { value: e } => match e {
@@ -968,7 +969,7 @@ fn fx_ws_rendered_ids(ws: DailyWorkspaceView) -> List<String> {
 fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: String) -> ProjectTreeView {
   project_tree_view(
     row: fx_row_of(rows: rows, node_id: node_id),
-    rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows))
+    rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: fixture_nesting_relation(edges: edges))
 }
 
 // THE DIRECTION WALL: the project's display children are the rows in the PARENT position of its
@@ -977,11 +978,11 @@ fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: S
 test fn witness_project_tasks_are_prerequisites() -> Bool {
   let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   let edges = fx_hier_edges()
-  map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project"), r => r.node_id)
+  map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project", memberships: fixture_nesting_relation(edges: edges)), r => r.node_id)
     == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
-    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-task-open")) == 0
-    && row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-project"))
-    && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"))
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-task-open", memberships: fixture_nesting_relation(edges: edges))) == 0
+    && row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-project"), memberships: fixture_nesting_relation(edges: edges))
+    && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"), memberships: fixture_nesting_relation(edges: edges))
 }
 
 // PROGRESS COUNTS CLOSURE, NEVER IMPLEMENTATION EVIDENCE: closed = accepted or superseded
@@ -993,7 +994,7 @@ test fn witness_project_tasks_are_prerequisites() -> Bool {
 test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
   let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   let edges = fx_hier_edges()
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   count(ws.active) == 0
     && count(ws.upcoming) == 1
     && (match ws.upcoming.first() {
@@ -1023,7 +1024,7 @@ test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
 test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
   let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
   let edges = fx_hier_edges()
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 5
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
@@ -1060,7 +1061,7 @@ test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
     rn: rn, nodes: nodes, edges: [], merged: [],
     activity: if (rn.node as String) == "hier-solo-active" { fx_specimen_activity() } else { NoActiveWork },
     standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: [], program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: [], program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: []))
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 2
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
@@ -1083,57 +1084,17 @@ test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
     })
 }
 
-// MULTI-DEPENDENCY: a task that is a prerequisite of several rendered projects nests under the
-// FIRST one in edge declaration order and renders nowhere else — while still counting toward each
-// project's denominator. roadmap_primary_parent was consulted for this rule and does not fit (it
-// selects a node's own first prerequisite, the opposite direction); the rule is first declared
-// banded dependent, pinned here.
-test fn witness_shared_task_nests_under_first_declared_parent() -> Bool {
-  let nodes = [
-    fx_sized(id: "hier-p1", content: "project one"),
-    fx_sized(id: "hier-p2", content: "project two"),
-    fx_sized(id: "hier-shared", content: "shared task"),
-  ]
-  let edges = [
-    gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"),
-    gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared"),
-  ]
+// Blocker declaration order cannot choose ownership. Only the independent nesting does.
+test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
+  let nodes = [fx_sized(id: "hier-p1", content: "project one"), fx_sized(id: "hier-p2", content: "project two"), fx_sized(id: "hier-shared", content: "shared prerequisite")]
+  let edges = [gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"), gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared")]
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-shared", project: "hier-p1" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
-  let ids = fx_ws_rendered_ids(ws: ws)
-  (match row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared") {
-    Present { value: p } => p == "hier-p2"
-    Absent => false
-  })
-    && count(ids |> filter(i => i == "hier-shared")) == 1
-    && (match ws.upcoming |> filter(e => match e {
-        BandProject { project } => project.row.node_id == "hier-p1"
-        BandRow { row: _ } => false
-        BandFamily { family: _ } => false
-      }) |> first {
-      Present { value: e } => match e {
-        BandProject { project } =>
-          project.total_count == 1 && count(project.entries) == 0 && count(project.chain) == 0
-        BandRow { row: _ } => false
-        BandFamily { family: _ } => false
-      }
-      Absent => false
-    })
-    && (match ws.upcoming |> filter(e => match e {
-        BandProject { project } => project.row.node_id == "hier-p2"
-        BandRow { row: _ } => false
-        BandFamily { family: _ } => false
-      }) |> first {
-      Present { value: e } => match e {
-        BandProject { project } =>
-          project.total_count == 1
-            && count(project.chain) == 0
-            && map(project.entries, ent => fx_entry_id(entry: ent)) == ["hier-shared"]
-        BandRow { row: _ } => false
-        BandFamily { family: _ } => false
-      }
-      Absent => false
-    })
+  row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: nesting) == Present { value: "hier-p1" }
+    && row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: []) == none
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p2", memberships: nesting)) == 0
+    && map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p1", memberships: nesting), r => r.node_id) == ["hier-shared"]
+    && count(fx_ws_rendered_ids(ws: daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: nesting)) |> filter(id => id == "hier-shared")) == 1
 }
 
 // THE EXPANSION RULE IS A PURE FUNCTION OF SUBTREE STATE: a project opens when a descendant has a
@@ -1171,7 +1132,7 @@ test fn witness_single_child_chain_collapses() -> Bool {
     gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 3
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
@@ -1215,7 +1176,7 @@ test fn witness_multi_child_project_never_collapses() -> Bool {
     gunbc.roadmap_authority.edge(child: "hier-multi-b", parent: "hier-multi-c"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 4
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
@@ -1269,7 +1230,7 @@ test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
     gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t2"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 6
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
@@ -1288,11 +1249,8 @@ test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
     })
 }
 
-// THE OWNERSHIP CLAUSE (the fleet-closed-loop-converge interaction): a project collapses through
-// its single display child only when it OWNS that child (the child's primary display parent is
-// the collapsing project). Here the shared intermediate project M gates both P1 and P2, and M's
-// primary parent is P2 (first declared edge): P2 collapses through M and carries M's task, while
-// P1 keeps its honest "0 of 1" with no entries and no chain — M joins exactly one chain.
+// A shared prerequisite nests only under its authored owner. Other dependents retain a
+// blocking link, but neither count it as their child nor claim an empty owned-task denominator.
 test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
   let nodes = [
     fx_sized(id: "hier-sp-p1", content: "project one"),
@@ -1305,26 +1263,13 @@ test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
     gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
     gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
   ]
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: nesting)
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 4
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
-    && (match ws.upcoming |> filter(e => match e {
-        BandProject { project } => project.row.node_id == "hier-sp-p1"
-        BandRow { row: _ } => false
-        BandFamily { family: _ } => false
-      }) |> first {
-      Present { value: e } => match e {
-        BandProject { project } =>
-          count(project.chain) == 0
-            && project.total_count == 1
-            && count(project.entries) == 0
-        BandRow { row: _ } => false
-        BandFamily { family: _ } => false
-      }
-      Absent => false
-    })
+    && any(ws.upcoming, e => match e { BandRow { row } => row.node_id == "hier-sp-p1" _ => false })
     && (match ws.upcoming |> filter(e => match e {
         BandProject { project } => project.row.node_id == "hier-sp-p2"
         BandRow { row: _ } => false
@@ -1357,11 +1302,11 @@ test fn witness_family_member_never_nests() -> Bool {
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
   let families = [ WorkFamilyDecl { id: "fx-fam", claim: "fx family claim" } ]
   let members = [ WorkFamilyMemberFact { family_id: "fx-fam", task_node: "hier-fam-task", subject: "fx subject" } ]
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: families, members: members)
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: families, members: members, memberships: fixture_nesting_relation(edges: edges))
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 2
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
-    && !row_is_project(rows: rows, edges: edges, members: members, row: fx_row_of(rows: rows, node_id: "hier-fam-project"))
+    && !row_is_project(rows: rows, edges: edges, members: members, row: fx_row_of(rows: rows, node_id: "hier-fam-project"), memberships: fixture_nesting_relation(edges: edges))
     && (match ws.upcoming.first() {
       Present { value: e } => match e {
         BandRow { row } => row.node_id == "hier-fam-project"
@@ -1589,7 +1534,7 @@ test fn witness_bar_never_fills_from_time_or_termination() -> Bool {
 }
 
 // REQUIRES VS CONTAINS, at the derivation: a display child owned by ANOTHER project is a
-// dependency LINK on this row (never a nested member, never dropped from the denominator); the
+// dependency LINK on this row (never a nested member or part of its progress denominator); the
 // owner's tree keeps the member. fleet-closed-loop-converge's link to shell-gate-migration is the
 // live shape this fixture models.
 test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
@@ -1604,12 +1549,13 @@ test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
     gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
     gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
   ]
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let p1 = fx_project_tree(rows: rows, edges: edges, node_id: "hier-sp-p1")
-  let p2 = fx_project_tree(rows: rows, edges: edges, node_id: "hier-sp-p2")
+  let p1 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p1"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: nesting)
+  let p2 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p2"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: nesting)
   map(p1.linked, r => r.node_id) == ["hier-sp-m"]
     && count(p2.linked) == 0
-    && p1.total_count == 1
+    && p1.total_count == 0
     && count(p1.entries) == 0
     && map(p2.entries, x => fx_entry_id(entry: x)) == ["hier-sp-t"]
 }
@@ -1621,7 +1567,7 @@ test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
 test fn witness_issue_table_flattens_every_rendered_row_once() -> Bool {
   let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
   let edges = fx_hier_edges()
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   let forest = fx_ws_rendered_ids(ws: ws)
   let table = map(ws.table, r => r.view.node_id)
   count(table) == count(forest)
@@ -1642,7 +1588,7 @@ test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
     gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
   ]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
   let table = map(ws.table, r => r.view.node_id)
   count(table) == 3
     && count(table |> filter(i => i == "hier-chain-b")) == 1
@@ -1721,6 +1667,7 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
     disclosure: NoDisclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    assignment: none,
     standing: none,
     attempt_stale: false,
   }
@@ -1757,4 +1704,10 @@ test fn witness_pending_stage_names_what_it_waits_on() -> Bool {
     && issue_wait_state_label(state_key: "pending", wait_target: "") == "pending"
     && issue_wait_state_label(state_key: "complete", wait_target: "workspace") == "complete"
     && issue_wait_state_label(state_key: "refused", wait_target: "workspace") == "refused"
+}
+
+// These older fixtures explicitly declare both relations with the same endpoints. Production
+// never derives ownership this way; the independent-relation control uses different endpoints.
+fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_nesting.RoadmapMembership> {
+  map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String })
 }

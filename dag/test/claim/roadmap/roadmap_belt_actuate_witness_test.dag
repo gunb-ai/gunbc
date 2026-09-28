@@ -1,5 +1,7 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.roadmap_nesting { declared_roadmap_memberships }
+
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -2778,7 +2780,7 @@ test fn a_fresh_start_passes_the_binding_gate() -> Bool {
 fn capped_production_prior(node_id: String) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: node_id,
-    edges: declared_roadmap_edges(),
+    memberships: declared_roadmap_memberships(),
     attempt_key: "cd172fe81b806160",
     branch: "dispatch/x-acd172fe81b806160",
     worker_terminal: true,
@@ -3002,7 +3004,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
   let decision = continuation_decision(
     prior: Present { value: PriorAttemptFacts {
       node_id: "node-a",
-      edges: [],
+      memberships: declared_roadmap_memberships(),
       attempt_key: "cd172fe81b806160",
       branch: "dispatch/node-a-acd172fe81b806160",
       worker_terminal: false,
