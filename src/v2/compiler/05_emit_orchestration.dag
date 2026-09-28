@@ -9,10 +9,10 @@ import v2.std.node_query { find_named_child }
 import v2.std.orchestration_emit {
   OrchestrationEmitMedium,
   OrchRunEmitPlan,
+  OrchSeqEmitPlan,
   orch_construct_run_rawline,
   orch_construct_retry,
   orch_construct_retry_1level,
-  orch_construct_seq2,
   orch_construct_if,
   orch_construct_if_else,
   orch_construct_if_block,
@@ -124,7 +124,7 @@ import v2.std.diagnostic {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node, TypeNode, Conj, Atom, Symbol }
-import v2.std.text { String, string_all_chars_in, string_any_char_in }
+import v2.std.text { String, string_all_chars_in, string_any_char_in, string_join }
 
 fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
   optional_absent()
@@ -263,7 +263,7 @@ fn orch_emit_exit_status_bind(stmt: String, binder: String, medium: Orchestratio
     outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_binder_invalid))
   } else {
     bind_outcome(
-      o: orch_emit_join2(left: stmt, right: concat(binder, "=$?"), medium: medium),
+      o: orch_emit_seq(items: [stmt, concat(binder, "=$?")], medium: medium),
       f: fn(m) { outcome_accepted(m.carried) }
     )
   }
@@ -335,15 +335,20 @@ fn orch_emit_run_from_plan(
   )
 }
 
-fn orch_emit_join2(
-  left: String,
-  right: String,
+// ONE EMIT FOR A WHOLE SEQUENCE. The medium's plan carries the row for exactly these items
+// (v2.std.orchestration_emit OrchSeqEmitPlan), so a sequence of N items is one grammar emit rather
+// than N-1 binary joins over their own output.
+fn orch_emit_seq(
+  items: List<String>,
   medium: OrchestrationEmitMedium
 ) -> Outcome<extdeps.communication.medium.Medium<String>> {
-  orch_emit_from_registry(
-    medium: medium,
-    construct_tag: orch_construct_seq2,
-    target: medium.realize_seq2(left, right)
+  let plan = medium.realize_seq(items)
+  emit(
+    tree: InferredTree {
+      root: plan.emitted,
+      facts: PartialFunction { lookup: orch_emit_facts_lookup }
+    },
+    target: plan.target
   )
 }
 
@@ -533,7 +538,7 @@ fn orch_emit_procedure(
 
 // bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no
 // newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every
-// step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row;
+// step of a multi-step then_/else_ Pipeline (orch_emit_seq) before this fn binds .carried into the row;
 // a >1-step body glued into the single-line row is bash-valid (newline is an ordinary statement
 // separator inside a then/else arm — verified, not a carriage bug) but byte-diverges from a
 // block-formatted expectation. Multi-statement then_/else_ arms are legitimate orchestration intent
@@ -1106,28 +1111,24 @@ fn orch_emit_unsupported_step_diagnostics(reason: Symbol) -> Diagnostic {
   }
 }
 
-fn orch_emit_steps_from(
-  head_str: String,
+// EACH STEP IS SPELLED ONCE, IN ORDER, AND THE FIRST REFUSAL STOPS THE FOLD.
+fn orch_emit_step_spellings_from(
+  acc: List<String>,
   rest: List<PipelineStep>,
   medium: OrchestrationEmitMedium
-) -> Outcome<extdeps.communication.medium.Medium<String>> {
+) -> Outcome<List<String>> {
   match list_head(xs: rest) {
-    HeadAbsent =>
-      outcome_accepted(lossless_source(text: head_str))
+    HeadAbsent => outcome_accepted(acc)
     HeadFound { value: next } =>
       bind_outcome(
         o: orch_emit_step(s: next, medium: medium),
         f: fn(next_medium) {
-          bind_outcome(
-            o: orch_emit_join2(left: head_str, right: next_medium.carried, medium: medium),
-            f: fn(joined) {
-              match list_tail(xs: rest) {
-                TailFound { tail: t } =>
-                  orch_emit_steps_from(head_str: joined.carried, rest: t, medium: medium)
-                TailAbsent => outcome_accepted(joined)
-              }
-            }
-          )
+          let spelled = concat(acc, [next_medium.carried])
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              orch_emit_step_spellings_from(acc: spelled, rest: t, medium: medium)
+            TailAbsent => outcome_accepted(spelled)
+          }
         }
       )
   }
@@ -1140,19 +1141,14 @@ fn orch_emit_pipeline(
   match list_head(xs: p.steps) {
     HeadAbsent =>
       outcome_accepted(lossless_source(text: ""))
-    HeadFound { value: first } =>
+    HeadFound { value: _ } =>
       bind_outcome(
-        o: orch_emit_step(s: first, medium: medium),
-        f: fn(first_medium) {
-          match list_tail(xs: p.steps) {
-            TailFound { tail: t } =>
-              orch_emit_steps_from(
-                head_str: first_medium.carried,
-                rest: t,
-                medium: medium
-              )
-            TailAbsent =>
-              outcome_accepted(first_medium)
+        o: orch_emit_step_spellings_from(acc: [], rest: p.steps, medium: medium),
+        f: fn(spellings) {
+          if length(xs: spellings) == 1 {
+            outcome_accepted(lossless_source(text: string_join(fields: spellings, separator: "")))
+          } else {
+            orch_emit_seq(items: spellings, medium: medium)
           }
         }
       )

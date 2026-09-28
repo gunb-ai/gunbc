@@ -12,8 +12,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_if_emitted,
   bash_stmt_if_block_emitted,
   bash_stmt_assign_emitted,
-  orch_seq2_emitted_command,
-  orch_seq2_target_model,
+  orch_seq_emitted_command,
+  orch_seq_target_model,
   orch_retry_emitted_command,
   orch_retry_target_model,
   orch_retry_1level_emitted_command,
@@ -43,8 +43,8 @@ import v2.extdeps.languages.bash_orch_tier2 {
 }
 import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
 import std.algebra { FreeMonoid }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import v2.std.collection { empty_map }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, length }
+import v2.std.collection { List, empty_map }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -57,10 +57,10 @@ import v2.std.orchestration { Run, EnvBinding, EnvSet, EnvUnset }
 import v2.std.orchestration_emit {
   OrchestrationEmitMedium,
   OrchRunEmitPlan,
+  OrchSeqEmitPlan,
   orch_construct_run_rawline,
   orch_construct_run_env_prefixed,
   orch_construct_run_env_unset,
-  orch_construct_seq2,
   orch_construct_retry,
   orch_construct_retry_1level,
   orch_construct_retry_escalation_final,
@@ -92,10 +92,6 @@ fn bash_orchestration_emit_registry_node() -> Node {
       bash_named_edge(
         name: orch_construct_run_env_unset,
         target: bash_stmt_env_unset_emitted
-      ),
-      bash_named_edge(
-        name: orch_construct_seq2,
-        target: orch_seq2_emitted_command
       ),
       bash_named_edge(
         name: orch_construct_retry,
@@ -215,12 +211,19 @@ fn bash_orch_run_env_plan(r: Run) -> OrchRunEmitPlan {
   }
 }
 
+fn bash_orch_seq_emit_plan(items: List<String>) -> OrchSeqEmitPlan {
+  OrchSeqEmitPlan {
+    emitted: orch_seq_emitted_command(count: length(xs: items)),
+    target: orch_seq_target_model(items: items)
+  }
+}
+
 fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
   OrchestrationEmitMedium {
     authority: bash_orchestration_medium_authority(),
     realize_run_rawline: bash_fold_raw_line_target_model,
     run_env_plan: bash_orch_run_env_plan,
-    realize_seq2: orch_seq2_target_model,
+    realize_seq: bash_orch_seq_emit_plan,
     realize_retry: orch_retry_target_model,
     realize_retry_1level: orch_retry_1level_target_model,
     realize_retry_escalation_final: orch_retry_escalation_final_target_model,

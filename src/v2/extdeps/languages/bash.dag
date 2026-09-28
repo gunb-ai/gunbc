@@ -2,7 +2,7 @@ module v2.extdeps.languages.bash
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_right, list_flat_map, list_map }
+import v2.std.algebra { fold_list_right, list_flat_map, list_map, list_head, list_tail, HeadAbsent, HeadFound, TailAbsent, TailFound, length }
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,
@@ -41,6 +41,8 @@ import v2.std.compilers.target_model {
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.text { string_join }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import extdeps.posix.shell_command_language {
   posix_single_quote_delimiter,
@@ -55,6 +57,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  symbol_intern_lexeme,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -1186,53 +1189,81 @@ fn retry_eagain_bash_lex() -> LexRules {
   ]))
 }
 
-fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_left },
-    FixedToken { token_class: ^bash_token_orch_seq_newline },
-    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_right }
-  ]
+// ONE ROW FOR A SEQUENCE OF ANY ARITY (v2.std.orchestration_emit OrchSeqEmitPlan): item i is bound
+// raw text at binding orch_seq_item_<i>, and consecutive items are separated by one newline token.
+// The binary row it replaces was this row at N=2, folded N-1 times over its own output.
+fn orch_seq_item_binding(index: Int) -> Symbol {
+  symbol_intern_lexeme(lexeme: concat("orch_seq_item_", integer_int_to_decimal_string(value: index)))
 }
 
-data orch_seq2_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: orch_seq2_tokens()
-)
-
-fn orch_seq2_source_text(left: String, right: String) -> String {
-  concat(left, concat("\n", right))
+fn orch_seq_tokens_from(index: Int, count: Int) -> List<ConcreteSyntaxToken> {
+  if index >= count {
+    []
+  } else if index == 0 {
+    concat(
+      [BoundToken { token_class: ^bash_token_orch_raw, binding: orch_seq_item_binding(index: index) }],
+      orch_seq_tokens_from(index: index + 1, count: count)
+    )
+  } else {
+    concat(
+      [
+        FixedToken { token_class: ^bash_token_orch_seq_newline },
+        BoundToken { token_class: ^bash_token_orch_raw, binding: orch_seq_item_binding(index: index) }
+      ],
+      orch_seq_tokens_from(index: index + 1, count: count)
+    )
+  }
 }
 
-fn orch_seq2_lex() -> LexRules {
+fn orch_seq_tokens(count: Int) -> List<ConcreteSyntaxToken> {
+  orch_seq_tokens_from(index: 0, count: count)
+}
+
+fn orch_seq_emitted_command(count: Int) -> Node {
+  bash_conj_emitted_from_tokens(tokens: orch_seq_tokens(count: count))
+}
+
+fn orch_seq_lex() -> LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "\n", class: ^bash_token_orch_seq_newline)
   ]))
 }
 
-fn orch_seq2_translation_rules_node() -> Node {
+fn orch_seq_translation_rules_node(count: Int) -> Node {
   bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_orch_seq2,
-    lhs: ^bash_production_orch_seq2,
-    tokens: orch_seq2_tokens(),
-    emitted: orch_seq2_emitted_command
+    rule_name: ^bash_relation_rule_orch_seq,
+    lhs: ^bash_production_orch_seq,
+    tokens: orch_seq_tokens(count: count),
+    emitted: orch_seq_emitted_command(count: count)
   )
 }
 
-fn orch_seq2_binding_spellings(left: String, right: String) -> Map<Symbol, String> {
-  map_insert(
-    map_insert(empty_map(), ^orch_seq2_left, left),
-    ^orch_seq2_right, right
-  )
+fn orch_seq_binding_spellings_from(index: Int, items: List<String>, acc: Map<Symbol, String>) -> Map<Symbol, String> {
+  match list_head(xs: items) {
+    HeadAbsent => acc
+    HeadFound { value: item } =>
+      match list_tail(xs: items) {
+        TailFound { tail: rest } =>
+          orch_seq_binding_spellings_from(
+            index: index + 1,
+            items: rest,
+            acc: map_insert(acc, orch_seq_item_binding(index: index), item)
+          )
+        TailAbsent => map_insert(acc, orch_seq_item_binding(index: index), item)
+      }
+  }
 }
 
-fn orch_seq2_target_model(left: String, right: String) -> TargetModel {
+fn orch_seq_target_model(items: List<String>) -> TargetModel {
+  let count = length(xs: items)
   bash_make_bound_tokens_target_model(
-    rules: orch_seq2_translation_rules_node(),
-    source_literal: ^bash_orch_seq2_source_literal,
-    production_name: ^bash_production_orch_seq2,
-    tokens: orch_seq2_tokens(),
-    source_text: orch_seq2_source_text(left: left, right: right),
-    lex: orch_seq2_lex(),
-    binding_spellings: orch_seq2_binding_spellings(left: left, right: right)
+    rules: orch_seq_translation_rules_node(count: count),
+    source_literal: ^bash_orch_seq_source_literal,
+    production_name: ^bash_production_orch_seq,
+    tokens: orch_seq_tokens(count: count),
+    source_text: string_join(fields: items, separator: "\n"),
+    lex: orch_seq_lex(),
+    binding_spellings: orch_seq_binding_spellings_from(index: 0, items: items, acc: empty_map())
   )
 }
 
