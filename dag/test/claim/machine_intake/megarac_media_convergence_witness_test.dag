@@ -2,6 +2,7 @@ module test.claim.machine_intake.megarac_media_convergence_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name, ubuntu_seeded_install_media_name_digest_prefix }
@@ -106,7 +107,7 @@ import gunbc.machine_intake_megarac_media_attach {
   SessionReleaseNotAttempted,
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_findings }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_findings, MtCollins1HandoffMedia, MtCollins1EndMedia, EndMediaObserved, EndMediaNotTaken, media_loss_after_handoff, outcome_attributing_media_loss }
 import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -571,6 +572,38 @@ test fn the_36330382023_after_state_is_indeterminate_not_an_affirmed_loss() -> B
 // An affirmed loss: the look was taken and the row is gone.
 test fn a_withdrawn_row_after_the_handoff_is_an_affirmed_loss() -> Bool {
   only_finding_contains(findings: handoff_media_findings(h: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }), pattern: "LOST at or after")
+}
+
+// A LOSS AFFIRMED AFTER A CONFIRMED HANDOFF IS THE ATTEMPT'S CAUSE (gunbc#12533 finding 4): the
+// deadline failure is re-attributed to "media presentation lost at <phase>", the earliest affirming
+// look is the phase, and the downstream reason is kept. Controls, each on the same failure: a
+// served look, an UNOBSERVED look, and an unconfirmed handoff leave the reason as it was; a success
+// stands over an affirmed loss.
+data withdrawn_look: MegaRacAttachResult = observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]")
+data deadline_failure: ProcessExit = ExitFailure { code: 1, reason: "mtcollins1 boot: deadline reached without a host-capture terminal" }
+
+fn attributed_reason(handoff: MtCollins1HandoffMedia, end: MtCollins1EndMedia) -> String {
+  match outcome_attributing_media_loss(outcome: deadline_failure, loss: media_loss_after_handoff(handoff: handoff, end: end)) {
+    ExitFailure { code: _, reason: r } => r
+    ExitSuccess => ""
+  }
+}
+
+test fn a_presentation_lost_after_a_confirmed_handoff_is_the_named_cause() -> Bool {
+  let at_after = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look })
+  let at_end = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: withdrawn_look })
+  starts_with(s: at_after, prefix: "mtcollins1 boot: media presentation lost at after-handoff (")
+    && string_contains(s: at_after, pattern: "deadline reached without a host-capture terminal")
+    && starts_with(s: at_end, prefix: "mtcollins1 boot: media presentation lost at end-of-attempt (")
+}
+
+test fn an_unaffirmed_look_or_an_unconfirmed_handoff_leaves_the_cause_alone() -> Bool {
+  let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none }
+  let unchanged = "mtcollins1 boot: deadline reached without a host-capture terminal"
+  attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: served_look }) == unchanged
+    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: failed }, end: EndMediaObserved { look: failed }) == unchanged
+    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffAttemptedUnconfirmed { reason: "no read-back" }, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look }) == unchanged
+    && (match outcome_attributing_media_loss(outcome: ExitSuccess, loss: media_loss_after_handoff(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaNotTaken { reason: "x" })) { ExitSuccess => true _ => false })
 }
 
 // THE DISCRIMINATING CONTROL: a failed session with the prior good presentation unchanged is

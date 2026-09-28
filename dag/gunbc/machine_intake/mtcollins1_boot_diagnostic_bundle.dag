@@ -696,6 +696,70 @@ fn end_media_text(e: MtCollins1EndMedia) -> String {
   }
 }
 
+// A PRESENTATION AFFIRMED LOST AFTER THE HANDOFF IS A CAUSE, NOT ONLY A FINDING (gunbc#12533
+// finding 4). The after-handoff and end-of-attempt looks are taken for this attempt's own subject,
+// under the hold, after the boot override and the power action were made. When either AFFIRMS the
+// medium is no longer served, the host was booting from a medium the controller had stopped
+// serving, and a failure the attempt reports afterwards -- a watch that reaches its deadline -- is
+// that loss seen from downstream. So the attempt's verdict consumes the looks it took rather than
+// leaving them to the bundle. Only an affirmed loss attributes: an unobserved or unestablished look
+// says nothing about the medium and is never promoted to a cause. The earliest affirming look is
+// named, because the phase is what the operator acts on.
+type MediaLossPhase
+  = MediaLostAtAfterHandoff
+  | MediaLostAtEndOfAttempt
+
+fn media_loss_phase_text(p: MediaLossPhase) -> String {
+  match p {
+    MediaLostAtAfterHandoff => "after-handoff"
+    MediaLostAtEndOfAttempt => "end-of-attempt"
+  }
+}
+
+type MediaLossAfterHandoff
+  = MediaLossAffirmed { phase: MediaLossPhase, reason: NonEmptyStr }
+  | MediaLossNotAffirmed
+
+fn media_loss_of_look(look: MegaRacAttachResult, phase: MediaLossPhase) -> MediaLossAfterHandoff {
+  match presentation_still_served(result: look) {
+    PresentationNoLongerReady { reason: why } => MediaLossAffirmed { phase: phase, reason: why }
+    _ => MediaLossNotAffirmed
+  }
+}
+
+// PURE, over the two looks only a CONFIRMED handoff makes causal: a handoff that was withheld or
+// never reached made no boot write, and one attempted but unconfirmed already carries its own cause
+// (the handoff's), so neither is re-attributed to the medium.
+fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndMedia) -> MediaLossAfterHandoff {
+  match handoff {
+    HandoffMediaAttempted { before: _, handoff: HandoffConfirmed, after: a } =>
+      match media_loss_of_look(look: a, phase: MediaLostAtAfterHandoff) {
+        MediaLossAffirmed { phase: p, reason: r } => MediaLossAffirmed { phase: p, reason: r }
+        MediaLossNotAffirmed =>
+          match end {
+            EndMediaObserved { look: l } => media_loss_of_look(look: l, phase: MediaLostAtEndOfAttempt)
+            EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
+          }
+      }
+    _ => MediaLossNotAffirmed
+  }
+}
+
+// THE ATTEMPT'S TERMINAL CAUSE. A success stands -- the host reported its census, so whatever the
+// controller did afterwards did not stop it (the finding still records the loss) -- and a failure is
+// re-attributed to the loss, keeping the downstream symptom beside it rather than discarding it.
+fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MediaLossAfterHandoff) -> ProcessExit {
+  match outcome {
+    ExitSuccess => ExitSuccess
+    ExitFailure { code: c, reason: r } =>
+      match loss {
+        MediaLossNotAffirmed => ExitFailure { code: c, reason: r }
+        MediaLossAffirmed { phase: p, reason: why } =>
+          ExitFailure { code: c, reason: join(["mtcollins1 boot: media presentation lost at ", media_loss_phase_text(p: p), " (", why as String, "); the attempt then reported: ", r], "") }
+      }
+  }
+}
+
 type MtCollins1BootRunRecord {
   end_media: MtCollins1EndMedia
   handoff_media: MtCollins1HandoffMedia
