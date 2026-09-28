@@ -289,7 +289,14 @@ fn spark_seat_window_tokens(context_window: Nat) -> Nat? {
 // subject cohort for this shape (the four legs are fixed by the renderer); the two-seat
 // "near-identical bodies" design was rejected because the token-exact construction's per-seat
 // header makes seat 2 a prefix MISS, not a replay.
-// THE Q ROW (2026-09-28) is the eight-seat capacity qualification: the experiment subject moved
+// THE DECLARED BUDGET rides every row (2026-09-28 steering: the execution budget must cover the
+// WHOLE admitted sequence — a client deadline is never an engine failure): request_timeout_seconds
+// is the per-request curl bound, 1800 for the single-cohort variants and 3600 for q (eight cold
+// full-window seats at the observed ~5.4-minute cold price exceed 1800; the q run's three rc=28
+// expiries with the engine still progressing are the named counterexample), and the stall
+// watchdog's own bound derives at twice the request timeout. decode_probe adds the closing leg —
+// a resident seat's context re-issued with max_tokens=64, real decode evidence plus the actual
+// completion accounting. THE Q ROW (2026-09-28) is the eight-seat capacity qualification: the experiment subject moved
 // to 262K x 8 (group_b_serving_capacity's override, authorized by the exact block fold's
 // 984/1035), and this row is its wet shape — eight concurrent full-window seats with the stall
 // watchdog riding (the matrix's law for every run that can hang), the timing TSV and /metrics
@@ -310,6 +317,8 @@ type SparkWorkloadVariant {
   window_tokens: Nat
   mode: SparkWorkloadExecutionMode
   watchdog: Bool
+  request_timeout_seconds: Nat
+  decode_probe: Bool
 }
 
 data spark_workload_variants: List<SparkWorkloadVariant> = [
@@ -319,6 +328,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsConcurrent,
     watchdog: false,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "b-five-concurrent-full-window" as NonEmptyStr,
@@ -326,6 +337,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsConcurrent,
     watchdog: false,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "c-six-concurrent-short-window" as NonEmptyStr,
@@ -333,6 +346,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 65536,
     mode: SparkSeatsConcurrent,
     watchdog: false,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "d-six-sequential-full-window" as NonEmptyStr,
@@ -340,6 +355,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsSequential,
     watchdog: false,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "e-stall-captured-six-full-window" as NonEmptyStr,
@@ -347,6 +364,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsConcurrent,
     watchdog: true,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "w1-cold-single-full-window" as NonEmptyStr,
@@ -354,6 +373,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsSequential,
     watchdog: false,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "w2-cache-reuse-full-window" as NonEmptyStr,
@@ -361,6 +382,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkCacheReuseQualification,
     watchdog: false,
+  request_timeout_seconds: 1800,
+  decode_probe: false,
   },
   SparkWorkloadVariant {
     name: "q-eight-concurrent-full-window" as NonEmptyStr,
@@ -368,6 +391,8 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsConcurrent,
     watchdog: true,
+  request_timeout_seconds: 3600,
+  decode_probe: true,
   },
 ]
 
@@ -441,8 +466,8 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
               host: head.host,
               unit_name: head.unit_name,
               script: match variant.mode {
-                SparkSeatsConcurrent => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: false, watchdog: variant.watchdog)
-                SparkSeatsSequential => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: true, watchdog: variant.watchdog)
+                SparkSeatsConcurrent => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: false, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
+                SparkSeatsSequential => systemd_workload_prefill_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_count: variant.seat_count, seat_window: seat_window, context_window: context_window, sequential: true, watchdog: variant.watchdog, request_timeout_seconds: variant.request_timeout_seconds, decode_probe: variant.decode_probe)
                 SparkCacheReuseQualification => systemd_workload_cache_reuse_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, seat_window: seat_window, context_window: context_window)
               },
             },

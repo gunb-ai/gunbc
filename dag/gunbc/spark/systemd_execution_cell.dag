@@ -457,12 +457,12 @@ fn systemd_workload_watchdog_script(member: SystemdExecutionMember, serve_port: 
 // processing, prefill, sampling, and delivery together — and is never read as an instrumented
 // GPU-prefill duration; the TSV is what binds a run's timings to its frozen variant row rather
 // than to the live selector.
-fn systemd_workload_prefill_request(state: String, base: String, sequential: Bool) -> String {
+fn systemd_workload_prefill_request(state: String, base: String, sequential: Bool, request_timeout_seconds: Nat) -> String {
   if sequential {
     join([
       "  echo \"seat $seat awaiting (sequential issue)\"\n",
       "  seat_start=$(date +%s)\n",
-      "  if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi\n",
+      "  if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi\n",
       "  seat_end=$(date +%s)\n",
       "  echo \"$seat_rc\" > \"$state/seat_$seat.rc\"\n",
       "  head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"\n",
@@ -470,7 +470,7 @@ fn systemd_workload_prefill_request(state: String, base: String, sequential: Boo
     ], "")
   } else {
     join([
-      "  ( seat_start=$(date +%s); if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi; seat_end=$(date +%s); echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$seat\" \"$seat_start\" \"$seat_end\" $(cat \"$state/seat_$seat.timing\" 2>/dev/null) >> \"$state/seats.timing.tsv\" ) &\n",
+      "  ( seat_start=$(date +%s); if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi; seat_end=$(date +%s); echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$seat\" \"$seat_start\" \"$seat_end\" $(cat \"$state/seat_$seat.timing\" 2>/dev/null) >> \"$state/seats.timing.tsv\" ) &\n",
       "  seat_pids=\"$seat_pids $!\"\n",
     ], "")
   }
@@ -501,22 +501,40 @@ fn systemd_workload_prefill_request(state: String, base: String, sequential: Boo
 // must ride every hanging run); the dry renders every value. The leg closes by recording the
 // warm process_mib reference the sampler folds the gap against — taken with every seat complete
 // and no request in flight, it is the experiment's accounted baseline.
-fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_window: Nat, context_window: Nat, sequential: Bool, watchdog: Bool) -> String {
+fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_count: Nat, seat_window: Nat, context_window: Nat, sequential: Bool, watchdog: Bool, request_timeout_seconds: Nat, decode_probe: Bool) -> String {
   let state = systemd_workload_state_dir(member: member)
   let body = systemd_workload_block_body as String
-  let request = systemd_workload_prefill_request(state: state, base: join(["http://127.0.0.1:", to_string(serve_port)], ""), sequential: sequential)
+  let request = systemd_workload_prefill_request(state: state, base: join(["http://127.0.0.1:", to_string(serve_port)], ""), sequential: sequential, request_timeout_seconds: request_timeout_seconds)
+  let decode_leg = if decode_probe {
+    join([
+      "  decode_start=$(date +%s)\n",
+      "  sed 's/\"max_tokens\":1/\"max_tokens\":64/' \"$state/seat_1.json\" > \"$state/decode_1.json\"\n",
+      "  if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$state/decode_1.hdr\" -o \"$state/decode_1.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/decode_1.json\" \"$base/v1/completions\" > \"$state/decode_1.timing\"; then decode_rc=0; else decode_rc=$?; fi\n",
+      "  decode_end=$(date +%s)\n",
+      "  decode_http=$(head -1 \"$state/decode_1.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+      "  case \"$decode_rc\" in 0) : ;; *) echo \"decode-probe-transport-failed rc=$decode_rc body=$(tr -d '\\n' < \"$state/decode_1.resp\")\"; exit 27 ;; esac\n",
+      "  case \"$decode_http\" in 200) : ;; *) echo \"decode-probe-refused http=$decode_http body=$(tr -d '\\n' < \"$state/decode_1.resp\")\"; exit 28 ;; esac\n",
+      "  decode_completion=$(grep -o '\"completion_tokens\":[0-9][0-9]*' \"$state/decode_1.resp\" | head -1 | cut -d: -f2)\n",
+      "  decode_cached=$(grep -o '\"cached_tokens\":[0-9][0-9]*' \"$state/decode_1.resp\" | head -1 | cut -d: -f2)\n",
+      "  case \"$decode_cached\" in ''|*[!0-9]*) decode_cached=0 ;; esac\n",
+      "  printf 'decode\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \"$decode_start\" \"$decode_end\" $(cat \"$state/decode_1.timing\" 2>/dev/null) \"$decode_completion\" \"$decode_cached\" >> \"$state/seats.timing.tsv\"\n",
+      "  echo \"decode-probe-complete completion_tokens=$decode_completion cached_tokens=$decode_cached\"\n",
+    ], "")
+  } else {
+    ""
+  }
   let concurrent_init = if sequential { "" } else { "seat_pids=\"\"\n" }
   let concurrent_wait = if sequential { "" } else { "for pid in $seat_pids; do wait \"$pid\"; done\n" }
   let watchdog_launch = if watchdog {
     join([
       "rm -f \"$state/workload_phase_done\"\n",
       "cat > \"$state/stall_watchdog.sh\" <<'GUNBC_WATCHDOG_EOF'\n",
-      systemd_workload_watchdog_script(member: member, serve_port: serve_port, state_dir: state, bound_seconds: 3600),
+      systemd_workload_watchdog_script(member: member, serve_port: serve_port, state_dir: state, bound_seconds: 2 * request_timeout_seconds),
       "GUNBC_WATCHDOG_EOF\n",
       "nohup sh \"$state/stall_watchdog.sh\" > \"$state/stall_watchdog.log\" 2>&1 &\n",
       "watchdog_pid=$!\n",
       "printf '%s' \"$watchdog_pid\" > \"$state/stall_watchdog.pid\"\n",
-      "echo \"stall-watchdog-armed pid=$watchdog_pid rides=workload-phase bound_seconds=3600 stall_seconds=", to_string(systemd_workload_stall_seconds), "\"\n",
+      "echo \"stall-watchdog-armed pid=$watchdog_pid rides=workload-phase bound_seconds=", to_string(2 * request_timeout_seconds), " stall_seconds=", to_string(systemd_workload_stall_seconds), "\"\n",
     ], "")
   } else {
     ""
@@ -573,6 +591,7 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     "  seat=$(( seat + 1 ))\ndone\n",
     "if [ \"$failed\" != \"0\" ]; then exit 22; fi\n",
     "if curl -sS -m 10 \"$base/metrics\" > \"$state/metrics.post\" 2>/dev/null; then :; else echo \"metrics-endpoint-unreadable leg=post\" > \"$state/metrics.post.standing\"; fi\n",
+    decode_leg,
     "warm=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits | awk -F', ' '{ v = $2 + 0; if (v > m) m = v } END { printf \"%d\", m }')\n",
     "if [ \"$warm\" -le 0 ]; then echo \"warm-reference-unreadable: nvidia-smi reports no compute process after the prefills\"; exit 23; fi\n",
     "printf '%s' \"$warm\" > \"$state/warm_mib\"\n",

@@ -751,7 +751,7 @@ test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
 fn spark_workload_variants_a() -> SparkWorkloadVariant {
   match spark_workload_variant_named(name: "a-repro-six-full-window" as NonEmptyStr) {
     Present { value: v } => v
-    Absent => SparkWorkloadVariant { name: "unreachable-fixture-arm" as NonEmptyStr, seat_count: 0, window_tokens: 0, mode: SparkSeatsConcurrent, watchdog: false }
+    Absent => SparkWorkloadVariant { name: "unreachable-fixture-arm" as NonEmptyStr, seat_count: 0, window_tokens: 0, mode: SparkSeatsConcurrent, watchdog: false, request_timeout_seconds: 1800, decode_probe: false }
   }
 }
 
@@ -788,6 +788,8 @@ test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool 
     window_tokens: spark_seat_window_margin_tokens,
     mode: SparkSeatsConcurrent,
     watchdog: false,
+    request_timeout_seconds: 1800,
+    decode_probe: false,
   }
   let tiny_refused = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
     ArmMemoryExperimentAdmitted { plan: p } =>
@@ -1027,6 +1029,26 @@ test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting
   }
 }
 
+// THE Q SCRIPT CARRIES THE WHOLE-SEQUENCE BUDGET AND THE DECODE PROBE (2026-09-28 steering):
+// the per-request curl bound reads the variant's DECLARED request_timeout_seconds (3600 for q —
+// eight cold full-window seats at the observed cold price exceed the old 1800s bound, whose rc=28
+// expiries with the engine still progressing were timeout-as-hang, never an engine failure), the
+// stall watchdog's own bound derives at twice it, and the decode leg re-issues seat 1's resident
+// context with max_tokens=64 — real decode evidence with the actual completion accounting.
+test fn w_the_q_script_carries_the_whole_sequence_budget_and_the_decode_probe() -> Bool {
+  match fx_phase_for_variant(name: "q-eight-concurrent-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      let script = phase.prefill_seats.plan.script
+      string_contains(s: script, pattern: "-m 3600 -D")
+        && string_contains(s: script, pattern: "bound_seconds=7200")
+        && string_contains(s: script, pattern: "decode_1.json")
+        && string_contains(s: script, pattern: "decode-probe-complete completion_tokens=$decode_completion cached_tokens=$decode_cached")
+        && string_contains(s: script, pattern: "\"max_tokens\":64")
+        && string_contains(s: script, pattern: "seats.timing.tsv")
+  }
+}
+
 // THE VARIANT REGISTRY AGREES WITH THE LIVENESS MATRIX, row for row: five repro variants each
 // way, every matrix name a registry row and every discriminating axis reading the same value the
 // matrix's prose names — five seats at the full window for b, 65536 for c, sequential issue for
@@ -1095,7 +1117,7 @@ test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
     Absent => false
   }
   let q_ok = match spark_workload_variant_named(name: "q-eight-concurrent-full-window" as NonEmptyStr) {
-    Present { value: v } => v.seat_count == 8 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && v.watchdog
+    Present { value: v } => v.seat_count == 8 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && v.watchdog && v.request_timeout_seconds == 3600 && v.decode_probe
     Absent => false
   }
   let only_qualification_beyond_matrix = all(
