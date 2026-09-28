@@ -1,0 +1,6 @@
+✓ typecheck v2.std.compilers.target_model done in 13 seconds
+✓ typecheck v2.compiler.translate done in 4 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+error: function `roadmap_ticket_brief_violations` returned `[BriefBudgetViolation { node: 2-scm-native-authority-program, words: 134 }, BriefBudgetViolation { node: floor-ceiling-roster-cut-completeness, words: 123 }, BriefBudgetViolation { node: frontend-eval-training-program, words: 177 }, BriefBudgetViolation { node: fleet-mtcollins1-first-host, words: 153 }, BriefBudgetViolation { node: fleet-slot-retirement-wet-proof, words: 116 }, BriefBudgetViolation { node: cardinality-vertical-slice, words: 119 }]`, not `ProcessExit`.
+  cause: the host maps a run's verdict to an exit code, and only ProcessExit carries one. Wrap the result in ExitSuccess / ExitFailure.
+  status: refused — printing the value and exiting 0 would report success for a run whose outcome is unknown.

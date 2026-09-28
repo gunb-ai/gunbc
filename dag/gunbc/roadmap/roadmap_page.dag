@@ -2415,7 +2415,7 @@ fn issue_detail_page_for(
               assignment: assignment_for_node(standings: standings, node_id: node_id),
               launch: ctx,
               attempt_stale: any(stale_nodes, s => s == node_id)),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, memberships: memberships),
             observation: observation,
             attempts: attempts,
             events: events,
