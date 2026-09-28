@@ -191,7 +191,7 @@ fn classify_receipt_stdout(host: String, raw: String) -> CollectedHostReceipt {
                 Absent => ReceiptConvergedUnbacked { host: host, line: line }
               }
             Drifted => ReceiptCollected { host: host, receipt: receipt }
-            Absent => ReceiptCollected { host: host, receipt: receipt }
+            VerdictAbsent => ReceiptCollected { host: host, receipt: receipt }
           }
         Absent => ReceiptUnparseable { host: host, line: line }
       }
