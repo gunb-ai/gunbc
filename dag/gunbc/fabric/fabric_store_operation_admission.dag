@@ -133,9 +133,11 @@ type OperationRequirement
 // consent claim and filing, the authority transitions and entry-state record, and the placement saga
 // it prepares, claims, finalizes, aborts or cancels. EstablishAuthority and RecoverHostEffect have
 // NO admissible scope yet: the operator entries that perform them (pair_serving_authority_establish_wet,
-// host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census) and their
-// approval flows are d0_store_operation_wall PR 7; the operator finalize and abort entries are PR 5b,
-// whose scopes join FinalizePlacement's and AbortPlacement's lists beside D0's. An empty list refuses
+// host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census). The
+// recover, finalize and abort flows are d0_store_operation_wall PR 5b, which the flip depends on, so
+// no enforcing door runs without the manual repair path (proud-deer-538, 2026-09-28); their scopes
+// join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is PR 7:
+// it runs once per group, and both groups are established. An empty list refuses
 // (NoApprovalFlowForOperation) rather than admitting: an operation nobody can approve is refused,
 // never exempted.
 fn operation_requirement(operation: StoreOperation) -> OperationRequirement {
