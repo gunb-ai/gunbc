@@ -1,0 +1,3 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+PASS non_tailnet_request_never_gains_a_broker_identity
+PASS broker_adapter_preserves_transport_evidence_without_manufacturing_a_session

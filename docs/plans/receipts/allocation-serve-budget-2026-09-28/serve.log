@@ -1,0 +1,13 @@
+resolved 850 sources
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.roadmap_style done in 2 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 165ms
+✓ compile.normalize done in 23ms
+✓ compile.reconcile done in 257ms
+✓ compile.analyses done in 10ms
+gunbc serve listening on 127.0.0.1:36151 -> roadmap_serve_handle_srv2_preview() release_revision=ac31a971b609df3fee5e56ca07e0fa808c458946 eval_budget_cpu_ms=unset eval_budget_wall_ms=unset

@@ -304,7 +304,7 @@ head/host/slot/artifact binding, stale head/foreign owner refusal, foreign
 host/slot/root/artifact refusal, and release-intent settlement identity. These
 are source/fixture controls; no guest was launched.
 
-## Full preview serve integration gate (not passed)
+## Initial full preview serve integration checks (6 GiB witness allowance)
 
 The review correctly identified integrated serve breakage missed by focused tests.
 Source revision `31930c0` supplies the missing `attempt_stale` fields in both sandbox
@@ -322,12 +322,51 @@ limit. Thus the constructor repairs do not establish a passing integrated gate.
 
 Reproduction: build the branch binary, then run
 `tools/tests/roadmap_preview_readiness.py --output target/preview-check` in the
-6 GiB/no-swap scope. The helper waits for this child's exact listening announcement
+declared serving-budget/no-swap scope. The helper waits for this child's exact listening announcement
 and stops its own child without sending application requests. Optional source-root
 and entry arguments support the full-closure diagnostic. An OOM may kill the
 supervisor too; retain systemd's scope result as done in these receipts.
 
 Receipts and binary identity: `receipts/allocation-serve-2026-09-28/`.
 No preview units were restarted and the live site was untouched. HOLD remains;
-startup memory must be reduced and the actual readiness gate must pass before
-preview/deployment qualification. No memory ceiling was increased.
+the actual readiness gate must pass before preview qualification. The operator
+subsequently clarified that 6 GiB is the witness allowance, not the serving
+budget. These OOM receipts therefore do not establish failure under the existing
+serving budget. Memory reduction remains separate work. No deployment memory
+ceiling was increased.
+
+
+## Full preview startup qualified under the existing serving budget
+
+At source `ac31a971b609df3fee5e56ca07e0fa808c458946`, the branch-local release
+binary started `roadmap_serve_handle_srv2_preview` from normal `dag` + `src/v2`
+roots and reached its own loopback listening announcement. All 850 sources were
+resolved. Elapsed startup was 307.36 seconds; scope peak was 12,023,717,888 bytes
+(11.20 GiB), with no swap and no high/max/OOM events. The helper then stopped its
+own process; no application requests or production mutations were performed.
+
+The test scope used the existing `live_deploy_slice_memory_max` (53 GiB) and
+`live_deploy_slice_memory_high` (49 GiB). Those are the shared deployment envelope,
+not a newly authored per-process entitlement. This isolated startup does not prove
+concurrent member fit or route latency. No deployment limit was changed. The
+operator explicitly separated serving qualification from the 6 GiB witness cap.
+
+Integrated repairs include the sandbox row and response fields, missing sandbox
+band arguments, explicit event-history projection input, and typed serve request
+construction. The approval transport adapter preserves existing tailnet transport
+evidence without treating a Google session as a broker identity. Its two focused
+controls pass under 6 GiB/no swap. Login transaction semantics were not changed.
+
+The branch also incorporates already-merged dependency splits #12449, #12480,
+#12481 and #12483, plus a shared belt-cadence leaf. These remove deployment emitter,
+compiler translator and generated registry dependencies from the serving closure;
+the full closure fell from 1031 to 850 modules. The branch-local binary was rebuilt
+after the Rust-containing dependency change. Its hash and exact command are in
+`receipts/allocation-serve-budget-2026-09-28/receipt.json`; build, startup and adapter
+witness logs are alongside it.
+
+The reported preview compilation/startup blocker is cleared for this source.
+This is not integrated-floor qualification, deployment, protected-storage
+commissioning, or VM acceptance. Capacity transfer, authoritative preparation,
+remote convergence, maintained observations and recovery/expiry/reuse acceptance
+remain required. The overall allocation HOLD remains.
