@@ -522,6 +522,20 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     for path in d.regressed.iter() {
         message.push_str(&format!("\nheads-reading-differential: REGRESSED {path}"));
     }
+    // DECLARATION-NAME AGREEMENT, printed as host output beside the parse figures rather than
+    // folded into the verdict: `HeadsReadingDifferentialObservation` carries four populations and
+    // this is a fifth, so it has no home in the modeled standing yet. It is the population a pool
+    // name census consumes, which the whole-node `divergent` row cannot isolate. FOLD-IN TRIGGER:
+    // the first consumer that decides on this population (a gate, or step 1's reference-edge name
+    // index claiming its exactness) lands it as a field of `HeadsReadingDifferentialObservation`
+    // with `holds()` requiring it empty; until then it is a reading, not a verdict.
+    message.push_str(&format!(
+        "\nheads-reading-differential: declaration_names_divergent={}",
+        d.declaration_names_divergent.len()
+    ));
+    for row in d.declaration_names_divergent.iter() {
+        message.push_str(&format!("\nheads-reading-differential: NAMES {row}"));
+    }
     // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
     // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
     //
