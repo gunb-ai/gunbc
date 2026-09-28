@@ -70,15 +70,15 @@ fn fold_iteration_measure_atom() -> Node {
 // spelling this stage matched.
 fn fold_call_head_node(fold_call: Node) -> Optional<Node> {
   match find_named_child(root: fold_call, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: head, diagnostics: _ } => Present { value: head }
-    Rejected { diagnostics: _ } => Absent
+    Accepted { value: head, diagnostics: _ } => optional_present(value: head)
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
 fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
   match fold_call_head_node(fold_call: fold_call) {
     Present { value: head } => node_atom_identity_optional(node: head)
-    Absent => Absent
+    Absent => optional_absent()
   }
 }
 
@@ -105,21 +105,17 @@ fn fold_head_is_collection_fold(sym: Symbol) -> Bool {
 }
 
 fn fold_realizes_declaration(module_path: String, decl_name: String) -> Optional<FoldRealization> {
-  Present {
-    value: FoldRealizesDeclaration {
-      declaration: DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
-    }
-  }
+  optional_present(value: FoldRealizesDeclaration {
+    declaration: DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
+  })
 }
 
 fn fold_family_realization(head: Symbol) -> Optional<FoldRealization> {
   if fold_head_is_collection_fold(sym: head) {
-    Present {
-      value: FoldRealizesRosterOperation {
-        template: collection_fold_shape(),
-        row: DeclarationRef { module_path: "std.algebra", decl_name: "collection_fold_shape", field: WholeDeclaration }
-      }
-    }
+    optional_present(value: FoldRealizesRosterOperation {
+      template: collection_fold_shape(),
+      row: DeclarationRef { module_path: "std.algebra", decl_name: "collection_fold_shape", field: WholeDeclaration }
+    })
   } else if head == ^fold_list {
     fold_realizes_declaration(module_path: "v2.std.algebra", decl_name: "fold_list")
   } else if head == ^fold_list_right {
@@ -127,7 +123,7 @@ fn fold_family_realization(head: Symbol) -> Optional<FoldRealization> {
   } else if head == ^fold_node {
     fold_realizes_declaration(module_path: "v2.std.node", decl_name: "fold_node")
   } else {
-    Absent
+    optional_absent()
   }
 }
 
