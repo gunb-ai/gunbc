@@ -1900,23 +1900,24 @@ mod compiler_tests {
                 // summary is a lower bound because its callee is chosen at runtime. That is true and
                 // non-error (SeverityNonError, GateAdvisoryTypecheck), and says nothing about the
                 // call shape these controls exercise.
-                let admits_with_only_the_effect_advisory =
-                    |diagnostics: &[std::rc::Rc<crate::v1_std_core::ErrorNode>]| {
-                        diagnostics.iter().all(|d| {
-                            !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
-                                && matches!(
-                                    *d.diagnostic,
-                                    crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }
-                                )
-                        })
-                    };
+                fn admits_with_only_the_effect_advisory<'a>(
+                    diagnostics: impl IntoIterator<Item = &'a std::rc::Rc<crate::v1_std_core::ErrorNode>>,
+                ) -> bool {
+                    diagnostics.into_iter().all(|d| {
+                        !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                            && matches!(
+                                *d.diagnostic,
+                                crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }
+                            )
+                    })
+                }
                 // 2. Higher-order callback declared left/right, applied positionally -> ADMIT
                 let hof_positional = compile_one(
                     "hof_positional.dag",
                     "module hof_positional\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\nfn witness() -> Bool { host(cmp) }\n",
                 );
                 assert!(
-                    admits_with_only_the_effect_advisory(&hof_positional.diagnostics[..]),
+                    admits_with_only_the_effect_advisory(hof_positional.diagnostics.iter()),
                     "positional function-value application must ADMIT, got: {:?}",
                     hof_positional.diagnostics
                 );
@@ -1957,7 +1958,7 @@ mod compiler_tests {
                     "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n",
                 );
                 assert!(
-                    admits_with_only_the_effect_advisory(&semantic.diagnostics[..]),
+                    admits_with_only_the_effect_advisory(semantic.diagnostics.iter()),
                     "swapped positional controls must compile clean for semantic RED, got: {:?}",
                     semantic.diagnostics
                 );
