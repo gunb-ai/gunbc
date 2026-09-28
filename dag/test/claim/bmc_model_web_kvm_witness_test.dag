@@ -115,6 +115,23 @@ test fn another_viewer_holding_the_seat_refuses_the_connect() -> Bool {
   string_contains(s: services.answer.body, pattern: "\"viewer_count\": 1}") && conn.answer.status == 403
 }
 
+// FIELD BOUNDARIES SURVIVE: two credential pairs whose space-joined forms are equal are different
+// requests, and each keeps its own row answered by the model.
+test fn credentials_that_join_alike_stay_distinct_requests() -> Bool {
+  let w0 = BmcWorld {
+    power: BmcPowerOn, pending: [], fired: [],
+    web: BmcWebWorld { account: Present { value: BmcWebAccount { username: "admin", password: "pw secret", privilege: 4 } }, sessions: [], next_session_id: 7, other_kvm_viewers: 0, kvm: BmcKvmIdle {}, canvas_readable: true },
+  }
+  let table = megarac_web_transition_table(
+    initial: w0,
+    credentials: [MegaRacWebLogin { username: "admin", password: "pw secret" }, MegaRacWebLogin { username: "admin pw", password: "secret" }],
+    extended_privilege: 259,
+    depth: 1,
+  )
+  string_contains(s: table, pattern: "\"args\": [\"admin\", \"pw secret\"]}, \"status\": 200")
+    && string_contains(s: table, pattern: "\"args\": [\"admin pw\", \"secret\"]}, \"status\": 401")
+}
+
 // THE TABLE CARRIES THE ABSOLUTE INSTANT: the only advance row is at the event's own second, and at
 // it a held stream closes.
 test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool {
@@ -125,8 +142,8 @@ test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool
     depth: 3,
   )
   string_contains(s: table, pattern: "\"canvas_readable\": false")
-    && string_contains(s: table, pattern: "\"key\": \"advance 3\", \"status\": 200, \"stream_open\": false")
-    && !string_contains(s: table, pattern: "advance 4")
-    && string_contains(s: table, pattern: "\"key\": \"connect csrf-7\", \"status\": 101, \"stream_open\": true")
-    && string_contains(s: table, pattern: "\"key\": \"connect csrf-foreign\", \"status\": 403")
+    && string_contains(s: table, pattern: "\"request\": {\"op\": \"advance\", \"args\": [\"3\"]}, \"status\": 200, \"stream_open\": false")
+    && !string_contains(s: table, pattern: "[\"4\"]")
+    && string_contains(s: table, pattern: "\"request\": {\"op\": \"connect\", \"args\": [\"csrf-7\"]}, \"status\": 101, \"stream_open\": true")
+    && string_contains(s: table, pattern: "\"request\": {\"op\": \"connect\", \"args\": [\"csrf-foreign\"]}, \"status\": 403")
 }
