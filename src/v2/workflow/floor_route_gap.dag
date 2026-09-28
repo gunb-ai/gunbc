@@ -1696,6 +1696,10 @@ fn floor_route_gap_expectation_chunk_24() -> List<FloorRouteGapExpectation> {
 // expectations, their WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // LocalRepoWetLane rows for approval_device_enrolment_code_wet_witness_test.dag and
 // approval_ntfy_access_readback_wet_witness_test.dag.
+// The last two rows are the spark real-read route claims from #12478: each reads the runner's
+// hostname through shell.Exec.RunArgv, which has no published mock case. Floor run 36377059685
+// measured both gaps. They are enrolled on the same three terms: these rows, their WetScheduledClaim rows,
+// and the existing LocalRepoWetLane rows for their two files.
 fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_device_enrolment_code_wet_witness_test.the_code_slot_is_written_before_delivery_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1705,7 +1709,11 @@ fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_ntfy_access_readback_wet_witness_test.the_root_refuses_before_minting_on_this_host_by_real_execution", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_ntfy_access_readback_wet_witness_test.the_helper_output_decodes_as_an_outcome_by_real_execution", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
-    tail: Empty {} } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.fabric_capacity_standing_wet_witness.the_live_entry_judges_exactly_what_the_runners_log_read_returned", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_serving_apply_wet_witness.the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
+    tail: Empty {} } } } } } }
 }
 
 // The test.claim.machine_intake.sol_hold_stdin_wet_witness identities: the real

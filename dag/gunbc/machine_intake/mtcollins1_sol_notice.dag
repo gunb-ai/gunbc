@@ -13,6 +13,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path,
   mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix,
   mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance,
+  mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env,
 }
 
 // THE SOL NOTICES, AS THEIR OWN PROCESS (operator ruling 2026-09-27: the admitted route is this run's
@@ -128,13 +129,6 @@ fn sol_notice_channel_key(channel: SolNoticeChannel) -> String {
 
 data mtcollins1_sol_notice_stop_suffix: String = concat(mtcollins1_sol_notice_file_infix, "stop")
 
-// READINESS IS BOUND TO THIS STEP'S OWNED PROCESS. The step starts the watcher with a fresh token in
-// mtcollins1_sol_notice_token_env and records the child it started; the watcher writes that token here
-// once it is polling. The step proceeds only when this file holds its own token and the recorded child
-// is still alive, so a file left by an earlier run, or by another process, does not count.
-data mtcollins1_sol_notice_ready_suffix: String = concat(mtcollins1_sol_notice_file_infix, "ready")
-
-data mtcollins1_sol_notice_token_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_NOTICE_TOKEN"
 
 fn sol_notice_marker_path(paths: SolNoticePaths, identity: String, channel: SolNoticeChannel) -> String {
   concat(paths.capture, concat(mtcollins1_sol_notice_file_infix, concat(identity, concat(".", sol_notice_channel_key(channel: channel)))))
