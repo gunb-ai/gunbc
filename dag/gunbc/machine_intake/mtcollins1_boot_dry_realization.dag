@@ -9,7 +9,8 @@ import v2.std.operation_realization {
   virtual_delay_binding, operation_input_text,
 }
 import gunbc.bmc_model { BmcWorld, bmc_advance, bmc_with_sol_session, bmc_power_is_on }
-import gunbc.bmc_dry_realization { bmc_bindings, bmc_ipmi_operation, sleep_delay_seconds_operation }
+import gunbc.bmc_dry_realization { bmc_bindings, megarac_bindings, bmc_ipmi_operation, sleep_delay_seconds_operation }
+import gunbc.megarac_media_model { MegaRacMediaWorld, megarac_media_advance }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings, fs_with_file, fs_file, fs_write }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.host_command_model { ModeledInvocation, exact_invocation_binding, local_command_words, shell_exec_run_argv_operation }
@@ -39,6 +40,7 @@ type MtCollins1BootWorld {
   clock: ModeledWallClock
   worker: ModeledWorker
   console: ModeledHostConsole
+  media: MegaRacMediaWorld
 }
 
 // THE WORKER'S SSH AGENT: whether it holds the fleet automation key. Its listing follows
@@ -90,19 +92,23 @@ type ModeledHostConsole {
 }
 
 fn with_bmc(w: MtCollins1BootWorld, bmc: BmcWorld) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console }
+  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
 }
 
 fn with_fs(w: MtCollins1BootWorld, fs: ModeledFilesystem) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
 }
 
 fn with_worker(w: MtCollins1BootWorld, worker: ModeledWorker) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console, media: w.media }
 }
 
 fn with_console(w: MtCollins1BootWorld, console: ModeledHostConsole) -> MtCollins1BootWorld {
-  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console }
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console, media: w.media }
+}
+
+fn with_media(w: MtCollins1BootWorld, media: MegaRacMediaWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: media }
 }
 
 fn appended(fs: ModeledFilesystem, path: String, text: String) -> ModeledFilesystem {
@@ -226,7 +232,7 @@ fn concat_text(lines: List<TimedConsoleLine>) -> String {
 }
 
 fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
-  console_advance(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), now: now)
+  console_advance(w: with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now)), now: now)
 }
 
 data sol_hold_activate_held_operation: OperationRef = OperationRef {
@@ -236,7 +242,7 @@ data sol_hold_activate_held_operation: OperationRef = OperationRef {
 }
 
 fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1BootWorld, epoch: Second) -> OperationRealization<MtCollins1BootWorld> {
-  let bmc = bmc_bindings(get: fn(w) { w.bmc }, put: with_bmc)
+  let bmc = concat(bmc_bindings(get: fn(w) { w.bmc }, put: with_bmc), megarac_bindings(get: fn(w) { w.media }, put: with_media))
   let files = filesystem_bindings(get: fn(w) { w.fs }, put: with_fs)
   let local_commands = exact_invocation_binding(at: shell_exec_run_argv_operation, inputs: ["program", "arguments"], table: [
     ModeledInvocation {
