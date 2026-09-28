@@ -11,8 +11,20 @@
       "fail_lines": []
     },
     {
+      "log": "assignment-browser.log",
+      "sha256": "30fa7d5c96945ae04a166870432be7177b41c56e97e1ae17818b2548bf55a9e6",
+      "pass_lines": 1,
+      "fail_lines": []
+    },
+    {
       "log": "baseline-briefs.log",
       "sha256": "a8206200d7a13d9136dc1e1aeeb97072e0b5f36391660bdbba465351e1e236a3",
+      "pass_lines": 0,
+      "fail_lines": []
+    },
+    {
+      "log": "baseline-rustfmt.log",
+      "sha256": "48136405b49bad03b57d4d92f038f82636980b3f3325178b3aea71b6849cc4f8",
       "pass_lines": 0,
       "fail_lines": []
     },
@@ -50,6 +62,20 @@
       "log": "nesting.log",
       "sha256": "7e69614fcedb1b2eee634f28cc16875dc261f078653e7cf855943579c0880fc3",
       "pass_lines": 3,
+      "fail_lines": []
+    },
+    {
+      "log": "page.log",
+      "sha256": "71aff68e29f15805b1a4adb4dc95136e1d83ba0d84eba91d6020e8a74b849be6",
+      "pass_lines": 83,
+      "fail_lines": [
+        "FAIL witness_ticket_brief_budget_holds_and_reds"
+      ]
+    },
+    {
+      "log": "presentation.log",
+      "sha256": "41b2d77f4474dd8846df8ee21bcfc4ad1d293879765019ad1930945477a3b34b",
+      "pass_lines": 57,
       "fail_lines": []
     },
     {

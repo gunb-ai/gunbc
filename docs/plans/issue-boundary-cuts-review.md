@@ -78,3 +78,22 @@ function and `/tmp/issue-assignment-script.js`, then
 `tools/tests/issue_assignment_browser_control.py`. The native form control is
 `tools/tests/issue_form_browser_control.py`, after creating the
 `test.claim.http.form_urlencoded_witness_test` closure at `target/form-codec-validation`.
+
+## Final local results
+
+- Page: 83 PASS; 1 FAIL, the six brief overruns reproduced on the untouched base.
+- Presentation: 57 PASS. Alignment: 42 PASS. Continuation: 22 PASS. Submission: 34 PASS.
+- Event-state: 19 PASS. Tracker: 34 PASS. Fleet component projection: 2 PASS.
+- Recursive nesting: 3 PASS. Workspace administration: 5 PASS. Form codec: 2 PASS.
+- Actual Git CAS/race/replay commands: PASS. Native Chromium form → DAG decoder: PASS.
+- Emitted assignment retry client: PASS. Emitted project-focus/sort client with served CSS: PASS.
+
+[Retained logs and hashes](receipts/issue-boundary-cuts-2026-09-28/focused-results.json)
+record the boundaries above. The late detail-parameter forwarding and whitespace cleanup are
+small follow-ups to the executed page snapshot; they do not change the default served inputs.
+
+The ordinary push was rejected by `.githooks/pre-push`: inherited Rust formatting drift at
+`src/v1/stage0/src/cli_run.rs:20257`. `cargo fmt --all --check` reproduces it on the untouched
+base. The hook explicitly documents `git push --no-verify` as its override. That override is
+used only to publish this draft for review; Rust source and the hook are unchanged. No landing
+check is represented as passing because the push was allowed.
