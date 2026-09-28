@@ -142,7 +142,6 @@ fn placeability_standing_open_item(outcome: HostImagePlaceability) -> NonEmptySt
 
 fn placeability_no_longer_access_refused() -> NonEmptyStr {
   "item 2 standing is no longer the typed access refusal"
-  }
 }
 
 // ── still open ─────────────────────────────────────────────────────────────────────────────────
