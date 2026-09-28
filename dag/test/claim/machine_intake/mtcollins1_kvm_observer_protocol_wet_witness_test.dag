@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness_test
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
-import std.measure { second }
+import std.measure { second, millisecond_count }
 import v2.std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -116,7 +116,7 @@ test fn a_held_observer_is_established_first_and_its_triggered_still_is_hash_bou
   let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = read_or_empty(path: r.transport_log)
   let workflow = match r.start { KvmObserverStarted { dir: d, standing: _, checked_at: _ } => read_or_empty(path: concat(d as String, "/workflow"))  _ => "" }
-  let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && a.ms > 0  _ => false }))
+  let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && (millisecond_count(m: a.since_epoch) as Int) > 0  _ => false }))
   let _gone = close_rig(r: r)
   est && asked && loss_still == 1 && released(rec: rec)
     && string_contains(s: workflow, pattern: "observer stop requested at=")

@@ -2,7 +2,7 @@ module test.claim.machine_intake.mtcollins1_kvm_still_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { second }
+import std.measure { second, millisecond, millisecond_count }
 import v2.std.optional { Present, Absent }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -54,10 +54,10 @@ test fn firmware_0_32_serves_no_on_demand_still_and_the_viewer_is_client_side() 
 test fn the_established_line_binds_host_session_and_attempt_and_stills_carry_instants() -> Bool {
   let events = kvm_journal_events(text: journal_ok)
   let bound = match kvm_observer_standing(events: events) {
-    KvmObserverEstablished { at: a, host: h, session: s, attempt: t } => a.ms == 1790558259046 && h == "\"http://127.0.0.1:18080\"" && s == "7" && t == "36335369059"
+    KvmObserverEstablished { at: a, host: h, session: s, attempt: t } => (millisecond_count(m: a.since_epoch) as Int) == 1790558259046 && h == "\"http://127.0.0.1:18080\"" && s == "7" && t == "36335369059"
     _ => false
   }
-  let stills = filter(events, e => match e { KvmJournalStill { at: a, seq: _, reason: _, file: _ } => a.ms > 0 && a.iso != ""  _ => false })
+  let stills = filter(events, e => match e { KvmJournalStill { at: a, seq: _, reason: _, file: _ } => (millisecond_count(m: a.since_epoch) as Int) > 0 && a.iso != ""  _ => false })
   let loss_still = count(filter(events, e => match e { KvmJournalStill { at: _, seq: _, reason: r, file: f } => string_contains(s: r, pattern: "sol-channel-lost") && f == "still-2.jpg"  _ => false }))
   bound && count(stills) == 3 && loss_still == 1 && count(kvm_boundary_events(events: events)) == 0
 }
@@ -102,12 +102,12 @@ test fn without_an_established_line_the_observer_is_pending_and_junk_is_kept() -
 test fn gaps_over_two_cadences_are_retained() -> Bool {
   let text = join(["1000000 t0 established host=h session=1 attempt=a", "1060000 t1 still seq=1 reason=periodic file=still-1.jpg", "1300000 t2 still seq=2 reason=periodic file=still-2.jpg", "1360000 t3 stop-requested by=stop-file", ""], "\n")
   let gaps = kvm_still_gaps(events: kvm_journal_events(text: text), cadence: second(count: 60))
-  count(gaps) == 1 && match gaps.first() { Present { value: g } => g.from.iso == "t1" && g.to.iso == "t2" && g.seconds == 240  Absent => false }
+  count(gaps) == 1 && match gaps.first() { Present { value: g } => g.from.iso == "t1" && g.to.iso == "t2" && (millisecond_count(m: g.length) as Int) == 240000  Absent => false }
 }
 
 // HASH-BOUND: a still is retained only with the digest our own sha256sum read took.
 test fn a_still_is_retained_only_when_hash_bound() -> Bool {
-  let at = KvmInstant { ms: 1, iso: "t" }
+  let at = KvmInstant { since_epoch: millisecond(count: 1), iso: "t" }
   let bound = kvm_retained_still(dir: "artifacts/mtcollins1-boot-kvm-1", at: at, seq: "1", reason: "periodic", file: "still-1.jpg", digest: Sha256FileDigest { digest: sha256_digest(hex: a_digest_hex) })
   let unbound = kvm_retained_still(dir: "artifacts/mtcollins1-boot-kvm-1", at: at, seq: "1", reason: "periodic", file: "still-1.jpg", digest: Sha256FileDigestUnavailable { path: "x", reason: "sha256sum could not digest the input" })
   let ok = match bound { KvmStillHashed { at: _, seq: _, reason: _, path: p, digest: d } => d.hex == a_digest_hex && p == "artifacts/mtcollins1-boot-kvm-1/still-1.jpg"  _ => false }

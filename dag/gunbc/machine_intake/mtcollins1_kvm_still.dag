@@ -2,7 +2,8 @@ module gunbc.machine_intake_mtcollins1_kvm_still
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String, Unit }
 import std.algebra { trim }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -161,9 +162,10 @@ type KvmAcquisitionCause
   | KvmCanvasUnreadable { detail: String }
   | KvmAcquisitionOther { cause: String, detail: String }
 
-// An instant as the observer wrote it: epoch milliseconds (for arithmetic) and ISO (for readers).
+// An instant as the observer wrote it: the elapsed time since the Unix epoch, as the std.measure
+// carrier (for arithmetic), and ISO 8601 (for readers).
 type KvmInstant {
-  ms: Int
+  since_epoch: Millisecond
   iso: String
 }
 
@@ -216,10 +218,11 @@ fn kvm_journal_event(line: String) -> KvmJournalEvent {
   let iso = match words.skip(n: 1).first() { Present { value: w } => w  Absent => "" }
   let event = match words.skip(n: 2).first() { Present { value: w } => w  Absent => "" }
   let rest = join(words.skip(n: 3), " ")
-  match parse_int(s: ms_word) {
+  let epoch_ms = match parse_int(s: ms_word) { Present { value: n } => checked_int_to_nat(n: n)  Absent => none }
+  match epoch_ms {
     Absent => KvmJournalUnparsed { line: line }
     Present { value: ms } => {
-      let at = KvmInstant { ms: ms, iso: iso }
+      let at = KvmInstant { since_epoch: millisecond(count: ms), iso: iso }
       if event == "established" { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: "host"), session: kvm_field(rest: rest, key: "session"), attempt: kvm_field(rest: rest, key: "attempt") } }
       else if event == "connection-open" { KvmJournalConnectionOpen { at: at } }
       else if event == "connection-lost" { KvmJournalConnectionLost { at: at } }
@@ -279,7 +282,7 @@ fn kvm_boundary_events(events: List<KvmJournalEvent>) -> List<KvmJournalEvent> {
 type KvmStillGap {
   from: KvmInstant
   to: KvmInstant
-  seconds: Int
+  length: Millisecond
 }
 
 type KvmGapFold {
@@ -303,10 +306,14 @@ fn kvm_still_gaps(events: List<KvmJournalEvent>, cadence: Second) -> List<KvmSti
         match acc.last {
           Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
           Present { value: prev } =>
-            if at.ms - prev.ms > bound_ms {
-              KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmStillGap { from: prev, to: at, seconds: (at.ms - prev.ms) / 1000 }]) }
-            } else {
-              KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+            match checked_int_to_nat(n: (millisecond_count(m: at.since_epoch) as Int) - (millisecond_count(m: prev.since_epoch) as Int)) {
+              Present { value: d } =>
+                if (d as Int) > bound_ms {
+                  KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmStillGap { from: prev, to: at, length: millisecond(count: d) }]) }
+                } else {
+                  KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+                }
+              Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
             }
         }
     })
@@ -529,7 +536,7 @@ fn kvm_hash_stills(dir: String, events: List<KvmJournalEvent>) -> List<KvmRetain
   map(stills, e => match e {
     KvmJournalStill { at: a, seq: s, reason: r, file: f } =>
       kvm_retained_still(dir: dir, at: a, seq: s, reason: r, file: f, digest: if f == "" { Sha256FileDigestUnavailable { path: dir as NonEmptyStr, reason: "the journal named no file" } } else { sha256sum_file_digest_via_shell(path: concat(dir, concat("/", f)) as NonEmptyStr) })
-    _ => KvmStillUnhashed { at: KvmInstant { ms: 0, iso: "" }, seq: "", reason: "", path: "", why: "not a still" }
+    _ => KvmStillUnhashed { at: KvmInstant { since_epoch: millisecond(count: 0), iso: "" }, seq: "", reason: "", path: "", why: "not a still" }
   })
 }
 
@@ -600,7 +607,7 @@ fn kvm_observer_record_text(rec: KvmObserverRecord) -> String {
         concat("stills: ", to_string(count(filter(rec.stills, x => match x { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }))), " hash-bound of ", to_string(count(rec.stills)), " written"),
         join(map(rec.stills, x => concat("  ", kvm_retained_still_text(s: x))), "\n"),
         concat("gaps over two cadences: ", to_string(count(rec.gaps))),
-        join(map(rec.gaps, g => concat("  ", g.from.iso, " -> ", g.to.iso, " (", to_string(g.seconds), " s)")), "\n"),
+        join(map(rec.gaps, g => concat("  ", g.from.iso, " -> ", g.to.iso, " (", to_string((millisecond_count(m: g.length) as Int) / 1000), " s)")), "\n"),
         "boundary and lifecycle events:",
         join(map(rec.events, e => concat("  ", kvm_event_text(e: e))), "\n"),
         match rec.teardown {
