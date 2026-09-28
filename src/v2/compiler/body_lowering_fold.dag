@@ -4827,6 +4827,12 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
 // The same ordering as body_lower_operand_ref_optional: an int literal is read whole before the
 // branded-atom arm, which would rebuild it without its magnitude (the postfix reduce reaches
 // this reader for every literal operand).
+// A LEAF READ, NOT A SEARCH. The node is its atom only if, through optional elements and production
+// shells, it IS one atom. It used to fall through to a search of its children when it was not, so a
+// primary answered `{ "k": v }` with its `{` token and `a.b.T { f: v }` with `a`
+// (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
+// A caller that means the first atom anywhere beneath the node says so with
+// body_lower_pattern_first_atom_optional, which does its own child search.
 fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match dag_node_is_int_literal_atom(node: stripped) {
@@ -4864,13 +4870,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
               } else {
                 optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
               }
-            Absent =>
-              fold(stripped.children, init: Absent, f: fn(acc, e) {
-                match acc {
-                  Present { value: _ } => acc
-                  Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
-                }
-              })
+            Absent => optional_absent()
           }
       }
   }
