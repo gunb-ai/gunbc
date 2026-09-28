@@ -1,0 +1,29 @@
+{
+  "fixture": "/tmp/gunbc-hold-storage-x2ibfome",
+  "results": [
+    {
+      "step": "empty",
+      "exit": 0
+    },
+    {
+      "step": "append",
+      "exit": 0
+    },
+    {
+      "step": "read",
+      "exit": 0
+    },
+    {
+      "step": "above-cap",
+      "exit": 0
+    },
+    {
+      "step": "read-after-restart",
+      "exit": 0
+    },
+    {
+      "step": "above-cap-transport-refusal",
+      "exit": 1
+    }
+  ]
+}

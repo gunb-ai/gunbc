@@ -8,6 +8,7 @@ import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storag
 import gunbc.fabric_storage_state_serve { fabric_storage_state_serve_over }
 import gunbc.fabric_storage_protocol { text_response, fabric_storage_closure_bound_cap }
 import gunbc.fabric_storage_client { FabricStorageServed, served_post, ServedAnswered, ServedFault }
+import std.fabric_storage { FabricReplyUndecodable }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout, roadmap_event_snapshot_read, roadmap_event_append, RoadmapEventSnapshotObserved, EventAppended }
 import test.claim.roadmap.roadmap_event_carrier_witness_test { roadmap_carrier_test_event }
 
@@ -22,7 +23,9 @@ fn served_storage_hold_check(endpoint: String, step: String) -> ProcessExit {
       match roadmap_event_snapshot_read(layout: layout) { RoadmapEventSnapshotObserved { snapshot } => count(snapshot.events) == 1 _ => false }
     } else if step == "above-cap" {
       match served_post(endpoint: endpoint as NonEmptyStr, operation: "closure", request: concat("roadmap-events-v1 ", to_string(fabric_storage_closure_bound_cap + 1))) {
-        ServedFault { fault: _ } => true ServedAnswered { body: _ } => false
+        ServedFault { fault: FabricReplyUndecodable { detail: detail } } =>
+          (detail as String) == "HTTP 400: fabric_storage/1 malformed request: closure bound out of range\n"
+        _ => false
       }
     } else { false }
     if passed { ExitSuccess } else { exit_failure(reason: concat("served storage check failed: ", step)) }

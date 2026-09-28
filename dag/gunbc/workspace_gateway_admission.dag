@@ -6,7 +6,7 @@ import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse { json_field_string, json_field_int, FieldRead }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.workspace_microvm_access { workspace_fleet_gateway }
+import gunbc.workspace_gateway { workspace_fleet_gateway }
 import gunbc.runner_microvm_network { runner_slot_network }
 import extdeps.network.endpoint { render_network_host, host_by_name, host_by_ipv4, SocketAddress }
 import extdeps.dns.domain_name { parse_host_name }

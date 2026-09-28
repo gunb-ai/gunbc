@@ -213,3 +213,53 @@ All six controls passed (exit 0). The later consumer comment edit changes no cod
 The broader CLI snapshot preceded the explicit systemctl import; its completed
 CLI typecheck includes the new discovery/waiting adapter but is not a final-source
 full qualification. The runtime invocation of host convergence is not exercised.
+
+## Gateway and HOLD-control continuation
+
+Gateway refresh now persists local observation failures (for example unavailable
+trust/selector material) as explicit slot-bound, timestamped refusals. Previously
+those failures returned to the caller while the prior positive remained in storage.
+Evidence and refusal records share one CAS head and ordering check. A refusal can
+withdraw an equal-time positive; delayed or equal-time positives cannot revive it.
+A later successful refresh recovers normally. Existing evidence documents remain
+readable. Repeated refreshes also clean up their temporary public-key selectors.
+No private key is copied and no observer service has been installed.
+
+Fleet gateway naming moved into a lightweight shared authority consumed by both
+access and gateway admission; its values did not change. The gateway control also
+exposed an incompatible structural `string_replace` call in the SSH diagnostic
+classifier. It now uses the existing scalar `replace` operation for the same CR
+normalization. The real-store control passed: positive, same-time explicit refusal,
+delayed positive refusal, later recovery, and withdrawal after the existing 60-second
+freshness limit. This is fixture SSH evidence, not external SSH acceptance or an
+installed recurring producer.
+
+The additional HOLD controls now have executed receipts:
+
+- Two separate DAG interpreter processes each read the same live login transaction,
+  rendezvoused at a barrier, then invoked production consumption. Exactly one won.
+  This is actual competing consumption, not sequential replay; no Google exchange
+  or session mint was attempted.
+- The authenticated served-storage control passed empty/append/reread and reread
+  across server restart. Its above-cap check now requires exactly HTTP 400 with
+  the protocol's `closure bound out of range` response. With the server stopped,
+  the same check failed, proving transport failure cannot satisfy it.
+
+Reproduction helpers are `tools/tests/allocation_login_race.py` and
+`tools/tests/allocation_served_storage.py`. Build their byte-identical closures with
+`tools/tests/dag_validation_closure.py`, using entries
+`test.manual.login_consumer_race`, `test.manual.fabric_state_hold_server`, and
+`test.manual.roadmap_served_storage_hold_wet`. All subprocesses retain 6 GiB/no swap.
+Gateway entry: `test.claim.workspace_gateway_refresh_witness_test`. Receipts are
+under `receipts/allocation-gateway-2026-09-28/`.
+
+A fresh read-only srv1 census still finds the proposed slot failed and the allocation
+and readiness store directories absent. This is not commissioning or proof of free
+capacity. The existing designation remains empty. Production evidence/policy,
+queued-operation fencing, remote orchestration, recurrent consumption/refresh,
+and VM acceptance remain outstanding.
+
+The updated gateway observer's 733-module closure completed loading/typechecking
+under the same cap and reached the deliberate `validation_no_effect_entry` missing
+function refusal. This establishes source qualification of the cleanup and refusal
+publication wiring, not execution of SSH, a periodic refresh service, or VM access.

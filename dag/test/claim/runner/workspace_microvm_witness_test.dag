@@ -7,7 +7,8 @@ import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted }
 import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
 import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, in_flight_attempt_same }
 import gunbc.runner_microvm_cell_readiness_store { encode_attempt, decode_attempt, DecodeOk }
-import gunbc.workspace_microvm_access { WorkspaceGateway, WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations }
+import gunbc.workspace_gateway { WorkspaceGateway }
+import gunbc.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations }
 import gunbc.runner_microvm_network { runner_slot_network }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config }

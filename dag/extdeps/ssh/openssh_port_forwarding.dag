@@ -194,7 +194,7 @@ fn ssh_stdio_forward_command(subject: ForwardingAdmissionSubject, options: List<
 // Only exact known client diagnostics are accepted; unknown/localized/authentication failures
 // remain unobserved. A banner over the authenticated direct-tcpip channel also proves admission.
 fn ssh_stdio_forward_admission(subject: ForwardingAdmissionSubject, observation: ProcessObservation) -> ForwardingAdmission {
-  let diagnostic = trim(s: string_replace(source: observation.stderr, needle: "\r" as NonEmptyStr, replacement: ""))
+  let diagnostic = trim(s: replace(s: observation.stderr, from: "\r", to: ""))
   let connected_banner = starts_with(s: observation.stdout, prefix: "SSH-2.0-")
   let target_absent = diagnostic == "channel 0: open failed: connect failed: Connection refused\nstdio forwarding failed"
   let prohibited = diagnostic == "channel 0: open failed: administratively prohibited: open failed\nstdio forwarding failed"

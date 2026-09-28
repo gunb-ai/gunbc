@@ -21,7 +21,7 @@ import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased
 import gunbc.workspace_allocation_plan { workspace_reservation_plan_reservation }
 import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_microvm { bind_workspace_launch, workspace_fleet_operator_public_key, WorkspaceLaunchBound, WorkspaceLaunchRefused }
-import gunbc.workspace_microvm_access { workspace_fleet_gateway }
+import gunbc.workspace_gateway { WorkspaceGateway, workspace_fleet_gateway }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
 import gunbc.fabric_required_build_cell { observe_required_build_cell_for_identity }
 import gunbc.fabric_control_plane { fabric_cell_allocation_key }
@@ -36,7 +36,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 
 import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
 import gunbc.workspace_microvm { WorkspaceLaunchBinding, workspace_attempt_identity, workspace_launch_plan }
-import gunbc.workspace_microvm_access { WorkspaceGateway, WorkspaceConnectionReading, WorkspaceConnectionUnavailable, workspace_observe_connection }
+import gunbc.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionUnavailable, workspace_observe_connection }
 import gunbc.workspace_allocation_wait { workspace_await_allocation }
 import gunbc.workspace_allocation_metrics { workspace_capture_runtime_metrics }
 import gunbc.workspace_gateway_store { workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }

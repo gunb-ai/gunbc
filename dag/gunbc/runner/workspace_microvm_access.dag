@@ -1,8 +1,7 @@
 module gunbc.workspace_microvm_access
 
 import extdeps.systemd.journalctl
-import gunbc.fleet_intent_network { fleet_intent_network }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_principal, grounded_posix_principal_name }
+import gunbc.workspace_gateway { WorkspaceGateway }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
@@ -21,14 +20,6 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload }
 import gunbc.runner_microvm_lifecycle_realize {
   AttemptLaunch, VmmStarted, bind_attempt_console, AttemptConsoleBound,
-}
-
-// The gateway is the selected host, not a fleet-global interpretation of a reused guest IP.
-// Admission of the administrator-owned gateway roster includes host SSH forwarding/access.
-type WorkspaceGateway {
-  slot: RunnerSlotIdentity
-  host_account: NonEmptyStr
-  tailnet_name: NonEmptyStr
 }
 
 type WorkspaceConnection sole_constructor {
@@ -165,17 +156,4 @@ fn workspace_connection_text(connection: WorkspaceConnection) -> String {
     "\n\nVerify allocation: cat /etc/gunbc-allocation\nExpected identity: ", connection.identity.attempt.attempt_id.value as String,
     "\nRelease or expiry permanently deletes this workspace disk.",
   ], "")
-}
-
-// Placement eligibility must observe this existing fleet principal's access on the host.
-// The endpoint is a projection of fleet naming and account authorities, never browser input.
-fn workspace_fleet_gateway(slot: RunnerSlotIdentity) -> WorkspaceGateway? {
-  match fleet_intent_network.tailnet_domain {
-    Absent => none
-    Present { value: domain } => Present { value: WorkspaceGateway {
-      slot: slot,
-      host_account: grounded_posix_principal_name(p: fleet_posix_operator_principal()),
-      tailnet_name: join([slot.host as String, ".", domain as String], "") as NonEmptyStr,
-    } }
-  }
 }
