@@ -2324,7 +2324,7 @@ mod process_cwd_mutation_reachability_gate {
 // ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
 // Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
-// pool-root anchoring from `.dag` (same exit as bash-emit #5828 for floor shell scaffolds).
+// pool-root anchoring from `.dag` (the same exit the floor shell scaffolds take).
 // DELETE WHEN dissolved: `process_workspace_root`, `resolve_process_workspace_root`,
 // `anchor_source_root`, `repo_relative_path`, `repo_relative_path_normalized`, and call-site
 // migration in `build_module_*` / `pool_roots_*` / `workspace_relative_repo_path` (~130 LOC).
@@ -26135,6 +26135,14 @@ pub(crate) struct FloorDiffEdits {
     /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
     /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
+    /// `(file, declaration)` for every non-test-fn declaration -- fn, type or data -- whose
+    /// lines the diff edited. An import-region edit seeds nothing here: which reads it rebinds
+    /// is an index question (`namespace_baseline` `import_rebound_declarations`), and seeding
+    /// every declaration of the file planned ~684 seeds for an 11-file diff (gunbc#12353).
+    /// The seeds of `namespace_baseline` `body_reach_from_changed_declarations`: the
+    /// declaration grain `touched_entry_files` collapses to a file. A test fn is not a seed,
+    /// because nothing reads one; an edited test fn is a changed witness in its own right.
+    touched_declarations: HashSet<(String, String)>,
 }
 
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
