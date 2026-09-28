@@ -1,11 +1,17 @@
 module extdeps.cloud.gcp.iam_deny
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import std.types { String, NonEmptyStr, Secret, List }
 import extdeps.cloud.gcp.iam { IamCondition }
 import extdeps.cloud.gcp.gcp { GcpOperation }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { GET, POST }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "cloud.google.com/iam/docs/reference/rest/v2/policies" }
+}
 
 // IAM v2 policies: attachment_point is one URL-encoded resource-name segment.
 // https://docs.cloud.google.com/iam/docs/reference/rest/v2/policies/createPolicy
