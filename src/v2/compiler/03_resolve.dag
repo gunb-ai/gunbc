@@ -908,26 +908,72 @@ fn resolve_atom_bound(
   }
 }
 
-// A KERNEL TYPE SPELLING NAMES ITS CANONICAL BINDING ONLY WHERE THE MODULE DOES NOT DECLARE IT.
-// v2.extdeps.languages.dag dag_kernel_type_binding_optional is keyed by spelling, so resolve_atom
-// asks it only after the scope walk and the symbol index have answered: a symbol-index hit declared
-// in the referencing module itself (its path's owner is ctx.namespace.module_qn) binds that
-// declaration, so a module's own `type Int` shadows the kernel Int. A root binding with no imported
-// origin is likewise the module's own. An imported, foreign, ambiguous or unbound kernel spelling
-// keeps its canonical binding, as before. This used to run in body lowering, before any scope
-// existed, where it captured a module's own `type Int` as the kernel Int
+// A KERNEL TYPE SPELLING IS READ BY THE DECLARATION IT RESOLVED TO. Once a door (the root's import,
+// or the symbol index) has selected a declaration, v2.extdeps.languages.dag
+// dag_kernel_type_declaration_binding_optional decides: one of the kernel's own declarations takes
+// the canonical binding. The referencing module's own declaration of that spelling shadows it. Any
+// other declaration of a kernel spelling REFUSES, typed and located, because binding it to the
+// kernel would judge the value against a type the author did not name. Only an unbound or ambiguous
+// name falls back to the spelling table. This used to run in body lowering, before any scope
+// existed, where it captured every declaration of `Int` as the kernel Int
 // (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+type KernelTypeReading
+  = KernelTypeBinding { canonical: Symbol }
+  | KernelSpellingForeignDeclaration
+  | NotAKernelTypeReading
+
+fn resolve_kernel_type_reading(identity: Symbol, path: QualifiedName, declared_here: Bool) -> KernelTypeReading {
+  match dag_kernel_type_binding_optional(sym: identity) {
+    Absent => NotAKernelTypeReading
+    Present { value: _ } =>
+      match dag_kernel_type_declaration_binding_optional(path: path) {
+        Present { value: canonical } => KernelTypeBinding { canonical: canonical }
+        Absent => if declared_here { NotAKernelTypeReading } else { KernelSpellingForeignDeclaration }
+      }
+  }
+}
+
+fn kernel_type_spelling_foreign_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// One door's declaration, read for a kernel spelling before it is bound.
+fn resolve_atom_declared(
+  ctx: ResolveContext,
+  n: Node,
+  identity: Symbol,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match resolve_kernel_type_reading(
+    identity: identity,
+    path: path,
+    declared_here: qualified_name_init(qn: path) == ctx.namespace.module_qn
+  ) {
+    KernelTypeBinding { canonical: canonical } =>
+      Accepted {
+        value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+        diagnostics: pending
+      }
+    KernelSpellingForeignDeclaration =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: diagnostics_singleton(d: kernel_type_spelling_foreign_diagnostic(n: n))
+        )
+      }
+    NotAKernelTypeReading => resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
+  }
+}
+
 fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node> {
   match dag_kernel_type_binding_optional(sym: identity) {
     Present { value: canonical } =>
       optional_present(value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id))
-    Absent => optional_absent()
-  }
-}
-
-fn resolve_kernel_type_atom_at_root_optional(ctx: ResolveContext, n: Node, identity: Symbol) -> Optional<Node> {
-  match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
-    Present { value: _ } => resolve_kernel_type_atom_optional(n: n, identity: identity)
     Absent => optional_absent()
   }
 }
@@ -974,27 +1020,17 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
             diagnostics: pending
           }
         BoundAtRoot { canonical: _ } =>
-          match resolve_kernel_type_atom_at_root_optional(ctx: ctx, n: n, identity: identity) {
-            Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-            Absent =>
-              resolve_atom_bound(
-                ctx: ctx,
-                n: n,
-                path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
-                pending: pending
-              )
-          }
+          resolve_atom_declared(
+            ctx: ctx,
+            n: n,
+            identity: identity,
+            path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
+            pending: pending
+          )
         ScopeUnbound =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
             SymbolIndexAtomHit { path: path } =>
-              if qualified_name_init(qn: path) == ctx.namespace.module_qn {
-                resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
-              } else {
-                match resolve_kernel_type_atom_optional(n: n, identity: identity) {
-                  Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-                  Absent => resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
-                }
-              }
+              resolve_atom_declared(ctx: ctx, n: n, identity: identity, path: path, pending: pending)
             SymbolIndexAtomAmbiguous { class: class } =>
               match resolve_kernel_type_atom_optional(n: n, identity: identity) {
                 Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }

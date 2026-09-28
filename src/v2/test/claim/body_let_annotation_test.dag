@@ -2,7 +2,13 @@ module v2.test.claim.body_let_annotation
 
 import std.algebra { Cons, Empty }
 import v2.std.coercion { NoTargetCandidate }
-import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
@@ -252,14 +258,18 @@ test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
     }
 }
 
-// (5c) A MODULE'S OWN DECLARATION OF A KERNEL SPELLING SHADOWS IT. `type Int = | Mine` in the module
-// and `let y: Int = 1`: the annotation binds the module's Int, which `1` does not inhabit, so the let
-// refuses at the annotation. The same for Bool with `true`. RED BEFORE: body lowering rewrote the
-// spelling to the kernel binding before any scope existed, so the annotation was the kernel Int and
-// the let was judged MATCHED (gunbc.recurring_failure_mode
-// kernel_type_spelling_captured_a_module_declaration). Each row asserts the ROUTE -- the annotation
-// is not the kernel binding -- as well as the verdict. The controls are (5b) plus the route row
-// below: an undeclared `Int` still resolves to the kernel binding.
+// (5c) A KERNEL SPELLING IS READ BY THE DECLARATION IT RESOLVES TO (gunbc.recurring_failure_mode
+// kernel_type_spelling_captured_a_module_declaration). RED BEFORE: body lowering rewrote the
+// spellings Int and Bool to the kernel binding before any scope existed, so every row below had the
+// kernel type as its annotation, and the let was judged MATCHED.
+// - A module's own `type Int` / `type Bool` shadows the kernel name, so `let y: Int = 1` refuses at
+//   the annotation (`1` does not inhabit `Mine`).
+// - An IMPORTED user `Int` refuses in resolve with a typed, located reason. It cannot bind the
+//   kernel, and until bindings are keyed by declaration it does not silently bind the user's type
+//   either.
+// Each row asserts the ROUTE (the annotation is not the kernel binding, or resolve refused for this
+// reason) as well as the verdict. The controls are (5b), and the route row below: an undeclared
+// `Int` still binds the kernel type.
 fn bla_declared_int_literal() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
 }
@@ -268,9 +278,51 @@ fn bla_declared_bool_literal() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n")
 }
 
-fn bla_refuses_at_the_annotation(o: Outcome<Node>) -> Bool {
+fn bla_declared_int_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_declared_int_literal())
+}
+
+fn bla_declared_bool_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_declared_bool_literal())
+}
+
+data bla_q_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_q_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_q.dag"
+}
+
+// Module p imports module q, whose own `type Int = | Mine` is the declaration p's `Int` resolves to.
+fn bla_imported_int_literal() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module p\n\nimport q { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n", fidelity: Lossless },
+        artifact: tpb_artifact,
+        compilation_unit: ^type_param_binder_frame_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: "module q\n\ntype Int = | Mine\n", fidelity: Lossless },
+          artifact: bla_q_artifact,
+          compilation_unit: ^body_let_annotation_q_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } },
+      imports: Cons { head: Import { target: Cons { head: ^q, tail: Empty }, visibility: ImportVisible }, tail: Empty }
+    },
+    lm: dag_language_model()
+  )
+}
+
+fn bla_refuses_at_the_annotation(o: Outcome<Node>, inferred: Outcome<Bool>) -> Bool {
   tpb_accepts(o: o)
-    && match bla_infers(o: o) {
+    && match inferred {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: d } =>
         diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation
@@ -286,12 +338,16 @@ fn bla_annotation_is(o: Outcome<Node>, id: Symbol) -> Bool {
 
 test fn bla_module_declared_int_shadows_the_kernel_int() -> Bool {
   !bla_annotation_is(o: bla_declared_int_literal(), id: ^dag_binding_type_int)
-    && bla_refuses_at_the_annotation(o: bla_declared_int_literal())
+    && bla_refuses_at_the_annotation(o: bla_declared_int_literal(), inferred: bla_declared_int_literal_inferred())
 }
 
 test fn bla_module_declared_bool_shadows_the_kernel_bool() -> Bool {
   !bla_annotation_is(o: bla_declared_bool_literal(), id: ^bool_node_symbol)
-    && bla_refuses_at_the_annotation(o: bla_declared_bool_literal())
+    && bla_refuses_at_the_annotation(o: bla_declared_bool_literal(), inferred: bla_declared_bool_literal_inferred())
+}
+
+test fn bla_imported_user_int_refuses_rather_than_binding_the_kernel_int() -> Bool {
+  tpb_refuses_with(o: bla_imported_int_literal(), reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
 }
 
 test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
