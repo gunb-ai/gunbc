@@ -1,7 +1,8 @@
 module gunbc.filesystem_model
 
 import std.types { Bool, List, String }
-import std.measure { second }
+import std.measure { second, ByteSize, byte_size }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import v2.std.operation_argv { OperationRef, BoundOperationInvocation }
 import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
@@ -25,8 +26,12 @@ import extdeps.filesystem.filesystem_io {
 // write_create_new_with_mode is accepted and not stored), ownership, symlinks, partial writes, and
 // the atomicity of a real create-exclusive under concurrent processes. Those are properties of the real
 // filesystem, and their evidence is the file-store tests that run against a real directory.
-// byte_count is the content's string length, which equals its byte length for the ASCII content the
-// consumers here write.
+// byte_count is the content's UTF-8 byte length, as the realization's own `content.len()` reports it --
+// not its code-point count -- computed as std.materialization_object does.
+fn content_bytes(s: String) -> ByteSize {
+  byte_size(count: bytes_octets(b: utf8_encode_bytes(s: s)) |> count())
+}
+
 type ModeledFile {
   path: String
   content: String
@@ -75,7 +80,7 @@ fn failed_with(kind: extdeps.filesystem.filesystem_io.FilesystemFailureKind, mes
 
 fn fs_read(fs: ModeledFilesystem, path: String) -> FileExchangeObservation {
   match fs_file(fs: fs, path: path) {
-    Present { value: file } => FileOperationSucceeded { byte_count: string_length(s: file.content), content: file.content }
+    Present { value: file } => FileOperationSucceeded { byte_count: content_bytes(s: file.content), content: file.content }
     Absent =>
       if fs_is_directory(fs: fs, path: path) { failed_with(kind: FilesystemOtherFailure, message: concat("Is a directory: ", path)) }
       else { failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", path)) }
@@ -98,10 +103,10 @@ fn fs_write(fs: ModeledFilesystem, path: String, content: String, create_new: Bo
         if create_new {
           ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemAlreadyExists, message: concat("File exists: ", path)) }
         } else {
-          ModeledFileWrite { fs: fs_with_file(fs: fs, path: path, content: content), observation: FileOperationSucceeded { byte_count: string_length(s: content), content: "" } }
+          ModeledFileWrite { fs: fs_with_file(fs: fs, path: path, content: content), observation: FileOperationSucceeded { byte_count: content_bytes(s: content), content: "" } }
         }
       Absent =>
-        ModeledFileWrite { fs: fs_with_file(fs: fs, path: path, content: content), observation: FileOperationSucceeded { byte_count: string_length(s: content), content: "" } }
+        ModeledFileWrite { fs: fs_with_file(fs: fs, path: path, content: content), observation: FileOperationSucceeded { byte_count: content_bytes(s: content), content: "" } }
     }
   }
 }
@@ -116,7 +121,7 @@ fn fs_with_file(fs: ModeledFilesystem, path: String, content: String) -> Modeled
 fn fs_delete(fs: ModeledFilesystem, path: String) -> ModeledFileWrite {
   match fs_file(fs: fs, path: path) {
     Present { value: _ } =>
-      ModeledFileWrite { fs: ModeledFilesystem { directories: fs.directories, files: filter(fs.files, f => f.path != path) }, observation: FileOperationSucceeded { byte_count: 0, content: "" } }
+      ModeledFileWrite { fs: ModeledFilesystem { directories: fs.directories, files: filter(fs.files, f => f.path != path) }, observation: FileOperationSucceeded { byte_count: byte_size(count: 0), content: "" } }
     Absent =>
       if fs_is_directory(fs: fs, path: path) { ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemOtherFailure, message: concat("Is a directory: ", path)) } }
       else { ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", path)) } }
@@ -128,7 +133,7 @@ fn fs_list(fs: ModeledFilesystem, path: String) -> FileExchangeObservation {
     let file_names = map(filter(fs.files, f => fs_parent(path: f.path) == path), f => fs_leaf(path: f.path))
     let dir_names = map(filter(fs.directories, d => d != path && fs_parent(path: d) == path), d => fs_leaf(path: d))
     let listing = join(sort_by(concat_lists(a: file_names, b: dir_names), n => n), "\n")
-    FileOperationSucceeded { byte_count: string_length(s: listing), content: listing }
+    FileOperationSucceeded { byte_count: content_bytes(s: listing), content: listing }
   } else {
     match fs_file(fs: fs, path: path) {
       Present { value: _ } => failed_with(kind: FilesystemNotDirectory, message: concat("Not a directory: ", path))
