@@ -462,7 +462,7 @@ fn systemd_workload_prefill_request(state: String, base: String, sequential: Boo
     join([
       "  echo \"seat $seat awaiting (sequential issue)\"\n",
       "  seat_start=$(date +%s)\n",
-      "  if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%{time_starttransfer} %{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi\n",
+      "  if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi\n",
       "  seat_end=$(date +%s)\n",
       "  echo \"$seat_rc\" > \"$state/seat_$seat.rc\"\n",
       "  head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"\n",
@@ -470,7 +470,7 @@ fn systemd_workload_prefill_request(state: String, base: String, sequential: Boo
     ], "")
   } else {
     join([
-      "  ( seat_start=$(date +%s); if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%{time_starttransfer} %{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi; seat_end=$(date +%s); echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$seat\" \"$seat_start\" \"$seat_end\" $(cat \"$state/seat_$seat.timing\" 2>/dev/null) >> \"$state/seats.timing.tsv\" ) &\n",
+      "  ( seat_start=$(date +%s); if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi; seat_end=$(date +%s); echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$seat\" \"$seat_start\" \"$seat_end\" $(cat \"$state/seat_$seat.timing\" 2>/dev/null) >> \"$state/seats.timing.tsv\" ) &\n",
       "  seat_pids=\"$seat_pids $!\"\n",
     ], "")
   }

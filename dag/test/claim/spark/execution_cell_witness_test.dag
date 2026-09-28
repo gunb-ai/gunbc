@@ -637,7 +637,7 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: prefill, pattern: join(["( ", to_string(seat_window), " - unit_base"], ""))
             && string_contains(s: prefill, pattern: "warm_mib")
             && string_contains(s: prefill, pattern: "-D \"$state/seat_$seat.hdr\"")
-            && string_contains(s: prefill, pattern: "-w '%{time_starttransfer} %{time_total}'")
+            && string_contains(s: prefill, pattern: "-w '%\{time_starttransfer} %\{time_total}'")
             && string_contains(s: prefill, pattern: "seats.timing.tsv")
             && string_contains(s: prefill, pattern: "metrics.pre")
             && string_contains(s: prefill, pattern: "metrics.post")
@@ -1001,15 +1001,18 @@ fn fx_phase_for_variant(name: NonEmptyStr) -> SparkExperimentWorkloadPhase? {
   }
 }
 
-// THE VARIANT REGISTRY AGREES WITH THE LIVENESS MATRIX, row for row: five variants each way, every
-// registry name a matrix row and every discriminating axis reading the same value the matrix's
-// prose names — five seats at the full window for b, 65536 for c, sequential issue for d, the
-// armed watchdog for e — and the active variant is a registry member. The registry is the matrix's
-// executable spelling, and this witness is the join that keeps it from drifting into a parallel
-// authority.
+// THE VARIANT REGISTRY AGREES WITH THE LIVENESS MATRIX, row for row: five repro variants each
+// way, every matrix name a registry row and every discriminating axis reading the same value the
+// matrix's prose names — five seats at the full window for b, 65536 for c, sequential issue for
+// d, the armed watchdog for e — and the active variant is a registry member. The registry's SIXTH
+// row is not a matrix row: w1-cold-single-full-window is the ATTRIBUTION workload of
+// docs/plans/glm-group-b-workload-qualification.md (2026-09-28), one cold full-window request
+// alone on the engine, joining under its own authority rather than by amending the dated
+// 2026-09-27 liveness matrix. The witness holds both halves: the matrix join cannot drift, and
+// the only non-matrix row is w1 with its qualification-plan shape.
 test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
-  let five_each = length(spark_workload_variants) == 5 && length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
-  let names_join = all(spark_workload_variants, v => any(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == v.name))
+  let five_each = length(spark_workload_variants) == 6 && length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
+  let names_join = all(arm_experiment_2026_09_27_liveness_repro_matrix, r => any(spark_workload_variants, v => v.name == r.variant))
   let a_ok = match spark_workload_variant_named(name: "a-repro-six-full-window" as NonEmptyStr) {
     Present { value: v } => v.seat_count == 6 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && !v.watchdog
     Absent => false
@@ -1054,7 +1057,14 @@ test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
     Present { value: v } => (v.name as String) == (spark_active_workload_variant as String)
     Absent => false
   }
-  five_each && names_join && a_ok && b_ok && c_ok && d_ok && e_ok && active_ok
+  let w1_ok = match spark_workload_variant_named(name: "w1-cold-single-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 1 && v.window_tokens == 262144 && v.mode == SparkSeatsSequential && !v.watchdog
+    Absent => false
+  }
+  let only_w1_beyond_matrix = all(
+    filter(spark_workload_variants, v => !any(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == v.name)),
+    v => (v.name as String) == "w1-cold-single-full-window")
+  five_each && names_join && only_w1_beyond_matrix && a_ok && b_ok && c_ok && d_ok && e_ok && w1_ok && active_ok
 }
 
 // VARIANT b RENDERS FIVE SEATS AND THE UNCHANGED BUDGET: the prefill script's seat loop bounds at
