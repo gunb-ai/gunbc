@@ -1017,7 +1017,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "extdeps.communication.medium", decl_name: "DecodeFidelity", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "v2.std.node", decl_name: "Symbol", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.compiler.translate", decl_name: "grammar_relation_row_for_emitted", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.target_serialize", decl_name: "grammar_relation_row_for_emitted", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DecodeFidelity describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },

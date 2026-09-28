@@ -1,10 +1,8 @@
 module v2.test.claim.translate.declaration_reference_form
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_type_expression_project
-}
+import v2.compiler.translate { translate_type_expression_project }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.rust { rust_type_expression_projection }
 import v2.extdeps.languages.rust_test { rust_sg2_type_expression_projection_target_model }
 import v2.std.compilers.target_model {
