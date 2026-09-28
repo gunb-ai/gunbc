@@ -89,7 +89,7 @@ fn section_2_s0() -> List<MarkdownBlock> {
         r4("stateful `while`", "bound; carrier; no domain", "`Bind { s := init, body: Loop { carrier: s, bound: measure, body: s => WhileStep } }` (§5)", "the value carried by the `WhileComplete` arm"),
       ]
     ),
-    p(text: "S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `edge_contributes_to_cost_fold`), and give the `Loop` interpreter step the three executing rules above in place of its rejection. S0 changes no surface syntax, and the unary `loop` keeps its meaning."),
+    p(text: "S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`), and give the `Loop` interpreter step the three executing rules above in place of its rejection. S0 changes no surface syntax, and the unary `loop` keeps its meaning."),
     p(text: "**The fold seam migrated at its root (S3).** The old seam was the fold encoding with its domain and initial `Bind` missing. It was replaced in one change by `fold_recurrence_encoding`, with its consumers and no second encoding left: body lowering, the accumulator-copy lens, and resolve's check of the realized declaration. The carrier edge kept its binder meaning. `v2.lens.complexity_accumulator_copy` reads the carrier through `fold_recurrence_loop`, and it analyzes the domain under the enclosing iteration state, because the domain is evaluated once."),
   ]
 }
@@ -208,7 +208,7 @@ fn section_9_where() -> List<MarkdownBlock> {
     table2(
       header: r2("piece", "where"),
       rows: [
-        r2("the domain edge, and every consumer of loop edges (S0)", "`v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `edge_contributes_to_cost_fold`"),
+        r2("the domain edge, and every consumer of loop edges (S0)", "`v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`"),
         r2("executing a `Loop` (S0)", "the `Loop` interpreter step: `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop`, both of which reject today; and the Rust emission of the three rules"),
         r2("keywords `for`, `in`, `while`, `decreases`", "`v2.extdeps.languages.dag`, beside `dag_keyword_lex_rule(^dag_token_kw_loop, ...)`. Grep first: a keyword removes an identifier from every module"),
         r2("one production per form", "`v2.compiler.body_producer_forward`, one `BodyProducerForwardRow` per surface identity (see `body_producer_forward_row_loop_expr`). If its cutover from `body_lowering_fold` has not landed, coordinate with its owner rather than adding arms to the table being deleted"),

@@ -36,14 +36,10 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  edge_contributes_to_cost_fold,
-  LoopBoundMeasure,
-  LoopCarrierBinder,
-  LoopDomainValue,
-  LoopEdgeUnrecognized,
-  LoopIteratedBody,
-  LoopRealizedDeclaration,
-  loop_edge_role,
+  CostEdgeComposed,
+  CostEdgeNotPriced,
+  CostEdgePricedOnce,
+  cost_edge_role,
   Named,
   Node,
   NodeFold,
@@ -101,7 +97,7 @@ type CostCompositionMode
   | IterativeCost
 
 // `once` is the work a node performs a single time BESIDE its composed children: a Loop's domain
-// (v2.std.node LoopDomainValue) is evaluated once, so it is summed with the iteration rather than
+// (v2.std.node cost_edge_role CostEdgePricedOnce) is evaluated once, so it is summed with the iteration rather than
 // multiplied into it. It is kept apart from `cost` so the answer does not depend on where a producer
 // placed the domain edge among the loop's children; symbolic_cost_fold_total joins the two.
 type SymbolicCostFoldState {
@@ -423,36 +419,23 @@ fn cost_fold_composed(acc: SymbolicCostFoldState, child: SymbolicCostFoldState) 
   }
 }
 
-// A Loop's edges are priced by their role (v2.std.node loop_edge_role): the iterated body composes
-// under the loop's mode, the domain is priced once beside it, and the bound, carrier, realized
-// declaration and any edge a conforming Loop cannot hold price nothing. Every other parent keeps edge_contributes_to_cost_fold.
+// Each edge is priced as v2.std.node cost_edge_role says: composed under the parent's mode, priced
+// once beside that composition, or not priced.
 fn cost_fold_step(
   acc: SymbolicCostFoldState,
   e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  match acc.parent.kind {
-    ComputationNode { behavior: Loop } =>
-      match loop_edge_role(e: e) {
-        LoopIteratedBody => cost_fold_composed(acc: acc, child: child)
-        LoopDomainValue =>
-          SymbolicCostFoldState {
-            mode: acc.mode,
-            cost: acc.cost,
-            once: symbolic_sequential(a: acc.once, b: symbolic_cost_fold_total(s: child)),
-            parent: acc.parent
-          }
-        LoopBoundMeasure => acc
-        LoopCarrierBinder => acc
-        LoopRealizedDeclaration => acc
-        LoopEdgeUnrecognized => acc
+  match cost_edge_role(parent: acc.parent, e: e) {
+    CostEdgeComposed => cost_fold_composed(acc: acc, child: child)
+    CostEdgePricedOnce =>
+      SymbolicCostFoldState {
+        mode: acc.mode,
+        cost: acc.cost,
+        once: symbolic_sequential(a: acc.once, b: symbolic_cost_fold_total(s: child)),
+        parent: acc.parent
       }
-    _ =>
-      if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
-        cost_fold_composed(acc: acc, child: child)
-      } else {
-        acc
-      }
+    CostEdgeNotPriced => acc
   }
 }
 
