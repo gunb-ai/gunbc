@@ -444,7 +444,7 @@ fn write_answer_text(a: MegaRacWriteAnswer) -> String {
     WriteAccepted { body: b } => concat("accepted: ", b)
     WriteNotIssued { reason: r } => concat("NOT ISSUED: ", r as String)
     WriteAnsweredHttpError { body: b, stderr: e } => concat("answered an HTTP error (complete response): ", concat(b, concat(" / ", e)))
-    WriteEffectUncertain { partial_body: b, stderr: e } => concat("EFFECT UNCERTAIN (no complete answer; bytes received: '", concat(b, concat("'): ", e)))
+    WriteEffectUncertain { exit_code: x, partial_body: b, stderr: e } => join(["EFFECT UNCERTAIN (curl exit ", to_string(x), ", no complete answer; bytes received: '", b, "'): ", e], "")
   }
 }
 

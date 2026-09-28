@@ -316,7 +316,7 @@ test fn already_started_is_ready_with_its_evidence_and_no_list_index() -> Bool {
 
 // ─── DETACH: the command's answer and the read-back are two facts ───────────────────────────────
 fn detach(success: Bool, body: String, readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
-  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: megarac_write_answer(success: success, body: body, stderr: ""), readback_read: readback_read, readback: readback, cd_after_stop: cd_clean, general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported) }
+  MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "0", command: megarac_write_answer(exit_code: if success { 0 } else { 22 }, body: body, stderr: ""), readback_read: readback_read, readback: readback, cd_after_stop: cd_clean, general_after_stop: raw_at(body: mtcollins1_media_general_2026_09_27_morning_as_reported) }
 }
 
 data stop_1411: String = "{\"error\":\"Error stopping the remote media redirection\",\"code\":1411}"
@@ -733,14 +733,14 @@ test fn nothing_presented_with_a_nonzero_code_attaches_only_under_admission() ->
 
 // ─── WRITE ANSWERS AND THE RENDERED ARTIFACT ─────────────────────────────────────────────────────
 test fn a_write_without_an_http_answer_is_effect_uncertain() -> Bool {
-  (match megarac_write_answer(success: false, body: "", stderr: "curl: (28) Operation timed out after 10001 milliseconds") { WriteEffectUncertain { partial_body: _, stderr: e } => string_contains(s: e, pattern: "(28)") _ => false })
-    && (match megarac_write_answer(success: false, body: stop_1411, stderr: "curl: (22) The requested URL returned error: 500") { WriteAnsweredHttpError { body: b, stderr: _ } => b == stop_1411 _ => false })
+  (match megarac_write_answer(exit_code: 28, body: "", stderr: "curl: (28) Operation timed out after 10001 milliseconds") { WriteEffectUncertain { exit_code: x, partial_body: _, stderr: _ } => x == 28 _ => false })
+    && (match megarac_write_answer(exit_code: 22, body: stop_1411, stderr: "") { WriteAnsweredHttpError { body: b, stderr: _ } => b == stop_1411 _ => false })
 }
 
 // The published artifact keeps the executed stop (and its 1411) and the StartMedia answer when the
 // readiness clock refused afterwards.
 test fn the_rendered_artifact_keeps_the_detach_and_start_answers_on_a_clock_refusal() -> Bool {
-  let route = RouteReplaced { image_list_index: "5", detach: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), start: WriteEffectUncertain { partial_body: "", stderr: "curl: (28) Operation timed out" } }
+  let route = RouteReplaced { image_list_index: "5", detach: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), start: WriteEffectUncertain { exit_code: 28, partial_body: "", stderr: "curl: (28) Operation timed out" } }
   let rendered = media_attach_text(record: attempted(result: MegaRacAttachResult {
     outcome: MegaRacReadinessClockIncoherent { image_name: desired_census, route: route, opened_at: 1000, previous: none, look: look(at: 500, status: "1", session: "0"), looks: 1 },
     session_release: SessionReleased,
@@ -779,8 +779,8 @@ test fn a_readable_listing_ignores_unrelated_optional_members() -> Bool {
 
 // Partial bytes then a timeout: uncertain, with every byte kept; never a complete controller answer.
 test fn partial_bytes_then_a_timeout_are_uncertain_and_kept() -> Bool {
-  match megarac_write_answer(success: false, body: "<partial-json-bytes", stderr: "curl: (28) Operation timed out") {
-    WriteEffectUncertain { partial_body: b, stderr: e } => b == "<partial-json-bytes" && string_contains(s: e, pattern: "(28)")
+  match megarac_write_answer(exit_code: 28, body: "<partial-json-bytes", stderr: "curl: (28) Operation timed out") {
+    WriteEffectUncertain { exit_code: x, partial_body: b, stderr: _ } => b == "<partial-json-bytes" && x == 28
     _ => false
   }
 }
@@ -812,4 +812,14 @@ test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Boo
     baseline: none,
   }))
   string_contains(s: rendered, pattern: "13100") && string_contains(s: rendered, pattern: "16 (uncatalogued)")
+}
+
+// THE VERDICT IS THE TYPED EXIT CODE, NOT STDERR WORDING (review 71971): a complete HTTP error with
+// reworded or empty stderr is still an answer, and a timeout whose stderr mentions "(22)" is still
+// uncertain.
+test fn the_write_verdict_follows_the_exit_code_not_the_stderr_wording() -> Bool {
+  (match megarac_write_answer(exit_code: 22, body: stop_1411, stderr: "") { WriteAnsweredHttpError { body: _, stderr: _ } => true _ => false })
+    && (match megarac_write_answer(exit_code: 28, body: "", stderr: "curl: (22) misleading text") { WriteEffectUncertain { exit_code: x, partial_body: _, stderr: _ } => x == 28 _ => false })
+    && (match megarac_write_answer(exit_code: 7, body: "", stderr: "curl: (7) Failed to connect") { WriteEffectUncertain { exit_code: x, partial_body: _, stderr: _ } => x == 7 _ => false })
+    && (match megarac_write_answer(exit_code: 0, body: "{}", stderr: "") { WriteAccepted { body: _ } => true _ => false })
 }

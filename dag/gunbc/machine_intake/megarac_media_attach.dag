@@ -180,25 +180,30 @@ type MegaRacPresentationEvidence {
 // Four facts, not folded together:
 //   not issued        -- no command ran; the reason says why;
 //   accepted          -- curl exited 0 with the controller's body;
-//   HTTP error answer -- curl's --fail-with-body reported (22): the controller sent a COMPLETE error
+//   HTTP error answer -- curl exited 22 under --fail-with-body: the controller sent a COMPLETE error
 //                        response, kept verbatim (this build has answered such bodies to writes that
 //                        took effect);
-//   effect uncertain  -- anything else: a timeout (28), a transport failure, an abort -- with every
-//                        byte that did arrive kept as partial_body, never read as a complete answer.
-// In every case the read-back decides the effect.
+//   effect uncertain  -- any other exit: a timeout (28), a transport failure, an abort -- with the
+//                        exit code and every byte that did arrive kept, never read as a complete answer.
+// The verdict is keyed on curl's TYPED exit code, the same fact
+// gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle bmc_curl_read_cause keys on (review 71971);
+// stderr is kept as evidence, never parsed for the verdict. In every case the read-back decides the
+// effect.
 type MegaRacWriteAnswer
   = WriteNotIssued { reason: NonEmptyStr }
   | WriteAccepted { body: String }
   | WriteAnsweredHttpError { body: String, stderr: String }
-  | WriteEffectUncertain { partial_body: String, stderr: String }
+  | WriteEffectUncertain { exit_code: Int, partial_body: String, stderr: String }
 
-fn megarac_write_answer(success: Bool, body: String, stderr: String) -> MegaRacWriteAnswer {
-  if success {
+data curl_exit_http_error: Int = 22
+
+fn megarac_write_answer(exit_code: Int, body: String, stderr: String) -> MegaRacWriteAnswer {
+  if exit_code == 0 {
     WriteAccepted { body: body }
-  } else if string_contains(s: stderr, pattern: "curl: (22)") {
+  } else if exit_code == curl_exit_http_error {
     WriteAnsweredHttpError { body: body, stderr: stderr }
   } else {
-    WriteEffectUncertain { partial_body: body, stderr: stderr }
+    WriteEffectUncertain { exit_code: exit_code, partial_body: body, stderr: stderr }
   }
 }
 
@@ -957,7 +962,7 @@ fn megarac_detach_then_attach(
   let evidence = MegaRacDetachEvidence {
     stale_image: stale.image_name,
     media_index: media_index,
-    command: megarac_write_answer(success: stopped.success, body: stopped.body, stderr: stopped.stderr),
+    command: megarac_write_answer(exit_code: stopped.exit_code, body: stopped.body, stderr: stopped.stderr),
     readback_read: after.success,
     readback: after.body,
     cd_after_stop: cd_error_of_raw(r: general_after),
@@ -1497,7 +1502,7 @@ fn megarac_start_then_readiness(
     json_body: start_media_body(image_name: image_name, image_index: image_list_index),
     max_time: megarac_media_read_max_time_operand(),
   )
-  let start = megarac_write_answer(success: started.success, body: started.body, stderr: started.stderr)
+  let start = megarac_write_answer(exit_code: started.exit_code, body: started.body, stderr: started.stderr)
   return megarac_readiness_outcome(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,

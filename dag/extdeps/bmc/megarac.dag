@@ -403,8 +403,9 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 //
 // EVERY CALL IS BOUNDED BY ITS CALLER'S max_time, WRITES INCLUDED (side-chat review 5331991982). A
 // write that runs out of time has an UNCERTAIN effect -- the controller may have applied it -- so the
-// writes also return stderr, where curl names a timeout or transport failure, and the caller keeps
-// that answer rather than reading a missing HTTP answer as a refusal.
+// writes also return curl's exit code as a typed value (22: --fail-with-body received a complete HTTP
+// error response; 28: timed out; others: transport) and its stderr, and the caller keeps that answer
+// rather than reading a missing HTTP answer as a refusal.
 //
 // THE CREDENTIAL IS READ FROM A CALLER FILE ON OpenSession AND NOWHERE ELSE. curl --data-urlencode
 // password@FILE keeps the secret out of argv; every later call carries only the cookie. THE FILE IS
@@ -489,7 +490,7 @@ service megarac.Media {
 
   operation StartMedia {
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
-    output { body: String from "stdout", stderr: String from "stderr", success: Bool from "exit_success" }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
       argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
     }
@@ -501,7 +502,7 @@ service megarac.Media {
 
   operation StopMedia {
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
-    output { body: String from "stdout", stderr: String from "stderr", success: Bool from "exit_success" }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
       argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
     }
