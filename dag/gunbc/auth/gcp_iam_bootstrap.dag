@@ -30,7 +30,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
-  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted,
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_dependency_plan,
   BootstrapAuthorityIntent, bootstrap_authority_intent_valid, bootstrap_authority_may_grant,
   bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_action,
   AuthorityAbsent, AuthorityPresent, AuthorityUnreadable, PublishAuthority, UseAuthority,
@@ -78,7 +78,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
-    "Deny dependency: verified project ancestry -> organization policy read/write -> temporary operator Deny Admin -> deny-policy readback -> exact grant retirement -> capabilities.",
+    bootstrap_authority_dependency_plan(),
     "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
     "The grant targets only user:briansrls@gunb.ai; its deadline is journaled, and retry cannot renew or republish it.",
   ]

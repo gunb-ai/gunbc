@@ -135,6 +135,8 @@ flowchart TD
   E --> G[CAS grant and read back exact conditioned cell]
   G --> D[Install and read back deny policy]
   D --> C[CAS remove owned cell and read back absence]
+  G --> F[Deny installation refuses or lease expires]
+  F --> C
   C --> T[Persist retirement; continue bootstrap]
   E --> U[Interrupted or unreadable publication]
   U --> O[Reobserve the same intent and cell]

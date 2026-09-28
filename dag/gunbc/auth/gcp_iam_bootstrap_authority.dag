@@ -27,7 +27,7 @@ fn bootstrap_authority_requires(subject: BootstrapAuthorityDependency) -> List<B
     OrganizationPolicyWrite => [OrganizationPolicyRead]
     TemporaryDenyAdministration => [OrganizationPolicyWrite]
     DenyPolicyReadback => [TemporaryDenyAdministration]
-    TemporaryAuthorityRetired => [OrganizationPolicyRead, OrganizationPolicyWrite, DenyPolicyReadback]
+    TemporaryAuthorityRetired => [OrganizationPolicyRead, OrganizationPolicyWrite]
   }
 }
 
@@ -93,4 +93,20 @@ fn bootstrap_authority_publication_refused(outcome: RestOutcome) -> Bool {
 
 fn bootstrap_deny_retry_admitted(outcome: RestOutcome, remaining: Int, live: Bool) -> Bool {
   remaining > 1 && live && match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403 _ => false }
+}
+
+
+fn bootstrap_authority_dependency_name(subject: BootstrapAuthorityDependency) -> String {
+  match subject {
+    OrganizationPolicyRead => "organization-policy-read"
+    OrganizationPolicyWrite => "organization-policy-write"
+    TemporaryDenyAdministration => "temporary-deny-administration"
+    DenyPolicyReadback => "deny-policy-readback"
+    TemporaryAuthorityRetired => "temporary-authority-retired"
+  }
+}
+
+fn bootstrap_authority_dependency_plan() -> String {
+  join(map([OrganizationPolicyRead, OrganizationPolicyWrite, TemporaryDenyAdministration, DenyPolicyReadback, TemporaryAuthorityRetired], subject =>
+    concat(bootstrap_authority_dependency_name(subject: subject), " requires [", join(map(bootstrap_authority_requires(subject: subject), required => bootstrap_authority_dependency_name(subject: required)), ","), "]")), "\n")
 }
