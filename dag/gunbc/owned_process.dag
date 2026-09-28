@@ -42,12 +42,15 @@ data owned_process_unpublished_line: String = "gunbc-owned: pid not published; c
 
 data owned_process_unpublished_survived_line: String = "gunbc-owned: pid not published; child SURVIVED KILL (cleanup unresolved)"
 
+data owned_process_unpublished_unobservable_line: String = "gunbc-owned: pid not published; child state UNOBSERVABLE after KILL (cleanup unresolved)"
+
 // WHEN THE RECORD CANNOT BE PUBLISHED the launch still owns the child it started (it is that child's
 // parent and has not reaped it), so it drives it to an OBSERVED end: TERM, up to two seconds, KILL, up
-// to one more second, each step re-reading /proc/<pid>/stat and counting a zombie as gone. Only then
-// does it write that the child stopped; a child still running after KILL is written as an unresolved
-// cleanup, never as stopped.
-data owned_process_launch_script: String = "pf=\"$1\"; lg=\"$2\"; shift 2; ( \"$@\" >> \"$lg\" 2>&1 < /dev/null & p=$!; alive() \{ s=$(cat /proc/$p/stat 2>/dev/null) || return 1; s=$\{s##*) \}; case \"$s\" in Z*) return 1;; esac; return 0; \}; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf.tmp\" && mv -T \"$pf.tmp\" \"$pf\" || \{ rm -f \"$pf.tmp\"; kill \"$p\" 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do alive || break; sleep 0.2; done; if alive; then kill -9 \"$p\" 2>/dev/null; for i in 1 2 3 4 5; do alive || break; sleep 0.2; done; fi; if alive; then echo \"gunbc-owned: pid not published; child SURVIVED KILL (cleanup unresolved)\" >> \"$lg\"; else echo \"gunbc-owned: pid not published; child stopped (observed gone)\" >> \"$lg\"; fi; \}; wait \"$p\"; echo \"gunbc-owned: exited status=$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$lg\" ) > /dev/null 2>&1 &"
+// to one more second, each step observing the child as running, gone (no /proc/<pid>, or a zombie) or
+// UNOBSERVABLE (/proc/<pid> exists but its stat cannot be read). Only an observed gone ends a wait or
+// skips KILL, and only an observed gone is written as stopped; a child still running, or whose state
+// cannot be observed, after KILL is written as an unresolved cleanup, never as stopped.
+data owned_process_launch_script: String = "pf=\"$1\"; lg=\"$2\"; shift 2; ( \"$@\" >> \"$lg\" 2>&1 < /dev/null & p=$!; obs() \{ if [ ! -e /proc/$p ]; then o=gone; return; fi; s=$(cat /proc/$p/stat 2>/dev/null) || \{ if [ -e /proc/$p ]; then o=unobservable; else o=gone; fi; return; \}; s=$\{s##*) \}; case \"$s\" in Z*) o=gone;; *) o=running;; esac; \}; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf.tmp\" && mv -T \"$pf.tmp\" \"$pf\" || \{ rm -f \"$pf.tmp\"; kill \"$p\" 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do obs; [ \"$o\" = gone ] && break; sleep 0.2; done; if [ \"$o\" != gone ]; then kill -9 \"$p\" 2>/dev/null; for i in 1 2 3 4 5; do obs; [ \"$o\" = gone ] && break; sleep 0.2; done; fi; case \"$o\" in gone) echo \"gunbc-owned: pid not published; child stopped (observed gone)\" >> \"$lg\";; running) echo \"gunbc-owned: pid not published; child SURVIVED KILL (cleanup unresolved)\" >> \"$lg\";; *) echo \"gunbc-owned: pid not published; child state UNOBSERVABLE after KILL (cleanup unresolved)\" >> \"$lg\";; esac; \}; wait \"$p\"; echo \"gunbc-owned: exited status=$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$lg\" ) > /dev/null 2>&1 &"
 
 service gunbc.owned_process.launch {
   operation LaunchOwned {

@@ -137,8 +137,8 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
   let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && (millisecond_count(m: a.since_epoch) as Int) > 0  _ => false }))
   let closed = close_rig(r: r)
   admitted && asked && loss_still == 1 && released(rec: rec) && closed
-    && string_contains(s: log, pattern: "transition key=\"login admin pw\" status=200")
-    && string_contains(s: log, pattern: "transition key=\"logout csrf-7\" status=200")
+    && string_contains(s: log, pattern: "transition request=[\"login\",\"admin\",\"pw\"] status=200")
+    && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200")
     && string_contains(s: log, pattern: "stream closed by the model")
 }
 
@@ -151,7 +151,7 @@ test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool {
   let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let closed = close_rig(r: r)
-  refused && handoff && !string_contains(s: log, pattern: "kvm-open") && string_contains(s: log, pattern: "logout csrf-7") && released(rec: rec) && closed
+  refused && handoff && !string_contains(s: log, pattern: "kvm-open") && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200") && released(rec: rec) && closed
 }
 
 // CONNECTION LOST MID-BOOT: the model closes the stream at its scheduled instant. The browser's close
