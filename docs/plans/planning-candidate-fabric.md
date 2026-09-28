@@ -49,7 +49,13 @@ Targeted controls cover review, canonical storage, actual acceptance, authentica
 legacy event identity, task projection and the shared worker consumer. Browser and independent
 process race controls use real temporary Fabric file storage with fixture authentication.
 
-The full production serve compile and broad imported integration run exceeded the existing 6 GiB
-validation cap (exit 137). They are unresolved integration gates, not passing checks. A protected
-production cookie/session round trip, commissioned storage, and deployment have not been tested.
-The change should remain draft until integrated qualification and dependency landing are complete.
+The full production preview serve entry now reaches readiness with the branch-built binary at
+clean code commit `827cb0e6afc59c07b99cb04c24f710655d666d7b`. Run
+`python3 tools/tests/roadmap_serve_readiness_control.py` to reproduce the build plus full closure
+check. It uses the existing dashboard's 26 GiB ceiling and an OS-selected loopback port, sends
+no HTTP requests, and terminates the server after readiness. The prior 6 GiB attempts did not
+establish compilation; the subsequent full run exposed real integration errors that were fixed.
+
+The branch-built planning controls and approval transport adapter controls also pass. A protected
+production cookie/session round trip, commissioned storage, and deployment remain unverified.
+The change remains draft pending the protected-state dependency and those runtime gates.

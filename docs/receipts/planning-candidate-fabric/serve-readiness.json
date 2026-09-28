@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "revision": "827cb0e6afc59c07b99cb04c24f710655d666d7b",
+  "worktree_status": "",
+  "binary_sha256": "77f6fb4bf54d28a76a509308ebc881f2a652d6869ec15a1ff7a4c893f5cb5605",
+  "entry": "roadmap_serve_handle_srv2_preview",
+  "memory_limit": "26G",
+  "readiness": "gunbc serve listening on 127.0.0.1:45049 -> roadmap_serve_handle_srv2_preview() release_revision=827cb0e6afc59c07b99cb04c24f710655d666d7b",
+  "elapsed_seconds": 348.98,
+  "scope": "branch-built binary; whole serve import closure; OS-bound loopback listener; no HTTP requests"
+}

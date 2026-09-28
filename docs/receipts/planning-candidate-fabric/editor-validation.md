@@ -1,8 +1,9 @@
 # Planning editor qualification
 
 2026-09-28. Dependency: `ada7daefc28696ce4ba242437cd26daf61bd0bab` (#12465).
-Implementation source identity is recorded in `editor-source-hashes.json`; this receipt is not
-production deployment evidence. Binary SHA-256:
+The original focused-run source identity is recorded in `editor-source-hashes.json`; the later
+full-serve result below has its own clean-commit anchor. Neither is production deployment evidence.
+Original focused-run binary SHA-256:
 `e6d8571156538304137139853153e1d30f77f99ba71d8c76ccd3a943b8875e5b`.
 
 ## Passing boundaries
@@ -25,17 +26,41 @@ The browser fixture has no real Google login or protected service authentication
 local Fabric files, not the commissioned remote service. Test authentication lives only in the
 manual fixture module, never in the production route.
 
-## Unresolved integrated gates
+## Full serve gate: corrected and passed
 
-The broad imported integration run and full production `serve` compile both exceeded the
-existing 6 GiB memory cap (exit 137). Neither counts as a pass. No requests were sent to the
-production handler; no protected credentials or live store were accessed. The production
-post-acceptance dashboard refresh is wired but has not been exercised against a live instance.
+The earlier broad run and serve compile exceeded 6 GiB. Those attempts were inconclusive, and
+focused tests did not establish integrated readiness. A later 26 GiB strict compile found real
+errors: omitted `attempt_stale` and response `headers`, missing `PlanningApplied` rendering,
+stale sandbox/issue call signatures, invalid generic request construction, and the legacy broker's
+different request evidence type. These were corrected without weakening the compiler gate.
 
-PR #12465 remains draft and held at the dependency SHA above. Its commissioning/migration and
-integrated qualification must finish before this feature deploys. No merge or deployment occurred.
+At clean code commit `827cb0e6afc59c07b99cb04c24f710655d666d7b`, the branch-built binary compiled
+all 1,049 modules and bound a listener for `roadmap_serve_handle_srv2_preview`.
+`serve-readiness.json`, `serve-readiness.log`, and `serve-build.log` retain the result. The gate
+stopped the process immediately afterward. Build took 4m55s; serve reached readiness in 348.98s.
+Binary SHA-256: `77f6fb4bf54d28a76a509308ebc881f2a652d6869ec15a1ff7a4c893f5cb5605`.
+
+The 40 planning controls and two new transport-adapter controls passed using that branch-built
+binary. Their outputs are `branch-built-planning-controls.log` and
+`approval-transport-controls.log`. The adapter passes only the transport observation to the
+legacy broker's existing identity-header trust/capability/writer checks. It does not turn Google
+or service authentication into tailnet identity, and does not claim the A7 migration is complete.
+
+This clears the full-serve compilation/readiness blocker. No HTTP requests were sent, so no
+protected credentials or live store were accessed. Production session handling, post-acceptance
+dashboard refresh and protected storage commissioning remain separate runtime gates. PR #12465's
+HOLD remains in force; no preview unit, live dashboard, deployment or merge was changed.
+
+The subsequent receipt/documentation commit changes no executable source; the tested code commit
+above is the evidence anchor.
 
 ## Reproduction
+
+Full serve gate (builds this checkout, then requires readiness):
+
+```sh
+python3 tools/tests/roadmap_serve_readiness_control.py
+```
 
 From the checkout, with a compatible binary selected via `GUNBC_TEST_BINARY`:
 
