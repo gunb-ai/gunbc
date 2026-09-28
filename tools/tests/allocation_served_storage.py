@@ -4,6 +4,8 @@ import argparse
 import json
 import http.client
 import pwd
+import re
+import hashlib
 import os
 from pathlib import Path
 import secrets
@@ -56,6 +58,12 @@ with socket.socket() as sock:
     port = sock.getsockname()[1]
 origin = f'http://127.0.0.1:{port}'
 bounded = ['systemd-run', '--user', '--scope', '-p', 'MemoryMax=6G', '-p', 'MemorySwapMax=0', '--quiet', str(Path(a.binary).resolve())]
+bounds = Path('dag/gunbc/live_deploy/slice_bounds.dag').read_text()
+def serving_bound(name):
+    return int(re.search(r'data '+name+r': ByteSize = byte_size\((\d+)\)', bounds)[1])
+server_max = serving_bound('live_deploy_slice_memory_max')
+server_high = serving_bound('live_deploy_slice_memory_high')
+server_bounded = ['systemd-run', '--user', '--scope', '-p', f'MemoryMax={server_max}', '-p', f'MemoryHigh={server_high}', '-p', 'MemorySwapMax=0', '--quiet', str(Path(a.binary).resolve())]
 server = None
 logs = []
 results = []
@@ -67,11 +75,11 @@ def start(name):
     module = 'test.manual.fabric_state_socket_hold_server' if a.unix else 'test.manual.fabric_state_hold_server'
     function = 'served_storage_socket_hold_handler' if a.unix else 'served_storage_hold_handler'
     listener = ['--unix-socket', str(door)] if a.unix else ['--host', '127.0.0.1', '--port', str(port)]
-    server = subprocess.Popen(bounded + ['serve', '--source-root', a.server_source, '--entry', str(Path(a.server_source) / (module+'.dag')), '--function', function, *listener, '--release-revision', subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    server = subprocess.Popen(server_bounded + ['serve', '--source-root', a.server_source, '--entry', str(Path(a.server_source) / (module+'.dag')), '--function', function, *listener, '--release-revision', subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
         if server.poll() is not None:
-            raise RuntimeError(f'server exited; inspect {root}')
+            raise RuntimeError(f'server exited with {server.returncode}; inspect {root}')
         try:
             if a.unix:
                 if socket_request('/fixture/session')[0] == 200:
@@ -116,13 +124,15 @@ try:
         check(step)
     if a.unix:
         writer_file.write_text('unrostered-fixture-account')
-        check('read', expected=1, suffix='-unrostered-peer')
+        check('unrostered-peer')
         writer_file.write_text(writer_name)
+        check('proxy-read')
         bad_key = root / 'fixture-wrong-key'
         bad_key.write_text(secrets.token_hex(32))
         bad_key.chmod(0o600)
         env['GUNBC_FABRIC_STATE_KEY_FILE'] = str(bad_key)
-        check('read', expected=1, suffix='-wrong-signing-key')
+        check('wrong-signing-key')
+        check('proxy-wrong-signing-key')
         env['GUNBC_FABRIC_STATE_KEY_FILE'] = str(key)
         bad_key.unlink()
         check('read', suffix='-after-refusals')
@@ -131,7 +141,7 @@ try:
     check('read', suffix='-after-restart')
     stop()
     check('above-cap', expected=1, suffix='-transport-refusal')
-    receipt = {'fixture': str(root), 'transport': 'unix' if a.unix else 'tcp', 'results': results}
+    receipt = {'fixture': str(root), 'transport': 'unix' if a.unix else 'tcp', 'results': results, 'server_memory_max': server_max, 'server_memory_high': server_high, 'client_memory_max': 6*1024**3, 'swap_max': 0, 'revision': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'binary_sha256': hashlib.sha256(Path(a.binary).read_bytes()).hexdigest()}
     (root / 'receipt.json').write_text(json.dumps(receipt, indent=2)+'\n')
     print(json.dumps(receipt))
 finally:
@@ -139,3 +149,4 @@ finally:
     for log in logs:
         log.close()
     key.unlink(missing_ok=True)
+    (root / 'fixture-wrong-key').unlink(missing_ok=True)

@@ -11,6 +11,8 @@ import gunbc.fabric_storage_protocol { text_response }
 
 // This fixture executes the production protected transport gate, using a temporary store and
 // the real kernel peer supplied by serve. The test supplies an explicit local account roster.
+// /fixture/proxy injects the trusted-proxy case to test service authentication without a user
+// login; that case is a modeled proxy control, not a live tailscale or root-peer observation.
 fn served_storage_socket_hold_handler(method: String, path: String, body: String, peer_user: String,
   tailscale_identity: String = "", release_revision: String = "", cookie_header: String = "") -> ServeWireResponse {
   if method == "GET" && path == "/fixture/session" {
@@ -24,11 +26,15 @@ fn served_storage_socket_hold_handler(method: String, path: String, body: String
         Present { value: writer_path } => {
           let writer_read = Filesystem.Read(path: writer_path)
           let writer = if writer_read.success { trim(s: writer_read.content) } else { "" }
+          let proxy_fixture = starts_with(s: path, prefix: "/fixture/proxy/")
+          let action_path = if proxy_fixture { substring(s: path, start: 14, end: string_length(s: path)) } else { path }
+          let presented_peer = if proxy_fixture { "root" } else { peer_user }
+          let presented_login = if proxy_fixture { "" } else { tailscale_identity }
           let store = fabric_storage_file_root(root: root as NonEmptyStr)
           match fabric_storage_file_root_ensure(root: store) {
             FabricStorageRootReady => if writer == "" { text_response(status: 503, body: "fixture writer unreadable") } else { fabric_storage_protected_door_over(root: store,
               rosters: FabricDoorRosters { logins: [], locals: [writer as NonEmptyStr] },
-              method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user) }
+              method: method, path: action_path, body: body, tailscale_identity: presented_login, peer_user: presented_peer) }
             _ => text_response(status: 503, body: "fixture store refused")
           }
         }

@@ -17,7 +17,7 @@ import std.fabric_storage {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_wire { FabricDoorPrincipal, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
+import gunbc.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
 import gunbc.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
 import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
@@ -67,13 +67,22 @@ fn fabric_served_storage_respond(root: FabricStorageFileRoot, rosters: FabricDoo
   } }
 }
 
+// A proxy connection authenticates protected service work through its signed envelope, not
+// a user-login roster: tagged fleet clients legitimately have no user login. The kernel must
+// still attest the trusted proxy peer. Direct local peers require the existing account roster;
+// an unattested TCP connection or a forged login from another local account never becomes a proxy.
 fn fabric_storage_protected_door_over(root: FabricStorageFileRoot, rosters: FabricDoorRosters,
   method: String, path: String, body: String, tailscale_identity: String, peer_user: String) -> ServeWireResponse {
-  match fabric_door_writer_admission_over(logins: rosters.logins, locals: rosters.locals,
-    principal: fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user)) {
-    FabricDoorWriterRefused { refusal: _ } => text_response(status: 403, body: "fabric state transport principal refused\n")
-    FabricDoorWriterAdmitted { principal: _ } => fabric_storage_state_serve_over(root: root, method: method, path: path, body: body)
+  let principal = fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user)
+  let transport_admitted = match principal {
+    DoorProxied { identity: _ } => true
+    other => match fabric_door_writer_admission_over(logins: rosters.logins, locals: rosters.locals, principal: other) {
+      FabricDoorWriterRefused { refusal: _ } => false
+      FabricDoorWriterAdmitted { principal: _ } => true
+    }
   }
+  if !transport_admitted { text_response(status: 403, body: "fabric state transport principal refused\n") }
+  else { fabric_storage_state_serve_over(root: root, method: method, path: path, body: body) }
 }
 
 // The mount is /fabric-storage/<operation>; only POST is admitted, since every operation carries a body.
