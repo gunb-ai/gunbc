@@ -15,6 +15,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
+import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_string }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -444,34 +445,34 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 //   whose service_name is "kvm" and opens viewer.html only when its viewer_count is 0.
 // - DELETE /api/session (X-CSRFTOKEN) ends the session (the viewer's own logout).
 // - The H5 viewer opens a WebSocket at /kvm (subprotocols binary, base64) and paints canvas#kvm.
-// A REFUSED LOGIN'S BODY AND STATUS ON 0.32 HAVE NOT BEEN CAPTURED. What the UI establishes is only
-// that anything without ok === 0 is not a session, so a refusal renders an empty object under a
-// non-2xx status and claims nothing more; a captured refusal replaces both.
-// These are the fields the UI reads, not the whole reply: a reply may carry more, and a renderer of a
-// simulated controller renders exactly these.
+// A REFUSED LOGIN'S BODY AND STATUS ON 0.32 HAVE NOT BEEN CAPTURED, so this module states none: what
+// the UI establishes is only that a reply without ok === 0 is not a session. A simulated controller's
+// refusal is its renderer's choice (gunbc.bmc_megarac_web_adapter), never this upstream's.
+// These are the fields the UI reads, not the whole reply: a reply may carry more.
 data megarac_kvm_websocket_path: NonEmptyStr = "/kvm"
 
-type MegaRacLoginReply
-  = MegaRacLoginAccepted { csrf_token: String, privilege: Int, extended_privilege: Int, racsession_id: Int }
-  | MegaRacLoginRefused {}
-
-fn megarac_login_reply_status(reply: MegaRacLoginReply) -> Int {
-  match reply {
-    MegaRacLoginAccepted { csrf_token: _, privilege: _, extended_privilege: _, racsession_id: _ } => 200
-    MegaRacLoginRefused {} => 401
-  }
+type MegaRacLoginSession {
+  csrf_token: String
+  privilege: Int
+  extended_privilege: Int
+  racsession_id: Int
 }
 
-fn megarac_login_reply_json(reply: MegaRacLoginReply) -> String {
-  match reply {
-    MegaRacLoginAccepted { csrf_token: t, privilege: p, extended_privilege: x, racsession_id: r } =>
-      concat("\{\"ok\":0,\"CSRFToken\":\"", t, "\",\"privilege\":", to_string(p), ",\"extendedpriv\":", to_string(x), ",\"racsession_id\":", to_string(r), "}")
-    MegaRacLoginRefused {} => "\{}"
-  }
+fn megarac_login_session_json(session: MegaRacLoginSession) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "ok", value: json_int(n: 0)),
+    json_kv(key: "CSRFToken", value: json_string(s: session.csrf_token)),
+    json_kv(key: "privilege", value: json_int(n: session.privilege)),
+    json_kv(key: "extendedpriv", value: json_int(n: session.extended_privilege)),
+    json_kv(key: "racsession_id", value: json_int(n: session.racsession_id)),
+  ])
 }
 
-fn megarac_services_kvm_json(viewer_count: Int) -> String {
-  concat("[\{\"service_name\":\"kvm\",\"viewer_count\":", to_string(viewer_count), "}]")
+fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
+  json_array(elements: [json_object(members: [
+    json_kv(key: "service_name", value: json_string(s: "kvm")),
+    json_kv(key: "viewer_count", value: json_int(n: viewer_count)),
+  ])])
 }
 
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records

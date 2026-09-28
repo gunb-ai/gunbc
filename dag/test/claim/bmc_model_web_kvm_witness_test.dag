@@ -88,7 +88,7 @@ test fn each_request_is_the_models_answer_against_the_current_world() -> Bool {
   let after = step(w: out.world, r: MegaRacWebConnect { token: "csrf-7" })
   wrong.answer.status == 401 && megarac_web_world_text(world: wrong.world) == megarac_web_world_text(world: w0)
     && early.answer.status == 403
-    && login.answer.status == 200 && string_contains(s: login.answer.body, pattern: "\"CSRFToken\":\"csrf-7\"")
+    && login.answer.status == 200 && string_contains(s: login.answer.body, pattern: "\"CSRFToken\": \"csrf-7\"")
     && conn.answer.status == 101 && conn.answer.stream_open
     && second.answer.status == 403 && second.answer.stream_open
     && bad_out.answer.status == 401 && bad_out.answer.stream_open
@@ -102,7 +102,7 @@ test fn another_viewer_holding_the_seat_refuses_the_connect() -> Bool {
   let login = step(w: w0, r: MegaRacWebLogin { username: "admin", password: "pw" })
   let services = step(w: login.world, r: MegaRacWebServices {})
   let conn = step(w: login.world, r: MegaRacWebConnect { token: "csrf-7" })
-  string_contains(s: services.answer.body, pattern: "\"viewer_count\":1}") && conn.answer.status == 403
+  string_contains(s: services.answer.body, pattern: "\"viewer_count\": 1}") && conn.answer.status == 403
 }
 
 // THE TABLE CARRIES THE ABSOLUTE INSTANT: the only advance row is at the event's own second, and at
@@ -113,10 +113,9 @@ test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool
     credentials: [MegaRacWebLogin { username: "admin", password: "pw" }],
     extended_privilege: 259,
   )
-  starts_with(s: table, prefix: "initial\t")
-    && string_contains(s: table, pattern: "canvas_unreadable")
-    && string_contains(s: table, pattern: "\tadvance 3\t200\tnone\t")
+  string_contains(s: table, pattern: "\"canvas_readable\": false")
+    && string_contains(s: table, pattern: "\"key\": \"advance 3\", \"status\": 200, \"stream_open\": false")
     && !string_contains(s: table, pattern: "advance 4")
-    && string_contains(s: table, pattern: "\tconnect csrf-7\t101\topen\t")
-    && string_contains(s: table, pattern: "\tconnect csrf-foreign\t403\t")
+    && string_contains(s: table, pattern: "\"key\": \"connect csrf-7\", \"status\": 101, \"stream_open\": true")
+    && string_contains(s: table, pattern: "\"key\": \"connect csrf-foreign\", \"status\": 403")
 }
