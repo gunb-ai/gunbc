@@ -698,6 +698,58 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// THE LIVE POOL'S ONE HOLDER UNDER TEST. `process_shared_index` is per-thread because the index
+/// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
+/// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
+/// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
+/// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
+/// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
+/// (`admit_pool_bare_references`), so no entry resolves without it.
+///
+/// So the fact moves to its ancestor: one thread lives for the test process, the index lives in
+/// ITS thread-local slot, and a live-pool claim runs its body there. Nothing about resolution
+/// changes -- the same `process_shared_index` builds the same pool on first demand -- only how
+/// many times. `RUST_TEST_THREADS=1` (`.cargo/config.toml`) already serializes the suite, so the
+/// queue costs no parallelism. A panic in the body is caught on the worker and re-raised on the
+/// calling test's thread with its original payload, so a failing claim reds exactly as before and
+/// the worker survives for the next one.
+#[cfg(test)]
+pub(crate) fn on_live_pool_thread<T: Send + 'static>(
+    body: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    type Job = Box<dyn FnOnce() + Send>;
+    static WORKER: OnceLock<Mutex<std::sync::mpsc::Sender<Job>>> = OnceLock::new();
+    let sender = WORKER
+        .get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel::<Job>();
+            std::thread::Builder::new()
+                .name("live-pool".to_string())
+                // The largest stack any live-pool claim spawned for itself before it ran here.
+                .stack_size(64 * 1024 * 1024)
+                .spawn(move || {
+                    for job in rx {
+                        job();
+                    }
+                })
+                .expect("the live-pool thread starts");
+            Mutex::new(tx)
+        })
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    sender
+        .send(Box::new(move || {
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+            let _ = done_tx.send(outcome);
+        }))
+        .expect("the live-pool thread accepts work");
+    match done_rx.recv().expect("the live-pool thread answers") {
+        Ok(value) => value,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
@@ -2783,4 +2835,65 @@ pub fn reference_resolution_facts(
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
+}
+
+#[cfg(test)]
+mod live_pool_thread_tests {
+    use super::*;
+
+    fn one_module_pool(tag: &str) -> (PathBuf, Vec<String>) {
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-live-pool-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("fx")).unwrap();
+        std::fs::write(
+            root.join("fx/one.dag"),
+            "module fx.one\nfn one() -> Int { 1 }\n",
+        )
+        .unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        (root, roots)
+    }
+
+    /// THE ROUTE, not only the answer: two separate claims reach ONE index. The discriminating red
+    /// is the per-test-thread shape this replaces -- the second call below, run on a fresh thread,
+    /// builds a new index with a new generation.
+    #[test]
+    fn two_claims_on_the_live_pool_thread_share_one_index() {
+        let (root, roots) = one_module_pool("route");
+        let first = {
+            let roots = roots.clone();
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let second = {
+            let roots = roots.clone();
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let elsewhere = std::thread::spawn(move || process_shared_index(&roots).generation)
+            .join()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(first, second, "the live-pool thread kept its index");
+        assert_ne!(first, elsewhere, "a fresh thread builds its own");
+    }
+
+    /// A claim that fails on the live-pool thread reds its own test with its own message, and the
+    /// thread survives to serve the next claim.
+    #[test]
+    fn a_panic_on_the_live_pool_thread_reds_the_caller_and_the_thread_survives() {
+        let payload = std::panic::catch_unwind(|| {
+            on_live_pool_thread::<()>(|| panic!("planted live-pool failure"))
+        })
+        .expect_err("the planted panic reaches the caller");
+        assert_eq!(
+            payload.downcast_ref::<&str>().copied(),
+            Some("planted live-pool failure")
+        );
+        assert_eq!(on_live_pool_thread(|| 7), 7);
+    }
 }
