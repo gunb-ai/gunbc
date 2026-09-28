@@ -296,9 +296,13 @@ fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> P
 // CPU-hours on the interpreter, so the drop shapes are first read off this sample. The selection is
 // a rule, not a hand pick, and the rule has one authority: sample_paths_by_rule below. The list is
 // the rule's output at that revision, kept literally so the census re-runs byte-for-byte without
-// reading the object store; reference_conservation_sample_by_rule_at re-derives it at the pinned
-// revision and refuses if the two differ, so the pairing of list and revision is checked rather than
-// asserted. The rule is applied to the PINNED revision, never to the checked-out tree: the sample is
+// reading the object store. reference_conservation_sample_by_rule_at_pin_exit re-derives it at the
+// pinned revision and refuses if the two differ -- but ONLY WHEN THAT INSTRUMENT IS RUN (`gunbc run
+// --function reference_conservation_sample_by_rule_at_pin_exit`): it reads every `.dag` blob at the
+// revision out of the object store, which no hermetic floor claim can do, so no gate executes it.
+// The floor claims in v2.test.claim.namespace_xl0.reference_conservation_census pin the rule's
+// arithmetic on supplied inputs; the list-to-revision pairing is established by the instrument's run
+// recorded with the change that repins, and a repin must run it again. The rule is applied to the PINNED revision, never to the checked-out tree: the sample is
 // a snapshot, and comparing it to a tree that has since grown would only detect change. The
 // 8,000-byte cap bounds the run and biases the sample toward small files; a shape that only appears
 // in large files is not in it, and the full census is what closes that gap. A listed path the tree
