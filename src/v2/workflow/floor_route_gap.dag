@@ -1769,7 +1769,11 @@ fn floor_route_gap_expectation_chunk_26() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.an_owed_exit_never_observed_is_not_success", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.earlier_exits_stay_demanded_when_later_ones_appear", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } } } } } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.our_collector_is_released_observed_gone_and_its_record_retired", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_record_this_attempt_did_not_establish_is_not_released", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

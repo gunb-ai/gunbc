@@ -14,6 +14,8 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_teardown_record, mtcollins1_sol_workflow_events_path, mtcollins1_sol_pre_teardown_suffix,
   mtcollins1_sol_await_establishment, SolEstablishment, SolEstablished, SolNotEstablished,
   SolActivationUnconfirmed, SolActivateRefused, SolAdoptedActivationUnproven, mtcollins1_sol_adopted_activation,
+  mtcollins1_sol_release_owned, SolReleaseOutcome, SolReleased, SolReleaseForeignRecord, SolReleaseNoRecord,
+  mtcollins1_sol_collector_observe, SolCollectorHeld,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -515,4 +517,48 @@ test fn earlier_exits_stay_demanded_when_later_ones_appear() -> Bool {
     && map(retry.notices, n => n.identity) == ["collector-exited-1", "collector-exited-2"]
     && delivered_on(ds: retry.deliveries, channel_key: "summary") == 2
     && delivered_on(ds: both, channel_key: "annotation") == 2
+}
+
+// THE RELEASE ENDS OBSERVED AND RETIRED FOR OUR INSTANCE, THROUGH THE REAL LAUNCH. A live probe
+// collector whose activation receipt names its own identity is stopped, observed gone and its record
+// retired (the pid file and the receipt are absent afterwards, so the next read is Absent); a collector
+// that ignores TERM for a moment and exits within the observation bound is still released; a record
+// the receipt does not name is ForeignRecord, left in place, and its process is not signalled; with no
+// record at all the release is NoRecord.
+fn slow_exit_probe() -> String {
+  "#!/bin/sh\ntrap 'sleep 1; exit 0' TERM\nwhile :; do sleep 1; done\n"
+}
+
+fn owned_release(script: String, receipt_of_own: Bool) -> Bool {
+  let dir = scratch_dir()
+  let pid_path = concat(dir, "/collector.pid")
+  let run = probe_launch(dir: dir, script: script, pid_path: pid_path)
+  let _published = settle(seconds: 1)
+  let identity = trim(s: read_or_empty(path: pid_path))
+  let receipt = concat(pid_path, ".activated")
+  let _r = Filesystem.Write(path: receipt, content: if receipt_of_own { concat(identity, " at=2026-09-28T00:00:00Z\n") } else { "1 1 at=2026-09-28T00:00:00Z\n" }).success
+  let outcome = mtcollins1_sol_release_owned(pid_path: pid_path)
+  let pid_left = Filesystem.Read(path: pid_path).success
+  let receipt_left = Filesystem.Read(path: receipt).success
+  let alive_after = match mtcollins1_sol_collector_observe(pid_path: pid_path) { SolCollectorHeld => true  _ => false }
+  let ok = if receipt_of_own {
+    (match outcome { SolReleased { evidence: _ } => true  _ => false }) && !pid_left && !receipt_left
+  } else {
+    (match outcome { SolReleaseForeignRecord { record: _, receipt: _ } => true  _ => false }) && pid_left && alive_after
+  }
+  let _stop = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr).success
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && identity != "" && ok
+}
+
+test fn our_collector_is_released_observed_gone_and_its_record_retired() -> Bool {
+  owned_release(script: silent_probe(), receipt_of_own: true)
+    && owned_release(script: slow_exit_probe(), receipt_of_own: true)
+}
+
+test fn a_record_this_attempt_did_not_establish_is_not_released() -> Bool {
+  let dir = scratch_dir()
+  let none_ok = match mtcollins1_sol_release_owned(pid_path: concat(dir, "/absent.pid")) { SolReleaseNoRecord => true  _ => false }
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  none_ok && owned_release(script: silent_probe(), receipt_of_own: false)
 }

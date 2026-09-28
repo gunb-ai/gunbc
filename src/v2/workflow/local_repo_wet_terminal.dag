@@ -1963,6 +1963,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "earlier_exits_stay_demanded_when_later_ones_appear",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "our_collector_is_released_observed_gone_and_its_record_retired" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "our_collector_is_released_observed_gone_and_its_record_retired",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_record_this_attempt_did_not_establish_is_not_released" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_record_this_attempt_did_not_establish_is_not_released",
+      expectation: ExpectedToHold {}
     }
   ]
 }
