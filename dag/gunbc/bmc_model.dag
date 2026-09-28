@@ -65,7 +65,7 @@ type BmcKvmStream
   | BmcKvmClosedByController { session: Int }
 
 type BmcWebWorld {
-  account: BmcWebAccount
+  account: BmcWebAccount?
   sessions: List<BmcWebSession>
   next_session_id: Int
   other_kvm_viewers: Int
@@ -73,10 +73,10 @@ type BmcWebWorld {
   canvas_readable: Bool
 }
 
-// A world whose web surface nobody has touched and whose account matches no login: the first slice's
-// worlds carry it unchanged.
+// A world whose web surface nobody has touched: it holds NO account, so every login is refused by
+// construction. The first slice's worlds carry it unchanged.
 data bmc_web_world_untouched: BmcWebWorld = BmcWebWorld {
-  account: BmcWebAccount { username: "", password: "", privilege: 0 },
+  account: none,
   sessions: [],
   next_session_id: 1,
   other_kvm_viewers: 0,
@@ -124,18 +124,22 @@ type BmcWebLoginStep {
   reply: BmcWebLoginReply
 }
 
-// POST /api/session. An account match opens a session with a fresh id and CSRF token; anything else
-// is refused and the world is unchanged.
+// POST /api/session. A world with no account refuses every login; otherwise an exact match opens a
+// session with a fresh id and CSRF token, and anything else is refused with the world unchanged.
 fn bmc_web_login(world: BmcWorld, username: String, password: String) -> BmcWebLoginStep {
   let web = world.web
-  if username == web.account.username && password == web.account.password && username != "" {
-    let session = BmcWebSession { id: web.next_session_id, csrf_token: concat("csrf-", to_string(web.next_session_id)), privilege: web.account.privilege }
-    BmcWebLoginStep {
-      world: bmc_with_web(world: world, web: bmc_web_with(web: web, sessions: list_append(web.sessions, session), next_session_id: web.next_session_id + 1, kvm: web.kvm)),
-      reply: BmcWebLoginAccepted { session: session },
-    }
-  } else {
-    BmcWebLoginStep { world: world, reply: BmcWebLoginRefused {} }
+  match web.account {
+    Absent => BmcWebLoginStep { world: world, reply: BmcWebLoginRefused {} }
+    Present { value: account } =>
+      if username == account.username && password == account.password {
+        let session = BmcWebSession { id: web.next_session_id, csrf_token: concat("csrf-", to_string(web.next_session_id)), privilege: account.privilege }
+        BmcWebLoginStep {
+          world: bmc_with_web(world: world, web: bmc_web_with(web: web, sessions: list_append(web.sessions, session), next_session_id: web.next_session_id + 1, kvm: web.kvm)),
+          reply: BmcWebLoginAccepted { session: session },
+        }
+      } else {
+        BmcWebLoginStep { world: world, reply: BmcWebLoginRefused {} }
+      }
   }
 }
 
