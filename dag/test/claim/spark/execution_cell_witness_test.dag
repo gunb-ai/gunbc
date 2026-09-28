@@ -1001,15 +1001,42 @@ fn fx_phase_for_variant(name: NonEmptyStr) -> SparkExperimentWorkloadPhase? {
   }
 }
 
+// THE CACHE-REUSE SCRIPT, rendered for w2: four sequential legs (prime/replay/suffix/miss) on
+// one admitted engine/cache incarnation — the replay body byte-identical to the prime (cp),
+// the suffix appending eighteen units of genuinely new tail, the miss differing at the first
+// token — each leg recording driver timing and the response's ACTUAL accounting
+// (prompt_tokens + cached_tokens) into cache_reuse.timing.tsv, with the engine's /metrics
+// bracketing the phase and every refusal carrying the leg named.
+test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting() -> Bool {
+  match fx_phase_for_variant(name: "w2-cache-reuse-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      let script = phase.prefill_seats.plan.script
+      string_contains(s: script, pattern: "leg_prime.json")
+        && string_contains(s: script, pattern: "cp \"$state/leg_prime.json\" \"$state/leg_replay.json\"")
+        && string_contains(s: script, pattern: "leg_suffix.json")
+        && string_contains(s: script, pattern: "leg_miss.json")
+        && string_contains(s: script, pattern: "for leg in prime replay suffix miss; do")
+        && string_contains(s: script, pattern: "cache_reuse.timing.tsv")
+        && string_contains(s: script, pattern: "\"cached_tokens\":[0-9][0-9]*")
+        && string_contains(s: script, pattern: "tail ")
+        && string_contains(s: script, pattern: "cache-reuse-leg leg=$leg prompt_tokens=$leg_prompt cached_tokens=$leg_cached")
+        && string_contains(s: script, pattern: "metrics.pre")
+        && string_contains(s: script, pattern: "metrics.post")
+        && string_contains(s: script, pattern: "cache-reuse-complete legs=4")
+  }
+}
+
 // THE VARIANT REGISTRY AGREES WITH THE LIVENESS MATRIX, row for row: five repro variants each
 // way, every matrix name a registry row and every discriminating axis reading the same value the
 // matrix's prose names — five seats at the full window for b, 65536 for c, sequential issue for
 // d, the armed watchdog for e — and the active variant is a registry member. The registry's SIXTH
 // row is not a matrix row: w1-cold-single-full-window is the ATTRIBUTION workload of
 // docs/plans/glm-group-b-workload-qualification.md (2026-09-28), one cold full-window request
-// alone on the engine, and w2-warm-continuation-full-window is its warm twin — two sequential
-// full-window seats differing only in the header token, so the second seat prices ACTUAL
-// prefix/state reuse — both joining under the qualification plan's authority rather than by
+// alone on the engine, and w2-cache-reuse-full-window is its warm twin — the four-leg
+// cache-reuse qualification (prime/replay/suffix/miss) pricing ACTUAL prefix/state reuse from
+// the engine's own cached_tokens accounting — both joining under the qualification plan's
+// authority rather than by
 // amending the dated 2026-09-27 liveness matrix. The witness holds both halves: the matrix
 // join cannot drift, and the only non-matrix rows are w1 and w2 with their plan shapes.
 test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
@@ -1063,13 +1090,13 @@ test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
     Present { value: v } => v.seat_count == 1 && v.window_tokens == 262144 && v.mode == SparkSeatsSequential && !v.watchdog
     Absent => false
   }
-  let w2_ok = match spark_workload_variant_named(name: "w2-warm-continuation-full-window" as NonEmptyStr) {
-    Present { value: v } => v.seat_count == 2 && v.window_tokens == 262144 && v.mode == SparkSeatsSequential && !v.watchdog
+  let w2_ok = match spark_workload_variant_named(name: "w2-cache-reuse-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 1 && v.window_tokens == 262144 && v.mode == SparkCacheReuseQualification && !v.watchdog
     Absent => false
   }
   let only_qualification_beyond_matrix = all(
     filter(spark_workload_variants, v => !any(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == v.name)),
-    v => (v.name as String) == "w1-cold-single-full-window" || (v.name as String) == "w2-warm-continuation-full-window")
+    v => (v.name as String) == "w1-cold-single-full-window" || (v.name as String) == "w2-cache-reuse-full-window")
   five_each && names_join && only_qualification_beyond_matrix && a_ok && b_ok && c_ok && d_ok && e_ok && w1_ok && w2_ok && active_ok
 }
 

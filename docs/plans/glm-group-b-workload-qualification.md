@@ -36,6 +36,33 @@ EFFICIENT execution of that work on this realization? That is an attribution que
 sparse-indexer, attention, collectives, host gaps — and it is answered by operation-level
 timing on representative steps, not by more repro campaigns.
 
+## Corrections adopted 2026-09-28 (review of the W1 reading)
+
+1. **W1's observation is narrower than first reported.** One cold 262K completing in 323.16s
+   without six-way contention establishes that the slow near-full-window request OCCURS
+   without the cohort. It does not establish compute-bound execution and does not make
+   ~5 minutes an immutable price. The observation stays bound to its exact
+   runtime/profile/workload subject; W1b attribution remains REQUIRED.
+2. **The "26k tok/s" engine log lines are reconciled and retired as a progress signal.** The
+   pinned metric producer credits prompt tokens at FIRST-OUTPUT processing divided by the
+   logging interval — completion accounting. Per-step progress evidence must come from
+   scheduled-token/per-step observation (W1b), never from those lines.
+3. **gap_mib=2 does NOT discharge any rank fragmentation obligation.** The present producer
+   measures head-host maximum-process footprint growth above a post-prefill reference — not
+   allocator fragmentation — and observes the head host only, not the other ranks. The
+   observation is preserved under that actual meaning; the instrumentation-to-obligation join
+   needs repair (an allocator-level, per-rank measurement) before any fragmentation obligation
+   can close.
+4. **Wet work is strictly sequential under exclusive cohort ownership.** W1b and other
+   investigations are prepared independently, but no second run may replace the engine whose
+   cache or timing another run is observing (the 2026-09-27 mid-flight teardown is the named
+   counterexample).
+5. **W2 is an explicit cache-reuse qualification, not a two-seat latency comparison.** Cold
+   prime, exact replay, genuine suffix continuation, and a controlled prefix-miss leg, all
+   bound to the same admitted engine/cache incarnation, recording ACTUAL cached and computed
+   token counts (the response's prompt_tokens_details.cached_tokens, not inferred reuse) plus
+   request-level timing. A fast replay alone does not establish free general follow-ups.
+
 ## The three qualification workloads (replace the single cold stress test)
 
 W1. ONE COLD FULL-WINDOW REQUEST — the attributable cold-prefill cost. One 262K request,
@@ -45,11 +72,15 @@ W1. ONE COLD FULL-WINDOW REQUEST — the attributable cold-prefill cost. One 262
     steps. The output is the cold-prefill service time with its dominant term named
     (compute / indexer / communication / host / cache-recompute / unresolved).
 
-W2. WARM CONTINUATION — does the runtime ACTUALLY reuse the established prefix/state? Same
-    prompt as W1 plus a small new suffix, issued after W1 completes. The witness is actual
-    reuse: cached-vs-newly-computed token counts from the engine's own accounting, never
-    "prefix caching enabled" as a proxy. The pinned scheduler's hybrid-state cache-boundary
-    handling is named in the model so a boundary miss is a located fact, not a surprise.
+W2. CACHE-REUSE QUALIFICATION, four legs on one admitted engine/cache incarnation: (1) COLD
+    PRIME — a full-window body A, the cold reference; (2) EXACT REPLAY — A again, the pure
+    reuse measurement; (3) SUFFIX CONTINUATION — A plus a small new suffix, the genuine
+    follow-up shape; (4) PREFIX MISS — a disjoint body B, the control that must NOT reuse.
+    Each leg records the response's actual cached/computed token counts
+    (prompt_tokens_details.cached_tokens) and driver timing. Verdict shape: replay near-free
+    AND suffix near-free AND miss cold-priced means reuse is real and general for this
+    subject; a fast replay with a cold suffix means replay-only reuse; a fast MISS means the
+    measurement is lying. No leg's speed alone establishes free general follow-ups.
 
 W3. COLD PREFILL ALONGSIDE ONGOING DECODES — does admitting new work damage useful
     interactive progress? N decode sessions established and streaming; one cold 262K prefill

@@ -580,6 +580,76 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
   ], "")
 }
 
+// THE CACHE-REUSE QUALIFICATION SCRIPT (W2, 2026-09-28, glm-group-b-workload-qualification.md):
+// FOUR SEQUENTIAL LEGS on one admitted engine/cache incarnation — COLD PRIME (the token-exact
+// full-window body A, calibrated by the same probe-A/probe-B pair the prefill leg uses), EXACT
+// REPLAY (A byte-identical, the pure reuse measurement), SUFFIX CONTINUATION (A plus eighteen
+// more units, ~five hundred tokens of genuinely new suffix), and PREFIX MISS (a body differing
+// at the FIRST token — the header word — so the contiguous prefix match is ~zero, the control
+// that must NOT reuse). Every leg records the driver timing (submission epoch, TTFB, total)
+// AND the response's ACTUAL accounting — usage.prompt_tokens and
+// usage.prompt_tokens_details.cached_tokens — folded one TSV row per leg into
+// $state/cache_reuse.timing.tsv, so the cached/computed token counts come from the engine's
+// own response, never from "prefix caching enabled" or inferred reuse. Transport and status
+// failures refuse with the leg named, the prefill leg's own discipline. The verdict reads:
+// replay near-free AND suffix near-free AND miss cold-priced means reuse is real for this
+// subject; replay fast with suffix cold means replay-only reuse; MISS fast means the
+// measurement is lying. No leg's speed alone establishes free general follow-ups.
+fn systemd_workload_cache_reuse_script(member: SystemdExecutionMember, serve_port: Port, served_alias: NonEmptyStr, seat_window: Nat, context_window: Nat) -> String {
+  let state = systemd_workload_state_dir(member: member)
+  let body = systemd_workload_block_body as String
+  join([
+    "set -e\n",
+    "state=", state, "\n",
+    "install -d -m 755 \"$state\"\n",
+    "base=http://127.0.0.1:", to_string(serve_port), "\n",
+    "served_alias=", served_alias as String, "\n",
+    "body=\"", body, "\"\n",
+    "curl -fsS -m 10 \"$base/v1/models\" >/dev/null\n",
+    "probe_unit=\"", systemd_workload_unit_marker as String, " $body \"\n",
+    "awk -v alias=\"$served_alias\" -v unit=\"$probe_unit\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"%s\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\", alias, unit }' > \"$state/probe_a.json\"\n",
+    "if curl -sS -m 120 -D \"$state/probe_a.hdr\" -o \"$state/probe_a.resp\" -H 'Content-Type: application/json' -d @\"$state/probe_a.json\" \"$base/v1/completions\"; then probe_a_rc=0; else probe_a_rc=$?; fi\n",
+    "probe_a_http=$(head -1 \"$state/probe_a.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+    "case \"$probe_a_rc\" in 0) : ;; *) echo \"cache-reuse-calibration-transport-failed probe=A rc=$probe_a_rc\"; exit 24 ;; esac\n",
+    "case \"$probe_a_http\" in 200) : ;; *) echo \"cache-reuse-calibration-refused probe=A http=$probe_a_http\"; exit 25 ;; esac\n",
+    "unit_base=$(grep -o '\"prompt_tokens\":[0-9][0-9]*' \"$state/probe_a.resp\" | head -1 | cut -d: -f2)\n",
+    "awk -v alias=\"$served_alias\" -v unit=\"$probe_unit\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"%s%s%s\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\", alias, unit, unit, unit }' > \"$state/probe_b.json\"\n",
+    "if curl -sS -m 120 -D \"$state/probe_b.hdr\" -o \"$state/probe_b.resp\" -H 'Content-Type: application/json' -d @\"$state/probe_b.json\" \"$base/v1/completions\"; then probe_b_rc=0; else probe_b_rc=$?; fi\n",
+    "probe_b_http=$(head -1 \"$state/probe_b.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+    "case \"$probe_b_rc\" in 0) : ;; *) echo \"cache-reuse-calibration-transport-failed probe=B rc=$probe_b_rc\"; exit 24 ;; esac\n",
+    "case \"$probe_b_http\" in 200) : ;; *) echo \"cache-reuse-calibration-refused probe=B http=$probe_b_http\"; exit 25 ;; esac\n",
+    "probe_b_tokens=$(grep -o '\"prompt_tokens\":[0-9][0-9]*' \"$state/probe_b.resp\" | head -1 | cut -d: -f2)\n",
+    "case \"$unit_base\" in ''|*[!0-9]*) echo \"cache-reuse-calibration-unreadable probe=A\"; exit 20 ;; esac\n",
+    "case \"$probe_b_tokens\" in ''|*[!0-9]*) echo \"cache-reuse-calibration-unreadable probe=B\"; exit 20 ;; esac\n",
+    "unit_marginal=$(( (probe_b_tokens - unit_base) / 2 ))\n",
+    "if [ \"$unit_marginal\" -lt 16 ]; then echo \"cache-reuse-calibration-implausible: unit marginal $unit_marginal below 16\"; exit 26; fi\n",
+    "leg_units=$(( ( ", to_string(seat_window), " - unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1 ))\n",
+    "awk -v alias=\"$served_alias\" -v body=\"$body\" -v reps=\"$leg_units\" -v marker=\"", systemd_workload_unit_marker as String, "\" -v hdr=\"prime\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; printf \"%s %s \", hdr, body; r = 1; while (r < reps) { printf \"%s %s \", marker, body; r = r + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/leg_prime.json\"\n",
+    "cp \"$state/leg_prime.json\" \"$state/leg_replay.json\"\n",
+    "awk -v alias=\"$served_alias\" -v body=\"$body\" -v reps=\"$leg_units\" -v marker=\"", systemd_workload_unit_marker as String, "\" -v hdr=\"prime\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; printf \"%s %s \", hdr, body; r = 1; while (r < reps) { printf \"%s %s \", marker, body; r = r + 1 } printf \"tail \"; t = 1; while (t < 19) { printf \"%s %s \", marker, body; t = t + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/leg_suffix.json\"\n",
+    "awk -v alias=\"$served_alias\" -v body=\"$body\" -v reps=\"$leg_units\" -v marker=\"", systemd_workload_unit_marker as String, "\" -v hdr=\"miss\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; printf \"%s %s \", hdr, body; r = 1; while (r < reps) { printf \"%s %s \", marker, body; r = r + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/leg_miss.json\"\n",
+    "if curl -sS -m 10 \"$base/metrics\" > \"$state/metrics.pre\" 2>/dev/null; then :; else echo \"metrics-endpoint-unreadable leg=pre\" > \"$state/metrics.pre.standing\"; fi\n",
+    "for leg in prime replay suffix miss; do\n",
+    "  leg_start=$(date +%s)\n",
+    "  if curl -sS -m 1800 -D \"$state/leg_$leg.hdr\" -o \"$state/leg_$leg.resp\" -w '%\{time_starttransfer} %\{time_total}' -H 'Content-Type: application/json' -d @\"$state/leg_$leg.json\" \"$base/v1/completions\" > \"$state/leg_$leg.timing\"; then leg_rc=0; else leg_rc=$?; fi\n",
+    "  leg_end=$(date +%s)\n",
+    "  echo \"$leg_rc\" > \"$state/leg_$leg.rc\"\n",
+    "  leg_http=$(head -1 \"$state/leg_$leg.hdr\" 2>/dev/null | cut -d' ' -f2)\n",
+    "  echo \"$leg_http\" > \"$state/leg_$leg.http\"\n",
+    "  case \"$leg_rc\" in 0) : ;; *) echo \"cache-reuse-leg-transport-failed leg=$leg rc=$leg_rc body=$(tr -d '\\n' < \"$state/leg_$leg.resp\")\"; exit 24 ;; esac\n",
+    "  case \"$leg_http\" in 200) : ;; *) echo \"cache-reuse-leg-refused leg=$leg http=$leg_http body=$(tr -d '\\n' < \"$state/leg_$leg.resp\")\"; exit 25 ;; esac\n",
+    "  leg_prompt=$(grep -o '\"prompt_tokens\":[0-9][0-9]*' \"$state/leg_$leg.resp\" | head -1 | cut -d: -f2)\n",
+    "  leg_cached=$(grep -o '\"cached_tokens\":[0-9][0-9]*' \"$state/leg_$leg.resp\" | head -1 | cut -d: -f2)\n",
+    "  case \"$leg_prompt\" in ''|*[!0-9]*) echo \"cache-reuse-leg-unreadable leg=$leg: no usage.prompt_tokens\"; exit 20 ;; esac\n",
+    "  case \"$leg_cached\" in ''|*[!0-9]*) leg_cached=0 ;; esac\n",
+    "  printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \"$leg\" \"$leg_start\" \"$leg_end\" $(cat \"$state/leg_$leg.timing\" 2>/dev/null) \"$leg_prompt\" \"$leg_cached\" >> \"$state/cache_reuse.timing.tsv\"\n",
+    "  echo \"cache-reuse-leg leg=$leg prompt_tokens=$leg_prompt cached_tokens=$leg_cached\"\n",
+    "done\n",
+    "if curl -sS -m 10 \"$base/metrics\" > \"$state/metrics.post\" 2>/dev/null; then :; else echo \"metrics-endpoint-unreadable leg=post\" > \"$state/metrics.post.standing\"; fi\n",
+    "echo \"cache-reuse-complete legs=4 seat_window_tokens=", to_string(seat_window), " context_window_tokens=", to_string(context_window), " unit_base=$unit_base unit_marginal=$unit_marginal\"\n",
+  ], "")
+}
+
 // (b-i) THE CHURN DRIVER ITSELF, rendered as a standalone script the launcher installs and starts
 // detached. Bounded BOTH ways, never unbounded: the loop stops at the window's end timestamp and at
 // the per-client request count, whichever it hits first. Lengths mix the plan's 8K-to-seat-window

@@ -341,20 +341,28 @@ fn profile_store_read_all(layout: ProfileStoreLayout) -> ProfileStoreReadAll {
     ProfileStoreUnread { step: "list", reason: listing_result.error }
   } else {
     ProfileStoreRead {
-      profiles: fold(listing_result.entries, init: [] as List<PrincipalProfile>, f: (acc, entry) =>
-        if !ends_with(s: entry, suffix: ".json") {
+      profiles: profile_store_decode_entries(layout: layout, entries: listing_result.entries, acc: [])
+    }
+  }
+}
+
+fn profile_store_decode_entries(layout: ProfileStoreLayout, entries: List<String>, acc: List<PrincipalProfile>) -> List<PrincipalProfile> {
+  match entries.first() {
+    Absent => acc
+    Present { value: entry } =>
+      let next = if !ends_with(s: entry, suffix: ".json") {
+        acc
+      } else {
+        let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
+        if !read_result.success {
           acc
         } else {
-          let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
-          if !read_result.success {
-            acc
-          } else {
-            match principal_profile_of_json(text: read_result.content) {
-              ProfileFileMalformed { detail: _ } => acc
-              ProfileFileDecoded { profile: p } => concat(acc, [p])
-            }
+          match principal_profile_of_json(text: read_result.content) {
+            ProfileFileMalformed { detail: _ } => acc
+            ProfileFileDecoded { profile: p } => concat(acc, [p])
           }
-        })
-    }
+        }
+      }
+      profile_store_decode_entries(layout: layout, entries: entries.skip(n: 1), acc: next)
   }
 }
