@@ -11,7 +11,8 @@ import std.content_hash { ContentHash, content_hash_of_value, serialize_content_
 import std.temporal_effect { HeldLease, LeaseEpoch, held_lease, LeaseRunningExpected }
 import std.scoped_authorization {
   OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction,
-  AuthorizationPermitted, AuthorizationRefused, AuthorizationRefusalCause, AuthorizationEscalationMismatch, authorize, authorization_scope_render, authorization_refusal_reason,
+  AuthorizationPermitted, AuthorizationRefused, AuthorizationRefusalCause, AuthorizationEscalationMismatch, authorize, authorization_scopes_render, authorization_refusal_reason,
+  intent_frame_head, parse_intent_scopes, authorization_scope_eq,
   AuthorizationClaimState, Unclaimed, ClaimedBy, CompletedBy, AbortedBy, claim_authorization, claim_transition_claimed, claim_transition_completed, claim_transition_aborted,
   AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided, authorization_claim_outcome, authorization_claim_key, parse_authorization_claim_state,
 }
@@ -228,12 +229,16 @@ fn d0_subject_wire(subject: D0Subject) -> String {
 // collision class there is the same defect the pending-state binding was moved off it for.
 // The digest is taken through the sha256sum realization, so it is an effect and can be
 // unavailable -- which is a refusal, never a substituted structural hash.
-data d0_intent_schema: String = "pair-serving-d0-intent/v1"
+data d0_intent_schema: String = "pair-serving-d0-intent/v2"
 
+// THE HEAD IS THE std.scoped_authorization INTENT FRAME: the schema line and the scope written by
+// the one scope codec, so a verifier holding this text and the approved revision reads the approved
+// scope with parse_intent_scopes and no knowledge of D0 (the fabric store door does exactly that).
+// d0_required_scope has a wire by construction; the empty head below would be a refused intent, not
+// a different one, because parse_d0_intent_text reads the frame back and refuses what it cannot.
 fn d0_intent_text(subject: D0Subject, group: FabricGroup, transaction: NonEmptyStr) -> String {
   join([
-    d0_intent_schema,
-    "\nscope=", authorization_scope_render(scope: d0_required_scope()),
+    match intent_frame_head(schema: d0_intent_schema as NonEmptyStr, scopes: [d0_required_scope()]) { Present { value: h } => h  Absent => "" },
     "\ntarget=", fabric_group_wire(g: group) as String,
     "\nattempt=", transaction as String,
     "\n", d0_subject_wire(subject: subject),
@@ -252,6 +257,18 @@ fn sha256_of_text(text: String) -> ContentHash? {
   }
 }
 
+// WHAT THE OPERATOR READS IS RENDERED FROM WHAT THE STORE CHECKS. The approval notification shows
+// the filed purpose, not the intent text, and a constant sentence here let the operator approve an
+// operation whose scope and subject they never saw. The purpose is therefore rendered from the same
+// typed scope the intent frame carries and the same subject wire the intent text carries.
+fn d0_purpose(subject: D0Subject, transaction: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "Cut D D0 (transaction ", transaction as String, "): suspend the pair-serving authority for a bounded successor. Scope: ",
+    authorization_scopes_render(scopes: [d0_required_scope()]),
+    ". Over: ", d0_subject_wire(subject: subject), ".",
+  ], "") as NonEmptyStr
+}
+
 // The request D0 makes of a grant: the escalation the caller names, the required scope, the
 // grant's own subject (what is being checked is that the grant agrees with itself and with this
 // run), the transaction as the attempt, and the intent over the exact operation. Destructive.
@@ -260,7 +277,7 @@ fn d0_request(escalation_id: NonEmptyStr, subject: D0Subject, transaction: NonEm
     escalation_id: escalation_id,
     scopes: [d0_required_scope()],
     subject: subject,
-    purpose: "suspend the pair-serving authority for a bounded successor transaction (Cut D D0)" as NonEmptyStr,
+    purpose: d0_purpose(subject: subject, transaction: transaction),
     attempt: (transaction as String) as AttemptIdentity,
     intent_hash: intent,
     destructive: true,
@@ -334,8 +351,11 @@ fn line_at(lines: List<String>, i: Int) -> String {
 
 fn parse_d0_intent_text(text: String) -> D0IntentParsed? {
   let lines = intent_lines(text: text)
-  if line_at(lines: lines, i: 0) != d0_intent_schema { none }
-  else if line_at(lines: lines, i: 1) != join(["scope=", authorization_scope_render(scope: d0_required_scope())], "") { none }
+  let framed = match parse_intent_scopes(text: text) {
+    Present { value: f } => (f.schema as String) == d0_intent_schema && count(f.scopes) == 1 && all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_required_scope()))
+    Absent => false
+  }
+  if !framed { none }
   else {
     match intent_field(line: line_at(lines: lines, i: 2), key: "target") {
       Absent => none
