@@ -2161,6 +2161,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_release_signals_only_the_recorded_instance" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_release_signals_only_the_recorded_instance",
+      expectation: ExpectedToHold {}
     }
   ]
 }

@@ -812,11 +812,10 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 // test.claim.machine_intake.sol_hold_stdin_wet_witness.
 test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
   let script = mtcollins1_sol_hold_release_script
-  string_contains(s: script, pattern: "[ \"$\{20\}\" = \"$s\" ]")
-    && string_contains(s: script, pattern: "[ \"$1\" != Z ]")
-    && string_contains(s: script, pattern: "owned || exit 0; kill \"$p\"")
-    && string_contains(s: script, pattern: "owned && kill -9 \"$p\"")
-    && !string_contains(s: script, pattern: "'")
+  !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
+    && string_contains(s: script, pattern: "'kill' \"$p\"")
+    && string_contains(s: script, pattern: "'kill' '-9' \"$p\"")
+    && string_contains(s: script, pattern: "'-f' '20'")
 }
 
 // FAILED ESTABLISHMENT CARRIES ITS CAUSE, read from the CLIENT's diagnostics: the hold's own

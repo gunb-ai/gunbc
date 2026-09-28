@@ -8,14 +8,14 @@ import std.measure { second }
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ExitSuccess, ExitFailure }
-import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_await_capture_terminal, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, TerminalWatch,
   mtcollins1_sol_teardown_record, mtcollins1_sol_workflow_events_path, mtcollins1_sol_pre_teardown_suffix,
   mtcollins1_sol_await_establishment, SolEstablishment, SolEstablished, SolNotEstablished,
   SolActivationUnconfirmed, SolActivateRefused, SolAdoptedActivationUnproven, mtcollins1_sol_adopted_activation,
   mtcollins1_sol_release_owned, SolReleaseOutcome, SolReleased, SolReleaseForeignRecord, SolReleaseNoRecord,
-  mtcollins1_sol_collector_observe, SolCollectorHeld, mtcollins1_sol_notice_watcher_path,
+  mtcollins1_sol_collector_observe, SolCollectorHeld, SolCollectorExited, mtcollins1_sol_notice_watcher_path,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -599,4 +599,28 @@ test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives(
     && string_contains(s: outcome_reason(w: stopped), pattern: "the SOL notice watcher is required before a further BMC effect")
     && string_contains(s: outcome_reason(w: stopped), pattern: "observed during the capture watch")
     && string_contains(s: outcome_reason(w: pending), pattern: "deadline reached without a host-capture terminal")
+}
+
+// THE RELEASE SIGNALS ONLY THE RECORDED INSTANCE, EXECUTED. A live probe collector is left running when
+// the record carries its pid with a different start time (a reused-pid record), and is stopped when the
+// record is its own; the owned check agrees in both directions.
+test fn the_release_signals_only_the_recorded_instance() -> Bool {
+  let dir = scratch_dir()
+  let pid_path = concat(dir, "/collector.pid")
+  let run = probe_launch(dir: dir, script: silent_probe(), pid_path: pid_path)
+  let _published = settle(seconds: 1)
+  let own = trim(s: read_or_empty(path: pid_path))
+  let pid = match split(s: own, delimiter: " ").first() { Present { value: v } => v  _ => "" }
+  let forged = concat(dir, "/forged.pid")
+  let _f = Filesystem.Write(path: forged, content: concat(pid, " 1\n")).success
+  let forged_owned = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", forged]).exit_code == 0
+  let forged_release = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", forged]).exit_code
+  let alive_after_forged = match mtcollins1_sol_collector_observe(pid_path: pid_path) { SolCollectorHeld => true  _ => false }
+  let own_owned = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", pid_path]).exit_code == 0
+  let own_release = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", pid_path]).exit_code
+  let gone_after_own = match mtcollins1_sol_collector_observe(pid_path: pid_path) { SolCollectorExited { evidence: _ } => true  _ => false }
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && pid != ""
+    && !forged_owned && forged_release == 0 && alive_after_forged
+    && own_owned && own_release == 0 && gone_after_own
 }
