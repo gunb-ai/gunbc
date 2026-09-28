@@ -436,11 +436,11 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
-    // THE COMPOSED CI RUN — one process per LANE. The roster is four phases: the .dag parse
+    // THE COMPOSED CI RUN — one process per LANE. The roster includes the runtime-body gate and the retained .dag parse
     // sweep, one generated-artifact comparison over registry projections and stage0 mirrors,
     // its fixed-point comparison, and the witness floor.
     // `--required-lane` selects which of them
-    // this process owns; with no lane, it owns all four, which is what a local run wants.
+    // this process owns; with no lane, it owns the whole roster.
     //
     // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
     // workflow is a realization of the intent, not the place the intent lives), so the order
@@ -482,7 +482,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // `namespace_wave_admission_wall_removed`; the baseline-reconstruction machinery the floor's
     // planning row shares survives as `cli_run::namespace_baseline`.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -520,6 +520,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
+        // THE RUNTIME-BODY CHILD STARTS HERE AND IS JUDGED AT ITS PHASE'S PLACE BELOW. It is
+        // already a separate process with its own roots and caches, it reads the tree and writes
+        // nothing, and no phase in front of it reads its answer -- so waiting for the lane
+        // roster, the parse sweep and its riders to finish before starting it only lengthened
+        // the lane by the child's whole wall (154 s on merge-queue run 36339106604). It is still
+        // waited on before the floor phase, so the floor's memory peak never overlaps it.
+        let primitive_runtime_body =
+            required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane)
+                .then(spawn_required_primitive_runtime_body);
+
         // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
         // join rides the parse phase's index, but a match arm is not a declaration, so lane
         // ownership is joined by evaluating the roster authority's
@@ -548,7 +558,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
         }
 
-        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // PHASE 1 — the .dag parse sweep, over the authored roots in DAG_PARSE_SWEEP_ROOTS.
         // Independent of everything below it. The roster is
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
         // local check and this phase cover the same files.
@@ -720,6 +730,17 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("parse");
         }
 
+        // A separate source universe: the runtime producer is in src/v1, whose module-name
+        // collisions must not widen the floor's prepared subject. The .dag door owns both
+        // the population verdict and the permanent missing-body mutation control.
+        if let Some(spawned) = primitive_runtime_body {
+            eprintln!("required-ci: phase primitive-runtime-body (live emitted source + mutation control)");
+            if !finish_required_primitive_runtime_body(spawned) {
+                phase_failures.push("primitive-runtime-body".to_string());
+            }
+            ran.push("primitive-runtime-body");
+        }
+
         // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
         // emitted stage0 mirror, and every committed registry projection. Neither half can report
         // a terminal green: the phase records its one verdict only after both adjudicators ran.
@@ -732,43 +753,30 @@ fn run() -> Result<ExitCode, ExitCode> {
             );
             let failures_before = phase_failures.len();
 
-            // MIRROR HALF. Production still precedes adjudication so a missing/stale mirror leaves
-            // the candidate needed to repair it. A refusal remains distinct from a mismatch, but
-            // both are failures of this one generated-artifact phase.
-            match v1_compiler::cli_run::run_required_regen(
-                &regen_candidate_dir,
-                &regen_receipt_path,
-            ) {
-                Ok(outcome) => {
-                    let fge = outcome
-                        .receipt
-                        .first_generation_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string());
-                    let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
-                    eprintln!(
-                        "required-ci: generated-artifact population=stage0-mirrors \
-                         first_generation_equal={fge} candidate={candidate}"
-                    );
-                    for failure in &outcome.failures {
-                        eprintln!(
-                            "required-ci: generated-artifact population=stage0-mirrors FAIL {failure}"
-                        );
-                    }
-                    if !outcome.failures.is_empty() {
-                        phase_failures.push(format!(
-                            "generated-artifact stage0-mirrors ({} failure(s))",
-                            outcome.failures.len()
-                        ));
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "required-ci: generated-artifact population=stage0-mirrors REFUSED {e}"
-                    );
-                    phase_failures.push(format!("generated-artifact stage0-mirrors refused: {e}"));
-                }
-            }
+            // MIRROR HALF, AS A CHILD BESIDE THE OTHER TWO. The stage0 regeneration reads the src/v1
+            // universe and writes only its candidate and receipt under target/; the docs and
+            // registry halves below read dag and src/v2 and write nothing, and neither reads the
+            // other. Run in series they made the merge queue's generated job wait for their sum
+            // (merge-queue run 36357621284: regen 13 min, then docs 5.8 and registry 3.1). The
+            // regen is `claim_executor --required-regen` -- the same producer, candidate and
+            // receipt paths -- judged by its exit status once the in-process halves finish, so the
+            // phase still records ONE verdict after all three adjudicators ran, and the
+            // fixed-point phase after it still reads the receipt this child wrote.
+            // The child's argv validation requires the parent's source roots; the
+            // unscoped regeneration reads its own fixed v1 sweep, not these roots.
+            let mut stage0_regen_args: Vec<String> = source_roots
+                .iter()
+                .flat_map(|root| ["--source-root".to_string(), root.clone()])
+                .collect();
+            stage0_regen_args.extend([
+                "--required-regen".to_string(),
+                "--regen-candidate-dir".to_string(),
+                regen_candidate_dir.clone(),
+                "--regen-receipt".to_string(),
+                regen_receipt_path.clone(),
+            ]);
+            let stage0_regen =
+                spawn_required_child("stage0-regen", "claim_executor", &stage0_regen_args);
 
             // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
             // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
@@ -867,6 +875,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
             }
+            // The mirror half's verdict, joined after the in-process halves. Production still
+            // precedes adjudication inside the child, so a stale mirror leaves the candidate
+            // needed to repair it.
+            if !finish_required_child(stage0_regen, "stage0-regen") {
+                eprintln!(
+                    "required-ci: generated-artifact population=stage0-mirrors FAIL (the \
+                     regeneration child reported failures above or did not complete)"
+                );
+                phase_failures.push("generated-artifact stage0-mirrors".to_string());
+            }
+
             if phase_failures.len() == failures_before {
                 eprintln!(
                     "required-ci: generated-artifact OK populations=registry-projections,stage0-mirrors"
@@ -1612,9 +1631,127 @@ impl RequiredCiLane {
     }
 }
 
+// A REQUIRED-CI CHECK RUN AS A CHILD PROCESS BESIDE THE PHASES AROUND IT. Two checks use it: the
+// primitive-runtime-body gate and the stage0 mirror regeneration. Each is already a whole process
+// of its own elsewhere (`gunbc run`, `claim_executor --required-regen`), reads the tree, and is
+// read by no phase that runs while it does, so starting it early and judging it at its phase's
+// place changes when it runs and nothing it decides.
+//
+// Its output goes to a log under target/ rather than to the job's streams, so the lines it prints
+// while other phases run are replayed whole under its own phase header instead of interleaving
+// with theirs. A child still running when the parent unwinds is killed rather than orphaned.
+struct SpawnedRequiredChild {
+    label: &'static str,
+    child: Option<std::process::Child>,
+    log: PathBuf,
+}
+
+impl Drop for SpawnedRequiredChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn spawn_required_child(
+    label: &'static str,
+    executable: &str,
+    args: &[String],
+) -> Result<SpawnedRequiredChild, String> {
+    let executable = std::env::current_exe()
+        .map(|path| path.with_file_name(executable))
+        .map_err(|error| format!("cannot locate sibling {executable}: {error}"))?;
+    let log_dir = v1_compiler::cli_run::workspace_root().join("target");
+    fs::create_dir_all(&log_dir)
+        .map_err(|error| format!("cannot create {}: {error}", log_dir.display()))?;
+    let log = log_dir.join(format!("required-ci-{label}.log"));
+    let stdout = fs::File::create(&log)
+        .map_err(|error| format!("cannot create {}: {error}", log.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("cannot share {}: {error}", log.display()))?;
+    let child = std::process::Command::new(&executable)
+        .args(args)
+        .stdout(stdout)
+        .stderr(stderr)
+        .spawn()
+        .map_err(|error| format!("{} did not execute: {error}", executable.display()))?;
+    Ok(SpawnedRequiredChild {
+        label,
+        child: Some(child),
+        log,
+    })
+}
+
+/// Wait for the child, replay its log, and answer whether it exited zero. The exit status is the
+/// verdict; an unreadable log loses the child's diagnostics but not its verdict.
+fn finish_required_child(spawned: Result<SpawnedRequiredChild, String>, label: &str) -> bool {
+    let mut spawned = match spawned {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            eprintln!("{label}: {error}");
+            return false;
+        }
+    };
+    let Some(mut child) = spawned.child.take() else {
+        eprintln!(
+            "{}: the child was already reaped, so no verdict exists",
+            spawned.label
+        );
+        return false;
+    };
+    let status = child.wait();
+    match fs::read_to_string(&spawned.log) {
+        Ok(text) => eprint!("{text}"),
+        Err(error) => eprintln!(
+            "{}: the child's log at {} could not be read ({error}); its exit status below is still the verdict",
+            spawned.label,
+            spawned.log.display()
+        ),
+    }
+    match status {
+        Ok(status) => status.success(),
+        Err(error) => {
+            eprintln!("{}: the child did not complete: {error}", spawned.label);
+            false
+        }
+    }
+}
+
+// Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
+// The witnesses job already builds this sibling binary. Use a child so the extra src/v1
+// preparation and its process-wide caches are released before the ordinary floor starts.
+fn spawn_required_primitive_runtime_body() -> Result<SpawnedRequiredChild, String> {
+    let mut args = vec!["run".to_string()];
+    for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
+        args.push("--source-root".to_string());
+        args.push(root.to_string());
+    }
+    // The producer spans v1 and v2. Keep it outside both default floor roots and
+    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
+    // parse/declaration universe above so the carrier citation is also checked.
+    args.extend(
+        [
+            "--entry",
+            "test/primitive_runtime_body/producer.dag",
+            "--function",
+            "check",
+        ]
+        .map(String::from),
+    );
+    spawn_required_child("primitive-runtime-body", "gunbc", &args)
+}
+
+fn finish_required_primitive_runtime_body(spawned: Result<SpawnedRequiredChild, String>) -> bool {
+    finish_required_child(spawned, "primitive-runtime-body")
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
+    PrimitiveRuntimeBody,
     GeneratedArtifact,
     RegenFixedPoint,
     Floor,
@@ -1624,6 +1761,7 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
+            RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
@@ -1639,6 +1777,7 @@ impl RequiredCiPhase {
             // lane means the cheapest total refusal over the witness corpus arrives from the
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
+            RequiredCiPhase::PrimitiveRuntimeBody => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1651,7 +1790,8 @@ impl RequiredCiPhase {
     }
 }
 
-// THE REQUIRED GATE IS FOUR PHASES. Four are the 2026-08-29 compiler-floor bankruptcy roster;
+// The runtime-body phase adds a live definition-presence check to the retained roster.
+// The original four phases are the 2026-08-29 compiler-floor bankruptcy roster;
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
@@ -1662,8 +1802,9 @@ impl RequiredCiPhase {
 // (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
 // refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
 // namespace_wave_admission_wall_removed.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
+    RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
     RequiredCiPhase::Floor,
@@ -1678,8 +1819,9 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 4] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
     "ParsePhase",
+    "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
     "FloorPhase",
@@ -2227,15 +2369,11 @@ fn main() -> ExitCode {
     // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
     // receipt, so emitting first costs nothing.
     let code = emit_worker_terminal_before_return(code);
-    // ATTRIBUTE THE TEARDOWN INSTEAD OF LEAVING IT SILENT. `main` returns an `ExitCode` and calls
-    // `process::exit` nowhere, so everything still alive is dropped after this function returns --
-    // off the end of the log, where no instrument can see it. This call moves the thread-local drops
-    // inside the timed region so the cost is attributed per cache rather than inferred from a hole.
-    //
-    // IT IS NOT THE REPAIR AND DOES NOT CLAIM TO BE. It makes the quantity visible so a repair can
-    // be chosen against it; whatever `main`'s return still drops after this line remains unmeasured
-    // and is reported as a residue rather than assumed to be zero.
-    v1_compiler::cli_run::drop_process_caches_with_attribution();
+    // THE CORPUS CACHES ARE RELEASED WITH THE PROCESS, NOT FREED ONE NODE AT A TIME. The receipt
+    // above is already out, and nothing reads those caches again; see
+    // `release_process_caches_at_exit` for what it forgets, why that is safe, and the residue it
+    // leaves measured rather than assumed.
+    v1_compiler::cli_run::release_process_caches_at_exit();
     code
 }
 
@@ -2254,10 +2392,18 @@ mod tests {
     fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
         vec![
             lane_phase_row("witnesses", "parse"),
+            lane_phase_row("witnesses", "primitive-runtime-body"),
             lane_phase_row("build", "generated-artifact"),
             lane_phase_row("build", "regen-fixed-point"),
             lane_phase_row("witnesses", "floor"),
         ]
+    }
+
+    #[test]
+    fn primitive_runtime_body_phase_executes_the_live_gate() {
+        assert!(finish_required_primitive_runtime_body(
+            spawn_required_primitive_runtime_body()
+        ));
     }
 
     #[test]
@@ -2317,7 +2463,13 @@ mod tests {
             .into_iter()
             .collect()
         );
-        assert_eq!(expected_lane_phases(&rows, None).len(), 4);
+        assert_eq!(
+            expected_lane_phases(&rows, None),
+            REQUIRED_CI_PHASES
+                .iter()
+                .map(|phase| phase.name().to_string())
+                .collect()
+        );
     }
 
     #[test]

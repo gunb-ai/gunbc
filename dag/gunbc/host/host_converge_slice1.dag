@@ -97,7 +97,7 @@ data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
 data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 
-// TasksMax (gunbc.runner_slot_allocation gunbc_runner_slot_desired, 16384 — the 2026-06-21
+// TasksMax (gunbc.runner_slot_desired gunbc_runner_slot_desired, 16384 — the 2026-06-21
 // incident REPAIR value; 512 was the diagnosed EAGAIN outage value, per the operator ruling on
 // PR 8045) is the second knob realized on this circuit: same typed systemctl show/set-property
 // transports, same fail-closed order (live read -> Drifted verdict -> pre-apply TasksCurrent

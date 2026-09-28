@@ -72,15 +72,7 @@ use super::{
     ci_layer_roots_authority_content, compile_entry_emission, process_workspace_root,
     string_list_data_from_ci_layer_roots_source, CompileDisposition, CompileRun,
 };
-use crate::extdeps_cargo::{
-    cargo_environment_variable_name, CargoDependency, CargoEnvironmentVariable,
-};
-use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
-use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind;
-use crate::v1_compiler_emit_rust::emit_cargo_features_section;
-use crate::v1_compiler_stage0_crates::{
-    render_stage0_crate_dep, stage0_features_for_crate_kind, stage0_foundation_runtime_dependencies,
-};
+use crate::extdeps_cargo::{cargo_environment_variable_name, CargoEnvironmentVariable};
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
 const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";
@@ -519,106 +511,37 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
     }
 }
 
-/// The manifest for the probe crate, rendered from the modeled cargo authorities rather than
-/// authored as markup.
-///
-/// Package header from `extdeps.rust.version` `render_cargo_package_header_prefix`; dependency
-/// rows from `v1.compiler.stage0_crates` `stage0_foundation_runtime_dependencies` (the seed's
-/// runtime dependency set, which emitted code links against), each rendered by that module's
-/// `render_stage0_crate_dep`.
-///
-/// THE SEED IS NOT A DEPENDENCY OF THE EMITTED CRATE, AND THIS FUNCTION CANNOT NAME IT. Until
-/// this commit the rendered rows carried `v1-compiler = { path = <workspace>/src/v1/stage0 }`,
-/// justified as "the runtime surface the emitted closure does not emit". That justification was
-/// false against the emitter: `v1.compiler.emit_rust` `emit_rust_selected` writes `src/v1_rt.rs`
-/// into EVERY emission (`emit_v2_rt_module`, unconditional) and renders the `NonEmptyVec` /
-/// `NonEmptyBTreeSet` wrappers into the emitted `lib.rs`, and the emitted crate name is
-/// `v1_compiled` for every entry that is not the retained-host pipeline, so no emitted line
-/// paths into `v1_compiler` at all. THAT IS MEASURED RATHER THAN REASONED, AND THE INSTRUMENT IS
-/// NAMED RATHER THAN TRANSCRIBED (DESIGN section 6): `run_required_emit_compile` over
-/// `gunbc.ci_layer_roots` `required_emit_compile_entries` re-derives it on every run, emitting
-/// each entry's closure through this writer and handing the result to `run_cargo` -- so a seed
-/// symbol the emission failed to cover would refuse there, on the acceptance path, rather than in
-/// a sentence here. A count copied into this comment would rot the moment the roster or the
-/// emitter moved, which is exactly how the deleted CI job cited two paragraphs down came to be
-/// named here at all.
-///
-/// The consequence of the dead edge was not cosmetic. A fixed point measured on emitted BYTES
-/// said nothing about the emitted crate's ability to BUILD, because the manifest silently put
-/// `src/v1/stage0` back into its dependency graph; and building any probe rebuilt the seed into
-/// the shared target directory the running `claim_executor` was executing from.
-///
-/// THE WORKSPACE ROOT IS NO LONGER A PARAMETER, and what that buys is stated exactly rather than
-/// rounded up to a wall it is not. It eliminates the LIVE PRODUCER ROUTE that minted the seed
-/// path dependency: this function is handed no repository root, and
-/// `stage0_foundation_runtime_dependencies` carries registry rows only, so nothing on the
-/// rendering path supplies one. The regression witness beside it additionally refuses a rendered
-/// `src/v1` or `v1-compiler` dependency row, which is a second, independent reader of the same
-/// output.
-///
-/// A TYPE-LEVEL REGISTRY-ONLY BOUNDARY IS NOT CLAIMED, and saying so is the point:
-/// `CargoDependency` still admits `CargoDepSource::LocalPathDep { path }`, so a local path
-/// remains AUTHORABLE here from a literal -- which is exactly how this commit's discriminating
-/// red was established, with a hardcoded `/repo/src/v1/stage0`. Calling the parameter's removal a
-/// construction that makes the seed path unwritable would be the rung inflation DESIGN 4b(1)
-/// names. Making the local-path arm unreachable for an EMITTED crate's manifest belongs to the
-/// terminal shape -- the host consuming the emission's own manifest rather than authoring a
-/// second one -- and is not done here.
-///
-/// THE `[lib]` NAME IS THE EMITTER'S CONTRACT, NOT A SPELLING OF THE PATH. `src/lib.rs` stays
-/// cargo's default path; what must be named is the LIB TARGET's crate name, because the emitted
-/// `main.rs` reaches the closure through it: `v1.compiler.emit_rust` `emit_rust_selected` binds
-/// the self-emitted crate's name (`v1_compiled` for every non-retained-host pipeline entry), and
-/// the SourceRootEvalDriver and DirectIngestDriver mains both `use v1_compiled::…`. The package
-/// name is per-entry (one slug per probe, sharing one target dir), so without this section the
-/// lib takes the package's name and the driver main's self-references fail E0433 — measured on
-/// the first preparation of the emitted-native compiler, which was a required CI job then and is
-/// the operator-invoked `--v2-native-route` instrument since #11003 deleted that job. The two
-/// consumers of this manifest today are that instrument and the `emit-compile` phase; naming a
-/// required native lane would cite a job main no longer declares. Pipeline-free probe entries never named
-/// their crate in a `use`, so the gap was unreachable until a pipeline entry became a probe
-/// subject.
-///
-/// The corpus's hand-authored TOML string (`tools.self_host_curated_seed_linked_harness`
-/// `cssl_v1_compiled_probe_lib_cargo_toml`) is deliberately not used: it is marked scaffold debt
-/// in its own module as concat-authored markup, and a required gate consuming it would pin that
-/// debt open on the merge path.
-fn probe_manifest(entry: &str) -> String {
-    let deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
-        .iter()
-        .map(|dep| (**dep).clone())
-        .collect();
-    let rendered: String = deps
-        .into_iter()
-        .map(|dep| render_stage0_crate_dep(std::rc::Rc::new(dep)))
-        .collect::<Vec<_>>()
-        .join("");
-    // THE FEATURE SECTION IS NOT OPTIONAL, AND CI IS WHERE ITS ABSENCE BITES.
-    //
-    // The emitted `v1_rt.rs` gates on `#[cfg(feature = "text_lookup_work_counter")]`. Referencing
-    // an undeclared feature earns `unexpected_cfgs` — a WARNING locally, a hard ERROR under CI's
-    // `RUSTFLAGS=-D warnings` — so the probe crate compiled clean on a workstation and failed
-    // `status=101` on every entry in CI, the baseline reporting a red unrelated to the closure.
-    //
-    // Rendered from the partition crates' own authority, `stage0_features_for_crate_kind` (which
-    // the partition rows reach through `stage0_partition_row_features`), not authored here: the
-    // corpus already carries two hand-concatenated `[features]` blocks for this reason, each with
-    // a note, and a third string would be the second representation those notes argue against.
-    // THE KIND IS THE WHOLE SUBJECT, so the kind is what is passed. An earlier revision handed a
-    // fabricated `GeneratedPartitionCrateRow` -- blank crate_dir, empty module lists -- to a
-    // function reading only `row.kind`. That row ASSERTED this probe is a generated partition
-    // crate; it is a per-entry crate outside the repository sharing only the foundation kind's
-    // feature set, because the emitted `v1_rt.rs` gates on it.
-    let features = emit_cargo_features_section(stage0_features_for_crate_kind(
-        GeneratedPartitionCrateKind::GeneratedFoundationCrate,
-    ));
-    // `v1_compiled` is the emitter's own literal (`emit_rust_selected`), mirrored here the way
-    // every seed mirror in this file is: the host cannot reach into the emission for it, and the
-    // emitted main.rs's self-references fail to link under any other lib name.
-    format!(
-        "{}\nedition = \"2021\"\n\n[lib]\nname = \"v1_compiled\"\n{features}\n[dependencies]\n{rendered}",
-        render_cargo_package_header_prefix(probe_package_name(entry))
-    )
+/// Consume the emission's manifest, preserving its dependency and feature demand. The old
+/// foundation-runtime roster omitted dependencies of emitted service drivers (Tokio), so a
+/// successful emission became an unbuildable probe. The host changes only the per-entry package
+/// identity and preserves the emitted crate's original library name for generated main.rs.
+fn probe_manifest(entry: &str, emitted: &str) -> Result<String, String> {
+    let mut manifest: toml::Value =
+        toml::from_str(emitted).map_err(|e| format!("invalid emitted Cargo.toml: {e}"))?;
+    let package = manifest
+        .get_mut("package")
+        .and_then(toml::Value::as_table_mut)
+        .ok_or_else(|| "emitted Cargo.toml has no package table".to_string())?;
+    let original_name = package
+        .get("name")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| "emitted Cargo.toml has no package name".to_string())?
+        .to_string();
+    package.insert(
+        "name".to_string(),
+        toml::Value::String(probe_package_name(entry)),
+    );
+    let table = manifest
+        .as_table_mut()
+        .expect("package table belongs to a manifest table");
+    let lib = table
+        .entry("lib")
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .ok_or_else(|| "emitted Cargo.toml lib is not a table".to_string())?;
+    lib.entry("name")
+        .or_insert(toml::Value::String(original_name.replace('-', "_")));
+    toml::to_string(&manifest).map_err(|e| format!("serialize probe Cargo.toml: {e}"))
 }
 
 /// Where one entry's probe crate is written. Outside the repository: a crate under the workspace
@@ -831,6 +754,17 @@ fn write_probe_crate_files(
     probe_root: &PrivateProbeRoot,
     entry: &str,
 ) -> Result<(PathBuf, usize), String> {
+    let manifests: Vec<_> = files
+        .iter()
+        .filter(|file| file.path == "Cargo.toml")
+        .collect();
+    if manifests.len() != 1 {
+        return Err(format!(
+            "emission must carry exactly one Cargo.toml, observed {}",
+            manifests.len()
+        ));
+    }
+    let manifest = probe_manifest(entry, &manifests[0].content)?;
     let dir = probe_crate_dir(probe_root, entry);
     // A STALE TREE IS NOT A SUBJECT. A previous run's bytes under the same slug would let a module
     // deleted from the closure keep compiling, so the directory is removed, not written over.
@@ -854,7 +788,7 @@ fn write_probe_crate_files(
             dir.display()
         ));
     }
-    std::fs::write(dir.join("Cargo.toml"), probe_manifest(entry))
+    std::fs::write(dir.join("Cargo.toml"), manifest)
         .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
     Ok((dir, written))
 }
@@ -2620,44 +2554,45 @@ mod tests {
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
     }
 
-    /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows, not a
-    /// golden string: version-authority package header and the seed's runtime dependency set.
     #[test]
-    fn manifest_carries_the_modeled_dependency_rows() {
-        let manifest = probe_manifest("dag/std/logic.dag");
-        // The package name is DERIVED PER ENTRY, so two entries cannot alias each other's cargo
-        // fingerprints in the shared target directory.
-        assert!(
-            manifest.starts_with("[package]\nname = \"gunbc-emitted-closure-dag-std-logic-dag\"")
-        );
-        assert!(manifest.contains("edition = \"2021\""));
-        // THE FEATURE SECTION IS A REGRESSION GUARD: the emitted `v1_rt.rs` gates on this feature,
-        // and an undeclared feature compiles clean locally but fails under the required lane's
-        // `RUSTFLAGS=-D warnings` -- invisible to every default-flag run, which is how it reached
-        // CI once.
-        assert!(manifest.contains("[features]"));
-        assert!(manifest.contains("text_lookup_work_counter = []"));
-        for name in ["im", "serde", "serde_json", "stacker"] {
-            assert!(manifest.contains(name), "missing dependency row {name}");
+    fn manifest_preserves_emitted_dependency_demand() {
+        use crate::v1_compiler_emit_rust::{emit_cargo_toml, EmittedCrateDependencyDemand};
+        for asynchronous in [false, true] {
+            let emitted = emit_cargo_toml(
+                "v1_compiled".to_string(),
+                EmittedCrateDependencyDemand {
+                    renders_clap_cli: false,
+                    renders_async_services: asynchronous,
+                },
+            );
+            let manifest = probe_manifest("dag/std/logic.dag", &emitted.content).expect("manifest");
+            let original: toml::Value = toml::from_str(&emitted.content).unwrap();
+            let probe: toml::Value = toml::from_str(&manifest).unwrap();
+            assert_eq!(probe["dependencies"], original["dependencies"]);
+            assert_eq!(probe["features"], original["features"]);
+            assert_eq!(probe["package"]["version"], original["package"]["version"]);
+            assert_eq!(
+                probe["package"]["name"].as_str(),
+                Some("gunbc-emitted-closure-dag-std-logic-dag")
+            );
+            assert_eq!(probe["lib"]["name"].as_str(), Some("v1_compiled"));
+            assert_eq!(probe["dependencies"].get("tokio").is_some(), asynchronous);
+            assert!(probe["dependencies"].get("v1-compiler").is_none());
+            assert!(!manifest.contains("src/v1"));
         }
-        // THE DISCRIMINATING ASSERTION OF THIS COMMIT, and it is a regression control, not a
-        // wall. Removing the workspace-root parameter closed the live producer route that minted
-        // the seed dependency; it did NOT make a local path unwritable here, because
-        // `CargoDepSource::LocalPathDep` still admits a literal. So this reads the rendered
-        // OUTPUT: a `src/v1` or `v1-compiler` row means the emitted crate's dependency graph
-        // contains the seed again, and "v2 emits itself" stops being a claim about a buildable
-        // crate. Its RED was executed, not assumed -- re-adding the dependency panics here.
-        assert!(
-            !manifest.contains("src/v1"),
-            "the emitted probe crate must not depend on the seed: {manifest}"
-        );
-        assert!(!manifest.contains("v1-compiler"));
-        // THE LIB NAME IS THE EMITTER'S SELF-NAME CONTRACT: the emitted driver mains reach the
-        // closure through `use v1_compiled::…` (`v1.compiler.emit_rust` `emit_rust_selected`
-        // binds the name), so the probe crate's lib target must carry it even though the package
-        // name is per-entry. The PATH stays cargo's default and is not restated.
-        assert!(manifest.contains("[lib]\nname = \"v1_compiled\"\n"));
-        assert!(!manifest.contains("path = \"src/lib.rs\""));
+    }
+
+    #[test]
+    fn manifest_refuses_missing_or_malformed_package_identity() {
+        for manifest in [
+            "",
+            "[dependencies]",
+            "[package]",
+            "[package]\nname = 42",
+            "not toml",
+        ] {
+            assert!(probe_manifest("entry.dag", manifest).is_err());
+        }
     }
 
     /// One emitted crate on disk, authored by the caller, so each test states the shape it means.
@@ -2879,10 +2814,19 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&base);
         let tree = |marker: &str| -> im::Vector<std::rc::Rc<crate::v1_std_core::TextFile>> {
-            im::vector![std::rc::Rc::new(crate::v1_std_core::TextFile {
-                path: "src/lib.rs".to_string(),
-                content: format!("// emitted by run {marker}\n"),
-            })]
+            im::vector![
+                std::rc::Rc::new(crate::v1_std_core::TextFile {
+                    path: "src/lib.rs".to_string(),
+                    content: format!("// emitted by run {marker}\n"),
+                }),
+                crate::v1_compiler_emit_rust::emit_cargo_toml(
+                    "v1_compiled".to_string(),
+                    crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                        renders_clap_cli: false,
+                        renders_async_services: false,
+                    }
+                )
+            ]
         };
         let first = create_private_probe_root(&base).expect("the first run creates its root");
         let second = create_private_probe_root(&base).expect("the second run creates its root");

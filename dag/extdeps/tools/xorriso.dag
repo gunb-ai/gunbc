@@ -7,6 +7,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_xorriso }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -24,19 +25,6 @@ data xorriso_cli_tool: CliTool = CliTool {
 }
 
 service xorriso.Iso {
-  operation ExtractPathBestEffort {
-    input { iso_path: NonEmptyStr, iso_internal_path: NonEmptyStr, destination: NonEmptyStr }
-    output { success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["xorriso", "-osirrox", "on", "-indev", "{iso_path}", "-extract", "{iso_internal_path}", "{destination}"]
-    }
-    exit {
-      0 => Unit "extracted"
-      nonzero => Unit "path not present on ISO"
-    }
-  }
-
   operation ExtractTree {
     input { iso_path: NonEmptyStr, destination: NonEmptyStr }
     output { success: Bool from "exit_success" }
@@ -83,4 +71,15 @@ service xorriso.Iso {
       nonzero => String "xorriso -boot_image any replay build failed"
     }
   }
+}
+
+// ONE ISO MEMBER COPIED OUT TO ONE DESTINATION PATH, read-only on the ISO: `xorriso -osirrox on
+// -indev ISO -extract MEMBER DEST`. xorriso exits nonzero when the member is absent or the
+// destination cannot be written. This is the one spelling of the invocation: its only consumer runs
+// it over a remote typed-argv transport (gunbc.machine_intake_mtcollins1_census_member_readback), and
+// the local ExtractPathBestEffort operation that restated the same argv had no caller and was deleted
+// rather than kept as a second copy (DESIGN §3). A local consumer binds this builder to its local
+// transport; it does not re-author the word list.
+fn xorriso_extract_command(iso_path: NonEmptyStr, iso_internal_path: NonEmptyStr, destination: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: xorriso_cli_tool.name, arguments: ["-osirrox", "on", "-indev", iso_path as String, "-extract", iso_internal_path as String, destination as String])
 }

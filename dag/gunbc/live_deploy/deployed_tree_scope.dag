@@ -1,18 +1,19 @@
 module gunbc.live_deploy.deployed_tree_scope
 
 import std.types { Bool, String, List }
-import std.algebra { list_append }
 import v2.std.algebra { any }
 
 // WHAT THE DEPLOY ACTUALLY INSTALLS, DECLARED ONCE BECAUSE TWO THINGS NEED IT AND MUST NOT DISAGREE.
 // The working-tree leg of the source sync rsyncs the runner checkout wholesale except these
 // prefixes, so the deployed source is the WORKING TREE, not the commit. Two consumers read it:
 //
-//   gunbc.live_deploy.emit       renders `--exclude /<p>` per prefix into the tree-sync ExecStart
 //   gunbc.live_deploy.candidate  decides whether an untracked path would actually be shipped
 //
-// Spelling it in both would let them drift, in the dangerous direction: admission would pass on a
-// path the sync then installs. Same fact, one home (DESIGN §3).
+// A second reader once rendered it as rsync `--exclude` flags (deployed_tree_rsync_exclude_flags).
+// The tree-sync unit and then the approval broker's job-user rsync were its last production callers;
+// both are gone (#10724 and #12444), so the renderer was deleted rather than left as a function only
+// a witness called (DESIGN §3c). A new mover that ships a filtered tree derives its filter from this
+// list, never respells it.
 //
 // IT LIVES IN ITS OWN LEAF MODULE FOR A STRUCTURAL REASON. Putting it beside the emitter and
 // importing that from candidate closes a real cycle — candidate is reached from
@@ -64,16 +65,6 @@ data deployed_tree_excluded_prefixes: List<String> = [
 data deployed_tree_excluded_derived_files: List<String> = [
   "dag/gunbc/recurring_failure_mode/roster.dag",
 ]
-
-fn deployed_tree_rsync_exclude_flags() -> String {
-  join(
-    list_append(
-      left: map(deployed_tree_excluded_prefixes, p => concat("--exclude /", p)),
-      right: map(deployed_tree_excluded_derived_files, f => concat("--exclude /", f)),
-    ),
-    " ",
-  )
-}
 
 // Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating
 // it as excluded would hide from admission a path rsync goes on to ship.

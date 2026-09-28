@@ -35,14 +35,15 @@ import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved
 // gunbc-ntfy cat /proc/<pid>/environ` needs a wildcard in sudoers to cover a PID that changes on
 // every restart, and a wildcard is refused. An authored `sh -c` helper was refused by review 70354.
 // This entry is modeled .dag run by the broker's own released gunbc
-// (gunbc.live_deploy.emit approval_broker_ntfy_runtime_observe_operation), with no arguments. So
+// (gunbc.live_deploy.release_locus approval_broker_ntfy_runtime_observe_operation), with no arguments. So
 // the sudoers line is that exact argv and leaves the grantee nothing to choose.
 //
 // WHAT LIVES WHERE. This module owns: the entry's identity (file and function), the principal it
 // runs as, the typed observation, and its wire codec. That codec is the only way the observation
 // crosses the process boundary, and both directions of it are defined here. The release-scoped argv
-// and the grant are owned by gunbc.live_deploy.emit, because they are functions of the release
-// locus. This module cannot import emit: emit imports this module, and the import graph is acyclic.
+// is owned by gunbc.live_deploy.release_locus and the grant by gunbc.live_deploy.emit, because both
+// are functions of the release locus. This module cannot import either: both import this module,
+// and the import graph is acyclic.
 // The entry FUNCTION BODY -- the reads themselves -- is approval_ntfy_runtime_observe below. The
 // four joins over its result are the verb's, in gunbc.auth.approval_ntfy_access_readback.
 
@@ -378,7 +379,7 @@ fn ntfy_runtime_observe_decode(text: String) -> NtfyRuntimeObserveReading {
 }
 
 // ── THE ENTRY: the reads, as the server's own principal ─────────────────────────────────────
-// Run only through the per-release grant (gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_argv),
+// Run only through the per-release grant (gunbc.live_deploy.release_locus approval_ntfy_runtime_observe_helper_argv),
 // so it runs as gunbc-ntfy and can read /proc/<MainPID>/{environ,exe,fd}. It accepts nothing: the
 // MainPID is systemd's, read here, and the verb joins it against its own reading of the unit.
 //
