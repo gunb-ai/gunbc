@@ -25,7 +25,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
-import gunbc.runner_host_deploy { RunnerHostDeploy, runner_index_seq }
+import gunbc.runner_host_deploy { RunnerHostDeploy, runner_slot_identities_of }
 import extdeps.network.ipv4 { render_ipv4_address, render_ipv4_prefix }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import product.placement_supply { HostIdentity }
@@ -853,5 +853,5 @@ fn host_binding_refusal_text(b: HostBinding) -> String {
 // importing it back would be a cycle, and the slot roster is a fact about the deploy row either way.
 fn runner_microvm_network_slot_identities_of(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
   let host = deploy.host_label as HostIdentity
-  map(runner_index_seq(n: deploy.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i })
+  runner_slot_identities_of(deploy: deploy)
 }
