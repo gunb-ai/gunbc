@@ -156,6 +156,7 @@ jobs:
         env:
           GUNBC_HOST_RESET_DISPATCH_MODE: ${{ github.event.inputs.mode }}
           GUNBC_HOST_RESET_OBSERVER: ${{ github.event.inputs.reset_observer }}
+        if: github.event.inputs.mode == 'host_reset_return'
         timeout-minutes: 5
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
@@ -215,7 +216,7 @@ jobs:
           GUNBC_D0_CONSENT: ${{ github.event.inputs.d0_consent }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'pair_serving_d0'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -1502,7 +1503,7 @@ jobs:
       - name: Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)
         id: mtcollins1_boot
         run: |-
-          # 🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          # 🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk; and the SOL notice watcher's PROCESS COORDINATION -- starting gunbc.machine_intake_mtcollins1_sol_notice as a background process, waiting for its readiness file before the boot, and in the EXIT trap recording the release request, releasing the collector through the hold's release script, writing the stop file and waiting a bounded time for the watcher to finish. What the watcher publishes and how it delivers are modeled in that module; only this start/ready/stop coordination and the trap are hand-shell. SOL hold and release are gunbc.machine_intake.sol_hold ActivateHeld/ReleaseHeld (their own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) or a typed step-lifecycle realization expresses ALL of it -- the credential runner, a supervised sibling process with readiness and a stop request, and an exit handler that runs on every exit arm including cancellation -- through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold; realizing the credential runner alone does not satisfy this trigger
           set -euo pipefail
           umask 077
           HDR_FILE="$RUNNER_TEMP/mtcollins1-boot-auth-header"
@@ -1524,6 +1525,7 @@ jobs:
           : > "$SOL_LOSS"; : > "$SOL_CLIENT"; : > "$SOL_WORKFLOW"; : > "$SOL_DELIVERY"; rm -f "$SOL_OUT.notice."*
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_sol_notice.dag --function mtcollins1_sol_notice_wet & SOL_NOTICE_WATCH=$!
+          for i in $(seq 1 900); do [ -e "$SOL_OUT.notice.ready" ] && break; kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null || break; sleep 1; done; if [ ! -e "$SOL_OUT.notice.ready" ]; then echo "::error::mtcollins1 SOL notice watcher is not ready; refusing the boot before any BMC contact"; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_wet
         env:
