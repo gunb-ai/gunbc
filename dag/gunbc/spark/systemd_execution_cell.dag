@@ -702,7 +702,11 @@ fn systemd_workload_cache_reuse_script(member: SystemdExecutionMember, serve_por
 // churn transport failure now also records the endpoint's IMMEDIATE liveness probe (GET
 // /v1/models) and a timestamp: the q2 rerun failed churn request 2 with rc=7 (connection
 // refused, 0 ms) while the engine's own metrics kept serving — the probe distinguishes a
-// listener that is gone from a request-level refusal on the next occurrence.
+// listener that is gone from a request-level refusal on the next occurrence. The lock queue is
+// window-bounded too (2026-09-28, the exit-41 tail-backstop halt): a client parked on the flock
+// past the churn window's end SKIPS the request (the loop continues), so the serialized tail
+// drains inside the sampler's window + one timeout — the closing run's churn otherwise outlived
+// the tail and the route's halt read the engine's own RuntimeMaxSec expiry as a churn failure.
 data systemd_workload_churn_large_request_bytes: Nat = 512000
 
 fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmptyStr, state_dir: String, body: String, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
@@ -734,7 +738,8 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
     "      last_resp=\"$state/churn_c\"$client\"_last.resp\"\n",
     "      request_bytes=$(wc -c < \"$state/churn_\"$client\"_\"$n\".json\")\n",
     "      if [ \"$request_bytes\" -gt ", to_string(systemd_workload_churn_large_request_bytes), " ]; then\n",
-    "        flock \"$state/churn_large.lock\" curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\" && churn_rc=0 || churn_rc=$?\n",
+    "        flock \"$state/churn_large.lock\" sh -c '[ \"$(date +%s)\" -lt \"$0\" ] || exit 42; curl -sS -m ", to_string(request_timeout_seconds), " -D \"$1\" -o \"$2\" -H 'Content-Type: application/json' -d @\"$3\" \"$4/v1/completions\"' \"$end\" \"$last_hdr\" \"$last_resp\" \"$state/churn_\"$client\"_\"$n\".json\" \"$base\" && churn_rc=0 || churn_rc=$?\n",
+    "        if [ \"$churn_rc\" = \"42\" ]; then echo \"churn-request-skipped-past-window client=$client request=$n\"; continue; fi\n",
     "      else\n",
     "        if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
     "      fi\n",
