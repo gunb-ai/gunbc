@@ -583,12 +583,6 @@ fn claim_holder_payload(readable: CasReadableSlot<NonEmptyStr>) -> NonEmptyStr {
   }
 }
 
-// EVERY FIELD THE SCOPE COMPARISON READS IS RENDERED, and that is the whole rule. scope_covers
-// judges verb, resource and action, so a render omitting any of the three can print two identical
-// strings for a mismatch it just refused -- a diagnostic that cannot distinguish the two sides of
-// its own refusal. The tree comes from the position rather than the path alone for the same reason:
-// `std.effect_grant` namespace_tree_label owns that spelling, and effect_target_label owns the path
-// one, so neither is re-coined here.
 // ── THE SCOPE ON THE WIRE, AND THE INTENT THAT STATES IT ──────────────────────────────────────
 //
 // ONE CODEC, WRITTEN BY THE FILER AND READ BY THE VERIFIER. An intent_hash binds the exact text of
@@ -721,6 +715,12 @@ type IntentScopeScan {
   refused: Bool
 }
 
+// EVERY FIELD THE SCOPE COMPARISON READS IS RENDERED, and that is the whole rule. scope_covers
+// judges verb, resource and action, so a render omitting any of the three can print two identical
+// strings for a mismatch it just refused -- a diagnostic that cannot distinguish the two sides of
+// its own refusal. The tree comes from the position rather than the path alone for the same reason:
+// `std.effect_grant` namespace_tree_label owns that spelling, and effect_target_label owns the path
+// one, so neither is re-coined here.
 fn authorization_scopes_render(scopes: List<AuthorizationScope>) -> String {
   if is_empty(scopes) {
     "no scopes"

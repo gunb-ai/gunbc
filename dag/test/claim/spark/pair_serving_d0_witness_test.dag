@@ -387,11 +387,11 @@ test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
-      let t = d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx)
-      t == d0_intent_text(subject: d0w_t_subject_over(hs: [h4, h2, h1, h3], successor: c, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
-        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1001), group: FabricGroupA, transaction: d0w_t_tx)
-        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: a, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
-        && t != d0_intent_text(subject: one, group: FabricGroupA, transaction: "tx-other" as NonEmptyStr)
+      let t = (match d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+      t == (match d0_intent_text(subject: d0w_t_subject_over(hs: [h4, h2, h1, h3], successor: c, term: 1000), group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+        && t != (match d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1001), group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+        && t != (match d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: a, term: 1000), group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
+        && t != (match d0_intent_text(subject: one, group: FabricGroupA, transaction: "tx-other" as NonEmptyStr) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
         && t.contains("suspend-pair-serving-authority")
     })
   })
@@ -406,7 +406,7 @@ test fn the_intent_text_states_its_scope_in_the_shared_frame() -> Bool {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
       let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
       let purpose = d0_purpose(subject: one, transaction: d0w_t_tx) as String
-      (match parse_intent_scopes(text: d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx)) {
+      (match parse_intent_scopes(text: (match d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })) {
         Present { value: f } => count(f.scopes) == 1 && all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_required_scope()))
         Absent => false
       })
