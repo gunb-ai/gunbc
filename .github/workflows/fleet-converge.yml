@@ -1050,7 +1050,7 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'approval_device_enrolment_code_issue'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: "microVM runner group: read, file one approval if absent, create restricted to the shakedown workflow, read back"
         id: microvm_runner_group_ensure
         run: |-
