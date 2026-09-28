@@ -35,13 +35,8 @@ import product.fabric.isolation {
   dedicated_kernel_sandbox_profile,
   isolation_profile_satisfies,
 }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  gunbc_runner_slot_desired_for,
-  RunnerSlotDesired,
-  CpuQuotaResolved,
-  SlotCpuQuotaUnbounded,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired_for }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -447,7 +442,7 @@ fn gunbc_runner_microvm_cell_cpu_entitlement() -> CellCpuEntitlement {
     CpuQuotaResolved { threads: t } => CpuEntitlementAbsolute { threads: t }
     SlotCpuQuotaUnbounded =>
       CpuEntitlementRelativeOnly {
-        cause: "the slot row declares no absolute CPU ceiling (gunbc.runner_slot_allocation gunbc_runner_slot_cpu_quota, operator ruling 2026-09-19), so the cell grants a relative share only"
+        cause: "the slot row declares no absolute CPU ceiling (gunbc.runner_slot_desired gunbc_runner_slot_cpu_quota, operator ruling 2026-09-19), so the cell grants a relative share only"
       }
   }
 }

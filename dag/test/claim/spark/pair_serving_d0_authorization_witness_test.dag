@@ -92,7 +92,7 @@ test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transac
     Absent => false
     Present { value: successor } => {
       let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
-      let intent = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr)
+      let intent = (match d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
       let text = d0_frozen_filing_text(intent_text: intent, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr)
       let round_trip = match parse_d0_frozen_filing(text: text) { Present { value: f } => f.intent_text == intent && (f.execution_revision as String) == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  Absent => false }
       let other_revision = match d0_filed_request(text: text, group: FabricGroupA, escalation_id: "d0-esc-1" as NonEmptyStr, transaction: "tx-1" as NonEmptyStr, execution_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr) { D0FiledRequestRefused { reason: r } => (r as String).contains("filed by revision aaaa")  _ => false }
