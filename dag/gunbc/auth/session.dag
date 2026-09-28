@@ -1,6 +1,6 @@
 module gunbc.auth.session
 
-import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.types { NonEmptyStr, String, Bool, Timestamp, Email }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import extdeps.uri { Uri }
@@ -59,10 +59,14 @@ type CsrfToken {
 // or malformed renders the initials fallback and never refuses authentication, authorization,
 // or rendering. THE DISPLAY NAME is the same projection shape — the verified token's name
 // claim, optional end to end, presentation only: the header prefers it over the principal
-// label's short form and falls back when absent; identity is never derived from a name.
+// label's short form and falls back when absent; identity is never derived from a name. THE
+// EMAIL is the third member of the same shape (the verified token's email claim): the
+// assignee/picker surfaces display it, and identity is never derived from it either — the
+// PrincipalRef stays the only identity all three describe.
 type SessionProfile {
   picture: Uri?
   name: String?
+  email: Email?
 }
 
 type AuthenticatedSession {
@@ -137,7 +141,7 @@ fn mint_authenticated_session(
                   auth_method: AuthMethodGoogleOidc,
                   client: client,
                   csrf: CsrfToken { token: csrf_token_value },
-                  profile: SessionProfile { picture: claims.standard.picture, name: claims.standard.name },
+                  profile: SessionProfile { picture: claims.standard.picture, name: claims.standard.name, email: claims.standard.email },
                 }
               }
           }

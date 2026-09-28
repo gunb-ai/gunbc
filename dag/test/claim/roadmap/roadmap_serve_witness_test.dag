@@ -67,7 +67,7 @@ import extdeps.http.server {
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.types {
-  Secret, String, Int, Bool, List, NonEmptyStr, HttpMethod, GET, POST, PUT }
+  Secret, String, Int, Bool, List, NonEmptyStr, Email, HttpMethod, GET, POST, PUT }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
@@ -921,6 +921,7 @@ fn witness_auth_session() -> AuthenticatedSession {
     profile: SessionProfile {
       picture: Present { value: Uri { scheme: Https, locator: "lh3.googleusercontent.com/a/avatar-sub-1" as NonEmptyStr } },
       name: Present { value: "Test Operator" },
+      email: Present { value: "operator@gunb.ai" as Email },
     },
   }
 }
@@ -940,7 +941,7 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
     auth_method: AuthMethodGoogleOidc,
     client: SessionClientTrackerWeb,
     csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
-    profile: SessionProfile { picture: none, name: none },
+    profile: SessionProfile { picture: none, name: none, email: none },
   }
 }
 

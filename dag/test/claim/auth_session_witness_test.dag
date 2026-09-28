@@ -506,6 +506,7 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
       let written = authenticated_session_json(session: s)
       string_contains(s: written, pattern: "\"picture\": \"https://lh3.googleusercontent.com/a/photo-sub-123\"")
         && string_contains(s: written, pattern: "\"name\": \"A Person\"")
+        && string_contains(s: written, pattern: "\"email\": \"person@gunb.ai\"")
         && match authenticated_session_of_json(text: written) {
           SessionFileDecoded { session: d } =>
             match d.profile.picture {
@@ -514,6 +515,10 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
             }
             && match d.profile.name {
               Present { value: n } => n == "A Person"
+              Absent => false
+            }
+            && match d.profile.email {
+              Present { value: e } => (e as String) == "person@gunb.ai"
               Absent => false
             }
           SessionFileMalformed { detail: _ } => false
@@ -528,6 +533,10 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
             Present { value: _ } => false
           }
           && match d.profile.name {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match d.profile.email {
             Absent => true
             Present { value: _ } => false
           }

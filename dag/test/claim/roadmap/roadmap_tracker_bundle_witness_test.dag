@@ -22,7 +22,7 @@ fn tracker_session_fixture() -> AuthenticatedSession {
     auth_method: AuthMethodGoogleOidc,
     client: SessionClientTrackerWeb,
     csrf: CsrfToken { token: "tracker-fixture-csrf" as NonEmptyStr },
-    profile: SessionProfile { picture: none, name: none },
+    profile: SessionProfile { picture: none, name: none, email: none },
   }
 }
 

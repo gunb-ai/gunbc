@@ -96,7 +96,7 @@ import gunbc.auth.approval_decision_store {
   parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
-import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
+import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_attrs }
@@ -2855,6 +2855,14 @@ fn auth_session_name_members(name: String?) -> List<JsonValue> {
   }
 }
 
+// THE OPTIONAL EMAIL MEMBER, the same law as the name: absence is the member's ABSENCE.
+fn auth_session_email_members(email: Email?) -> List<JsonValue> {
+  match email {
+    Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
+    Absent => []
+  }
+}
+
 fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
   serialize_json(v: json_object(members: match evidence {
     GoogleOidcSession { session } => concat([
@@ -2862,7 +2870,7 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
       json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
-    ], concat(auth_session_picture_members(picture: session.profile.picture), auth_session_name_members(name: session.profile.name)))
+    ], concat(auth_session_picture_members(picture: session.profile.picture), concat(auth_session_name_members(name: session.profile.name), auth_session_email_members(email: session.profile.email))))
     SessionStandingInvalid { standing } => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),

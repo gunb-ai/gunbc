@@ -18,7 +18,7 @@ module gunbc.auth.session_store
 // filesystem_listing_observation discipline): "the read failed" and "the store holds no such
 // session" are different facts, and only the second mints an Unknown standing.
 
-import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp }
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp, Email }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
@@ -83,9 +83,9 @@ fn session_store_file_path(layout: SessionStoreLayout, session_id: NonEmptyStr) 
 // decodes under any revision whose label parse holds — the same round-trip discipline the v3
 // event codec keeps. The CSRF token rides the file because the file is owner-only (0600); the
 // cookie value itself is NEVER in the store (the store maps an id to a session; the id is the
-// only cookie fact). The profile rides as TWO OPTIONAL MEMBERS: a login whose token carried
-// no picture or name writes no such member, and a file written before the projection landed
-// decodes both to absent — never a malformed file, so the projection never forces a
+// only cookie fact). The profile rides as THREE OPTIONAL MEMBERS: a login whose token carried
+// no picture, name, or email writes no such member, and a file written before the projection
+// landed decodes each to absent — never a malformed file, so the projection never forces a
 // re-login (the never-blocks law at the durable carrier).
 fn authenticated_session_json(session: AuthenticatedSession) -> String {
   serialize_json(v: json_object(members: concat(concat([
@@ -97,7 +97,7 @@ fn authenticated_session_json(session: AuthenticatedSession) -> String {
     json_kv(key: "auth_method", value: json_string(s: session_auth_method_label(method: session.auth_method))),
     json_kv(key: "client", value: json_string(s: session_client_label(client: session.client) as String)),
     json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
-  ], session_profile_picture_members(picture: session.profile.picture)), session_profile_name_members(name: session.profile.name))))
+  ], session_profile_picture_members(picture: session.profile.picture)), concat(session_profile_name_members(name: session.profile.name), session_profile_email_members(email: session.profile.email))))
 }
 
 // THE OPTIONAL PICTURE MEMBER, emitted only when the login projected one: absence is the
@@ -115,6 +115,14 @@ fn session_profile_picture_members(picture: Uri?) -> List<JsonValue> {
 fn session_profile_name_members(name: String?) -> List<JsonValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL EMAIL MEMBER, the same law again.
+fn session_profile_email_members(email: Email?) -> List<JsonValue> {
+  match email {
+    Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []
   }
 }
@@ -138,10 +146,10 @@ type SessionFileDecode
 // admitted client; the principal parses as the one label spelling), or the file is Malformed
 // with the located cause. A malformed session file is a deployment fact about ONE session, so
 // the refusal names the member that refused rather than refusing the whole store. The picture
-// and name members are the TWO OPTIONAL members: each absent decodes to none (a file written
-// before the projection landed is a projection-less profile, never a malformed file), a
-// present picture decodes only as the http/https Uri spellings, and a present name decodes
-// only as non-empty — the same admissions the ID-token reader keeps.
+// name, and email members are the THREE OPTIONAL members: each absent decodes to none (a file
+// written before the projection landed is a projection-less profile, never a malformed file), a
+// present picture decodes only as the http/https Uri spellings, and a present name or email
+// decodes only as non-empty — the same admissions the ID-token reader keeps.
 fn authenticated_session_of_json(text: String) -> SessionFileDecode {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: g } =>
@@ -279,6 +287,25 @@ fn session_file_name_of(doc: JsonValue) -> SessionFileName {
   }
 }
 
+// THE OPTIONAL EMAIL MEMBER, decoded three-valued like the name: ABSENT decodes to none;
+// PRESENT decodes only as a non-empty string (the mint never writes an empty email).
+type SessionFileEmail
+  = SessionFileEmailRead { email: Email? }
+  | SessionFileEmailMalformed { detail: String }
+
+fn session_file_email_of(doc: JsonValue) -> SessionFileEmail {
+  match json_field_string(obj: doc, key: "email") {
+    FieldAbsent => SessionFileEmailRead { email: none }
+    FieldMalformed { cause: c } => SessionFileEmailMalformed { detail: join(["member email refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        SessionFileEmailMalformed { detail: "member email is present but empty" }
+      } else {
+        SessionFileEmailRead { email: Present { value: raw as Email } }
+      }
+  }
+}
+
 fn session_file_decode_finish(
   doc: JsonValue,
   session_id: String,
@@ -294,6 +321,9 @@ fn session_file_decode_finish(
       match session_file_name_of(doc: doc) {
         SessionFileNameMalformed { detail: d } => SessionFileMalformed { detail: d }
         SessionFileNameRead { name: nm } =>
+      match session_file_email_of(doc: doc) {
+        SessionFileEmailMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileEmailRead { email: em } =>
       match principal_ref_parse_label(s: principal_label) {
         Absent =>
           SessionFileMalformed {
@@ -324,12 +354,13 @@ fn session_file_decode_finish(
                     auth_method: AuthMethodGoogleOidc,
                     client: client,
                     csrf: CsrfToken { token: csrf_value as NonEmptyStr },
-                    profile: SessionProfile { picture: pic, name: nm },
+                    profile: SessionProfile { picture: pic, name: nm, email: em },
                   }
                 }
             }
           }
       }
+        }
         }
   }
 }
