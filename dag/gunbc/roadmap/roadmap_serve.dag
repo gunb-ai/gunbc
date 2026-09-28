@@ -1101,11 +1101,28 @@ fn authenticated_write_author_label(security: RequestSecurityContext<RequestAuth
 // to the line end (the fields here are single-line by construction — an email spelling, an event
 // id; the comment body rides LAST and is parsed by its own rule, since markdown freely carries
 // newlines). A field absent from the body reads as "".
+// THE TEXT/PLAIN FIELD READER, browser-shaped (owner defect 2026-09-28: assignment and comment
+// refused with a CSRF 'mismatch' despite a live session): native form submission separates
+// text/plain fields with CRLF, and the enhanced client builds its body the same way, so a
+// line's value arrived carrying the \r and the reader returned '<token>\r'. One trailing \r is
+// stripped per single-line field; a bare-LF body (the witnesses' construction) reads
+// identically to before. The full modeled codec — field separation, multi-line bodies,
+// browser-produced request controls — is Cut 1's (draft PR #12498); this is the located
+// repair for the single-line fields (csrf, expected_revision, assignee, return_to), and the
+// comment body still rides LAST through issue_comment_body_of's remainder read.
 fn issue_form_field(body: String, name: String) -> String {
   let prefix = join([name, "="], "")
   match (filter(split(s: body, delimiter: "\n"), line => starts_with(s: line, prefix: prefix))).first() {
-    Present { value: line } => substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
+    Present { value: line } => issue_form_field_value_strip_cr(value: substring(s: line, start: string_length(s: prefix), end: string_length(s: line)))
     Absent => ""
+  }
+}
+
+fn issue_form_field_value_strip_cr(value: String) -> String {
+  if ends_with(s: value, suffix: "\r") {
+    substring(s: value, start: 0, end: string_length(s: value) - 1)
+  } else {
+    value
   }
 }
 

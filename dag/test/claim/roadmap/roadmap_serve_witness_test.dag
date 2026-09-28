@@ -664,6 +664,10 @@ test fn witness_assign_form_field_reads_the_text_plain_body() -> Bool {
     && issue_form_field(body: body, name: "return_to") == ""
     && issue_form_field(body: body, name: "missing") == ""
     && issue_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
+    && issue_form_field(body: "csrf=tok-1\r\nexpected_revision=R\r\n", name: "csrf") == "tok-1"
+    && issue_form_field(body: "csrf=tok-1\r\nexpected_revision=R\r\n", name: "expected_revision") == "R"
+    && issue_form_field(body: "expected_revision=abc123\r\nreturn_to=\r\nassignee=briansrls@gunb.ai\r\n", name: "assignee") == "briansrls@gunb.ai"
+    && issue_form_field(body: "assignee=a@b.c\r", name: "assignee") == "a@b.c"
 }
 
 // THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404,
