@@ -202,17 +202,20 @@ fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
     NamedArgumentLabel =>
       match b {
         NamedArgumentLabel => true
-        _ => false
+        WhereRefinementPredicate => false
+        StatementLetBinder => false
       }
     WhereRefinementPredicate =>
       match b {
+        NamedArgumentLabel => false
         WhereRefinementPredicate => true
-        _ => false
+        StatementLetBinder => false
       }
     StatementLetBinder =>
       match b {
+        NamedArgumentLabel => false
+        WhereRefinementPredicate => false
         StatementLetBinder => true
-        _ => false
       }
   }
 }

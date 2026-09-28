@@ -1171,7 +1171,8 @@ fn body_lower_operand_ref_read_of(found: Optional<Node>) -> OperandRefRead {
 fn body_lower_operand_ref_read_optional(read: OperandRefRead) -> Optional<Node> {
   match read {
     OperandRefLowered { lowered: lowered } => optional_present(value: lowered)
-    _ => optional_absent()
+    OperandRefAbsent => optional_absent()
+    OperandRefRefused { diagnostics: _ } => optional_absent()
   }
 }
 

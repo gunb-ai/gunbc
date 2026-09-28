@@ -295,7 +295,10 @@ fn behavior_marker_optional(b: Behavior) -> Optional<Symbol> {
   match b {
     Transform => optional_present(value: cast_target_marker())
     Bind => optional_present(value: type_annotation_marker())
-    _ => optional_absent()
+    Value => optional_absent()
+    Branch => optional_absent()
+    Loop => optional_absent()
+    Match => optional_absent()
   }
 }
 
