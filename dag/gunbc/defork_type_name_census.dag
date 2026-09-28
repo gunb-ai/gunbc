@@ -208,15 +208,6 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
   },
   SharedTypeNameRow {
-    names: ["List"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= FreeMonoid<element>` → `std.algebra` `FreeMonoid`",
-      v2_side: "`= std.algebra.FreeMonoid<T>` → same",
-      class: "one concept, two declarations (duplicate)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
     names: ["Bool"],
     reading: AuthoredResolutionReading {
       dag_side: "`std.types` `= True \\| False`",
@@ -320,6 +311,11 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
     names: ["RankingDimension"],
     resolution: ResolvedByRenamingV2 { renamed_to: "RankingComponent", citation: "Ben-Amram & Genaim, *Ranking Functions for Linear-Constraint Loops* (JACM 2014): a lexicographic ranking function's components" },
     change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["List"],
+    resolution: ResolvedByDeletingV2 { reason: "one concept, two declarations of `= FreeMonoid`; `std.types` keeps it because `v2.std.collection` already imports `std.types`, so the reverse import would be a cycle. Its importers re-point to `std.types` and the name stays bare, since the container-arity authority is bare-keyed" },
+    change: 0
   },
   ResolvedSharedTypeName {
     names: ["TestClaim"],

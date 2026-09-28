@@ -1,5 +1,6 @@
 module v2.compiler.self_host.frontier_probe
 
+import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
@@ -85,7 +86,6 @@ import std.content_hash {
   content_hash_eq_structural
 }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   Accepted,

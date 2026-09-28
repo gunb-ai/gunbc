@@ -1,5 +1,6 @@
 module v2.test.claim.body_let_annotation
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.coercion { NoTargetCandidate }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
@@ -8,7 +9,7 @@ import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic {
   None,
   Accepted,

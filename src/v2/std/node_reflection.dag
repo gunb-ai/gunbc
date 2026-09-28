@@ -1,7 +1,7 @@
 module v2.std.node_reflection
 
+import std.types { List }
 import std.decl_ref { DeclarationRef }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,

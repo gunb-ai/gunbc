@@ -1,5 +1,6 @@
 module v2.compiler.reference_conservation
 
+import std.types { List }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -17,7 +18,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules, symbol_lexeme }
 import v2.std.diagnostic {
   Accepted,

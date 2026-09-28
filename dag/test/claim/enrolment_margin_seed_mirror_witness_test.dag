@@ -1,8 +1,8 @@
 module test.claim.enrolment_margin_seed_mirror_witness_test
 
+import std.types { List }
 import extdeps.filesystem.filesystem_io
 import std.measure { millisecond }
-import v2.std.collection { List }
 import v2.workflow.floor_enrolment_margin {
   EnrolmentMarginStanding,
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentBoundWithoutCeiling,

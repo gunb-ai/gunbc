@@ -1,14 +1,12 @@
 module v2.lens.mandatory_tag
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 import std.disposition { SubstrateMandatoryTag }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
 import v2.std.integer { Int }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,

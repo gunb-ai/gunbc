@@ -1,5 +1,6 @@
 module v2.std.compilers.lexing
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_snoc_item }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -7,7 +8,6 @@ import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, Trai
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { fold_list, length, skip }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,

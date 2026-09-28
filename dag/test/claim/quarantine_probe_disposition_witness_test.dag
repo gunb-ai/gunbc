@@ -1,5 +1,6 @@
 module test.claim.quarantine_probe_disposition_witness_test
 
+import std.types { List }
 import gunbc.quarantine_probe_disposition {
   QuarantineProbeHolder,
   FloorExpectedRedHeld,
@@ -26,7 +27,6 @@ import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.required_floor { long_home_prefixes }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { Cons, Empty, fold_list }
-import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 

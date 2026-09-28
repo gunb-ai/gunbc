@@ -1,5 +1,6 @@
 module v2.compiler.infer
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, kind_node, roster_kind_index, roster_kind_index_lookup }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, zip_map }
@@ -44,7 +45,6 @@ import v2.extdeps.languages.typescript {
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional
 }
