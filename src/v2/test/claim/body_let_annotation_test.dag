@@ -392,6 +392,53 @@ test fn bla_ambiguous_kernel_declarations_bind_the_kernel_type() -> Bool {
   bla_annotation_is(o: bla_ambiguous_kernel_int_literal(), id: ^dag_binding_type_int)
 }
 
+// THE SAME SHADOWING ON THE PLAIN SINGLE-TREE ROUTE: normalize, then v2.compiler.resolve resolve over
+// one tree. That namespace (build_program_namespace) leaves module_qn Empty and records its owner in
+// declared_in, so a same-module test keyed on module_qn refused the module's own `type Int` as a
+// foreign declaration there while the admitted route above bound it (review 5342739525). Each row
+// asserts the resolve verdict and the annotation's route: the local Int/Bool bind the module's
+// declaration, and an undeclared Int still binds the kernel.
+fn bla_single_tree_resolved(text: String) -> Outcome<Node> {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: t, diagnostics: _ } =>
+      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, record_declarations: t.record_declarations, diagnostics: None) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
+      }
+  }
+}
+
+fn bla_single_tree_admitted(text: String) -> Node {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+    Accepted { value: t, diagnostics: _ } => t.root
+  }
+}
+
+fn bla_single_tree_declared_int() -> Outcome<Node> {
+  bla_single_tree_resolved(text: "module m.t\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = x\n  x\n}\n")
+}
+
+fn bla_single_tree_declared_bool() -> Outcome<Node> {
+  bla_single_tree_resolved(text: "module m.t\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = x\n  x\n}\n")
+}
+
+fn bla_single_tree_undeclared_int() -> Outcome<Node> {
+  bla_single_tree_resolved(text: "module m.t\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  x\n}\n")
+}
+
+test fn bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration() -> Bool {
+  tpb_accepts(o: bla_single_tree_declared_int())
+    && tpb_accepts(o: bla_single_tree_declared_bool())
+    && !bla_annotation_is(o: bla_single_tree_declared_int(), id: ^dag_binding_type_int)
+    && !bla_annotation_is(o: bla_single_tree_declared_bool(), id: ^bool_node_symbol)
+}
+
+test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_single_tree_undeclared_int(), id: ^dag_binding_type_int)
+}
+
 test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
   bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
     && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
