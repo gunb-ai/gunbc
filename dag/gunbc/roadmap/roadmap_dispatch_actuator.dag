@@ -1799,7 +1799,7 @@ fn dispatch_provider_inner_argv(
     ClaudeCodeProvider =>
       DispatchProviderInnerArgvReady {
         argv: concat(
-          [env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"],
+          [env_path_resolved_program.invocation as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
             effort: effort,
             model: model,
@@ -1940,7 +1940,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
   tmux_spawn_inner_argv(
     session_name: session_name,
     worktree_path: worktree_path,
-    inner_argv: concat([env_path_resolved_program as String, "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+    inner_argv: concat([env_path_resolved_program.invocation as String, "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
   )
 }
 

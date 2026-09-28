@@ -1,5 +1,7 @@
 module extdeps.systemd.systemctl
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.string_type { String }
@@ -9,7 +11,7 @@ import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, system
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,6 +27,15 @@ data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
 fn systemctl_binary_path() -> NonEmptyStr {
   systemd_binary_path(name: systemctl_binary_name)
 }
+
+data systemctl_absolute_program: ProgramIdentity = uncataloged_program(invocation: systemctl_binary_path())
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it. The user-manager probe resolves it on PATH too. It is
+// a distinct invocation from the absolute systemd path above, so it is a distinct identity row.
+data systemctl_path_resolved_program: ProgramIdentity = uncataloged_program(invocation: systemctl_binary_name)
 
 data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
 
@@ -53,12 +64,12 @@ fn systemctl_reboot_command() -> NonEmptyStr {
 // the systemd it runs rather than about systemd. A consumer that needs that property must observe
 // the version instead of inferring it from the distribution.
 fn systemctl_version_command() -> ArgvCommand {
-  argv_command(program: systemctl_binary_path(), arguments: ["--version"])
+  argv_command(program: systemctl_absolute_program, arguments: ["--version"])
 }
 
 // systemctl_show_properties_argv as a command, for one unit: `Name=value` lines, one per property.
 fn systemctl_show_properties_command(unit: NonEmptyStr, properties: List<SystemdUnitProperty>) -> ArgvCommand {
-  argv_command(program: systemctl_binary_path(), arguments: [
+  argv_command(program: systemctl_absolute_program, arguments: [
     "show",
     concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")),
     unit as String,
@@ -77,7 +88,7 @@ fn systemctl_show_property_value(text: String, key: String) -> String? {
 // systemctl(1) show-environment: the service manager's own environment, `NAME=value` per line,
 // which every unit it starts inherits beneath the unit's Environment= and EnvironmentFile=.
 fn systemctl_show_environment_command() -> ArgvCommand {
-  argv_command(program: systemctl_binary_path(), arguments: ["show-environment"])
+  argv_command(program: systemctl_absolute_program, arguments: ["show-environment"])
 }
 
 // THE VERSION THRESHOLD IS THE CITED UPSTREAM FACT, MODELED RATHER THAN LEFT IN PROSE. It sat in the
@@ -744,12 +755,6 @@ service systemd.Systemctl {
   }
 }
 
-// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
-// on have not been observed by this repository, and sudo resolves the command through its own
-// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
-// consumer -- the NOPASSWD rules that name it.
-data systemctl_program: NonEmptyStr = "systemctl"
-
 // ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
 // contradiction and is not. That split exists because the user-scope consumer converges the two
 // facts separately and observes them separately. This builder serves a different consumer: runner
@@ -776,14 +781,14 @@ data systemctl_program: NonEmptyStr = "systemctl"
 // `systemd-run --user` needs. `is-system-running` would not serve: it exits non-zero on a `degraded`
 // manager that is perfectly reachable. PATH-resolved, because the invoking host is unobserved.
 fn systemctl_user_manager_probe_command() -> ArgvCommand {
-  argv_command(program: "systemctl" as NonEmptyStr, arguments: ["--user", "show-environment"])
+  argv_command(program: systemctl_path_resolved_program, arguments: ["--user", "show-environment"])
 }
 
 fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
   argv_command(
-    program: sudo_binary_path,
+    program: sudo_program,
     arguments: append(
-      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      [sudo_non_interactive_flag as String, systemctl_path_resolved_program.invocation as String, "enable", "--now"],
       items: units,
     ),
   )

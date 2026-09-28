@@ -1,6 +1,6 @@
 module gunbc.roadmap_dashboard_instance
 
-import extdeps.tools.env { env_binary_path }
+import extdeps.tools.env { env_absolute_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.measure { ByteSize }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
@@ -283,7 +283,7 @@ data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc
 // layer inversion sitting underneath the nickname. extdeps.tools.env owns the fact now; the name
 // survives here because the binding surface reads better for it, and because a name that resolves
 // to the authority is not a fork.
-data dashboard_environment_binding_executable: FilePath = env_binary_path as String as FilePath
+data dashboard_environment_binding_executable: FilePath = env_absolute_program.invocation as String as FilePath
 
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath

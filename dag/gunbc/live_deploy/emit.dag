@@ -1800,10 +1800,10 @@ fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServi
 // see it: one "$( ... )" at the caller rather than parentheses buried in a join.
 fn approval_broker_tree_digest_expr(root: String) -> String {
   join([
-    "cd ", root, " && ", find_program as String, " ", join(approval_broker_tree_subdirs, " "),
+    "cd ", root, " && ", find_program.invocation as String, " ", join(approval_broker_tree_subdirs, " "),
     " -type f -print0 | ", sort_program as String, " -z | ",
-    xargs_program as String, " -0 ", sha256sum_program as String, " | ",
-    sha256sum_program as String, " | ", cut_program as String, " -d' ' -f1",
+    xargs_program as String, " -0 ", sha256sum_program.invocation as String, " | ",
+    sha256sum_program.invocation as String, " | ", cut_program as String, " -d' ' -f1",
   ], "")
 }
 
@@ -1865,18 +1865,18 @@ fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<Pipel
 // medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
 fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type d -print0) | ",
+    "(cd \"$PWD\" && ", find_program.invocation as String, " ", src_sub, " -type d -print0) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
+      install_program.invocation as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
     ]), " "), " ", root, "/{}",
   ], "")
 }
 
 fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
-    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    "(cd \"$PWD\" && ", find_program.invocation as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+      install_program.invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
     ]), " "), " \"$PWD\"/{} ", root, "/{}",
   ], "")
 }
@@ -1988,10 +1988,10 @@ fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: 
 // into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
 fn release_locus_tree_receipt_step(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: join([
-    printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+    printf_program.invocation as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
     "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
-    " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
+    " | ", join(sudo_elevate_argv(command: [install_program.invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
       approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
   ], ""))
 }
@@ -2059,10 +2059,10 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
       dest: microvm_controller_jailer_binary(release_dir: dir),
     )),
     deploy_raw(command: join([
-      sha256sum_program as String, " ",
+      sha256sum_program.invocation as String, " ",
       microvm_controller_vmm_binary(release_dir: dir), " ",
       microvm_controller_jailer_binary(release_dir: dir),
-      " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
+      " | ", join(sudo_elevate_argv(command: [install_program.invocation as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
         microvm_controller_vmm_receipt_path(revision: revision)]), " "),
     ], "")),
   ]
@@ -2309,7 +2309,7 @@ fn path_ancestors_inclusive(path: String) -> List<String> {
 fn helper_snapshot_find_intent(roots: List<String>, top_only: Bool, owner: Node) -> Node {
   bash_build_command_with_words(words: concat(
     concat(
-      [bash_build_word_lit(text: find_program as String)],
+      [bash_build_word_lit(text: find_program.invocation as String)],
       map(roots, r => bash_build_word_lit(text: r)),
     ),
     concat(
@@ -2383,7 +2383,7 @@ fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
 fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
   shell_command_text_of_argv(argv: concat(
     [
-      find_program as String, approval_broker_helper_snapshot_base,
+      find_program.invocation as String, approval_broker_helper_snapshot_base,
       "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
       "-exec",
     ],
