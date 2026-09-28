@@ -607,12 +607,14 @@ test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives(
     remaining: 3, capture_path: run.capture_path, pid_path: run.pid_path,
     subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
     password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
   )
   let live_ok = observer_alive(run: run)
   let pending = mtcollins1_boot_await_capture_terminal(
     remaining: 0, capture_path: run.capture_path, pid_path: run.pid_path,
     subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
     password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
   )
   let _stop = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: run.pid_path as NonEmptyStr).success
   let _removed = shell.Remove.RecursiveForce(path: dir)
