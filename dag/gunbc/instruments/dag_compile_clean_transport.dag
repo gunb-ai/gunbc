@@ -9,7 +9,7 @@ import gunbc.ci_gate { GateReceipt }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectFailure, ExpectSuccess }
 import std.logic { Bool }
-import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
+import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence, subject_evidence_establishes }
 import tools.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
@@ -222,7 +222,7 @@ fn run_perturb_fixture_green_receipt() -> SubjectEvidence<WitnessBinRefusal, Boo
   )
 }
 
-fn run_cross_tree_import_green_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
+fn run_cross_tree_import_green_receipt_evidence() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_cross_tree_green.dag",
     source: cross_tree_green_module_source,
@@ -230,7 +230,7 @@ fn run_cross_tree_import_green_receipt() -> SubjectEvidence<WitnessBinRefusal, B
   )
 }
 
-fn run_dag_shell_primary_precedence_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
+fn run_dag_shell_primary_precedence_receipt_evidence() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   dcc_perturb_compile_expecting(
     module_file: "_perturb_compile_clean_dag_shell_primary.dag",
     source: dag_shell_primary_module_source,
@@ -238,3 +238,16 @@ fn run_dag_shell_primary_precedence_receipt() -> SubjectEvidence<WitnessBinRefus
   )
 }
 
+// The two corpus-grain claims (test.claim.long.dag_compile_clean_perturb_corpus) keep a Bool
+// surface that asserts the EvidenceSubjectCompleted arm through subject_evidence_establishes, so
+// an unready compiler still cannot read as a green; the typed evidence is the _evidence fn above.
+// Their claim file is left unedited because it has no executing route at all (dark cadence,
+// censused PremiseInvalidated in gunbc.deleted_cadence_reference_census), and editing it would
+// plan two claims the hermetic floor cannot reach.
+fn run_cross_tree_import_green_receipt() -> Bool {
+  subject_evidence_establishes(evidence: run_cross_tree_import_green_receipt_evidence(), licenses: fn(held) { held })
+}
+
+fn run_dag_shell_primary_precedence_receipt() -> Bool {
+  subject_evidence_establishes(evidence: run_dag_shell_primary_precedence_receipt_evidence(), licenses: fn(held) { held })
+}
