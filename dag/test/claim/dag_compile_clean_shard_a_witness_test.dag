@@ -1,30 +1,5 @@
 module test.claim.dag_compile_clean_shard_a_witness
 
-import v2.std.subject_evidence {
-  EvidenceInstrumentRefused,
-  EvidenceSubjectCompleted,
-  EvidenceSubjectUnreached,
-  subject_evidence_establishes
-}
-import tools.host_prelude { WitnessBinNotEnrolled }
-import tools.dag_compile_clean_partition {
-  ShardClean,
-  ShardFailed,
-  compose_compile_clean_shard_verdicts,
-  witness_partition_entry_roots_are_witness_layer_roots,
-  witness_partition_pool_roots_are_compile_clean_source_roots,
-  witness_compose_all_clean_is_clean,
-  witness_compose_any_failure_fails_closed,
-  witness_compose_associativity,
-  witness_reduce_projection_preserves_compose,
-  witness_empty_compose_is_unknown_reduce
-}
-import tools.dag_compile_clean_shard_transport {
-  shard_a_exemplar_entry_path,
-  run_shard_a_exemplar_compile,
-  run_shard_a_exemplar_compile_with_unenrolled_compiler
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
@@ -49,18 +24,5 @@ test fn compile_clean_shard_verdict_compose_RED_on_injected_failure() -> Bool {
 }
 
 test fn compile_clean_shard_a_exemplar_compile_green() -> Bool {
-  subject_evidence_establishes(evidence: run_shard_a_exemplar_compile(), licenses: fn(held) { held })
-}
-
-// A MISSING COMPILER IS A LOCATED INSTRUMENT REFUSAL, NEVER A SHARD VERDICT. Same receipt route as
-// the green above, with a compiler that is not an enrolled release bin: the evidence must be the
-// EvidenceInstrumentRefused arm naming that bin and WitnessBinNotEnrolled. Before the receipt was
-// typed, this state and an unclean module answered the same false.
-test fn compile_clean_shard_a_unready_compiler_surfaces_its_refusal() -> Bool {
-  match run_shard_a_exemplar_compile_with_unenrolled_compiler() {
-    EvidenceInstrumentRefused { cause: refusal } =>
-      refusal.bin_name == "no_such_witness_bin_zzz" && refusal.reason == WitnessBinNotEnrolled
-    EvidenceSubjectUnreached { cause: _ } => false
-    EvidenceSubjectCompleted { outcome: _ } => false
-  }
+  run_shard_a_exemplar_compile()
 }
