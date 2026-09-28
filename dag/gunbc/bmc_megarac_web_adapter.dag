@@ -4,6 +4,7 @@ import std.types { Bool, HttpStatus, Int, List }
 import std.string_type { String }
 import std.measure { Second, second_count }
 import v2.std.algebra { contains }
+import v2.std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_bool, json_string, serialize_json }
 import extdeps.bmc.megarac {
   MegaRacLoginSession, megarac_login_session_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
@@ -37,14 +38,21 @@ type MegaRacWebRequest
   | MegaRacWebLogout { token: String }
   | MegaRacWebAdvance { at: Second }
 
-fn megarac_web_request_key(r: MegaRacWebRequest) -> String {
-  match r {
-    MegaRacWebLogin { username: u, password: p } => join(["login", u, p], " ")
-    MegaRacWebServices {} => "services"
-    MegaRacWebConnect { token: t } => concat("connect ", t)
-    MegaRacWebLogout { token: t } => concat("logout ", t)
-    MegaRacWebAdvance { at: a } => concat("advance ", to_string(second_count(s: a) as Int))
+// A REQUEST, ENCODED WITH ITS FIELD BOUNDARIES: the operation and its arguments as a JSON object, so
+// ("admin", "pw secret") and ("admin pw", "secret") can never become one row. The transport keys an
+// incoming request by the same structure (operation plus argument list), never by a joined string.
+fn megarac_web_request_json(r: MegaRacWebRequest) -> JsonValue {
+  let op_args = match r {
+    MegaRacWebLogin { username: u, password: p } => ["login", u, p]
+    MegaRacWebServices {} => ["services"]
+    MegaRacWebConnect { token: t } => ["connect", t]
+    MegaRacWebLogout { token: t } => ["logout", t]
+    MegaRacWebAdvance { at: a } => ["advance", to_string(second_count(s: a) as Int)]
   }
+  json_object(members: [
+    json_kv(key: "op", value: json_string(s: match op_args.first() { Present { value: o } => o  Absent => "" })),
+    json_kv(key: "args", value: json_array(elements: map(op_args.skip(n: 1), x => json_string(s: x)))),
+  ])
 }
 
 // The answer a request gets, and the stream the transport must hold after it.
@@ -138,7 +146,7 @@ fn megarac_web_alphabet(world: BmcWorld, credentials: List<MegaRacWebRequest>) -
 
 type MegaRacWebRow {
   from: String
-  key: String
+  request: MegaRacWebRequest
   answer: MegaRacWebAnswer
   to: String
 }
@@ -154,7 +162,7 @@ fn megarac_web_explore_world(acc: MegaRacWebExploration, world: BmcWorld, creden
   fold(megarac_web_alphabet(world: world, credentials: credentials), acc, (a, r) => {
     let step = megarac_web_step(world: world, request: r, extended_privilege: extended_privilege)
     let to = megarac_web_world_text(world: step.world)
-    let row = MegaRacWebRow { from: from, key: megarac_web_request_key(r: r), answer: step.answer, to: to }
+    let row = MegaRacWebRow { from: from, request: r, answer: step.answer, to: to }
     if contains(xs: a.seen, item: to, eq: (x, y) => x == y) {
       MegaRacWebExploration { frontier: a.frontier, seen: a.seen, rows: a.rows.concat([row]) }
     } else {
@@ -185,7 +193,8 @@ data megarac_web_exploration_depth: Int = 6
 // in that change beside their consumers; this module stays pure.
 //
 // THE TABLE THE TRANSPORT ENFORCES, as one JSON document: the initial world, the canvas flag, the
-// /kvm path, and one row per (world, request): from, key, status, stream_open, to, body.
+// /kvm path, and one row per (world, request): from, the structured request, status, stream_open, to,
+// body. The transport refuses a table in which two rows share a (world, request).
 fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebRequest>, extended_privilege: Int, depth: Int) -> String {
   let start = megarac_web_world_text(world: initial)
   let rows = megarac_web_explore(frontier: [initial], seen: [start], rows: [], depth: depth, credentials: credentials, extended_privilege: extended_privilege)
@@ -195,7 +204,7 @@ fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebR
     json_kv(key: "kvm_path", value: json_string(s: megarac_kvm_websocket_path as String)),
     json_kv(key: "rows", value: json_array(elements: map(rows, r => json_object(members: [
       json_kv(key: "from", value: json_string(s: r.from)),
-      json_kv(key: "key", value: json_string(s: r.key)),
+      json_kv(key: "request", value: megarac_web_request_json(r: r.request)),
       json_kv(key: "status", value: json_int(n: r.answer.status as Int)),
       json_kv(key: "stream_open", value: json_bool(b: r.answer.stream_open)),
       json_kv(key: "to", value: json_string(s: r.to)),
