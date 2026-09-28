@@ -173,3 +173,22 @@ test fn a_writer_refusal_crosses_the_wire_as_its_arm() -> Bool {
   }
   absent && unrostered && trailing
 }
+
+// A WRITER REFUSAL CROSSES THE WIRE AS ITS ARM: no login presented stays absent, and an unrostered
+// login stays that login -- the caller tells the two cases apart by the arm, never by parsing prose.
+// A trailing word on either is undecodable.
+test fn a_writer_refusal_crosses_the_wire_as_its_arm() -> Bool {
+  let absent = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterLoginAbsent } })) {
+    FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterLoginAbsent => true  _ => false }  _ => false }
+    _ => false
+  }
+  let unrostered = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterLoginUnrostered { login: "stranger@example.ts.net" as NonEmptyStr } } })) {
+    FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterLoginUnrostered { login: l } => (l as String) == "stranger@example.ts.net"  _ => false }  _ => false }
+    _ => false
+  }
+  let trailing = match fabric_storage_unwire_put(text: "fabric_storage/1 put refused writer-login a b") {
+    FabricPutRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    _ => false
+  }
+  absent && unrostered && trailing
+}

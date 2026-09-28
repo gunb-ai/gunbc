@@ -995,8 +995,25 @@ impl Value {
     }
 }
 
+// TEST-ONLY WORK OBSERVATION: how many times structural equality ran. The memo's verification
+// equality (`value_fast_eq`) is a cost contract, not only a result contract -- a top-level-only
+// shortcut followed by `==` returns the same answers while walking every shared part -- so its
+// control must observe the WORK, and this counter is that observation. Compiled only under
+// cfg(test): production equality pays nothing.
+#[cfg(test)]
+thread_local! {
+    static VALUE_EQ_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn value_eq_calls() -> u64 {
+    VALUE_EQ_CALLS.with(|c| c.get())
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        #[cfg(test)]
+        VALUE_EQ_CALLS.with(|c| c.set(c.get() + 1));
         match (self, other) {
             (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
@@ -8887,7 +8904,7 @@ fn eval_recompute_str_hash(s: &str) -> u64 {
 }
 
 fn eval_recompute_mix(seed: u64, x: u64) -> u64 {
-    (seed.rotate_left(5) ^ x).wrapping_mul(0x100000001b3)
+    (seed.rotate_left(5) ^ x).wrapping_mul(EVAL_RECOMPUTE_MIX_PRIME)
 }
 
 fn eval_recompute_canon_key_hash(k: &CanonKey) -> u64 {
@@ -8997,7 +9014,7 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             }
         }
         EvalRecomputeFrameKind::Map { rc, .. } => {
-            let vh = eval_recompute_mix(0xA5A5_0090, h);
+            let vh = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, h);
             memo.insert(
                 Rc::as_ptr(&rc) as usize,
                 (CompositeWeak::Map(Rc::downgrade(&rc)), vh),
@@ -9235,6 +9252,80 @@ fn eval_recompute_extend_push_hash(
             eval_recompute_mix(parent_h, item_h),
         ),
     );
+}
+
+/// THE INSERT CONSTRUCTOR CARRIES THE MAP KEY FORWARD, exactly as the push constructor carries the
+/// list key (`eval_recompute_extend_push_hash`, #12066). The map content hash is an order-independent
+/// wrapping sum of `mix(key_hash, value_hash)` over its entries, finalized once by
+/// `mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum)`; `mix` multiplies by an odd constant, so the finalizer
+/// is invertible and the parent's sum is recovered from its memoized hash. An insert of a new key
+/// adds one term; an overwrite also subtracts the replaced entry's term. So
+/// `hash(insert(m, k, v))` is derived in O(1) plus the hash of `v` (and of the replaced value),
+/// never by re-walking `m`. A threaded accumulator map rebuilt per step -- 02_parse's `ParseTable`
+/// memo map, a new `Rc` after every insert -- otherwise missed the identity memo on every call and
+/// was rehashed whole: O(n) per call, O(n^2) per parse. The failing link is key derivation, not
+/// admission (#12066's ruling), so no recurrence criterion is added.
+///
+/// DEMAND-GATED like the push extension: only a parent whose hash a key derivation already paid for
+/// is extended. A Closure key or value bails and leaves the child unmemoized, so the ordinary
+/// derivation refuses it. Serving still verifies argument equality (`eval_call_memo_args_match`), so
+/// a hash collision recomputes rather than serves a wrong value.
+fn eval_recompute_extend_insert_hash(
+    ctx: &InterpContext,
+    parent: &Rc<HamtMap<CanonKey, Value>>,
+    key: &CanonKey,
+    value: &Value,
+    inserted: &Value,
+) {
+    let Value::Map(child) = inserted else { return };
+    let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
+        return;
+    };
+    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
+        Some((w, h)) if w.alive() => *h,
+        _ => return,
+    };
+    let interner = ctx.symbols.borrow();
+    let key_h = eval_recompute_canon_key_hash(key);
+    let mut sum = eval_recompute_map_sum_from_hash(parent_h);
+    if let Some(replaced) = parent.get(key) {
+        let Some(replaced_h) = eval_recompute_value_hash(&mut memo, &interner, replaced) else {
+            return;
+        };
+        sum = sum.wrapping_sub(eval_recompute_mix(key_h, replaced_h));
+    }
+    let Some(value_h) = eval_recompute_value_hash(&mut memo, &interner, value) else {
+        return;
+    };
+    sum = sum.wrapping_add(eval_recompute_mix(key_h, value_h));
+    memo.insert(
+        Rc::as_ptr(child) as usize,
+        (
+            CompositeWeak::Map(Rc::downgrade(child)),
+            eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum),
+        ),
+    );
+}
+
+const EVAL_RECOMPUTE_MIX_PRIME: u64 = 0x100000001b3;
+const EVAL_RECOMPUTE_MAP_FINAL_SEED: u64 = 0xA5A5_0090;
+
+/// The multiplicative inverse of `EVAL_RECOMPUTE_MIX_PRIME` mod 2^64 (Newton iteration; the prime is
+/// odd, so it exists and five doublings of precision reach 64 bits).
+const fn eval_recompute_mix_prime_inverse() -> u64 {
+    let mut inv = EVAL_RECOMPUTE_MIX_PRIME;
+    let mut i = 0;
+    while i < 6 {
+        inv = inv.wrapping_mul(2u64.wrapping_sub(EVAL_RECOMPUTE_MIX_PRIME.wrapping_mul(inv)));
+        i += 1;
+    }
+    inv
+}
+
+/// Inverse of the map finalizer: recovers the entry sum from a finalized map hash.
+fn eval_recompute_map_sum_from_hash(h: u64) -> u64 {
+    h.wrapping_mul(eval_recompute_mix_prime_inverse())
+        ^ EVAL_RECOMPUTE_MAP_FINAL_SEED.rotate_left(5)
 }
 
 fn eval_recompute_arg_key(
@@ -10049,43 +10140,6 @@ pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
     out
 }
 
-// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path lands in the receipt
-// by construction — harvest is not a per-call-site discipline a future site could forget.
-// Sums at the totals grain only: raw ledger keys are address-based and single-ctx.
-static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
-    std::sync::Mutex::new(None);
-
-/// Drain the process-wide ledger totals (e.g. to write a receipt file at the
-/// end of a floor walk). Returns zeroed totals when tracing was disabled.
-pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
-    // A poisoned lock still holds structurally valid totals (absorb is
-    // add-only), so recover the data rather than silently returning zeroes.
-    PROCESS_EVAL_RECOMPUTE_TOTALS
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take()
-        .unwrap_or_default()
-}
-
-impl Drop for InterpContext {
-    fn drop(&mut self) {
-        if !eval_recompute_trace_enabled() {
-            return;
-        }
-        let totals = eval_recompute_totals(self);
-        if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
-            return;
-        }
-        // Recover a poisoned lock rather than dropping this ctx's contribution
-        // without a trace — absorb is add-only, so the state stays valid.
-        let mut g = PROCESS_EVAL_RECOMPUTE_TOTALS
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        g.get_or_insert_with(EvalRecomputeTotals::default)
-            .absorb(&totals);
-    }
-}
-
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
@@ -10098,15 +10152,62 @@ fn value_rc_identity(v: &Value) -> Option<usize> {
     }
 }
 
-// Same-allocation composites are equal without a walk; everything else takes
-// the full structural equality (Value::eq, the one equality authority).
+// Same-allocation composites are equal without a walk AT EVERY LEVEL; everything else takes the
+// structural equality of Value::eq (the one equality authority), arm for arm.
+//
+// THE SHORTCUT MUST RECURSE, because a persistent value is rebuilt around shared parts. A threaded
+// record (02_parse's ParseTable) is a NEW fields allocation after every rebuild while its large
+// parts -- the memo entries map, the carried grammar analysis -- are the SAME allocations. A
+// top-level-only shortcut missed on the rebuilt record and fell into Value::eq, which walked every
+// shared part in full: verifying one served hit cost O(|table|), and the parse's repeated
+// equal-content calls made verification quadratic in list length (the #12377 blocker). Descending
+// to the first differing allocation keeps the verification O(changed structure).
+//
+// The shortcut agrees with Value::eq except where Value::eq is not reflexive (a NaN inside an
+// allocation): there one allocation is still one value, and a pure call over it has one result,
+// which is the only thing a memo verification decides. The top-level shortcut already made that
+// disposition; recursing does not widen it.
 fn value_fast_eq(a: &Value, b: &Value) -> bool {
     if let (Some(x), Some(y)) = (value_rc_identity(a), value_rc_identity(b)) {
         if x == y {
             return true;
         }
     }
-    a == b
+    match (a, b) {
+        (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
+            value_fields_fast_eq(af, bf)
+        }
+        (
+            Value::Variant {
+                type_name: at,
+                variant_name: av,
+                fields: af,
+            },
+            Value::Variant {
+                type_name: bt,
+                variant_name: bv,
+                fields: bf,
+            },
+        ) => at == bt && av == bv && value_fields_fast_eq(af, bf),
+        (Value::List(xs), Value::List(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys.iter()).all(|(x, y)| value_fast_eq(x, y))
+        }
+        (Value::Map(xm), Value::Map(ym)) => {
+            xm.len() == ym.len()
+                && xm
+                    .iter()
+                    .all(|(k, v)| ym.get(k).is_some_and(|w| value_fast_eq(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
+fn value_fields_fast_eq(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> bool {
+    af.len() == bf.len()
+        && af
+            .iter()
+            .zip(bf.iter())
+            .all(|((an, av), (bn, bv))| an == bn && value_fast_eq(av, bv))
 }
 
 // A stored call matches only when argument NAMES and values both agree —
@@ -11580,7 +11681,9 @@ macro_rules! v1_algebra_method_arms {
                 let mut counters = $ctx.mutation_counters.borrow_mut();
                 counters.map_insert_calls += 1;
                 drop(counters);
-                Ok(map_value(m.update(ck, val)))
+                let inserted = map_value(m.update(ck.clone(), val.clone()));
+                eval_recompute_extend_insert_hash($ctx, &m, &ck, &val, &inserted);
+                Ok(inserted)
             },
 
             arm "method_call.merge" { "merge" } => {
@@ -20473,7 +20576,9 @@ macro_rules! v1_builtin_arms {
                         let mut counters = $ctx.mutation_counters.borrow_mut();
                         counters.map_insert_calls += 1;
                         drop(counters);
-                        Ok(Some(map_value(m.update(ck, (*v).clone()))))
+                        let inserted = map_value(m.update(ck.clone(), (*v).clone()));
+                        eval_recompute_extend_insert_hash($ctx, m, &ck, v, &inserted);
+                        Ok(Some(inserted))
                     }
                     None => Err(InterpError::TypeError {
                         msg: format!(
@@ -26042,6 +26147,185 @@ mod push_hash_extension_tests {
                 .map(|(_, h)| *h)
                 .expect("a keyed lineage is extended on push");
             assert_eq!(served, full_fold_hash(&ctx, &acc));
+        }
+    }
+
+    /// THROUGH THE PRODUCTION ARMS: even `i` is the free `map_insert` (`eval_builtin`), odd is the
+    /// method `insert`, so deleting the extension from either arm turns the property red.
+    fn insert(
+        ctx: &InterpContext,
+        m: &Rc<HamtMap<CanonKey, Value>>,
+        k: Value,
+        v: Value,
+        i: u64,
+    ) -> Value {
+        let receiver = Value::Map(m.clone());
+        if i % 2 == 0 {
+            eval_builtin("map_insert", &[(None, receiver), (None, k), (None, v)], ctx)
+                .expect("free map_insert evaluates")
+                .expect("free map_insert is a builtin")
+        } else {
+            eval_algebra_method_inner("insert", receiver, &[k, v], &Env::empty(), ctx)
+                .expect("method insert evaluates")
+        }
+    }
+
+    /// The derived map key equals the from-scratch fold over a randomized sequence of inserts and
+    /// overwrites (a small key space forces overwrites; values mix scalars, strings and composites),
+    /// and an unkeyed parent is never extended.
+    #[test]
+    fn inserted_map_hash_is_the_full_fold_under_insert_and_overwrite() {
+        let ctx = test_ctx();
+        let empty = Value::Map(Rc::new(HamtMap::new()));
+        let Value::Map(rc0) = empty.clone() else {
+            unreachable!()
+        };
+        let child = insert(&ctx, &rc0, Value::Int(1), Value::Int(1), 0);
+        let Value::Map(child_rc) = &child else {
+            unreachable!()
+        };
+        assert!(ctx
+            .eval_recompute_hash_memo
+            .borrow()
+            .get(&(Rc::as_ptr(child_rc) as usize))
+            .is_none());
+        let mut acc = empty;
+        {
+            let mut m = ctx.eval_recompute_hash_memo.borrow_mut();
+            eval_recompute_value_hash(&mut m, &ctx.symbols.borrow(), &acc).unwrap();
+        }
+        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut overwrites = 0;
+        for i in 0..256u64 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let r = seed >> 33;
+            let key = if r % 5 == 0 {
+                str_value(format!("k{}", r % 7))
+            } else {
+                Value::Int((r % 16) as i64)
+            };
+            let value = match r % 3 {
+                0 => Value::Int(r as i64),
+                1 => str_value(format!("v{r}")),
+                _ => list_value(vec![Value::Int(i as i64), str_value(format!("c{r}"))]),
+            };
+            let Value::Map(rc) = acc.clone() else {
+                unreachable!()
+            };
+            if rc.contains_key(&CanonKey::new(key.clone()).expect("key")) {
+                overwrites += 1;
+            }
+            acc = insert(&ctx, &rc, key, value, i);
+            let Value::Map(now) = &acc else {
+                unreachable!()
+            };
+            let served = ctx
+                .eval_recompute_hash_memo
+                .borrow()
+                .get(&(Rc::as_ptr(now) as usize))
+                .map(|(_, h)| *h)
+                .expect("a keyed lineage is extended on insert");
+            assert_eq!(served, full_fold_hash(&ctx, &acc), "step {i}");
+        }
+        assert!(
+            overwrites > 32,
+            "the sequence must exercise overwrite: {overwrites}"
+        );
+    }
+
+    fn record(ctx: &InterpContext, fields: Vec<(&str, Value)>) -> Value {
+        Value::Record {
+            type_name: ctx.sym("T"),
+            fields: Rc::new(fields.into_iter().map(|(n, v)| (ctx.sym(n), v)).collect()),
+        }
+    }
+
+    /// The memo's verification equality agrees with Value::eq, the equality authority, on values
+    /// that share nothing, AND on records rebuilt around shared parts -- the ParseTable shape: a
+    /// new fields allocation whose large map field is the same allocation. The shared case must
+    /// decide equality and inequality alike (a differing small field beside a shared large one is
+    /// unequal), so the recursion cannot degrade into "shares a part, therefore equal".
+    #[test]
+    fn memo_verification_equality_agrees_with_value_eq_and_descends_to_sharing() {
+        let ctx = test_ctx();
+        let mut big = HamtMap::new();
+        for i in 0..512 {
+            big.insert(
+                CanonKey::new(Value::Int(i)).expect("key"),
+                list_value(vec![Value::Int(i), str_value(format!("e{i}"))]),
+            );
+        }
+        let shared = Value::Map(Rc::new(big));
+        let t1 = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(1))],
+        );
+        let t1_rebuilt = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(1))],
+        );
+        let t2_rebuilt = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(2))],
+        );
+        // WORK: two records rebuilt around the SAME 512-entry map must be compared in O(changed)
+        // structural-equality calls (the one small field), never by walking the shared map. A
+        // top-level-only shortcut followed by `==` returns the same answer and fails here: the
+        // derived walk recurses into every entry.
+        for other in [&t1_rebuilt, &t2_rebuilt] {
+            let before = value_eq_calls();
+            let _ = value_fast_eq(&t1, other);
+            let work = value_eq_calls() - before;
+            assert!(
+                work <= 4,
+                "verification walked shared structure: {work} Value::eq calls"
+            );
+        }
+        assert!(value_fast_eq(&t1, &t1_rebuilt));
+        assert_eq!(value_fast_eq(&t1, &t1_rebuilt), t1 == t1_rebuilt);
+        assert!(!value_fast_eq(&t1, &t2_rebuilt));
+        assert_eq!(value_fast_eq(&t1, &t2_rebuilt), t1 == t2_rebuilt);
+        // Unshared, deep: a copy equal by content and a copy differing in one nested element.
+        let deep = |last: i64| {
+            let mut m = HamtMap::new();
+            for i in 0..64 {
+                let tail = if i == 63 { last } else { i };
+                m.insert(
+                    CanonKey::new(Value::Int(i)).expect("key"),
+                    list_value(vec![Value::Int(tail), str_value(format!("d{i}"))]),
+                );
+            }
+            record(
+                &ctx,
+                vec![("entries", Value::Map(Rc::new(m))), ("hits", Value::Int(0))],
+            )
+        };
+        let (a, b, c) = (deep(63), deep(63), deep(-1));
+        assert_eq!(value_fast_eq(&a, &b), a == b);
+        assert!(value_fast_eq(&a, &b));
+        assert_eq!(value_fast_eq(&a, &c), a == c);
+        assert!(!value_fast_eq(&a, &c));
+        let v1 = Value::Variant {
+            type_name: ctx.sym("V"),
+            variant_name: ctx.sym("A"),
+            fields: Rc::new(vec![(ctx.sym("x"), shared.clone())]),
+        };
+        let v2 = Value::Variant {
+            type_name: ctx.sym("V"),
+            variant_name: ctx.sym("B"),
+            fields: Rc::new(vec![(ctx.sym("x"), shared)]),
+        };
+        assert_eq!(value_fast_eq(&v1, &v2), v1 == v2);
+        assert!(!value_fast_eq(&v1, &v2));
+    }
+
+    #[test]
+    fn map_finalizer_inverse_recovers_the_sum() {
+        for sum in [0u64, 1, 0xDEAD_BEEF, u64::MAX, 0x1234_5678_9ABC_DEF0] {
+            let h = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum);
+            assert_eq!(eval_recompute_map_sum_from_hash(h), sum);
         }
     }
 }
