@@ -16,6 +16,7 @@ import extdeps.github.workflow_run_event {
   WorkflowRunEventMemberMalformed, WorkflowRunEventMalformed, WorkflowRunEventPayloadReadRefused
 }
 import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type }
+import extdeps.github.github { Repository }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
@@ -53,6 +54,25 @@ data heal_publication_candidate_directory_env: NonEmptyStr = "HEAL_CANDIDATE_DIR
 data github_event_path_env_name: NonEmptyStr = "GITHUB_EVENT_PATH"
 
 data heal_publication_receipt_path: String = "target/heal-publication-receipt.txt"
+
+// WHICH REPOSITORY IS PUBLISHED TO, WHICH RUN MAY HAVE PRODUCED THE CANDIDATE, AND WHICH PATHS ARE
+// PUBLISHABLE, AS ONE RECORD. The boundary (gunbc.heal_publication_boundary) already takes all three
+// as observations; this module used to fill them from the public repository alone. gunbc-private's
+// publisher runs this same transaction over its own record, so the admission and the writes are one
+// protocol and the repositories differ only in the facts named here.
+type HealPublicationSubject {
+  repository: Repository
+  candidate_producer_workflow_path: String
+  committed_artifact_paths: List<String>
+}
+
+fn public_heal_publication_subject() -> HealPublicationSubject {
+  HealPublicationSubject {
+    repository: gunbc_repository,
+    candidate_producer_workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+    committed_artifact_paths: committed_generated_artifact_paths(),
+  }
+}
 
 // ── Observation ─────────────────────────────────────────────────────────────────────────────
 
@@ -132,7 +152,7 @@ fn event_refusal_message(kind: String, detail: String) -> String {
 // OBSERVE, THEN ADMIT. The two addressing checks here -- a head ref that cannot reach a REST path
 // intact, and a candidate that did not decode -- stop before any request is made with a value the
 // candidate chose; everything else is decided by admit_heal_publication over the full observation.
-fn observe_and_admit_wet() -> PublisherRun
+fn observe_and_admit_wet(subject: HealPublicationSubject) -> PublisherRun
 {
   match env_value(name: heal_publication_candidate_directory_env) {
     Absent => PublisherRunRefused { cause: "HealPublicationContextUnreadable: HEAL_CANDIDATE_DIRECTORY is not set" }
@@ -162,6 +182,7 @@ fn observe_and_admit_wet() -> PublisherRun
                       }
                     } else {
                       observe_candidate_world_wet(
+                        subject: subject,
                         directory: directory,
                         candidate: candidate,
                         run: TriggeringRunFacts {
@@ -201,10 +222,10 @@ fn rest_outcome_ok(o: RestOutcome) -> Bool {
   }
 }
 
-fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate, run: TriggeringRunFacts) -> PublisherRun
+fn observe_candidate_world_wet(subject: HealPublicationSubject, directory: String, candidate: HealRepairCandidate, run: TriggeringRunFacts) -> PublisherRun
 {
-  let owner = gunbc_repository.owner as String
-  let repo = gunbc_repository.name as String
+  let owner = subject.repository.owner
+  let repo = subject.repository.name
   let pr = github.Pulls.Get(auth_token: "", owner: owner, repo: repo, pull_number: candidate.pull_number)
   let branch = github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", candidate.head_ref as String))
   if !rest_outcome_ok(o: branch.outcome) {
@@ -226,9 +247,9 @@ fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate
       } else {
         let reads = map(candidate.entries, e => read_candidate_blob(directory: directory, blob_hex: git_object_id_wire_hex(oid: e.proposed_blob) as String))
         let observations = PublisherObservations {
-          repository_full_name: gunbc_repository.full_name as NonEmptyStr,
-          default_branch: gunbc_repository.default_branch as NonEmptyStr,
-          candidate_producer_workflow_path: artifact_path(a: WitnessFloorYamlArtifact) as NonEmptyStr,
+          repository_full_name: subject.repository.full_name as NonEmptyStr,
+          default_branch: subject.repository.default_branch as NonEmptyStr,
+          candidate_producer_workflow_path: subject.candidate_producer_workflow_path as NonEmptyStr,
           run: run,
           pull_request: PullRequestFacts {
             number: pr.pr.number,
@@ -245,7 +266,7 @@ fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate
         match admit_heal_publication(
           candidate: candidate,
           observations: observations,
-          policy: publisher_path_policy(committed_artifact_paths: committed_generated_artifact_paths())
+          policy: publisher_path_policy(committed_artifact_paths: subject.committed_artifact_paths)
         ) {
           HealPublicationRefused { refusal } =>
             PublisherRunRefused { cause: refusal_line(refusal: refusal) }
@@ -261,7 +282,12 @@ fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate
 
 fn heal_publication_admit_wet() -> ProcessExit
 {
-  match observe_and_admit_wet() {
+  heal_publication_admit_for(subject: public_heal_publication_subject())
+}
+
+fn heal_publication_admit_for(subject: HealPublicationSubject) -> ProcessExit
+{
+  match observe_and_admit_wet(subject: subject) {
     PublisherRunRefused { cause } => exit_failure(reason: cause)
     PublisherRunNothingToPublish => ExitSuccess
     PublisherRunAdmitted { admitted: _, blobs: _ } => ExitSuccess
@@ -281,7 +307,7 @@ fn content_for(blobs: List<ObservedBlobContent>, blob_hex: String) -> String? {
   }
 }
 
-fn write_blob_wet(entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> BlobWrites
+fn write_blob_wet(subject: HealPublicationSubject, entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> BlobWrites
 {
   let path = entry.path.value as String
   let hex = git_object_id_wire_hex(oid: entry.blob) as String
@@ -289,7 +315,7 @@ fn write_blob_wet(entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> Blo
     Absent => BlobWritesRefused { refusal: BlobWriteRefused { path: path, detail: "the admitted blob's bytes were not retained" } }
     Present { value: content } => {
       let created = github.GitDatabase.CreateBlob(
-        auth_token: "", owner: gunbc_repository.owner as String, repo: gunbc_repository.name as String,
+        auth_token: "", owner: subject.repository.owner, repo: subject.repository.name,
         content: content, encoding: git_blob_encoding_utf8
       )
       if !rest_outcome_ok(o: created.outcome) {
@@ -303,12 +329,12 @@ fn write_blob_wet(entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> Blo
   }
 }
 
-fn write_blobs_wet(admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> BlobWrites
+fn write_blobs_wet(subject: HealPublicationSubject, admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> BlobWrites
 {
   fold(admitted.entries, init: BlobsWritten, f: fn(acc, e) {
     match acc {
       BlobWritesRefused { refusal } => BlobWritesRefused { refusal: refusal }
-      BlobsWritten => write_blob_wet(entry: e, blobs: blobs)
+      BlobsWritten => write_blob_wet(subject: subject, entry: e, blobs: blobs)
     }
   })
 }
@@ -350,11 +376,11 @@ fn receipt_text(r: HealPublicationReceipt) -> String {
 // is not a fast-forward, which after an admission against the expected head is exactly a branch that
 // moved in between; any other refusal is a refusal of a different kind. A 5xx is ambiguous about
 // whether the write landed, so it is not a refusal at all: the readback decides.
-fn publish_admitted_wet(admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> ProcessExit
+fn publish_admitted_wet(subject: HealPublicationSubject, admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> ProcessExit
 {
-  let owner = gunbc_repository.owner as String
-  let repo = gunbc_repository.name as String
-  match write_blobs_wet(admitted: admitted, blobs: blobs) {
+  let owner = subject.repository.owner
+  let repo = subject.repository.name
+  match write_blobs_wet(subject: subject, admitted: admitted, blobs: blobs) {
     BlobWritesRefused { refusal } => refused_exit(refusal: refusal)
     BlobsWritten => {
       let tree = github.GitDatabase.CreateTree(
@@ -384,13 +410,13 @@ fn publish_admitted_wet(admitted: AdmittedHealPublication, blobs: List<ObservedB
               if (status as Int) == 422 {
                 refused_exit(refusal: ReferenceNotFastForward { detail: body })
               } else if (status as Int) >= 500 {
-                readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+                readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
               } else {
                 refused_exit(refusal: ReferenceWriteRefused { detail: rest_outcome_text(o: updated.outcome) })
               }
-            RestTransportRefused { cause: _ } => readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-            RestBodyUndecodable { status: _, cause: _ } => readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
-            RestOk => readback_wet(admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+            RestTransportRefused { cause: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+            RestBodyUndecodable { status: _, cause: _ } => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
+            RestOk => readback_wet(subject: subject, admitted: admitted, created_commit: commit.commit.sha, created_tree: tree.created.sha)
           }
         }
       }
@@ -398,10 +424,10 @@ fn publish_admitted_wet(admitted: AdmittedHealPublication, blobs: List<ObservedB
   }
 }
 
-fn readback_wet(admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
+fn readback_wet(subject: HealPublicationSubject, admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
 {
-  let owner = gunbc_repository.owner as String
-  let repo = gunbc_repository.name as String
+  let owner = subject.repository.owner
+  let repo = subject.repository.name
   let branch = github.GitDatabase.GetRef(auth_token: "", owner: owner, repo: repo, ref: concat("heads/", admitted.head_ref as String))
   if !rest_outcome_ok(o: branch.outcome) {
     exit_failure(reason: concat("HealPublicationUnverified: the branch could not be read back: ", rest_outcome_text(o: branch.outcome)))
@@ -460,9 +486,14 @@ fn readback_wet(admitted: AdmittedHealPublication, created_commit: String, creat
 
 fn heal_publication_publish_wet() -> ProcessExit
 {
-  match observe_and_admit_wet() {
+  heal_publication_publish_for(subject: public_heal_publication_subject())
+}
+
+fn heal_publication_publish_for(subject: HealPublicationSubject) -> ProcessExit
+{
+  match observe_and_admit_wet(subject: subject) {
     PublisherRunRefused { cause } => exit_failure(reason: cause)
     PublisherRunNothingToPublish => ExitSuccess
-    PublisherRunAdmitted { admitted, blobs } => publish_admitted_wet(admitted: admitted, blobs: blobs)
+    PublisherRunAdmitted { admitted, blobs } => publish_admitted_wet(subject: subject, admitted: admitted, blobs: blobs)
   }
 }

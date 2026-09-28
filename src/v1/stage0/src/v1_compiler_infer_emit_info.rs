@@ -960,73 +960,143 @@ pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
     }
 }
 
-pub fn type_summary_or_structural_alias_reaches_fn(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FnReachRound {
+    pub reached: Rc<BTreeSet<String>>,
+    pub grew: bool,
+}
+
+pub fn fn_reach_holds_directly(
+    name: String,
+    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
+) -> bool {
+    match v1_rt::map_get(&summaries, name.clone()) {
+        Some(s) => s.has_fn_fields.clone(),
+        std::option::Option::None => {
+            v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
+        }
+    }
+}
+
+pub fn fn_reach_targets(
     name: String,
     summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
-    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
-    visited: Rc<BTreeSet<String>>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v1_rt::set_contains(&visited, name.clone()) {
-            false
-        } else {
-            {
-                let v2 = v1_rt::rc_set_insert(visited.clone(), name.clone());
-                match v1_rt::map_get(&summaries, name.clone()) {
-                    Some(s) => {
-                        (s.has_fn_fields.clone() || {
-                            let mut __found = false;
-                            for target in v1_rt::concat(
-                                Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
-                                s.field_import_surface_names.clone(),
-                            )
-                            .iter()
-                            .cloned()
-                            {
-                                if type_summary_or_structural_alias_reaches_fn(
-                                    target.clone(),
-                                    summaries.clone(),
-                                    structural_alias_fn_surface_names.clone(),
-                                    structural_alias_direct_fn_names.clone(),
-                                    v2.clone(),
-                                ) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        })
-                    }
-                    std::option::Option::None => {
-                        (v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
-                            || match v1_rt::map_get(
-                                &structural_alias_fn_surface_names,
-                                name.clone(),
-                            ) {
-                                Some(targets) => {
-                                    let mut __found = false;
-                                    for target in targets.iter().cloned() {
-                                        if type_summary_or_structural_alias_reaches_fn(
-                                            target.clone(),
-                                            summaries.clone(),
-                                            structural_alias_fn_surface_names.clone(),
-                                            structural_alias_direct_fn_names.clone(),
-                                            v2.clone(),
-                                        ) {
-                                            __found = true;
-                                            break;
-                                        }
-                                    }
-                                    __found
-                                }
-                                std::option::Option::None => false,
-                            })
-                    }
-                }
+) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&summaries, name.clone()) {
+        Some(s) => v1_rt::concat(
+            Rc::new(v1_rt::map_values(&s.field_type_map.clone())),
+            s.field_import_surface_names.clone(),
+        ),
+        std::option::Option::None => {
+            match v1_rt::map_get(&structural_alias_fn_surface_names, name.clone()) {
+                Some(targets) => targets.clone(),
+                std::option::Option::None => Rc::new(vec![]),
             }
         }
-    })
+    }
+}
+
+pub fn fn_reaching_names_fixpoint(
+    mut __tco_loop_candidates: Rc<Vec<String>>,
+    mut __tco_loop_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    mut __tco_loop_structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut __tco_loop_structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
+    mut __tco_loop_reached: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut candidates = __tco_loop_candidates;
+        #[allow(unused_mut)]
+        let mut summaries = __tco_loop_summaries;
+        #[allow(unused_mut)]
+        let mut structural_alias_fn_surface_names = __tco_loop_structural_alias_fn_surface_names;
+        #[allow(unused_mut)]
+        let mut structural_alias_direct_fn_names = __tco_loop_structural_alias_direct_fn_names;
+        #[allow(unused_mut)]
+        let mut reached = __tco_loop_reached;
+        let round = candidates.iter().cloned().fold(
+            Rc::new(FnReachRound {
+                reached: reached.clone(),
+                grew: false,
+            }),
+            |acc: Rc<FnReachRound>, name: String| {
+                if v1_rt::set_contains(&acc.reached.clone(), name.clone()) {
+                    acc.clone()
+                } else {
+                    if (fn_reach_holds_directly(
+                        name.clone(),
+                        summaries.clone(),
+                        structural_alias_direct_fn_names.clone(),
+                    ) || {
+                        let mut __found = false;
+                        for target in fn_reach_targets(
+                            name.clone(),
+                            summaries.clone(),
+                            structural_alias_fn_surface_names.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            if (v1_rt::set_contains(&acc.reached.clone(), target.clone())
+                                || fn_reach_holds_directly(
+                                    target.clone(),
+                                    summaries.clone(),
+                                    structural_alias_direct_fn_names.clone(),
+                                ))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) {
+                        Rc::new(FnReachRound {
+                            reached: v1_rt::rc_set_insert(acc.reached.clone(), name.clone()),
+                            grew: true,
+                        })
+                    } else {
+                        acc.clone()
+                    }
+                }
+            },
+        );
+        if round.grew.clone() {
+            {
+                let __tco_0 = candidates;
+                let __tco_1 = summaries;
+                let __tco_2 = structural_alias_fn_surface_names;
+                let __tco_3 = structural_alias_direct_fn_names;
+                let __tco_4 = round.reached.clone();
+                __tco_loop_candidates = __tco_0;
+                __tco_loop_summaries = __tco_1;
+                __tco_loop_structural_alias_fn_surface_names = __tco_2;
+                __tco_loop_structural_alias_direct_fn_names = __tco_3;
+                __tco_loop_reached = __tco_4;
+                continue;
+            }
+        } else {
+            break round.reached.clone();
+        }
+    }
+}
+
+pub fn fn_reaching_names(
+    summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
+    structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
+    fn_reaching_names_fixpoint(
+        v1_rt::concat(
+            Rc::new(v1_rt::map_keys(&summaries)),
+            Rc::new(v1_rt::map_keys(&structural_alias_fn_surface_names)),
+        ),
+        summaries.clone(),
+        structural_alias_fn_surface_names.clone(),
+        structural_alias_direct_fn_names.clone(),
+        v1_rt::rc_empty_set::<String>(),
+    )
 }
 
 pub fn close_fn_fields(
@@ -1034,43 +1104,42 @@ pub fn close_fn_fields(
     structural_alias_fn_surface_names: Rc<HashMap<String, Rc<Vec<String>>>>,
     structural_alias_direct_fn_names: Rc<BTreeSet<String>>,
 ) -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
-        summaries.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
-            &summaries,
-            name.clone(),
-        ) {
-            Some(s) => {
-                if (!s.has_fn_fields.clone()
-                    && type_summary_or_structural_alias_reaches_fn(
-                        name.clone(),
-                        summaries.clone(),
-                        structural_alias_fn_surface_names.clone(),
-                        structural_alias_direct_fn_names.clone(),
-                        v1_rt::rc_empty_set::<String>(),
-                    ))
-                {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        name.clone(),
-                        Rc::new(TypeSummary {
-                            name: s.name.clone(),
-                            repr: s.repr.clone(),
-                            field_summaries: s.field_summaries.clone(),
-                            field_type_map: s.field_type_map.clone(),
-                            field_import_surface_names: s.field_import_surface_names.clone(),
-                            variant_name_set: s.variant_name_set.clone(),
-                            generic_param_names: s.generic_param_names.clone(),
-                            has_fn_fields: true,
-                        }),
-                    )
-                } else {
-                    acc.clone()
+    {
+        let reaching = fn_reaching_names(
+            summaries.clone(),
+            structural_alias_fn_surface_names.clone(),
+            structural_alias_direct_fn_names.clone(),
+        );
+        Rc::new(v1_rt::map_keys(&summaries)).iter().cloned().fold(
+            summaries.clone(),
+            |acc: Rc<HashMap<String, Rc<TypeSummary>>>, name: String| match v1_rt::map_get(
+                &summaries,
+                name.clone(),
+            ) {
+                Some(s) => {
+                    if (!s.has_fn_fields.clone() && v1_rt::set_contains(&reaching, name.clone())) {
+                        v1_rt::rc_map_insert(
+                            acc.clone(),
+                            name.clone(),
+                            Rc::new(TypeSummary {
+                                name: s.name.clone(),
+                                repr: s.repr.clone(),
+                                field_summaries: s.field_summaries.clone(),
+                                field_type_map: s.field_type_map.clone(),
+                                field_import_surface_names: s.field_import_surface_names.clone(),
+                                variant_name_set: s.variant_name_set.clone(),
+                                generic_param_names: s.generic_param_names.clone(),
+                                has_fn_fields: true,
+                            }),
+                        )
+                    } else {
+                        acc.clone()
+                    }
                 }
-            }
-            std::option::Option::None => acc.clone(),
-        },
-    )
+                std::option::Option::None => acc.clone(),
+            },
+        )
+    }
 }
 
 pub fn structural_alias_direct_fn_names_with(
