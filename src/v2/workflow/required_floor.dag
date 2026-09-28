@@ -769,6 +769,16 @@ fn required_gate_prefixes() -> List<String> {
 // gunbc.live_deploy.served_slice_charge beyond what the runner-capacity rows already carry. The module
 // declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
 // its identity-grained disposition.
+//
+// THE EIGHTH AND NINTH ROWS ARE THE SPARK AUTHORITY-READ ROUTE CLAIMS (adhoc-0536e80f-be0, gunbc#12461;
+// parent ruling msg_fe97729b from eager-owl-205, option (b)). They were scheduled on the local-repo
+// wet lane because they observed the executing runner's hostname, and on srv1 -- a declared
+// dashboard host -- that premise was false and they went red on unrelated PRs
+// (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+// Supplying the executor and the instant made them pure, so they left the wet schedule; without a
+// row here they would have run only when they themselves changed, and the pairing obligation's
+// real-path half (DESIGN 3) would stop executing where merges are decided. Named modules, not a
+// spark prefix. Both declare SubstrateInputsOnly.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -778,6 +788,8 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
     "test.claim.host_allocation_conservation",
+    "test.claim.spark.fabric_capacity_standing_wet_witness",
+    "test.claim.spark.spark_pair_serving_apply_wet_witness",
   ]
 }
 
