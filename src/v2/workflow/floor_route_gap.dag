@@ -936,6 +936,12 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_production_route_settles_and_the_lease_governs_launch_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_authorization_witness.a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_fence_and_a_restore_each_reach_their_terminal_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
@@ -992,6 +998,9 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.devboot_text_blob_real_execution.a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
+  }
   }
   }
   }
