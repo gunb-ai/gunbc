@@ -994,6 +994,10 @@ fn runner_browser_toolchain_readback_at_wet(host: NonEmptyStr, location: RunnerB
   }
 }
 
+// THE TREE IS ADMITTED AGAIN AFTER EVERY CANDIDATE HAS RUN (eager-owl-205, after run 36469030109):
+// an execution that wrote inside the tree -- a marker, a cache, a lock -- is caught on the run that
+// wrote it, as TreeContentMismatch naming the new digest, instead of on some later consumer's
+// admission after the tree has already been handed out.
 fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerBrowserToolchainLocation, pinned: NonEmptyStr, scratch: String) -> RunnerBrowserToolchainStanding {
   let admission = admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree.manifest"], ""), pinned: pinned)
   if tree_admitted(a: admission) == false {
@@ -1036,10 +1040,6 @@ fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerB
     } else {
       BrowserLaunchNotAttempted { reason: "a version or a host library did not read back, so the launch would not exercise the pinned toolchain" }
     }
-    // THE TREE IS ADMITTED AGAIN AFTER EVERY CANDIDATE HAS RUN (eager-owl-205, after run 36469030109):
-    // an execution that wrote inside the tree -- a marker, a cache, a lock -- is caught on the run that
-    // wrote it, as TreeContentMismatch naming the new digest, instead of on some later consumer's
-    // admission after the tree has already been handed out.
     let after = admit_tree_wet(tree: location.root, manifest_path: join([scratch, "/tree-after.manifest"], ""), pinned: pinned)
     RunnerBrowserToolchainStanding { host: host, location: location, tree: admission, versions: versions, libraries: libraries, launch: launch, after: after }
   }
