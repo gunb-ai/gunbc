@@ -4635,19 +4635,24 @@ type HeadsBlockSkipResult { tokens: TokenStream, err: ErrorNode? }
 
 type HeadsDataValueSkipResult { tokens: TokenStream, err: ErrorNode? }
 
-fn heads_token_starts_item(tok: Token?) -> Bool {
-  tok_is_keyword(tok: tok, kw: "alias")
-    || tok_is_keyword(tok: tok, kw: "type")
-    || tok_is_keyword(tok: tok, kw: "fn")
-    || tok_is_keyword(tok: tok, kw: "service")
-    || tok_is_keyword(tok: tok, kw: "resource")
-    || tok_is_keyword(tok: tok, kw: "data")
-    || tok_is_keyword(tok: tok, kw: "extern")
-    || tok_is_keyword(tok: tok, kw: "pattern")
-    || tok_is_keyword(tok: tok, kw: "interface")
+// DOES THIS STREAM START AN ITEM, asked of the SAME authority `parse_item` dispatches on: the
+// syntax spec's item forms, and the test marker `parse_item` peels before them. It used to be a
+// hand-written keyword list beside that authority, and the list had no test marker, so a data
+// value followed by `test fn ...` swallowed the whole test item: the heads reading silently lost
+// every test-marked declaration that followed a top-level `data`, and every pool census built on
+// that reading lost its name.
+fn heads_stream_starts_item(stream: TokenStream, forms: List<ItemForm>) -> Bool {
+  if leads_with_test_marker(tokens: stream) {
+    true
+  } else {
+    match find_item_form(forms: forms, keyword: tok_keyword_text(tok: token_stream_first(stream: stream))) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
 }
 
-fn heads_skip_data_value_tokens_at(tokens: TokenStream, offset: Int, braces: Int, parens: Int, brackets: Int, seen: Bool) -> HeadsDataValueSkipResult {
+fn heads_skip_data_value_tokens_at(tokens: TokenStream, forms: List<ItemForm>, offset: Int, braces: Int, parens: Int, brackets: Int, seen: Bool) -> HeadsDataValueSkipResult {
   let tok = token_stream_peek(stream: tokens, offset: offset)
   if tok_is_eof(tok: tok) {
     if seen && braces == 0 && parens == 0 && brackets == 0 {
@@ -4657,7 +4662,7 @@ fn heads_skip_data_value_tokens_at(tokens: TokenStream, offset: Int, braces: Int
     }
   } else if tok_is_newline(tok: tok) && braces == 0 && parens == 0 && brackets == 0
     && (tok_is_eof(tok: token_stream_first(stream: skip_newlines(tokens: token_stream_advance(stream: tokens, n: offset))))
-      || heads_token_starts_item(tok: token_stream_first(stream: skip_newlines(tokens: token_stream_advance(stream: tokens, n: offset))))) {
+      || heads_stream_starts_item(stream: skip_newlines(tokens: token_stream_advance(stream: tokens, n: offset)), forms: forms)) {
     if seen {
       HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: none }
     } else {
@@ -4673,14 +4678,14 @@ fn heads_skip_data_value_tokens_at(tokens: TokenStream, offset: Int, braces: Int
         if b < 0 || p < 0 || s < 0 {
           HeadsDataValueSkipResult { tokens: token_stream_advance(stream: tokens, n: offset), err: Present { value: parse_error(msg: "heads-only parse: unmatched delimiter in data value", span: t.span) } }
         } else {
-          heads_skip_data_value_tokens_at(tokens: tokens, offset: offset + 1, braces: b, parens: p, brackets: s, seen: true)
+          heads_skip_data_value_tokens_at(tokens: tokens, forms: forms, offset: offset + 1, braces: b, parens: p, brackets: s, seen: true)
         }
     }
   }
 }
 
 fn parse_data_value_heads_only(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
-  let skipped = heads_skip_data_value_tokens_at(tokens: tokens, offset: 0, braces: 0, parens: 0, brackets: 0, seen: false)
+  let skipped = heads_skip_data_value_tokens_at(tokens: tokens, forms: ctx.env.syntax_spec.item_forms, offset: 0, braces: 0, parens: 0, brackets: 0, seen: false)
   ExprResult { expr: census_heads_body_stand_in(), tokens: skipped.tokens, ctx: ctx, err: skipped.err }
 }
 
