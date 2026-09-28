@@ -841,7 +841,12 @@ fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse
 // page — the suggestions feed is furniture, not the issue's truth. Attempts ride the render
 // entry's parameter (the live attempt feed is the belt-side observation-storage decision, deferred
 // with its reason in the report); the events keep the Work tab honest until it lands. Unknown ids
-// render the not-found document at 404.
+// render the not-found document at 404. THE CSRF TOKEN rides the page AT RENDER: a seated
+// Google session's token fills the comment composer's hidden csrf field (the synchronizer-token
+// pattern — the detail route renders per request with the session in hand, so no context fetch
+// or client fill), every other standing renders the empty field the write law refuses honestly,
+// and the response is NO-STORE because the page now carries a session secret (session-dependent
+// HTML is never reused for a different viewer — the allocation page's law, extended here).
 fn serve_issue_detail_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -852,6 +857,10 @@ fn serve_issue_detail_response_over(
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
   let standings = roadmap_standings_read(layout: layout)
   let viewer = authenticated_viewer_label(evidence: request.security.authentication)
+  let csrf = match request.security.authentication {
+    GoogleOidcSession { session } => session.csrf.token as String
+    _ => ""
+  }
   let recents = match roadmap_events_read_all(layout: layout) {
     AllEventsRead { envelopes } => roadmap_recent_claimed_assignees(envs: envelopes)
     AllEventsReadRefused { step: _, reason: _ } => []
@@ -870,10 +879,22 @@ fn serve_issue_detail_response_over(
     stale_nodes: [],
     events: envelopes,
     viewer: viewer,
-    recents: recents)
-  serve_page_response_with_status(
-    page: page,
-    status: if issue_detail_node_exists(proj: plan, node_id: node_id) { 200 } else { 404 })
+    recents: recents,
+    csrf: csrf)
+  match try_serialize_html_source(node: page) {
+    EmitOk { html } =>
+      serve_text_response_with_headers(
+        status: if issue_detail_node_exists(proj: plan, node_id: node_id) { 200 } else { 404 },
+        content_type: text_html_utf8,
+        body: html,
+        headers: [ServeResponseHeaderNoStore],
+      )
+    EmitRejected { reason } => serve_text_response(
+      status: 500,
+      content_type: text_plain_utf8,
+      body: page_render_refusal_body(reason: reason),
+    )
+  }
 }
 
 // THE ASSIGNEE SUBMISSION, resolved to the stable PrincipalRef the v3 event records (owner

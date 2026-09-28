@@ -1602,7 +1602,8 @@ fn issue_detail_fixture_html() -> HtmlEmitResult {
     events: [],
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: ""))
+    expected_revision: "",
+    csrf: "fixture-csrf-token"))
 }
 
 // THE PAGE ARCHITECTURE (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md): the
@@ -1756,7 +1757,8 @@ test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
     events: [],
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
+    expected_revision: "",
+    csrf: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
@@ -2035,7 +2037,8 @@ test fn witness_issue_detail_assignee_shows_the_workflow_principal_for_live_atte
     events: [],
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
+    expected_revision: "",
+    csrf: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let region = string_at(parts: split(s: string_at(parts: split(s: h, delimiter: "issue-field-label\">assignee"), index: 1), delimiter: "</form>"), index: 0)
@@ -2091,7 +2094,8 @@ test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool {
     events: events,
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
+    expected_revision: "",
+    csrf: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let work_parts = split(s: h, delimiter: "<section class=\"panel-history\">")
@@ -2155,7 +2159,8 @@ test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_a
     events: fx_comment_stream_events(),
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
+    expected_revision: "",
+    csrf: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<div class=\"issue-description\">") == 1
@@ -2176,14 +2181,17 @@ test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_a
 
 // THE COMPOSER: a native text/plain POST to the comment route — key, csrf, and expected_revision
 // ride as hidden fields, the body LAST (markdown freely carries newlines), the submit wears no
-// .issue-action class (the client's bodyless bind must not race the native submit).
+// .issue-action class (the client's bodyless bind must not race the native submit). THE CSRF
+// FIELD CARRIES THE SEATED SESSION'S TOKEN AT RENDER (the 2026-09-28 defect pin: the field
+// shipped EMPTY and every real comment refused with a CSRF mismatch — the fixture's token must
+// appear as the input's value, the synchronizer-token pattern under the response's no-store).
 test fn witness_issue_comment_composer_posts_text_plain_with_key_csrf_and_body_last() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<form class=\"issue-comment-form\" method=\"post\" enctype=\"text/plain\" action=\"/issue/issue-detail-specimen/comment\">") == 1
         && occurrence_count(s: h, pattern: "name=\"key\" type=\"hidden\"") == 1
-        && occurrence_count(s: h, pattern: "name=\"csrf\" type=\"hidden\"") == 1
+        && occurrence_count(s: h, pattern: "name=\"csrf\" type=\"hidden\" value=\"fixture-csrf-token\"") == 1
         && occurrence_count(s: h, pattern: "name=\"expected_revision\" type=\"hidden\"") == 2
         && string_contains(s: h, pattern: "<textarea name=\"body\" class=\"issue-comment-input\" placeholder=\"comment — markdown, @mentions\"></textarea>")
         && occurrence_count(s: h, pattern: "class=\"issue-comment-submit issue-action-text\" type=\"submit\"") == 1
@@ -2219,7 +2227,8 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
     events: fx_handoff_events(),
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: "")) {
+    expected_revision: "",
+    csrf: "")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2

@@ -2104,10 +2104,15 @@ fn issue_publication_merge_target(envs: List<RoadmapEventEnvelope>) -> String {
 // text/plain — honest-before-JS, the body rides LAST since markdown freely carries newlines), the
 // key field for retry-idempotence (empty until the client mints one; the server still dedupes the
 // keyless retry by author + body + head), the csrf field the write law consults
-// (gunbc.auth.request_authentication.human_write_admission), and the expected_revision pin
-// matching the assign form. The submit wears no .issue-action class — the client's bodyless action
+// (gunbc.auth.request_authentication.human_write_admission) — filled AT RENDER from the seated
+// session, the synchronizer-token pattern: the detail route renders per request with the session
+// in hand, so no context fetch or client fill is needed, and the response is no-store so the
+// token never crosses viewers (the 2026-09-28 defect: the field shipped EMPTY and every real
+// comment refused with a CSRF mismatch; the empty spelling remains the unauthenticated render,
+// which the write law refuses honestly) — and the expected_revision pin matching the assign
+// form. The submit wears no .issue-action class — the client's bodyless action
 // bind must not race the native submit.
-fn issue_comment_composer_node(node_id: String, expected_revision: String) -> Fragment {
+fn issue_comment_composer_node(node_id: String, expected_revision: String, csrf: String) -> Fragment {
   el_attrs("form", [
     attr(name: "class", value: "issue-comment-form" ),
     attr(name: "method", value: "post" ),
@@ -2115,7 +2120,7 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String) -> Fr
     attr(name: "action", value: join(["/issue/", node_id, "/comment"], "") ),
   ], [
     el_attrs("input", [ attr(name: "name", value: "key" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: "" ) ], []),
-    el_attrs("input", [ attr(name: "name", value: "csrf" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: "" ) ], []),
+    el_attrs("input", [ attr(name: "name", value: "csrf" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: csrf ) ], []),
     el_attrs("input", [ attr(name: "name", value: "expected_revision" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: expected_revision ) ], []),
     el_attrs("textarea", [
       attr(name: "name", value: "body" ),
@@ -2205,7 +2210,7 @@ fn issue_head_chip_nodes(view: WorkRowView) -> List<Fragment> {
       []))
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, csrf: String) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
@@ -2223,7 +2228,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
     ]),
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
-        el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision)),
+        el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, csrf: csrf)),
         el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, panel: panel)),
         el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
         el_class("section", "panel-history", issue_history_tab_nodes(events: events)),
@@ -2235,12 +2240,12 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
 
 // THE COMMENTS TAB: the description pinned above the stream, the composer below — the page's
 // default panel (the tab law renders it when data-tab is "comments").
-fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String) -> List<Fragment> {
+fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String, csrf: String) -> List<Fragment> {
   concat(
     [
       issue_description_node(view: view),
       issue_comments_stream_node(node_id: view.node_id, envs: events),
-      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
+      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, csrf: csrf),
     ],
     disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
 }
@@ -2380,7 +2385,7 @@ fn issue_modified_value(events: List<RoadmapEventEnvelope>) -> String {
   }
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, csrf: String) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
@@ -2393,7 +2398,7 @@ fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observatio
       ]),
       el("body", [
         roadmap_header(page: "issue"),
-        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision),
+        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, csrf: csrf),
         dispatch_client_script(),
       ]),
     ],
@@ -2437,6 +2442,7 @@ fn issue_detail_page_for(
   events: List<RoadmapEventEnvelope>,
   viewer: String,
   recents: List<EventPrincipal>,
+  csrf: String,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -2453,6 +2459,7 @@ fn issue_detail_page_for(
           issue_detail_not_found_page(node_id: node_id, viewer: viewer)
         Present { value: rn } =>
           issue_detail_page_launch(
+            csrf: csrf,
             view: work_row_view(
               rn: rn, nodes: nodes, edges: edges, merged: authored_merged_prs(),
               activity: daily_row_activity(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
