@@ -12,6 +12,7 @@ import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
+import gunbc.spark.v41_group_a_launch { v41_group_a_launch_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -1051,6 +1052,14 @@ data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_runtime_image_converge.dag",
   function: "v41_runtime_image_distribute_ci_wet",
+}
+
+// THE V4.1 FOUR-RANK LAUNCH ON GROUP A (gunbc.spark.v41_group_a_launch): the held image read back on
+// every host, the registry read inside its digest, occupancy read, and only on admission the Engram
+// staging and the arm transaction. The same prelude: the session host is the dispatch's target.
+data gunbc_ci_spark_v41_group_a_launch_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_group_a_launch.dag",
+  function: "v41_group_a_launch_ci_wet",
 }
 
 // THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
@@ -2650,6 +2659,17 @@ fn gunbc_ci_spark_v41_runtime_image_distribute_invoke() -> String {
     function: gunbc_ci_spark_v41_runtime_image_distribute_target.function,
     claim_run: false,
     receipt_rel: v41_distribution_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_group_a_launch_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_group_a_launch_target.entry,
+    function: gunbc_ci_spark_v41_group_a_launch_target.function,
+    claim_run: false,
+    receipt_rel: v41_group_a_launch_receipt_path
   )
 }
 

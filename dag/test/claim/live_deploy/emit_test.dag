@@ -61,7 +61,6 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
-import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
@@ -112,17 +111,12 @@ import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
+  approval_broker_tree_copy_steps,
   ensure_managed_directory_command,
-  approval_broker_tree_digest_substitution,
-  approval_broker_tree_receipt_command,
-  approval_broker_tree_copy_command,
-  approval_broker_binary_install_command,
   managed_directory_entry_repair_commands,
-  approval_broker_tree_receipt_path_for,
-  approval_broker_release_dir,
-  approval_broker_release_binary_path,
   approval_broker_dark_install_script,
-  apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
+  apply_approval_broker_unit_write_steps,
+  approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
   emit_release_member_effects,
@@ -131,7 +125,6 @@ import gunbc.live_deploy.emit {
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
-  RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
@@ -143,6 +136,12 @@ import gunbc.live_deploy.emit {
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_tree_receipt_path_for,
+  approval_broker_release_dir,
+  approval_broker_release_binary_path,
+  RevisionBoundAtEmission,
 }
 import gunbc.ci_deploy_access {
   DeployAccessJobPrincipalRefusal,
@@ -1509,33 +1508,19 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 // THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
 // apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
 // fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
-//
-// THE ONE CLAIM THAT RENDERS THE REAL SCRIPT, AND SO THE INHABITANCE CLAIM FOR THE REST. The claims
-// below read the binary install, tree copy, receipt and unit off their producers with supplied
-// inputs; this one asserts the ROUTE -- that the script deployment_spec_srv1 renders actually carries
-// the binary install and the digest substitution those producers emit -- so deleting either from the
-// install pipeline reds here even though the per-field claims stay green (DESIGN §3 witness rule).
 test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
   let script = witness_approval_broker_dark_script_text
-  let revision = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
     && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
     && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
-    && string_contains(s: script, pattern: approval_broker_binary_install_command(release_dir: approval_broker_release_dir(root: srv1_gunbc_approval_broker_root as String, revision: revision)))
-    && string_contains(s: script, pattern: approval_broker_tree_digest_substitution(base_root: srv1_gunbc_approval_broker_root as String, revision: revision))
 }
 
 // IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
 // dark process; a unit whose ExecStart named no revision, or a different one, would make every
 // later reading a measurement of a build nobody deployed.
-// Read off the unit the install writes (live_deploy_approval_broker_unit_file), the one producer of
-// ExecStart, rather than searched for in the rendered script (DESIGN §3 witness rule).
 test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
   string_contains(
-    s: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
-      spec: deployment_spec_srv1(),
-      revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    )),
+    s: witness_approval_broker_dark_script_text,
     pattern: join(["--release-revision ", deploy_witness_release_revision as String], ""),
   )
 }
@@ -1657,21 +1642,33 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
 // AND THE DARK INSTALL PUTS A TREE THERE, because a unit pointed at an EMPTY directory
 // restart-loops exactly as one pointed at the wrong directory does. Asserting the unit's path
 // alone would not have caught the stage-A failure.
-// Read off the copy and receipt commands' producers with the release directory supplied; that the
-// real install carries them is asserted once, by the_dark_install_never_names_the_roadmap_unit.
+//
+// AND IT PUTS IT THERE AS THE LOCUS OWNER, NOT AS THE JOB USER. The discriminating RED is the
+// shape fleet-converge run 36347245905 died on: `rsync -a --delete` run by the ci-runner principal
+// into a directory the preceding step had created owned by the service user, which fails chgrp and
+// mkdir (rsync 23). The owner-parameterized `sudo install -o <owner>` per-file mover is the only
+// route that lands bytes there, so reintroducing any rsync, or a copy not owned by the service
+// user, fails this claim.
+//
+// IT READS THE LOCUS INSTALL STEPS, NOT THE WHOLE DARK-INSTALL SCRIPT: the claim's subject is how the
+// tree reaches the locus, and rendering the full script re-executed every other stage of the install
+// (DESIGN §3, a witness discriminates at one interface). The script's composition of these steps is
+// inhabited by test.claim.live_deploy.approval_broker_helper_grant_test
+// the_dark_install_composes_this_releases_grant.
 test fn the_dark_install_populates_the_broker_tree() -> Bool {
+  let script = pipeline_steps_text(steps: approval_broker_tree_copy_steps(
+    spec: deployment_spec_srv1(),
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
   let release_dir = approval_broker_release_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  let copy = approval_broker_tree_copy_command(src_sub: "dag", root: release_dir)
-  let receipt = approval_broker_tree_receipt_command(
-    base_root: srv1_gunbc_approval_broker_root as String,
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-  )
-  string_contains(s: copy, pattern: join([release_dir, "/dag/"], ""))
-    && string_contains(s: copy, pattern: "rsync -a --delete")
-    && string_contains(s: receipt, pattern: approval_broker_tree_receipt_path_for(
+  let owner = deployment_spec_srv1().service.service_user as String
+  string_contains(s: script, pattern: release_dir)
+    && string_contains(s: script, pattern: join([" -o ", owner, " -g ", owner, " \"$PWD\"/{} ", release_dir, "/{}"], ""))
+    && !string_contains(s: script, pattern: "rsync")
+    && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
       root: srv1_gunbc_approval_broker_root as String,
       revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     ))
@@ -1703,8 +1700,8 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
 // files on a host, and the stage-A readback is where it is established, by the process answering
 // /livez at all.
 test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
-  let install = approval_broker_binary_install_command(release_dir: approval_broker_release_dir(
-    root: srv1_gunbc_approval_broker_root as String,
+  let script = pipeline_steps_text(steps: approval_broker_tree_copy_steps(
+    spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
   let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
@@ -1715,7 +1712,8 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: install, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
+  string_contains(s: script, pattern: "target/release/gunbc")
+    && string_contains(s: script, pattern: binary)
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
     && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
@@ -1737,15 +1735,10 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
 // exact bytes that shipped, and the second fails if the substitution is reintroduced unquoted, which
 // would word-split a digest containing whitespace. What it does NOT establish is that the script
 // parses; only executing it does, and the honest place for that is the stage-A run itself.
-// THE SUBJECT IS THE ONE SUBSTITUTION BOTH RECEIPT ARMS SHARE (gunbc.live_deploy.emit
-// approval_broker_tree_digest_substitution), supplied a root rather than read off the whole rendered
-// script: the dark-install claims above still render the real script, so the real path stays
-// executed, and this one no longer pays for building it (DESIGN §3 witness rule).
 test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> Bool {
-  let sub = approval_broker_tree_digest_substitution(base_root: "/opt/witness-broker", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  let receipt = approval_broker_tree_receipt_command(base_root: "/opt/witness-broker", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  starts_with(s: sub, prefix: "\"$(cd ") && string_contains(s: receipt, pattern: sub)
-    && !string_contains(s: receipt, pattern: "%s\\n' (cd ")
+  let script = witness_approval_broker_dark_script_text
+  string_contains(s: script, pattern: "\"$(cd ")
+    && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
