@@ -307,12 +307,15 @@ fn executor_privileged_operation_elevated_command(op: ExecutorPrivilegedOperatio
 // THE SUDOERS COMMAND MATCH IS THE ARGV. Derived, never authored beside it, and spelled in sudoers'
 // own grammar. sudoers(5), "Command line arguments": the characters `,` `:` `=` and `\` must be
 // escaped with a backslash when used in a command's arguments, because unescaped they are Cmnd_Spec
-// grammar (list separators, a run-as/tag delimiter, an assignment, the escape itself). Escaping is
-// how this line MEANS the argv. Leaving them bare renders a different command or no command. The
-// backslash is escaped first so the escapes added for the other three are not escaped again.
+// grammar (list separators, a run-as/tag delimiter, an assignment, the escape itself). The escaped
+// spelling is the one the grammar documents, and it matches the same argv word. A bare `=` in these
+// arguments is evidently accepted by the sudo installed today: the systemctl set-property grants below
+// were rendered bare and passed the visudo gate. So this is the documented spelling replacing a
+// tolerated one, not a repair of grants known to mis-match. The backslash is escaped first so the
+// escapes added for the other three are not escaped again.
 // First consumers of the escape: the env(1) binding in a gunbc entry run (`GUNBC_WORKSPACE_ROOT=<dir>`,
 // see RunGunbcEntryAs) and a systemctl set-property assignment (`<Property>=<value>`,
-// gunbc.runner_host_grants), which was rendered bare before this.
+// gunbc.runner_host_grants).
 data sudoers_argument_escaped_characters: List<String> = ["\\", ",", ":", "="]
 
 fn sudoers_argument_word(w: String) -> String {
