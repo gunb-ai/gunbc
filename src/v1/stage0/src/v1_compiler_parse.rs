@@ -12542,20 +12542,23 @@ pub struct HeadsDataValueSkipResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-pub fn heads_token_starts_item(tok: Option<Rc<Token>>) -> bool {
-    ((((((((tok_is_keyword(tok.clone(), "alias".to_string())
-        || tok_is_keyword(tok.clone(), "type".to_string()))
-        || tok_is_keyword(tok.clone(), "fn".to_string()))
-        || tok_is_keyword(tok.clone(), "service".to_string()))
-        || tok_is_keyword(tok.clone(), "resource".to_string()))
-        || tok_is_keyword(tok.clone(), "data".to_string()))
-        || tok_is_keyword(tok.clone(), "extern".to_string()))
-        || tok_is_keyword(tok.clone(), "pattern".to_string()))
-        || tok_is_keyword(tok.clone(), "interface".to_string()))
+pub fn heads_stream_starts_item(stream: Rc<TokenStream>, forms: Rc<Vec<Rc<ItemForm>>>) -> bool {
+    if leads_with_test_marker(stream.clone()) {
+        true
+    } else {
+        match find_item_form(
+            forms.clone(),
+            tok_keyword_text(token_stream_first(stream.clone())),
+        ) {
+            Some(_) => true,
+            std::option::Option::None => false,
+        }
+    }
 }
 
 pub fn heads_skip_data_value_tokens_at(
     mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_forms: Rc<Vec<Rc<ItemForm>>>,
     mut __tco_loop_offset: i64,
     mut __tco_loop_braces: i64,
     mut __tco_loop_parens: i64,
@@ -12565,6 +12568,8 @@ pub fn heads_skip_data_value_tokens_at(
     loop {
         #[allow(unused_mut)]
         let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut forms = __tco_loop_forms;
         #[allow(unused_mut)]
         let mut offset = __tco_loop_offset;
         #[allow(unused_mut)]
@@ -12599,9 +12604,10 @@ pub fn heads_skip_data_value_tokens_at(
                 && (tok_is_eof(token_stream_first(skip_newlines(token_stream_advance(
                     tokens.clone(),
                     offset.clone(),
-                )))) || heads_token_starts_item(token_stream_first(skip_newlines(
-                    token_stream_advance(tokens.clone(), offset.clone()),
-                )))))
+                )))) || heads_stream_starts_item(
+                    skip_newlines(token_stream_advance(tokens.clone(), offset.clone())),
+                    forms.clone(),
+                )))
             {
                 if seen.clone() {
                     break Rc::new(HeadsDataValueSkipResult {
@@ -12668,17 +12674,19 @@ pub fn heads_skip_data_value_tokens_at(
                         } else {
                             {
                                 let __tco_0 = tokens;
-                                let __tco_1 = v1_rt::int_add(offset, 1);
-                                let __tco_2 = b.clone();
-                                let __tco_3 = p.clone();
-                                let __tco_4 = s.clone();
-                                let __tco_5 = true;
+                                let __tco_1 = forms;
+                                let __tco_2 = v1_rt::int_add(offset, 1);
+                                let __tco_3 = b.clone();
+                                let __tco_4 = p.clone();
+                                let __tco_5 = s.clone();
+                                let __tco_6 = true;
                                 __tco_loop_tokens = __tco_0;
-                                __tco_loop_offset = __tco_1;
-                                __tco_loop_braces = __tco_2;
-                                __tco_loop_parens = __tco_3;
-                                __tco_loop_brackets = __tco_4;
-                                __tco_loop_seen = __tco_5;
+                                __tco_loop_forms = __tco_1;
+                                __tco_loop_offset = __tco_2;
+                                __tco_loop_braces = __tco_3;
+                                __tco_loop_parens = __tco_4;
+                                __tco_loop_brackets = __tco_5;
+                                __tco_loop_seen = __tco_6;
                                 continue;
                             }
                         }
@@ -12694,7 +12702,15 @@ pub fn parse_data_value_heads_only(
     ctx: Rc<ParseContext>,
 ) -> Rc<ExprResult> {
     {
-        let skipped = heads_skip_data_value_tokens_at(tokens.clone(), 0, 0, 0, 0, false);
+        let skipped = heads_skip_data_value_tokens_at(
+            tokens.clone(),
+            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
+            0,
+            0,
+            0,
+            0,
+            false,
+        );
         Rc::new(ExprResult {
             expr: census_heads_body_stand_in(),
             tokens: skipped.tokens.clone(),
