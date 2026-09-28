@@ -2,6 +2,7 @@ module gunbc.runner_browser_toolchain
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import extdeps.posix.test_utility { test_exists_command }
+import std.measure { ByteSize, byte_size }
 import std.algebra { trim, list_append }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
@@ -99,7 +100,7 @@ data runner_browser_toolchain_node: NodeReleaseArchive = node_v24_21_0_linux_arm
 type BrowserArchiveDigestReceipt {
   download: PlaywrightBrowserDownload
   sha256: NonEmptyStr
-  byte_count: Int
+  byte_count: ByteSize
   observed_on: NonEmptyStr
   observed_by: NonEmptyStr
 }
@@ -107,7 +108,7 @@ type BrowserArchiveDigestReceipt {
 data chromium_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = BrowserArchiveDigestReceipt {
   download: playwright_chromium_1234_linux_arm64,
   sha256: "b5ad7d8fe70f230b34198ddb5626d717c016db2f627cb44b922babbcaf3479b9",
-  byte_count: 204732694,
+  byte_count: byte_size(count: 204732694),
   observed_on: "2026-09-28",
   observed_by: "session witty-crane-254: curl -fsSL of the download url, then sha256sum",
 }
@@ -115,7 +116,7 @@ data chromium_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = Bro
 data chromium_headless_shell_1234_linux_arm64_digest_receipt: BrowserArchiveDigestReceipt = BrowserArchiveDigestReceipt {
   download: playwright_chromium_headless_shell_1234_linux_arm64,
   sha256: "b03443e1e1a60d06e07b6cdfe650b8c2bfcbb3db497d2b652f73dc6912f4ae15",
-  byte_count: 116380215,
+  byte_count: byte_size(count: 116380215),
   observed_on: "2026-09-28",
   observed_by: "session witty-crane-254: curl -fsSL of the download url, then sha256sum",
 }
@@ -532,8 +533,15 @@ data browser_toolchain_probe_title: String = "gunbc-browser-toolchain-inhabitanc
 
 data browser_toolchain_probe_page: String = "<!doctype html><html><head><title>gunbc-browser-toolchain-inhabitance</title></head><body><div id=\"probe\" style=\"width:137px;height:11px\">rendered</div></body></html>"
 
+// Filesystem.Write creates no parent directory (run 36372647500 on srv1 refused the launch with
+// ENOENT for exactly this), so the probe directory is created first, by the same mkdir builder the
+// archive install uses.
+fn browser_toolchain_probe_dir(location: RunnerBrowserToolchainLocation) -> String {
+  join([location.root as String, "/probe"], "")
+}
+
 fn browser_toolchain_probe_page_path(location: RunnerBrowserToolchainLocation) -> String {
-  join([location.root as String, "/probe/inhabitance.html"], "")
+  join([browser_toolchain_probe_dir(location: location), "/inhabitance.html"], "")
 }
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
@@ -630,17 +638,22 @@ fn runner_browser_toolchain_readback_wet(host: NonEmptyStr, location: RunnerBrow
     VersionUnreadable { subject: "chromium", reason: "not read: an archive, a package version or a host library did not read back clean" }
   }
   let launch = if clean && versions_match(versions: [chromium_version]) {
-    let wrote = Filesystem.Write(path: browser_toolchain_probe_page_path(location: location), content: browser_toolchain_probe_page)
-    if wrote.success == false {
-      BrowserLaunchRefused { reason: concat("the probe page could not be written: ", wrote.error) }
+    let made = process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_probe_dir(location: location)), transport: LocalExec))
+    if made == false {
+      BrowserLaunchRefused { reason: concat("the probe directory could not be created: ", browser_toolchain_probe_dir(location: location)) }
     } else {
-      match capture_text(command: runner_browser_toolchain_node_command(
-        location: location,
-        script: browser_toolchain_launch_script,
-        operands: [browser_toolchain_probe_page_path(location: location)],
-      )) {
-        CaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
-        CapturedText { text: t } => launch_readback_of(output: t)
+      let wrote = Filesystem.Write(path: browser_toolchain_probe_page_path(location: location), content: browser_toolchain_probe_page)
+      if wrote.success == false {
+        BrowserLaunchRefused { reason: concat("the probe page could not be written: ", wrote.error) }
+      } else {
+        match capture_text(command: runner_browser_toolchain_node_command(
+          location: location,
+          script: browser_toolchain_launch_script,
+          operands: [browser_toolchain_probe_page_path(location: location)],
+        )) {
+          CaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
+          CapturedText { text: t } => launch_readback_of(output: t)
+        }
       }
     }
   } else {
