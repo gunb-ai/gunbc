@@ -2864,6 +2864,9 @@ fn bappend(line: Node, path: Node) -> Node {
   bash_build_pipe(left: bcmd(words: [bl(text: "echo"), line]), right: bcmd(words: [bl(text: "dd"), bcat(parts: [bl(text: "of="), path]), bl(text: "oflag=append"), bl(text: "conv=notrunc"), bl(text: "status=none")]))
 }
 
+// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
+// through the same identity-checked script: its record sits in this run's attempt directory, and a
+// missing record exits 0.
 fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
   [
     bash_build_assign(name: "rc", value: bv(name: "?")),
@@ -2874,9 +2877,6 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
       left: bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: "SOL_RELEASE"), bl(text: "sol-release"), bv(name: "SOL_PID_FILE")]),
       right: becho(parts: [bl(text: "::error::mtcollins1 SOL collector survived KILL at step exit")]),
     ),
-    // The KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still), released through
-    // the same identity-checked script: its record names this run's attempt, and a missing record
-    // exits 0.
     bash_build_or_else(
       left: bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: "SOL_RELEASE"), bl(text: "kvm-release"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])]),
       right: becho(parts: [bl(text: "::error::mtcollins1 KVM observer survived KILL at step exit")]),
