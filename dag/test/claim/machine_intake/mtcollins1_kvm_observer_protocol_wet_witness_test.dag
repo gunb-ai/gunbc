@@ -53,6 +53,9 @@ fn world(other_viewers: Int, close_at: Nat?, canvas_readable: Bool) -> BmcWorld 
   }
 }
 
+// A table the lifecycle controls never reach: their "node" exits or is blocked before it reads it.
+data empty_table: String = "\{\"initial\": \"A\", \"canvas_readable\": true, \"kvm_path\": \"/kvm\", \"rows\": []}"
+
 fn no_close() -> Nat? {
   none
 }
@@ -201,7 +204,7 @@ test fn a_stale_listening_line_from_another_pid_is_not_readiness() -> Bool {
 // published first, pid-unpublished when it was gone before its start time could be read. Never serving.
 test fn a_transport_that_exits_at_once_is_not_serving() -> Bool {
   let dir = scratch_dir()
-  let s = megarac_web_transport_serve(dir: dir, table: "initial\tA\tcanvas_readable\t/kvm\n", node_binary: "false")
+  let s = megarac_web_transport_serve(dir: dir, table: empty_table, node_binary: "false")
   let _gone = shell.Remove.RecursiveForce(path: dir)
   match s {
     TransportNotServing { cause: c } => match c {
@@ -218,7 +221,7 @@ test fn a_transport_that_exits_at_once_is_not_serving() -> Bool {
 test fn a_launch_that_cannot_publish_its_pid_stops_its_child() -> Bool {
   let dir = scratch_dir()
   let _blocker = shell.Mkdir.Parents(path: concat(dir, "/transport.pid") as FilePath)
-  let s = megarac_web_transport_serve(dir: dir, table: "initial\tA\tcanvas_readable\t/kvm\n", node_binary: "sleep")
+  let s = megarac_web_transport_serve(dir: dir, table: empty_table, node_binary: "sleep")
   let _gone = shell.Remove.RecursiveForce(path: dir)
   match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }
 }
