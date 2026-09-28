@@ -3517,6 +3517,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     SparkV41EngramDifferential => fleet_converge_shared_job_id
     SparkV41RuntimeImageBuild => fleet_converge_shared_job_id
     SparkV41RuntimeImageDistribute => fleet_converge_shared_job_id
+    SparkV41GroupALaunch => fleet_converge_shared_job_id
     DashboardDeploy => "dashboard-deploy" as NonEmptyStr
     ApprovalBrokerDarkInstall => "approval-broker-dark-install" as NonEmptyStr
     MicrovmControllerInstall => "microvm-controller-install" as NonEmptyStr
@@ -3536,6 +3537,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MtCollins1Boot => "mtcollins1-boot" as NonEmptyStr
     MtCollins1FanObserve => fleet_converge_shared_job_id
     MtCollins1CensusImagePublish => fleet_converge_shared_job_id
+    MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
     HostCredentialCustodyConverge => fleet_converge_shared_job_id
     AppKeyVersionVerify => fleet_converge_shared_job_id
     R2BucketEnsure => fleet_converge_shared_job_id
