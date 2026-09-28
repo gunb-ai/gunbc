@@ -12,7 +12,14 @@ import extdeps.transports.shell { ShellProcessExited }
 import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_action_of_verb, ipmitool_chassis_status_power_line, ipmitool_chassis_power_control_reply,
 }
-import gunbc.bmc_model { BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance }
+import gunbc.bmc_model {
+  BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
+  BootOverrideNone, BootOverrideCdromEfiNextBoot,
+}
+import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
+  ipmitool_sel_elist_line,
+}
 
 // THE DRY ADAPTER BETWEEN THE extdeps.bmc INTERFACE AND THE ONE BMC MODEL. For each bound operation
 // it reads the actual inputs the dispatcher bound, asks gunbc.bmc_model for the transition, and
@@ -54,9 +61,44 @@ fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcR
     Absent => BmcReplyFault { reason: "ChassisPowerControl was dispatched without an action input" as NonEmptyStr }
     Present { value: verb } => match ipmi_chassis_control_action_of_verb(verb: verb) {
       Absent => BmcReplyFault { reason: join(["ChassisPowerControl action `", verb, "` names no IPMI chassis control action the model carries"], "") as NonEmptyStr }
-      Present { value: action } => BmcReplied { stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action).world }
+      Present { value: action } => BmcReplied { stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action, now: call.now).world }
     }
   }
+}
+
+fn input_is(call: OperationCall, name: String, expected: String) -> Bool {
+  match operation_input_text(invocation: call.invocation, name: name) {
+    Present { value: v } => v == expected
+    Absent => false
+  }
+}
+
+fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if input_is(call: call, name: "parameter", expected: "5") {
+    BmcReplied {
+      stdout: match world.boot_override {
+        BootOverrideNone => ipmitool_bootparam5_no_override
+        BootOverrideCdromEfiNextBoot => ipmitool_bootparam5_cdrom_efi_next_boot
+      },
+      world: world,
+    }
+  } else {
+    BmcReplyFault { reason: "the model answers boot parameter 5 only" as NonEmptyStr }
+  }
+}
+
+// The override this controller has been observed to take: cdrom, EFI, next boot only. Any other
+// device or option set is a request the model does not carry, and it refuses rather than guessing.
+fn bmc_bootdev_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if input_is(call: call, name: "device", expected: "cdrom") && input_is(call: call, name: "options", expected: "efiboot") {
+    BmcReplied { stdout: ipmitool_bootdev_cdrom_reply, world: bmc_with_override(world: world, over: BootOverrideCdromEfiNextBoot) }
+  } else {
+    BmcReplyFault { reason: "the model carries the cdrom boot override with options=efiboot only" as NonEmptyStr }
+  }
+}
+
+fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world }
 }
 
 // One IPMI round trip takes one virtual second.
@@ -77,6 +119,10 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
   [
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_status_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_power_control_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: get, put: put, reply: bmc_bootparam_get_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootDevWithOptions"), handler: bmc_lift(get: get, put: put, reply: bmc_bootdev_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
   ]
 }
 
