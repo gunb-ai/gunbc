@@ -58,7 +58,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { arrow_signature_order_label, edge_label_of, DomainBinderLabels, DomainBinderLabelsUnreadable, arrow_domain_binder_labels }
+import v2.std.node { arrow_signature_order_label, edge_label_of }
 import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
@@ -846,16 +846,49 @@ fn infer_node_facts(n: Node, partials: List<Node>, resolved: ResolvedTree) -> Ou
 // path, and it is the GUARDED read: a path with more than one bound declaring answers Absent, so a
 // contested binding cannot silently yield a type.
 //
-// A LOOKUP HIT IS NOT TYPE EVIDENCE. The index is built from validated normalized roots, which does
-// not establish that every indexed declaration carries usable type evidence, so this arm does not
-// ground on presence. A callable's evidence is its Arrow, and the check is that the Arrow's domain
-// is readable; a declaration whose signature is unsupported or unresolved stays explicitly
-// ungrounded rather than being stamped derived. Non-callable declarations are likewise left
-// ungrounded here -- their evidence is a separate derivation, not this connection.
+// A LOOKUP HIT IS NOT TYPE EVIDENCE, AND READABLE PARAMETER NAMES ARE NOT EITHER. The index is built
+// from validated normalized roots, which does not establish that an indexed declaration carries usable
+// type evidence. An earlier draft of this arm guarded with arrow_domain_binder_labels and claimed that
+// an unsupported signature stayed ungrounded; that claim was FALSE OF THE GUARD. That reader takes
+// only `children`, so it never establishes the declaration IS an Arrow, and it inspects no parameter
+// type, no return type, no scope and no body -- "I can read the parameter names" is a different
+// property from "this declaration establishes this callable type", and the comment asserted the second
+// while the code checked the first.
 //
-// THE EVIDENCE ATTACHES TO THE USE. derived_type is the DECLARATION's node while the facts entry is
-// keyed by the REFERENCE node, so the use keeps its own occurrence and diagnostic locus and
-// canonical_grounding_from_derived_type's self-evidence refusal still holds.
+// THE GUARD IS NOW THE ONE AN APPLICATION WILL ASK. A reference is grounded only if the declaration
+// satisfies what v2.compiler.infer's own application path requires of a callee: infer_operator_arrow
+// (the node IS an Arrow), a domain whose formals are all named (infer_formals_from_domain), and a
+// DECLARED parameter order (arrow_declared_parameter_order -- Absent or Malformed both refuse, because
+// the domain is sorted by label for identity so its stored sequence is not the declared one). Grounding
+// a reference whose declaration cannot satisfy those would mint evidence no consumer can use.
+//
+// WHAT THIS STILL DOES NOT ESTABLISH, stated rather than implied: the parameter and return TYPE
+// references inside that signature are not resolved in the declaration's scope here, and no body or
+// return obligation is discharged. Those remain the existing inference contract's, and a reference
+// consuming a declared signature does not recheck a body at every use. This arm's claim is the
+// structural callable contract, nothing wider.
+// THE CALLABLE EVIDENCE OF A DECLARATION, or its absence. Reuses the application path's readers so a
+// reference cannot ground to a callee shape that path would refuse.
+fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
+  match infer_operator_arrow(operator: declared) {
+    Absent => Absent
+    Present { value: arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Absent => Absent
+        Present { value: domain } =>
+          match infer_formals_from_domain(domain: domain) {
+            Absent => Absent
+            Present { value: _formals } =>
+              match arrow_declared_parameter_order(arrow: arrow) {
+                ArrowParameterOrderAbsent => Absent
+                ArrowParameterOrderMalformed => Absent
+                ArrowParameterOrderDeclared { labels: _ } => Present { value: arrow }
+              }
+          }
+      }
+  }
+}
+
 fn infer_declaration_reference_facts(
   n: Node,
   resolved: ResolvedTree,
@@ -869,13 +902,13 @@ fn infer_declaration_reference_facts(
         Absent =>
           inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
         Present { value: declared } =>
-          match arrow_domain_binder_labels(children: declared.children) {
-            DomainBinderLabelsUnreadable =>
+          match infer_declaration_callable_evidence(declared: declared) {
+            Absent =>
               inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-            DomainBinderLabels { labels: _ } =>
+            Present { value: callable } =>
               inferred_facts_from_derived_type(
                 node: n,
-                derived_type: declared,
+                derived_type: callable,
                 descent: Holds { value: descent_proof }
               )
           }
