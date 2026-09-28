@@ -35,6 +35,58 @@ type TicketFields {
   last_verified_on: String
 }
 
+// Field identities survive projection; labels are presentation text, never routing keys.
+type TicketField
+  = TicketBrief
+  | TicketDisplacedCost
+  | TicketCurrentState
+  | TicketFirstSlice
+  | TicketRedControl
+  | TicketOutOfScope
+  | TicketHandback
+  | TicketVerified
+
+type TicketSection = TicketDescription | TicketAcceptance | TicketPlan | TicketScope | TicketMetadata
+
+fn ticket_field_value(ticket: TicketFields, field: TicketField) -> String {
+  match field {
+    TicketBrief => ticket.brief
+    TicketDisplacedCost => ticket.displaced_cost
+    TicketCurrentState => ticket.current_state
+    TicketFirstSlice => ticket.first_slice
+    TicketRedControl => ticket.red_control
+    TicketOutOfScope => ticket.out_of_scope
+    TicketHandback => ticket.handback
+    TicketVerified => ticket.last_verified_on
+  }
+}
+
+fn ticket_field_label(field: TicketField) -> String {
+  match field {
+    TicketBrief => "brief"
+    TicketDisplacedCost => "displaced cost"
+    TicketCurrentState => "current state"
+    TicketFirstSlice => "first slice"
+    TicketRedControl => "red control"
+    TicketOutOfScope => "out of scope"
+    TicketHandback => "hand-back"
+    TicketVerified => "verified"
+  }
+}
+
+fn ticket_field_section(field: TicketField) -> TicketSection {
+  match field {
+    TicketBrief => TicketDescription
+    TicketDisplacedCost => TicketPlan
+    TicketCurrentState => TicketPlan
+    TicketFirstSlice => TicketPlan
+    TicketRedControl => TicketAcceptance
+    TicketOutOfScope => TicketScope
+    TicketHandback => TicketAcceptance
+    TicketVerified => TicketMetadata
+  }
+}
+
 type RoadmapItem
 
   = DerivableLine { prs: List<Int>, title: String, description: String }

@@ -1,5 +1,9 @@
 module test.claim.long.roadmap_page_witness
 
+import gunbc.roadmap_model { RoadmapMembership, RoadmapNodeId }
+
+import gunbc.roadmap_status { TicketBrief, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback, TicketVerified }
+
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation, HarnessThroughput, ThroughputUnobserved }
@@ -1016,7 +1020,7 @@ fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
     Absent => fx_project_tree_view(auto_open: false)
     Present { value: top } =>
       gunbc.roadmap_presentation.project_tree_view(
-        row: top, rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows))
+        row: top, rows: rows, memberships: fixture_memberships(dependencies: edges), members: [], depth: 1, fuel: count(rows))
   }
 }
 
@@ -1435,7 +1439,7 @@ fn fx_shell_live_workspace_html(refused: Bool) -> HtmlEmitResult {
   let edges = gunbc.roadmap_spawner.doc_all_edges(doc: doc)
   let rows = fx_shell_live_rows(refused: refused)
   let ws = gunbc.roadmap_presentation.daily_workspace_view(
-    rows: rows, edges: edges, program: none,
+    rows: rows, memberships: gunbc.roadmap_authority.declared_roadmap_memberships(), program: none,
     observation: gunbc.roadmap_presentation.ObservationsNominal, families: [], members: [])
   try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: ws, edges: edges))
 }
@@ -1472,12 +1476,12 @@ test fn witness_shell_project_row_heads_the_table_with_live_task() -> Bool {
       match fx_shell_live_workspace_html(refused: true) {
         EmitRejected { reason: _ } => false
         EmitOk { html: refused_h } =>
-          let project_row = li_of_node(html: live, node_id: "shell-residue-zero")
+          let project_row = li_of_node(html: live, node_id: "shell-typed-invocation")
           let live_row = li_of_node(html: live, node_id: "shell-dag-cron-entry-line-builder")
           let refused_row = li_of_node(html: refused_h, node_id: "shell-dag-cron-entry-line-builder")
           !string_contains(s: project_row, pattern: "node-project")
             && !string_contains(s: project_row, pattern: " tasks closed")
-            && marker_before(s: live, first: "data-node=\"shell-residue-zero\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
+            && marker_before(s: live, first: "data-node=\"shell-typed-invocation\"", second: "data-node=\"shell-dag-cron-entry-line-builder\"")
             && all(fx_shell_task_ids(), id => occurrence_count(s: live, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
             && string_contains(s: live_row, pattern: "data-band=\"active\"")
             && !string_contains(s: live_row, pattern: "activity-line-error-refusal")
@@ -1575,7 +1579,8 @@ fn issue_detail_fixture_panel() -> gunbc.roadmap_presentation.IssueLinkPanel {
   gunbc.roadmap_presentation.issue_link_panel(
     rn: gunbc.roadmap_authority.authored(identity: "rnfx_idspec", id: "issue-detail-specimen", done: false, content: "Specimen issue"),
     nodes: nodes,
-    edges: edges)
+    edges: edges,
+    memberships: [RoadmapMembership { project: "issue-detail-parent" as RoadmapNodeId, member: "issue-detail-specimen" as RoadmapNodeId }, RoadmapMembership { project: "issue-detail-specimen" as RoadmapNodeId, member: "issue-detail-child" as RoadmapNodeId }])
 }
 
 fn fixture_human_ref() -> gunbc.principal_projection.PrincipalRef {
@@ -2018,7 +2023,7 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
         && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">related</h3>") == 1
         && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">supersedes</h3>") == 1
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-parent\"") == 3
-        && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-child\"") == 1
+        && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-child\"") == 2
   }
 }
 
@@ -2258,12 +2263,12 @@ fn issue_detail_fixture_view_with_brief(lifecycle: gunbc.roadmap_presentation.Wo
     disclosure: gunbc.roadmap_presentation.TicketDisclosure {
       brief: "the brief words",
       fields: [
-        gunbc.roadmap_presentation.DisclosureField { label: "red control", value: "first line\nfn example_signature() :: typed" },
-        gunbc.roadmap_presentation.DisclosureField { label: "hand-back", value: "the hand-back clause" },
-        gunbc.roadmap_presentation.DisclosureField { label: "current state", value: "the current state" },
-        gunbc.roadmap_presentation.DisclosureField { label: "first slice", value: "the first slice" },
-        gunbc.roadmap_presentation.DisclosureField { label: "displaced cost", value: "the displaced cost" },
-        gunbc.roadmap_presentation.DisclosureField { label: "out of scope", value: "the out-of-scope clause" },
+        gunbc.roadmap_presentation.DisclosureField { field: TicketRedControl, label: "red control", value: "first line\nfn example_signature() :: typed" },
+        gunbc.roadmap_presentation.DisclosureField { field: TicketHandback, label: "hand-back", value: "the hand-back clause" },
+        gunbc.roadmap_presentation.DisclosureField { field: TicketCurrentState, label: "current state", value: "the current state" },
+        gunbc.roadmap_presentation.DisclosureField { field: TicketFirstSlice, label: "first slice", value: "the first slice" },
+        gunbc.roadmap_presentation.DisclosureField { field: TicketDisplacedCost, label: "displaced cost", value: "the displaced cost" },
+        gunbc.roadmap_presentation.DisclosureField { field: TicketOutOfScope, label: "out of scope", value: "the out-of-scope clause" },
       ],
       updates: [],
     },
@@ -2307,6 +2312,7 @@ test fn witness_issue_authored_fields_fold_per_the_mandate() -> Bool {
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">first slice</span>")
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">displaced cost</span>")
         && string_contains(s: h, pattern: "<summary>Scope</summary><div class=\"ticket-field\"><span class=\"ticket-field-label\">out of scope</span>")
+        && string_contains(s: h, pattern: "<div class=\"issue-description-body\">the brief words</div>")
         && occurrence_count(s: h, pattern: "issue-field-label\">verified</span>") == 0
   }
 }
@@ -2406,4 +2412,10 @@ test fn witness_issue_assign_form_fits_the_rail() -> Bool {
   string_contains(s: css, pattern: ".issue-assign-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) }")
     && string_contains(s: css, pattern: ".issue-assign-input { font-family: var(--font-mono); font-size: var(--text-13); color: var(--issue-text); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-3); padding: var(--space-2) var(--space-4); min-width: 0; flex: 1 }")
     && occurrence_count(s: css, pattern: "width: 34ch") == 1
+}
+
+// Fixture notation only: these preexisting specimens explicitly describe nesting. Production
+// never converts dependencies into ownership.
+fn fixture_memberships(dependencies: List<gunbc.roadmap_model.RoadmapEdge>) -> List<RoadmapMembership> {
+  dependencies |> map(e => RoadmapMembership { project: e.child, member: e.parent })
 }

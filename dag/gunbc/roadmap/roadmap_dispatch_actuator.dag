@@ -1,5 +1,7 @@
 module gunbc.roadmap_dispatch_actuator
 
+import gunbc.roadmap_status { ticket_field_value, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback }
+
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import v2.std.optional { Present }
@@ -1638,12 +1640,12 @@ fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields 
     Present { value: t } =>
       DispatchBriefFields {
         node_id: node.node,
-        displaced_cost: t.displaced_cost,
-        current_state: t.current_state,
-        first_slice: t.first_slice,
-        red_control: t.red_control,
-        out_of_scope: t.out_of_scope,
-        handback: t.handback,
+        displaced_cost: ticket_field_value(ticket: t, field: TicketDisplacedCost),
+        current_state: ticket_field_value(ticket: t, field: TicketCurrentState),
+        first_slice: ticket_field_value(ticket: t, field: TicketFirstSlice),
+        red_control: ticket_field_value(ticket: t, field: TicketRedControl),
+        out_of_scope: ticket_field_value(ticket: t, field: TicketOutOfScope),
+        handback: ticket_field_value(ticket: t, field: TicketHandback),
         paths: carrier_paths_label(carriers: node.carriers, repo: repo),
         commands_to_run: "",
         expected_artifact: "",

@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_supervisor
 
 import std.types { String, Int, List, NonEmptyStr }
-import gunbc.roadmap_model { RoadmapEdge }
+import gunbc.roadmap_model { RoadmapMembership }
 import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, MembershipStandalone, MembershipMember, MembershipAmbiguous }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -33,7 +33,7 @@ type SupervisorVerdict
   | VerdictStuck { cause: String }
 
 // THE TARGET IS DERIVED FROM THE DECOMPOSITION DAG, NEVER ROSTERED. A leaf escalates to the
-// supervisor of the arc that depends on it (its project, per gunbc.roadmap.roadmap_project); a
+// supervisor of its declared owning project (gunbc.roadmap.roadmap_project); a
 // project-of-one leaf has no arc above it, so its own node's supervisor convenes; a root arc --
 // standalone with members of its own -- has no supervisor but the top. Ambiguous membership has no
 // derivation at all: the authority must say which arc owns the delivery before anyone can
@@ -42,11 +42,11 @@ type SupervisorTarget
   = SupervisorForNode { node_id: String }
   | SupervisorAtTop
 
-fn supervisor_target_for(node_id: String, edges: List<RoadmapEdge>) -> SupervisorTarget? {
-  match node_project_membership(node_id: node_id, edges: edges) {
+fn supervisor_target_for(node_id: String, memberships: List<RoadmapMembership>) -> SupervisorTarget? {
+  match node_project_membership(node_id: node_id, memberships: memberships) {
     MembershipMember { arc } => Present { value: SupervisorForNode { node_id: arc } }
     MembershipStandalone =>
-      if count(project_member_ids(arc: node_id, edges: edges)) > 0 {
+      if count(project_member_ids(arc: node_id, memberships: memberships)) > 0 {
         Present { value: SupervisorAtTop }
       } else {
         Present { value: SupervisorForNode { node_id: node_id } }

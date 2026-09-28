@@ -6,6 +6,8 @@ module test.claim.roadmap.roadmap_submission_witness_test
 // discharged, a resumed publication duplicating its PR, a later edit wearing a prior head's
 // evidence, a fanin that loses a side or mints over a conflict.
 
+import gunbc.roadmap_model { RoadmapMembership }
+
 import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha }
 import std.minted_identity { minted_id_ordinal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -620,22 +622,22 @@ fn batch_edges() -> List<RoadmapEdge> {
 }
 
 test fn a_node_the_arc_depends_on_is_a_member_keyed_by_the_arc() -> Bool {
-  match node_project_membership(node_id: "task-one", edges: batch_edges()) {
+  match node_project_membership(node_id: "task-one", memberships: fixture_memberships(dependencies: batch_edges())) {
     MembershipMember { arc } => arc == "shell-arc"
     _ => false
   }
-    && match project_key_for_node(node_id: "task-one", edges: batch_edges()) {
+    && match project_key_for_node(node_id: "task-one", memberships: fixture_memberships(dependencies: batch_edges())) {
       Present { value: key } => key == "shell-arc"
       Absent => false
     }
 }
 
 test fn a_node_with_no_dependent_arc_is_a_project_of_one_keyed_by_itself() -> Bool {
-  match node_project_membership(node_id: "shell-arc", edges: batch_edges()) {
+  match node_project_membership(node_id: "shell-arc", memberships: fixture_memberships(dependencies: batch_edges())) {
     MembershipStandalone => true
     _ => false
   }
-    && match project_key_for_node(node_id: "shell-arc", edges: batch_edges()) {
+    && match project_key_for_node(node_id: "shell-arc", memberships: fixture_memberships(dependencies: batch_edges())) {
       Present { value: key } => key == "shell-arc"
       Absent => false
     }
@@ -645,18 +647,18 @@ test fn two_arcs_over_one_node_is_a_typed_ambiguity_not_a_default() -> Bool {
   let edges = concat(batch_edges(), [
     RoadmapEdge { child: "other-arc" as RoadmapNodeId, parent: "task-one" as RoadmapNodeId },
   ])
-  match node_project_membership(node_id: "task-one", edges: edges) {
+  match node_project_membership(node_id: "task-one", memberships: fixture_memberships(dependencies: edges)) {
     MembershipAmbiguous { arcs } => count(arcs) == 2
     _ => false
   }
-    && match project_key_for_node(node_id: "task-one", edges: edges) {
+    && match project_key_for_node(node_id: "task-one", memberships: fixture_memberships(dependencies: edges)) {
       Present { value: _ } => false
       Absent => true
     }
 }
 
 test fn the_project_membership_is_the_arcs_parents_in_declared_order() -> Bool {
-  let members = project_member_ids(arc: "shell-arc", edges: batch_edges())
+  let members = project_member_ids(arc: "shell-arc", memberships: fixture_memberships(dependencies: batch_edges()))
   count(members) == 2
     && fold(members, init: true, f: fn(ok, m) {
       ok && (m == "task-one" || m == "task-two")
@@ -844,4 +846,10 @@ test fn a_capture_for_a_commit_the_envelope_lacks_passes_through_to_the_integrat
           }
       }
   }
+}
+
+// Fixture notation only: these preexisting specimens explicitly describe nesting. Production
+// never converts dependencies into ownership.
+fn fixture_memberships(dependencies: List<gunbc.roadmap_model.RoadmapEdge>) -> List<RoadmapMembership> {
+  dependencies |> map(e => RoadmapMembership { project: e.child, member: e.parent })
 }

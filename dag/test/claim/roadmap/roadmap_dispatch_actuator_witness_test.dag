@@ -165,7 +165,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
-  AlignmentChained, AlignmentChainLink, AlignmentChainForked, AlignmentRowUndeclared,
+  AlignmentChained, AlignmentChainLink, AlignmentChainForked, AlignmentRowUndeclared, AlignmentMembershipCycle,
   alignment_resolve, alignment_resolve_chain, alignment_base_cadence_state, alignment_refusal_reason,
 }
 import std.decl_ref { decl_ref }
@@ -1219,36 +1219,16 @@ fn authority_node_opt(id: String) -> RoadmapNode? {
   (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
 }
 
-// THE ONE-AUTHORITY PREAMBLE (review finding 2026-09-26): the preamble IS the resolution's
-// rendered_prompt — gunbc.roadmap.roadmap_alignment owns the alignment answer and this lane only
-// concatenates. For the REAL node namespace-occurrence-transport the derived chain refuses one
-// level up — namespace-binding-kernel has three declared dependents, so the honest preamble is the
-// refusal marker naming the fork, never the confident single-level projection the old string
-// helpers rendered while execution proceeded.
-test fn the_preamble_names_the_derived_refusal_for_a_real_forked_node() -> Bool {
-  let resolution = alignment_resolve(
-    node_id: "namespace-occurrence-transport",
-    turns_elapsed: 2,
-    state: alignment_base_cadence_state(),
-  )
-  let preamble = dispatch_continuation_alignment_preamble(resolution: resolution)
+// Shared blocking prerequisites do not invent alignment ownership.
+test fn the_preamble_does_not_invent_projects_from_blocking_edges() -> Bool {
+  let resolution = alignment_resolve(node_id: "namespace-occurrence-transport", turns_elapsed: 2, state: alignment_base_cadence_state())
   match resolution {
-    AlignmentUnresolved { cause } =>
-      preamble.contains("Alignment UNRESOLVED")
-        && (match cause {
-          AlignmentChainForked { at, dependents, walked: _ } =>
-            at == "namespace-binding-kernel" && count(dependents) == 3
-          AlignmentRowUndeclared { node_id: _ } => false
-        })
-        && string_contains(s: preamble, pattern: "namespace-binding-kernel")
-        && !preamble.contains("this task serves project")
-    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+    AlignmentReady { chain, due_levels: _, rendered_prompt } =>
+      count(chain.projects) == 0 && dispatch_continuation_alignment_preamble(resolution: resolution) == rendered_prompt
+    AlignmentUnresolved { cause: _ } => false
   }
 }
 
-// A RESOLVED CHAIN RENDERS EVERY LEVEL NODE TO ROOT through the same preamble: the L0 pointer, the
-// nearest project with its carried contribution, deeper levels above it, the task contract, and
-// the bounded ask — not just the immediate L1 the deleted projection stopped at.
 test fn the_preamble_renders_every_chain_level_when_the_resolution_is_ready() -> Bool {
   let preamble = dispatch_continuation_alignment_preamble(
     resolution: fixture_ready_resolution(node_id: "ts-alignment-deep", project_ids: ["arc-near", "arc-far"]),
@@ -1296,18 +1276,14 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     && cont.contains("\nAlignment (re-checked at every continuation turn):\n")
     && cont.contains(continuation_alignment_ask)
     && (match fresh_resolution {
-      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentChainForked { at: _, dependents: _, walked: _ } => false })
+      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentMembershipCycle { at: _ } => false
+        AlignmentChainForked { at: _, dependents: _, walked: _ } => false })
       AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
     })
 }
 
-// NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, THE REAL AUTHORITY (the review finding's
-// discriminating control). The production node shell-dag-cron-entry-line-builder's chain refuses
-// at the shell-gate-migration fork ON THE LIVE AUTHORITY; the same resolution the belt derives at
-// spawn time is handed to the real spawn fold, and the fold's answer is DispatchSpawnRefused at
-// the alignment gate — the Refused arm carries no DispatchSpawnCommands, so zero spawn commands
-// exist: no worktree add, no state prepare, no session container. Execution cannot proceed on a
-// chain the authority cannot read.
+// The production spawn fold accepts no commands when its supplied alignment resolution refuses.
+// The ambiguous ownership fixture is independent of changing live dependency topology.
 test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
   match authority_node_opt(id: "shell-dag-cron-entry-line-builder") {
     Absent => false
@@ -1321,7 +1297,7 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
         effort: ReasoningMedium,
         model: dispatch_codex_default_model,
         origin: FreshFromBase,
-        resolution: alignment_resolve(node_id: "shell-dag-cron-entry-line-builder", turns_elapsed: 1, state: alignment_base_cadence_state()),
+        resolution: fixture_forked_resolution(at: "shell-gate-migration", dependents: ["fleet-closed-loop-converge", "shell-residue-zero"]),
       ) {
         DispatchSpawnRefused { step, detail } =>
           step as String == "alignment"
