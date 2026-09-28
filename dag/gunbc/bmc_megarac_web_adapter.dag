@@ -1,6 +1,7 @@
 module gunbc.bmc_megarac_web_adapter
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -40,8 +41,8 @@ fn megarac_web_protocol_script(initial: BmcWorld, username: String, password: St
   let close_at = match filter(connect.world.pending, e => match e.event { BmcKvmStreamClosed {} => true  _ => false }).first() {
     Absent => "none"
     Present { value: e } =>
-      match bmc_advance(world: connect.world, now: e.at_seconds).web.kvm {
-        BmcKvmClosedByController { session: _ } => to_string(e.at_seconds)
+      match bmc_advance(world: connect.world, now: e.at).web.kvm {
+        BmcKvmClosedByController { session: _ } => to_string(second_count(s: e.at) as Int)
         _ => "none"
       }
   }

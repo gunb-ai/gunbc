@@ -7842,6 +7842,15 @@ fn current_witness_evaluation_frame() -> Option<Value> {
     WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
 }
 
+// HAND-RUST GATE, seed-retained, admitted by `gunbc.v1_maintenance_standing`
+// `v1_maintenance_modeled_operation_realization_admission_note` (gunbc#12486, #12423 decision
+// 5858742863). This is the seed realization of a .dag contract: selection
+// (`operation_handler_selection`), duplicate admission, the virtual clock and every scenario
+// transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
+// dispatches. Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS), with the
+// witness-frame stack above. Deletion condition, checkable by execution: the emitted runtime realizes
+// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness_test`
+// stays green without this code.
 /// The dynamic-extent state of one witness frame's modeled operation realization. The model is
 /// `.dag` (`v2.std.operation_realization`): this slot only holds its current state, the virtual
 /// clock and the dispatch log the dispatcher writes. It is pushed and popped with its frame, so a
@@ -7851,7 +7860,9 @@ struct ModeledRealizationSlot {
     realization: Value,
     identity: String,
     state: Value,
-    now: i64,
+    /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
+    /// representation, it only passes it to `virtual_clock_after`.
+    now: Value,
     route: Vec<Value>,
     interrupted: Option<Value>,
 }
@@ -8035,12 +8046,13 @@ fn admit_modeled_realization(
     }
     let state = record_field(ctx, &realization, "initial")
         .ok_or_else(|| modeled_refused("(frame)", "the realization carries no initial state"))?;
+    let now = run_in_context_with_args(ctx, "virtual_clock_origin", &[], false)?;
     Ok(Some(ModeledRealizationSlot {
         envelope,
         realization,
         identity,
         state,
-        now: 0,
+        now,
         route: Vec::new(),
         interrupted: None,
     }))
@@ -8130,7 +8142,7 @@ fn dispatch_modeled_operation(
                     s.realization.clone(),
                     s.identity.clone(),
                     s.state.clone(),
-                    s.now,
+                    s.now.clone(),
                     s.route.len() as i64,
                 )
             })
@@ -8142,33 +8154,34 @@ fn dispatch_modeled_operation(
     let key = format!("{service_name}.{op_name}");
     let invocation =
         bound_operation_invocation_value(service_name, op_name, op_node, param_env, ctx)?;
-    let log = |outcome: Value, completed: i64, state: Option<Value>, interrupted: bool| -> Value {
-        let record = record_value(
-            ctx,
-            "DispatchRecord",
-            vec![
-                ("ordinal", Value::Int(ordinal)),
-                ("invocation", invocation.clone()),
-                ("realization", str_value(identity.clone())),
-                ("dispatched_at", Value::Int(now)),
-                ("completed_at", Value::Int(completed)),
-                ("outcome", outcome),
-            ],
-        );
-        MODELED_REALIZATION_SLOTS.with(|slots| {
-            if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
-                slot.route.push(record.clone());
-                slot.now = completed;
-                if let Some(s) = state {
-                    slot.state = s;
+    let log =
+        |outcome: Value, completed: Value, state: Option<Value>, interrupted: bool| -> Value {
+            let record = record_value(
+                ctx,
+                "DispatchRecord",
+                vec![
+                    ("ordinal", Value::Int(ordinal)),
+                    ("invocation", invocation.clone()),
+                    ("realization", str_value(identity.clone())),
+                    ("dispatched_at", now.clone()),
+                    ("completed_at", completed.clone()),
+                    ("outcome", outcome),
+                ],
+            );
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.route.push(record.clone());
+                    slot.now = completed;
+                    if let Some(s) = state {
+                        slot.state = s;
+                    }
+                    if interrupted {
+                        slot.interrupted = Some(record.clone());
+                    }
                 }
-                if interrupted {
-                    slot.interrupted = Some(record.clone());
-                }
-            }
-        });
-        record
-    };
+            });
+            record
+        };
     let selection = run_in_context_with_args(
         ctx,
         "operation_handler_selection",
@@ -8200,7 +8213,7 @@ fn dispatch_modeled_operation(
                     "DispatchUnbound",
                     vec![("cause", cause)],
                 ),
-                now,
+                now.clone(),
                 None,
                 false,
             );
@@ -8221,7 +8234,7 @@ fn dispatch_modeled_operation(
                 "DispatchHarnessFault",
                 vec![("reason", str_value(reason.clone()))],
             ),
-            now,
+            now.clone(),
             None,
             false,
         );
@@ -8237,10 +8250,7 @@ fn dispatch_modeled_operation(
     let call = record_value(
         ctx,
         "OperationCall",
-        vec![
-            ("invocation", invocation.clone()),
-            ("now_seconds", Value::Int(now)),
-        ],
+        vec![("invocation", invocation.clone()), ("now", now.clone())],
     );
     let step = apply_modeled_handler(&handler, &[state, call], env, ctx)?;
     let (step_arm, step_fields) = variant_parts(ctx, &step)
@@ -8257,20 +8267,23 @@ fn dispatch_modeled_operation(
                 .field(&step_fields, "state")
                 .cloned()
                 .ok_or_else(|| harness_fault("an observed step carries no state".to_string()))?;
-            let elapsed = match ctx.field(&step_fields, "elapsed_seconds") {
-                Some(Value::Int(n)) if *n >= 0 => *n,
-                _ => {
-                    return Err(harness_fault(
-                        "an observed step's elapsed time is missing or negative".to_string(),
-                    ))
-                }
-            };
-            let completed = now + elapsed;
+            let elapsed = ctx.field(&step_fields, "elapsed").cloned().ok_or_else(|| {
+                harness_fault("an observed step carries no elapsed time".to_string())
+            })?;
+            let completed = run_in_context_with_args(
+                ctx,
+                "virtual_clock_after",
+                &[
+                    (Some("now".to_string()), now.clone()),
+                    (Some("elapsed".to_string()), elapsed),
+                ],
+                false,
+            )?;
             let advance = record_field(ctx, &realization, "advance").ok_or_else(|| {
                 harness_fault("the realization carries no advance function".to_string())
             })?;
             let advanced =
-                apply_modeled_handler(&advance, &[stepped, Value::Int(completed)], env, ctx)?;
+                apply_modeled_handler(&advance, &[stepped, completed.clone()], env, ctx)?;
             let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
             log(
                 variant_value(
@@ -8301,7 +8314,7 @@ fn dispatch_modeled_operation(
                     "DispatchWorkerKilled",
                     vec![("committed", committed)],
                 ),
-                now,
+                now.clone(),
                 Some(stepped),
                 true,
             );
