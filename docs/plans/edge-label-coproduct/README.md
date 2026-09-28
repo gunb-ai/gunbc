@@ -1,0 +1,76 @@
+# Typed EdgeLabel coproduct — model proposal (step 1 of 2)
+
+Status: MODEL PR for neat-boar-16's review. No `.dag` changes; the cut (step 2) lands root-first only after this model is approved.
+Climb on record: `gunbc.recurring_failure_mode` `behavior_named_edge_label_validated_not_constructed` (the next-rung trigger names "edge labels ... a closed coproduct owned by `v2.std.node`"). No parallel RFM row is filed. The text-matching readers below are a second instance of that class, and the step-2 PR adds their evidence to that row.
+
+## Defect
+
+`v2.std.node` `EdgeLabel = Named { name: Symbol } | Positional`. Grammar-structural labels (for example `^dag_surface_module_header`, `^arrow_body_edge`, `<cast-target>`) and AUTHORED names (a field, a named actual, a declaration name) share one `Symbol` identity space. A reader that asks "is this the module-header edge?" can only compare text, and an authored name spelled the same way inhabits the answer. The invalid state is constructible, and today only `v2.std.type_binder` `type_binder_labels_conform` refuses it, for behavior nodes (rung 3), while four readers are not guarded at all:
+
+| reader | module | reads |
+|---|---|---|
+| `dag_surface_module_header_metadata_edge` | `v2.extdeps.languages.dag` | `Symbol ==` two header symbols; 13 callers bind `Named { name }` first |
+| `dag_node_is_module_root_conj` (fallback arm) | `v2.extdeps.languages.dag` | `sym == ^dag_surface_module_header` |
+| `d1_edge_names_where_clause` | `v2.test.claim.parse.d1_declaration_grammar_parse_test` | `n == ^dag_surface_where_refinement_clause` |
+| `site_is_import_syntax_mention` | `v2.lens.module_graph` | `contains(site.position, ^dag_surface_import_*)`; the path is a Symbol list that already mixes production names with authored names (`v2.compiler.reference_site_collector` `reference_sites_in_edge`) |
+
+## Proposed shape
+
+```
+// v2.std.node
+type EdgeLabel
+  = Structural { label: StructuralEdgeLabel }   // constructed only by a grammar / lowering authority
+  | Authored   { name: Symbol }                 // carries the source name
+  | Positional
+```
+
+`Named { name: Symbol }` does not survive beside these arms (DESIGN §3 replacement migration). Step 2 deletes it first and fixes forward.
+
+### The open decision: who owns the closed set
+
+The census finds **111 candidate structural symbols** (a name heuristic, not an authority). They come from two layers:
+
+1. **Core substrate markers**, owned by `v2.std.node` and `v2.std.type_binder`: arrow body and signature order, loop bound and carrier, match arm pattern and body, cast target, type annotation, type params, type body, type alias, the `v2.std.node_query` projection markers, and `declaration_reference_marker`. This set is language-independent and closed today, so it can be a closed coproduct in `v2.std.node`: `CoreEdgeLabel = ArrowBody | ArrowSignatureOrder | LoopBound | ...`.
+2. **Grammar production edges**, per language: `dag_surface_*`, `rust_*`, `ts_*`, `target_model_edge_*`, and the 29 `*_named_edge` helpers that build them. These belong to the language rows in `extdeps/languages/`. Enumerating them in `v2.std.node` would be a layer inversion (DESIGN §3: each upstream has its own authority, and a generic hub may not enumerate products). Adding a language would also widen a core enum.
+
+Recommended (A):
+```
+type StructuralEdgeLabel
+  = Core { marker: CoreEdgeLabel }                      // closed, v2.std.node
+  | Production { grammar: GrammarRef, edge: Symbol }    // minted only by the grammar fold from a declared row
+```
+Here `Production` is closed per grammar by construction. Its only constructor is the grammar's own projection (`v2.std.grammar` / `v2.compiler.02_parse` `parse_tree_projection_edge`, already a closed roster of 4, is the precedent). Readers compare `Production` values minted from the same row, not `^text`.
+Alternative (B): one flat closed enum of all 111 in `v2.std.node`. Rejected for the layer inversion above.
+Needs a ruling: whether `Production.edge` can be a row reference rather than a Symbol. That depends on `v2.std.grammar` exposing a row identity type. If it cannot, `Production` is rung 3 per grammar (it is checked when the grammar is admitted), not rung 4.
+
+### Other judgment calls flagged for review
+
+- **126 hand-built type-node literals** (`^magma_field_op` in `v2.std.algebra`, `effects`, `testgen`, `target_model`, and others) model the AUTHORED field names of modeled records but are spelled like markers. The proposed disposition is `Authored`. If those nodes are meant to equal what ingest produces, their names are already wrong (`magma_field_op` ≠ `op`). That is a separate finding.
+- **`ReferenceSite.position`** must carry `EdgeLabel` segments, or only Authored segments plus a separate structural context. This is a model change to `v2.compiler.reference_site_collector`, not a rename.
+- **Symbol-keyed query APIs** (`v2.std.node_query` `find_named_child` with 248 calls, `named_child_lookup`, `named_edge_target_lookup`, and `v2.std.node` `name_occurrences`) split into a structural lookup that takes a `StructuralEdgeLabel` and an authored lookup that takes a `Symbol`. A single Symbol-keyed lookup must not survive.
+- **named-args PR-B #12382** (vivid-ram-65): the Named edges for named actuals under Transform are `Authored`. `PositionalPlusOneNamedEdges` for Transform then counts `Structural { Core { CastTarget } }` separately from the authored actuals.
+
+## Census
+
+Mechanical, over every `\bNamed\b` token in `*.dag` under `src/v2` and `dag/`, at 60ef76cc5a: [census.md](census.md), with the instrument in `census.py` / `report.py` beside it.
+
+- 870 EdgeLabel sites. Excluded as other types: `std.algebra` `ContainerSource` (5) and `extdeps.formats.spice` (22).
+- By disposition: 468 Authored, 268 Structural, 55 arm-only rename, 41 funnel (depends on the caller), 34 Symbol-keyed query (depends on the caller), 4 hash/canonical.
+- Not classified per site (stated, not dropped): about 1,500 calls to the edge-building funnels and about 310 query calls, 49 bind-and-read sites marked `AUTHORED?`, and the 126 literals above. Splitting the funnel callers is most of the step-2 work.
+- Rust `src/v1/stage0`: there are no hand-written EdgeLabel `Named` sites. The generated reflection in `coproduct_reflection.rs` and `data_initializer_identity.rs` regenerates.
+
+## Identity impact (a deliberate change)
+
+`v2.std.node` `canonical_hash_of_edge_label` gains distinct tags for Structural/Core, Structural/Production and Authored. `Positional` keeps its tag. `label_sort_key` (canonical order) follows. Churn:
+
+- **Pinned digests:** `node_hash_protocol_witness_test` has 4 of 6 vectors that change (every one with a named edge). The positional and no-edge vectors stay stable, which is the control that only the label arm moved.
+- **SCM:** every `object_store` object id derived through `content_hash_of_children` changes. The JSON wire `encode_label` / `decode_named_label` splits its `"named"` tag. No committed fixture carries a `"named"` label.
+- **Hermetic fixtures keyed by a content-hash locator** change. Their on-disk store is still to be located before step 2.
+- **Invalidate only, nothing pinned:** the test-claim cache digest (`05_eval`), the parse memo grammar digest (`02_parse`), and the bootstrap closure hash.
+
+## Step-2 controls (the cut)
+
+1. For each of the 4 readers, an authored name spelled like its structural label (for example an authored `dag_surface_module_header`) reaches none of them.
+2. The real structural labels still route (positive control over the real ingest path).
+3. A mutation that re-keys a reader on text makes the control red.
+4. Gating: base-vs-head over shape consumers, neat-boar-16's srv1 per-file native census, and self-host.
