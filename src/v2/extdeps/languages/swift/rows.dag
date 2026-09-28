@@ -375,10 +375,7 @@ fn swift_row_binding_spellings() -> Map<Symbol, String> {
 
 fn swift_row_target_model(row: Node) -> TargetModel {
   TargetModel {
-    bundle: swl_named_conj(name: ^target_model_edge_translation_rules, target: swl_named2(
-      a: ^grammar_relation_rules_formal_productions, at: formal_productions_catalog_to_node(productions: swift_row_productions()),
-      b: ^swift_relation_rule_program, bt: row
-    )),
+    bundle: swl_named_conj(name: ^target_model_edge_translation_rules, target: swift_row_rules(row: row)),
     lex: swift_row_lex(),
     binding_spellings: swift_row_binding_spellings(),
     token_class_emit_transforms: swift_row_emit_transforms(),
@@ -386,6 +383,13 @@ fn swift_row_target_model(row: Node) -> TargetModel {
     runtime_row: target_emit_host_runtime_row_unconfigured,
     produced_decl_support: ProducedDeclUnwired
   }
+}
+
+fn swift_row_rules(row: Node) -> Node {
+  swl_named2(
+    a: ^grammar_relation_rules_formal_productions, at: formal_productions_catalog_to_node(productions: swift_row_productions()),
+    b: ^swift_relation_rule_program, bt: row
+  )
 }
 
 fn swl_named_conj(name: Symbol, target: Node) -> Node {
