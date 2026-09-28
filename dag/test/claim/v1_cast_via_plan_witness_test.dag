@@ -1,0 +1,66 @@
+module test.claim.v1_cast_via_plan_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE v1 HALF OF THE `e as T via <plan>` CONTROL (node adhoc-f71b7e28-075). The v1 seed parses the
+// suffix in v1.compiler.parse parse_cast_via against std.conversion_plan conversion_plans -- the one
+// roster v2 resolves plan names against -- and keeps its cast node unchanged, so `via refine` is
+// realized by the existing checked as-cast into a where-refinement (v1.compiler.infer
+// decidable_where_string_predicate_holds). SEED LIMITATION: v1 does not model plans; it matches v2
+// only for the literal-into-refinement cases. The v2 half runs the SAME two sources below and cites
+// these claim identities beside its own.
+//
+// Every fixture imports only std.types, so its blocking rows are its own: a zero is a real zero.
+
+data via_refine_pass_source: String = "module probe_via_refine_pass\nimport std.types { NonEmptyStr }\ndata label: NonEmptyStr = \"abc\" as NonEmptyStr via refine\n"
+
+data via_refine_fail_source: String = "module probe_via_refine_fail\nimport std.types { NonEmptyStr }\ndata label: NonEmptyStr = \"\" as NonEmptyStr via refine\n"
+
+data via_unknown_plan_source: String = "module probe_via_unknown_plan\nimport std.types { NonEmptyStr }\ndata label: NonEmptyStr = \"abc\" as NonEmptyStr via bogus\n"
+
+data via_ordinary_identifier_source: String = "module probe_via_ordinary_identifier\ntype Route { via: String }\nfn route_via(r: Route) -> String {\n  let via = r.via\n  via\n}\n"
+
+fn blocking_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// GREEN: a non-empty literal refined through the named plan compiles clean.
+test fn v1_via_refine_nonempty_literal_passes() -> Bool {
+  blocking_total(source: via_refine_pass_source) == 0
+}
+
+// RED: the empty literal fails the NonEmptyStr predicate through the same existing where check.
+test fn v1_via_refine_empty_literal_refuses() -> Bool {
+  blocking_count(source: via_refine_fail_source, wanted: "TypeMismatch") == 1
+}
+
+// RED: a name that is not a row of std.conversion_plan conversion_plans refuses at parse.
+test fn v1_via_unknown_plan_refuses_at_parse() -> Bool {
+  blocking_count(source: via_unknown_plan_source, wanted: "ParseError") == 1
+}
+
+// GREEN: `via` stays an ordinary identifier as a record field and a binding.
+test fn v1_via_stays_an_ordinary_identifier() -> Bool {
+  blocking_total(source: via_ordinary_identifier_source) == 0
+}

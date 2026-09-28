@@ -55,6 +55,7 @@
 // src/std_computation.rs
 // src/std_constructors.rs
 // src/std_content_hash.rs
+// src/std_conversion_plan.rs
 // src/std_decl_ref.rs
 // src/std_disposition.rs
 // src/std_dissolution.rs

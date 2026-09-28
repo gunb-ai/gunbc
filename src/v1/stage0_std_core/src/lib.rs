@@ -135,6 +135,9 @@ pub mod std_target_representation;
 #[path = "../../stage0/src/std_literal_elaboration.rs"]
 pub mod std_literal_elaboration;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_conversion_plan.rs"]
+pub mod std_conversion_plan;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_operator_realization.rs"]
 pub mod std_operator_realization;
 #[rustfmt::skip]

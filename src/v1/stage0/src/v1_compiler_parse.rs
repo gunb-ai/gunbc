@@ -10,6 +10,9 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_conversion_plan::ConversionPlanLookup;
+use crate::std_conversion_plan::ConversionPlanLookup::{PlanDuplicated, PlanFound, PlanUnknown};
+pub use crate::std_conversion_plan::{conversion_plan_for, conversion_plans};
 use crate::std_import::ImportStatementParseCause::{
     ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
     SourceHasNoModuleDeclaration,
@@ -14240,6 +14243,65 @@ pub fn is_variant_pattern_start(name: String) -> bool {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CastViaResult {
+    pub tokens: Rc<TokenStream>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+pub fn parse_cast_via(tokens: Rc<TokenStream>) -> Rc<CastViaResult> {
+    if !tok_is_ident_text(token_stream_first(tokens.clone()), "via".to_string()) {
+        Rc::new(CastViaResult {
+            tokens: tokens.clone(),
+            err: std::option::Option::None,
+        })
+    } else {
+        {
+            let rest = token_stream_advance(tokens.clone(), 1);
+            let name_tok = token_stream_first(rest.clone());
+            let name_span = token_span(name_tok.clone());
+            match name_tok.clone() {
+                Some(nt) => {
+                    if !is_ident_shape(nt.shape.clone()) {
+                        Rc::new(CastViaResult {
+                            tokens: rest.clone(),
+                            err: Some(parse_error(
+                                "expected a conversion plan name after `via`".to_string(),
+                                name_span.clone(),
+                            )),
+                        })
+                    } else {
+                        {
+                            let after = token_stream_advance(rest.clone(), 1);
+                            match (*crate::std_conversion_plan::conversion_plan_for(conversion_plans(), nt.text.clone())).clone() {
+    ConversionPlanLookup::PlanFound { plan: _, .. } => Rc::new(CastViaResult {
+    tokens: after.clone(),
+    err: std::option::Option::None,
+}),
+    ConversionPlanLookup::PlanUnknown => Rc::new(CastViaResult {
+    tokens: after.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("unknown conversion plan '".to_string(), nt.text.clone()), "' after `via`: not a row of std.conversion_plan conversion_plans".to_string()), name_span.clone())),
+}),
+    ConversionPlanLookup::PlanDuplicated { count: c, .. } => Rc::new(CastViaResult {
+    tokens: after.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("conversion plan '".to_string(), nt.text.clone()), "' is declared ".to_string()), (c.clone()).to_string()), " times in std.conversion_plan conversion_plans".to_string()), name_span.clone())),
+}),
+}
+                        }
+                    }
+                }
+                std::option::Option::None => Rc::new(CastViaResult {
+                    tokens: rest.clone(),
+                    err: Some(parse_error(
+                        "expected a conversion plan name after `via`".to_string(),
+                        name_span.clone(),
+                    )),
+                }),
+            }
+        }
+    }
+}
+
 pub fn try_postfix(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -14318,6 +14380,16 @@ pub fn try_postfix(
                                     err: r.err.clone(),
                                 });
                             }
+                            let v = parse_cast_via(r.tokens.clone());
+                            if has_err(v.err.clone()) {
+                                return Rc::new(PostfixResult {
+                                    expr: lhs.clone(),
+                                    changed: false,
+                                    tokens: v.tokens.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: v.err.clone(),
+                                });
+                            }
                             let minted = mint_parsed_node_identity(r.ctx.clone());
                             Rc::new(PostfixResult {
                                 expr: crate::v1_std_core::make_expr_node(
@@ -14328,7 +14400,7 @@ pub fn try_postfix(
                                     span.clone(),
                                 ),
                                 changed: true,
-                                tokens: r.tokens.clone(),
+                                tokens: v.tokens.clone(),
                                 ctx: minted.ctx.clone(),
                                 err: std::option::Option::None,
                             })
