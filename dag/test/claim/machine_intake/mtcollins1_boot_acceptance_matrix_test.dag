@@ -382,12 +382,14 @@ test fn a_presentation_lost_after_readiness_stops_the_handoff() -> Bool {
 
 // A PRESENTATION LOST AFTER THE HANDOFF IS THE NAMED CAUSE (finding 4, repaired in #12554). Lost
 // twenty seconds after readiness -- after the boot override and the power action -- the watch still
-// reaches its deadline, but the after-handoff look affirmed the loss, so the outcome names it and
-// keeps the deadline beside it (#12423 media: presentation withdrawal). The red is the bare deadline.
+// reaches its deadline, but a post-handoff look (after-handoff, or end-of-attempt when the handoff
+// finished before the withdrawal) affirmed the loss, so the outcome names it and keeps the deadline
+// beside it; which look sees it is the unit witnesses' subject, not this case's (#12423 media: presentation withdrawal). The red is the bare deadline.
 test fn a_presentation_lost_after_the_handoff_is_the_reported_cause() -> Bool {
   match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 20) }))) {
     WitnessReturned { value, route } =>
-      starts_with(s: outcome_reason(a: value), prefix: "mtcollins1 boot: media presentation lost at after-handoff (")
+      (string_contains(s: outcome_reason(a: value), pattern: "media presentation lost at after-handoff (")
+        || string_contains(s: outcome_reason(a: value), pattern: "media presentation lost at end-of-attempt ("))
         && string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
     _ => false
