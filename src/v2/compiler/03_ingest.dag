@@ -32,10 +32,8 @@ import v2.compiler.compile { CoreNode }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.emit { emit }
 import extdeps.communication.medium { Medium }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  target_bundle_child
-}
+import v2.compiler.translate { coerce_grounded_node }
+import v2.compiler.target_serialize { target_bundle_child }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Conj }
 import v2.std.diagnostic {
