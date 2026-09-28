@@ -142,24 +142,74 @@ maintained readiness followed by producer loss, all three expiry windows, and
 crashes around acquisition commit and release publication. No manual preparation
 helper substitutes for the website-to-consumer route.
 
-## Initial implementation checkpoint
+## Current implementation checkpoint
 
-`workspace_request_consumer` now rereads the owner's protected ledger and selects
-idle, refusal, retirement, preparation, or routing. It refuses multiple outstanding
-rows and unreadable storage; retired/expired requests do not request offers. This
-is only discovery/dispatch, not the complete consumer: effectful settlement,
-observed supply/policy, selected-host transport and durable outcome publication
-remain unconnected. Nothing is installed or deployed.
+`workspace_request_consumer` discovers the outstanding owner request, commits
+expiry and settles unplanned retirement through the existing protected-state CAS.
+Planned requests retain the obligation and route to the existing selected-host
+convergence check. The plan CLI calls this consumer; it no longer requires a
+request ID carried from the HTTP process. Waiting preparation is published in
+the owner's existing reason field without changing readiness freshness.
 
-Validation on this baseline with the existing serving binary and 6 GiB/no swap:
-seven principal witnesses passed, then the restored negative specimen's compiler
-census stopped at a module-index parse refusal in `dag/std/machine_constraints.dag`.
-The consumer closure similarly refused its byte-identical copy of that module
-before witness execution. Neither suite is claimed green. Four consumer controls
-are authored for unreadable discovery, expired/unplanned retirement, explicit
-retirement without supply/clock, and preserving the live request's lease.
+This remains partial: current supply/policy production, remote selected-host
+transport orchestration, scheduled consumption and maintained gateway refresh
+remain unconnected. No host was installed or deployed. Do not describe the CLI
+connection as an autonomous website-to-VM acceptance pass.
 
-Draft publication hit pre-existing rustfmt drift in the unchanged
-`src/v1/stage0/src/cli_run.rs`. The pre-push hook explicitly documents
-`git push --no-verify`; that override is used only to publish this review branch,
-not as a passing qualification or authorization to land.
+The first implementation used a binary that rejected this baseline's syntax.
+The compatible binary and successful focused results below supersede that source
+blocker diagnosis. The draft publication still inherits Rust formatting drift in
+`src/v1/stage0/src/cli_run.rs`; the hook's documented `--no-verify` override is for
+review publication only, not qualification or landing.
+
+## Consumer continuation
+
+The owner reconciliation pass now commits expiry, then settles an unplanned
+retirement through the existing store authority. A request with a plan is routed
+for host recovery; the coordinator never reads a local hold to discharge it.
+Conflicting CAS returns retry rather than looping. The fleet plan CLI now discovers
+the outstanding operator request from protected state instead of requiring
+`GUNBC_WORKSPACE_REQUEST_ID`. It records a preparation-wait reason in the owner
+ledger when commissioned evidence/policy are not connected, preserving the actual
+readiness timestamp and connection. That write loses to planning or retirement.
+It still requires the installed controller release for a prepared host plan.
+
+Lease assessment/expiry moved intact from the host lifecycle to
+`workspace_allocation_lease`; controller and consumer share that authority. The
+consumer test closure falls from 741 modules to 641. The smaller closure exposed
+an implicit service dependency in `workspace_acquisition_invocation`; it now
+explicitly imports `extdeps.systemd.systemctl`.
+
+The initial four dispatch controls passed with the repository binary SHA256
+`e6d8571156538304137139853153e1d30f77f99ba71d8c76ccd3a943b8875e5b`,
+which handles this baseline's machine-constraint syntax. A copy is pinned locally
+at `target/validation-bin/gunbc`. This supersedes the earlier parse diagnosis as a
+source blocker: that refusal was binary/source compatibility, not proof that the
+source was malformed. All six consumer controls now pass, including temporary protected-store expiry
+settlement after reader reconstruction and refusal of a late waiting update after
+retirement. These local-file controls do not qualify the served socket route. The
+restored principal negative specimen directly produces the expected mint-caller
+admission refusal. The complete principal census suite has not been rerun.
+
+Socket dependency checked: PR #12482 was open at
+`5a136eff541f0f764f4a0f03e7b3af58df2d005f`. Its documented contract supplies
+kernel-attested peer admission and routes the placed host through the socket.
+Its description does not establish queued acquisition fencing/drainage. It also
+reports the served roster empty. Do not equate this source with a commissioned
+allocation writer or a completed acquisition recovery contract. No sibling
+socket changes were cherry-picked or deployed by this continuation.
+
+The 1116-module CLI closure reached successful typechecking of
+`gunbc.fleet_converge_plan_cli`, then exited 137 before the deliberate missing-entry
+refusal used to avoid executing effects. systemd retained `Result=oom-kill` with
+`MemoryMax=6442450944`, so this run has explicit OOM attribution. This is not a
+completed CLI or integrated-floor pass. No memory ceilings changed. Receipts are
+in `receipts/allocation-consumer-2026-09-28/`.
+
+The focused suite ran against a byte-identical 641-module closure using the pinned
+binary, `systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0`, and
+`--entry .../test.claim.workspace_request_consumer_witness_test.dag --claim-run`.
+All six controls passed (exit 0). The later consumer comment edit changes no code.
+The broader CLI snapshot preceded the explicit systemctl import; its completed
+CLI typecheck includes the new discovery/waiting adapter but is not a final-source
+full qualification. The runtime invocation of host convergence is not exercised.

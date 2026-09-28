@@ -253,7 +253,8 @@ fn workspace_write_allocation(store: FabricStorageBinding, snapshot: WorkspaceOw
     decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_settle_unplanned_retirement"),
     decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_settle_unstarted_retirement"),
     decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_begin_acquisition"),
-    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_record_expiry"),
+    decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_record_preparation_wait"),
+    decl_ref(module_path: "gunbc.workspace_allocation_lease", decl_name: "workspace_record_expiry"),
     decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_publish_released_record"),
     decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_publish_cleanup_uncertain"),
     decl_ref(module_path: "gunbc.workspace_allocation_wait", decl_name: "workspace_await_observed_at"),
@@ -563,6 +564,32 @@ fn workspace_settle_unplanned_retirement(store: FabricStorageBinding, owner: Pri
           }
         }
       }
+    }
+  }
+}
+
+// A waiting preparation is owner-visible without manufacturing a VM readiness observation.
+// Once another actor prepares, retires or acquires the request, this transition must lose.
+fn workspace_record_preparation_wait(store: FabricStorageBinding, request: WorkspaceRequest,
+  reason: String) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: request.owner) {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations,
+      allocation => allocation.request.idempotency_key == request.idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "preparation request is absent" }
+      Present { value: allocation } => if (allocation.request != request || allocation.desired != WorkspaceWanted
+        || allocation.phase != WorkspaceRecorded) {
+        WorkspaceStoreConflict
+      } else { match allocation.plan {
+        Present { value: _ } => WorkspaceStoreConflict
+        Absent => if allocation.reason == reason { WorkspaceStoreWritten { allocation: allocation } }
+        else { workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation {
+          recorded_at: allocation.recorded_at, retired_at: allocation.retired_at, desired: allocation.desired,
+          request: allocation.request, plan: allocation.plan, reservation: allocation.reservation,
+          phase: allocation.phase, connection: allocation.connection, observed_at: allocation.observed_at,
+          reason: reason,
+        }) }
+      } }
     }
   }
 }

@@ -1,0 +1,3 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical
+error: resolve failed for target/principal-probe-validation/test.probe.principal_mint_unadmitted_probe.dag
+  cause: target/principal-probe-validation/test.probe.principal_mint_unadmitted_probe.dag:9:3: error: constructor call admission refused: 'gunbc.principal_projection.mint_human_principal_from_verdict' refuses call from 'test.probe.principal_mint_unadmitted_probe.unadmitted_mint' — permitted callers: [gunbc.auth.session.mint_authenticated_session, test.claim.principal_projection_witness_test.witness_mint_human_principal]

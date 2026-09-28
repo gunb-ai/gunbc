@@ -1,6 +1,6 @@
 module gunbc.runner_microvm_slot_controller
 
-import gunbc.workspace_allocation_lifecycle { workspace_record_expiry }
+import gunbc.workspace_allocation_lease { workspace_record_expiry }
 
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 

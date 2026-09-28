@@ -1,5 +1,7 @@
 module gunbc.workspace_acquisition_invocation
 
+import extdeps.systemd.systemctl
+
 import std.types { String, NonEmptyStr, Bool }
 import std.algebra { trim }
 import std.resources { Filesystem }

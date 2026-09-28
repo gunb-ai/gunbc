@@ -1,5 +1,7 @@
 module gunbc.workspace_allocation_lifecycle
 
+import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
+
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import std.types { String, NonEmptyStr, Bool, Int, Timestamp }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
@@ -24,38 +26,6 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import std.durable_exclusive_hold { HoldSlotFree }
 import gunbc.fabric_control_plane { fabric_hold_release_ref, CellHoldEnd, CellHoldEnded, release_reserved_cell_money_generation, fabric_cell_allocation_key, fabric_money_reservation_ref }
-
-// The page and the controller use the same absolute lease. A restarted controller receives the
-// remaining duration, never a new full hour. Unreadable clocks do not authorize continued use.
-type WorkspaceLeaseStanding = WorkspaceLeaseLive { remaining: Int } | WorkspaceLeaseExpired | WorkspaceLeaseUnreadable
-
-fn workspace_lease_standing(expires_at: Timestamp, observed_at: Timestamp) -> WorkspaceLeaseStanding {
-  if !utc_instant_is_canonical(t: expires_at) || !utc_instant_is_canonical(t: observed_at) {
-    WorkspaceLeaseUnreadable
-  } else if !utc_instant_before(a: observed_at, b: expires_at) {
-    WorkspaceLeaseExpired
-  } else {
-    WorkspaceLeaseLive { remaining: utc_instant_seconds_after(later: expires_at, earlier: observed_at) }
-  }
-}
-
-// Expiry records the same desired-state withdrawal as an owner release. The convergence spine
-// consumes retirement; this function does not issue a host stop beside convergence.
-fn workspace_record_expiry(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
-  match workspace_read_owner(store: store, owner: owner) {
-    WorkspaceStoreUnreadable { reason: reason } => WorkspaceStoreWriteRefused { reason: reason }
-    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
-      Absent => WorkspaceStoreWriteRefused { reason: "allocation not found for owner" }
-      Present { value: allocation } => match workspace_lease_standing(expires_at: allocation.request.expires_at, observed_at: observed_at) {
-        WorkspaceLeaseUnreadable => WorkspaceStoreWriteRefused { reason: "absolute lease or clock is unreadable" }
-        WorkspaceLeaseLive { remaining: _ } => WorkspaceStoreWritten { allocation: allocation }
-        WorkspaceLeaseExpired => if allocation.desired == WorkspaceRetired { WorkspaceStoreWritten { allocation: allocation } } else {
-          workspace_write_allocation(store: store, snapshot: snapshot, allocation: workspace_retired_at(allocation: allocation, reason: "Lease expired; cleanup remains required", observed_at: observed_at))
-        }
-      }
-    }
-  }
-}
 
 // Sanitation is the existing lifecycle's verdict, and it must have become durable. A successful
 // stop, elapsed lease, clean-looking console, or cleanup command exit cannot mint this carrier.

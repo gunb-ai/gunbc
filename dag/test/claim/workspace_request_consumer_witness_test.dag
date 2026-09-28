@@ -7,6 +7,12 @@ import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired }
 import gunbc.workspace_request_consumer { workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare }
 
+import extdeps.shell
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceReleased, workspace_record_preparation_wait, workspace_request_release_at, WorkspaceStoreConflict }
+import gunbc.workspace_request_consumer { workspace_consumer_reconcile_owner, WorkspaceConsumerSettled, WorkspaceConsumerIdle }
+
 fn recorded() -> WorkspaceAllocation {
   WorkspaceAllocation { retired_at: "", recorded_at: "2026-09-27T12:00:00Z", plan: none, desired: WorkspaceWanted,
     request: WorkspaceRequest { owner: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "consumer-test" },
@@ -47,4 +53,64 @@ test fn live_unplanned_request_selects_preparation_without_extending_lease() -> 
     WorkspaceConsumerPrepare { allocation: found } => found.request.expires_at == allocation.request.expires_at
     other => false
   }
+}
+
+// A fresh reader reconstructs the obligation from persisted state. No offers, controller or host
+// are supplied: expiry before planning has no capacity dependency.
+test fn persisted_expired_request_settles_after_reader_restart_without_offers() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => {
+      let request = recorded().request
+      match workspace_record_request_at(store: FabricStorageLocalFiles { root: root }, request: request,
+        observed_at: "2026-09-27T12:00:00Z") {
+        WorkspaceStoreWritten { allocation: _ } => {
+          let reopened = FabricStorageLocalFiles { root: fabric_storage_file_root(root: directory.path) }
+          match workspace_consumer_reconcile_owner(store: reopened, owner: request.owner, observed_at: "2026-09-27T13:00:00Z") {
+            WorkspaceConsumerSettled { allocation: settled } => settled.phase == WorkspaceReleased
+              && settled.request == request
+              && (match workspace_consumer_reconcile_owner(store: reopened, owner: request.owner, observed_at: "2026-09-27T13:01:00Z") {
+                WorkspaceConsumerIdle => true
+                other => false
+              })
+            other => false
+          }
+        }
+        other => false
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}
+
+
+test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  let request = recorded().request
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => match workspace_record_request_at(store: store, request: request, observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceStoreWritten { allocation: original } => match workspace_record_preparation_wait(store: store, request: request, reason: "no commissioned offers") {
+        WorkspaceStoreWritten { allocation: waiting } => waiting.reason == "no commissioned offers"
+          && waiting.observed_at == original.observed_at && waiting.connection == original.connection
+          && (match workspace_request_release_at(store: store, owner: request.owner, idempotency_key: request.idempotency_key,
+            expected_generation: 0, observed_at: "2026-09-27T12:01:00Z") {
+            WorkspaceStoreWritten { allocation: _ } => match workspace_record_preparation_wait(store: store, request: request, reason: "late wait") {
+              WorkspaceStoreConflict => true
+              other => false
+            }
+            other => false
+          })
+        other => false
+      }
+      other => false
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
 }

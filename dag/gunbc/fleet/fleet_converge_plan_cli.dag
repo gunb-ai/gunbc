@@ -4,7 +4,8 @@ import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 
 import gunbc.workspace_allocation_convergence { workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
-import gunbc.workspace_allocation_store { workspace_allocation_json }
+import gunbc.workspace_allocation_store { workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+import gunbc.workspace_request_consumer { workspace_consumer_reconcile_owner, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
 import gunbc.principal_projection { principal_ref_eq }
 
@@ -1574,23 +1575,46 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
   }
 }
 
-// These environment fields select a request and installed artifact for local plan creation only.
-// Apply ignores them and recovers both from the hash-admitted directive in the plan body.
+// Discover the outstanding request from protected state rather than requiring an HTTP process
+// to remember or forward its identity. Retirement runs before installed-artifact or offer reads.
 fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr) -> FleetConvergeRequestObservation {
-  match shell.Env.Get(name: "GUNBC_WORKSPACE_REQUEST_ID" as NonEmptyStr).value {
-    Absent => FleetConvergeRequestUnobserved { reason: "workspace plan requires GUNBC_WORKSPACE_REQUEST_ID" }
-    Present { value: request_key } => if trim(s: request_key) == "" { FleetConvergeRequestUnobserved { reason: "workspace request identity is empty" } }
-    else { match shell.Env.Get(name: "GUNBC_WORKSPACE_CONTROLLER_RELEASE" as NonEmptyStr).value {
-      Absent => FleetConvergeRequestUnobserved { reason: "workspace plan requires the installed controller release identity" }
-      Present { value: installed } => if trim(s: installed) == "" { FleetConvergeRequestUnobserved { reason: "workspace installed controller release identity is empty" } }
-      else { match workspace_convergence_observe(
-        store: fabric_state_storage_binding(),
-        owner: workspace_operator_principal(), idempotency_key: trim(s: request_key) as NonEmptyStr,
-      ) {
-        WorkspaceConvergenceUnobserved { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-        WorkspaceConvergenceObserved { basis: selected } => FleetConvergeRequestObserved {
-          request: WorkspaceAllocationConverge { basis: selected, release_dir: trim(s: installed) as NonEmptyStr },
+  match clock_now_probed_at() {
+    Absent => FleetConvergeRequestUnobserved { reason: "workspace consumer clock is unavailable" }
+    Present { value: now } => match workspace_consumer_reconcile_owner(store: fabric_state_storage_binding(),
+      owner: workspace_operator_principal(), observed_at: now as String) {
+      WorkspaceConsumerIdle => FleetConvergeRequestUnobserved { reason: "no outstanding workspace request" }
+      WorkspaceConsumerRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
+      WorkspaceConsumerRetry => FleetConvergeRequestUnobserved { reason: "workspace owner changed concurrently; reconcile again" }
+      WorkspaceConsumerRetire { allocation: _ } => FleetConvergeRequestUnobserved { reason: "workspace retirement remains outstanding" }
+      WorkspaceConsumerSettled { allocation: _ } => FleetConvergeRequestUnobserved { reason: "unplanned workspace retirement settled; no host apply required" }
+      WorkspaceConsumerPrepare { allocation: allocation } => {
+        let reason = "Request discovered; awaiting commissioned supply and authoritative preparation policy"
+        match workspace_record_preparation_wait(store: fabric_state_storage_binding(), request: allocation.request, reason: reason) {
+          WorkspaceStoreWritten { allocation: _ } => FleetConvergeRequestUnobserved { reason: reason }
+          WorkspaceStoreConflict => FleetConvergeRequestUnobserved { reason: "workspace changed while publishing preparation wait; reconcile again" }
+          WorkspaceStoreWriteRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
         }
+      }
+      WorkspaceConsumerRoute { allocation: allocation } => observe_workspace_prepared_plan_request_wet(
+        request_key: allocation.request.idempotency_key, host: host)
+    }
+  }
+}
+
+// Local authorities are read only after the existing selected-host check. Apply still obtains
+// its identity and installed artifact from the hash-admitted plan, never from this environment.
+fn observe_workspace_prepared_plan_request_wet(request_key: NonEmptyStr, host: NonEmptyStr) -> FleetConvergeRequestObservation {
+  match workspace_convergence_observe(store: fabric_state_storage_binding(),
+    owner: workspace_operator_principal(), idempotency_key: request_key) {
+    WorkspaceConvergenceUnobserved { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
+    WorkspaceConvergenceObserved { basis: selected } => if selected.host != host {
+      FleetConvergeRequestUnobserved { reason: "workspace plan request is executing on a different host" }
+    } else { match shell.Env.Get(name: "GUNBC_WORKSPACE_CONTROLLER_RELEASE" as NonEmptyStr).value {
+      Absent => FleetConvergeRequestUnobserved { reason: "workspace plan requires the installed controller release identity" }
+      Present { value: installed } => if trim(s: installed) == "" {
+        FleetConvergeRequestUnobserved { reason: "workspace installed controller release identity is empty" }
+      } else { FleetConvergeRequestObserved {
+        request: WorkspaceAllocationConverge { basis: selected, release_dir: trim(s: installed) as NonEmptyStr },
       } }
     } }
   }

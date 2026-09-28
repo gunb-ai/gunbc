@@ -10,7 +10,8 @@ import gunbc.workspace_allocation_store {
   WorkspaceCreateNew, WorkspaceCreateReplay, WorkspaceCreateRefused,
   workspace_create_decision, workspace_create_decision_at, workspace_allocation_json, workspace_allocation_decode, workspace_retired, workspace_retired_at, workspace_write_transition_admits,
 }
-import gunbc.workspace_allocation_lifecycle { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable, workspace_connection_current }
+import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
+import gunbc.workspace_allocation_lifecycle { workspace_connection_current }
 import gunbc.workspace_allocation_wait { workspace_await_allocation }
 
 fn allocation_test_owner(subject: NonEmptyStr) -> PrincipalRef {

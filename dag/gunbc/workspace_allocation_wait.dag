@@ -15,7 +15,7 @@ import gunbc.workspace_allocation_store {
   WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceStoreWritten,
   workspace_read_owner, workspace_write_allocation, workspace_retired_at,
 }
-import gunbc.workspace_allocation_lifecycle { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
+import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
 
 // This is the existing controller's workload wait callback, not a second controller. Its store
 // root must address the control plane's SAME store instance; a host-local replica cannot admit

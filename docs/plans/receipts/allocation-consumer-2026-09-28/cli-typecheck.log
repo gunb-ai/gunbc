@@ -1,0 +1,11 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.translate done in 6 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan done in 2 seconds
+✓ typecheck gunbc.roadmap_page done in 2 seconds
+✓ typecheck gunbc.live_deploy.emit done in 3 seconds
+✓ typecheck gunbc.host_effect_realize done in 15 seconds
+✓ typecheck gunbc.live_deploy.apply done in 3 seconds
+✓ typecheck gunbc.fleet_converge_plan_cli done in 2 seconds
