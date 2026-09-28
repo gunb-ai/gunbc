@@ -839,34 +839,34 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   }
 }
 
-// Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type
-// positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries
-// the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the
-// iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to
-// use that function directly. A Loop's ^loop_domain_edge IS runtime work but is not iterated: it is
-// priced once, beside the iteration, by v2.lens.cost cost_fold_step's LoopDomainValue arm -- never
-// multiplied into it and never dropped.
+// HOW THE SYMBOLIC COST FOLD PRICES ONE EDGE, answered in one place (Wave 1 Gate 1 C1: the fold
+// prices only runtime work). CostEdgeComposed children compose under the parent's mode;
+// CostEdgePricedOnce is work evaluated once beside that composition (a Loop's domain, never multiplied
+// into its iteration and never dropped); CostEdgeNotPriced is not runtime work. An Arrow's signature
+// and type edges are not priced -- only ^arrow_body_edge carries the body (general-body-producer-design
+// Stage C prerequisite). A Loop's edges are priced by their role (loop_edge_role). Every other edge
+// of every other node composes.
+type CostEdgeRole
+  = CostEdgeComposed
+  | CostEdgePricedOnce
+  | CostEdgeNotPriced
 
-fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match loop_edge_role(e: e) {
-        LoopIteratedBody => true
-        LoopDomainValue => false
-        LoopBoundMeasure => false
-        LoopCarrierBinder => false
-        LoopEdgeUnrecognized => false
+        LoopIteratedBody => CostEdgeComposed
+        LoopDomainValue => CostEdgePricedOnce
+        LoopBoundMeasure => CostEdgeNotPriced
+        LoopCarrierBinder => CostEdgeNotPriced
+        LoopEdgeUnrecognized => CostEdgeNotPriced
       }
     TypeNode { connective: Arrow } =>
       match e.label {
-        Positional => false
-        Named { name: sym } => sym == ^arrow_body_edge
+        Positional => CostEdgeNotPriced
+        Named { name: sym } => if sym == ^arrow_body_edge { CostEdgeComposed } else { CostEdgeNotPriced }
       }
-    _ =>
-      match e.label {
-        Positional => true
-        Named { name: _ } => true
-      }
+    _ => CostEdgeComposed
   }
 }
 
