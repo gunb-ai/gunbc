@@ -3,6 +3,7 @@ module test.claim.long.fleet_release_bins_key_witness
 import std.types { String, List, Bool }
 import v2.std.node { Node }
 import v2.std.optional { Present, Absent }
+import v2.std.diagnostic { Outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.output_policy { ExpectFailure }
 import gunbc.ci_release_bins { ci_floor_required_artifact_names }
@@ -20,8 +21,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_if_else, bash_build_stmt_list_from_nodes,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
 // RETAINED EXECUTING CONTROLS for gunbc.fleet_release_bins_key (review 5332304117). Each claim runs
 // the SAME runner statements the fleet-converge workflow runs -- emitted by v2.workflow.bash_emit and
 // handed to bash through release_bins_transport -- after a hermetic fixture: a temporary git checkout,
@@ -29,8 +28,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // nothing outside the fixture's temporary directory is written; an EXIT trap removes that directory
 // on every path, including the refusals. Each refusal claim is paired with a
 // positive over the same fixture, and asserts the refusal BY NAME, so a claim cannot go green through
-// a different refusal than the one it exists to exercise. Offline-local (test/claim/long), not the
-// per-PR floor: the claims execute bash, tar, git, jq and sha256sum on the host.
+// a different refusal than the one it exists to exercise. They execute on the required floor's
+// local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule): bash, tar, git,
+// jq and sha256sum over the fixture directory, no network, no cargo, no remote host.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fx(t: String) -> Node { lit(t: t) }
 
@@ -117,33 +118,11 @@ fn repack(edit: List<Node>, names: List<String>) -> List<Node> {
   ])
 }
 
-fn restore_after(mutation: List<Node>) -> List<Node> {
-  seq(parts: [
-    produced_store(),
-    mutation,
-    [
-      cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: release_bins_staging_dir), fx(t: "target")]),
-      cmd(ws: [fx(t: "cp"), fx(t: "-r"), in_t(path: "/store"), fx(t: release_bins_staging_dir)]),
-      cmdl(ls: ["export", "LOOKUP_STANDING=present", "LOOKUP_ENTRY=fixture", "CACHE_HIT=true"]),
-    ],
-    release_bins_outcome_statements(),
-  ])
-}
-
-fn consume_after(mutation: List<Node>) -> List<Node> {
-  seq(parts: [
-    produced_store(),
-    mutation,
-    [
-      cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: "target")]),
-      cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: ".")]),
-    ],
-    release_bins_consumer_statements(),
-  ])
-}
-
-fn run_script(statements: List<Node>) -> ShellRun {
-  match release_bins_transport(outcome: release_bins_emitted(statements: statements)) {
+// A CLAIM JOINS ALREADY-EMITTED PARTS. Every part below is emitted once as module data -- the fixture,
+// the runners, each mutation -- so the fold's cost is shared across claims and a claim's own work is
+// joining texts and running them (the required floor judges new witnesses on that marginal work).
+fn run_script(parts: List<Outcome<String>>) -> ShellRun {
+  match release_bins_transport(parts: parts) {
     Present { value: script } => {
       let r = shell.Exec.Run(script: script, expect: ExpectFailure)
       ShellRun { ran: true, success: r.success, stdout: r.stdout }
@@ -154,232 +133,247 @@ fn run_script(statements: List<Node>) -> ShellRun {
 
 type ShellRun { ran: Bool, success: Bool, stdout: String }
 
-fn refused_as(statements: List<Node>, refusal: String) -> Bool {
-  let r = run_script(statements: statements)
+fn refused_as(parts: List<Outcome<String>>, refusal: String) -> Bool {
+  let r = run_script(parts: parts)
   r.ran && !r.success && string_contains(s: r.stdout, pattern: join(["title=release-bins ", refusal, "::"], ""))
 }
 
-fn succeeded_with(statements: List<Node>, marker: String) -> Bool {
-  let r = run_script(statements: statements)
+fn succeeded_with(parts: List<Outcome<String>>, marker: String) -> Bool {
+  let r = run_script(parts: parts)
   r.ran && r.success && string_contains(s: r.stdout, pattern: marker)
 }
 
-// ── P1-1: a malformed manifest line cannot hide an altered member ──────────────────────────────
-data malformed_gunbc_line_edit: String = "s/^[0-9a-f]{64}  gunbc$/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  gunbc/"
+fn e(statements: List<Node>) -> Outcome<String> { release_bins_emitted(statements: statements) }
 
-fn malformed_line_and_altered_gunbc() -> List<Node> {
-  concat(
-    [cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), fx(t: malformed_gunbc_line_edit), in_t(path: join(["/store/", release_bins_manifest_name], ""))])],
-    repack(edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])], names: ci_floor_required_artifact_names()),
-  )
-}
-
-test fn release_bins_restore_positive_promotes_verified_members() -> Bool {
-  succeeded_with(statements: restore_after(mutation: []), marker: "ReleaseBinsReuseReceipt")
-}
-
-test fn release_bins_consumer_positive_promotes_verified_members() -> Bool {
-  succeeded_with(statements: consume_after(mutation: []), marker: "")
-}
-
-test fn release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses() -> Bool {
-  refused_as(statements: restore_after(mutation: malformed_line_and_altered_gunbc()), refusal: "ManifestMalformed")
-}
-
-test fn release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses() -> Bool {
-  refused_as(statements: consume_after(mutation: malformed_line_and_altered_gunbc()), refusal: "ManifestMalformed")
-}
-
-test fn release_bins_RED_restore_altered_member_with_valid_manifest_refuses() -> Bool {
-  refused_as(
-    statements: restore_after(mutation: repack(edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])], names: ci_floor_required_artifact_names())),
-    refusal: "MemberDigestMismatch",
-  )
-}
-
-// ── P1-2: the pack is exactly the roster of self-contained executable regular files ─────────────
-fn symlinked_gunbc_with_matching_digest() -> List<Node> {
-  concat(
-    repack(
-      edit: [
-        write_file(path: in_t(path: "/outside"), lines: ["outside the pack"]),
-        cmd(ws: [fx(t: "rm"), in_t(path: "/re/gunbc")]),
-        cmd(ws: [fx(t: "ln"), fx(t: "-s"), in_t(path: "/outside"), in_t(path: "/re/gunbc")]),
-      ],
-      names: ci_floor_required_artifact_names(),
-    ),
-    [
-      bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sha256sum"), in_t(path: "/outside")]), path: in_t(path: "/outside.sum")),
-      assign_sub(name: "OUTSIDE_SUM", body: cmd(ws: [fx(t: "cut"), fx(t: "-c"), fx(t: "1-64"), in_t(path: "/outside.sum")])),
-      cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), words(ws: [fx(t: "s/^[0-9a-f]{64}  gunbc$/"), var(n: "OUTSIDE_SUM"), fx(t: "  gunbc/")]), in_t(path: join(["/store/", release_bins_manifest_name], ""))]),
-    ],
-  )
-}
-
-test fn release_bins_RED_restore_symlink_member_refuses() -> Bool {
-  refused_as(statements: restore_after(mutation: symlinked_gunbc_with_matching_digest()), refusal: "MemberNotRegularFile")
-}
-
-test fn release_bins_RED_consumer_symlink_member_refuses() -> Bool {
-  refused_as(statements: consume_after(mutation: symlinked_gunbc_with_matching_digest()), refusal: "MemberNotRegularFile")
-}
-
-fn extra_member() -> List<Node> {
-  repack(
-    edit: [write_file(path: in_t(path: "/re/extra"), lines: ["#!/bin/sh"]), cmd(ws: [fx(t: "chmod"), fx(t: "+x"), in_t(path: "/re/extra")])],
-    names: concat(ci_floor_required_artifact_names(), ["extra"]),
-  )
-}
-
-fn duplicate_member() -> List<Node> {
-  repack(edit: [], names: concat(ci_floor_required_artifact_names(), ["gunbc"]))
-}
-
-test fn release_bins_RED_restore_extra_member_refuses() -> Bool {
-  refused_as(statements: restore_after(mutation: extra_member()), refusal: "PackListingNotRoster")
-}
-
-test fn release_bins_RED_consumer_extra_member_refuses() -> Bool {
-  refused_as(statements: consume_after(mutation: extra_member()), refusal: "PackListingNotRoster")
-}
-
-test fn release_bins_RED_restore_duplicate_member_refuses() -> Bool {
-  refused_as(statements: restore_after(mutation: duplicate_member()), refusal: "PackListingNotRoster")
-}
-
-test fn release_bins_RED_consumer_duplicate_member_refuses() -> Bool {
-  refused_as(statements: consume_after(mutation: duplicate_member()), refusal: "PackListingNotRoster")
-}
-
-// ── P2-3: only a complete, admitted-shape cache-API answer decides standing ─────────────────────
-fn decode_main_answer(body: String) -> List<Node> {
-  seq(parts: [
-    fixture(),
-    release_bins_key_statements(),
-    [export_key()],
-    [
-      cmdl(ls: ["export", "STANDING=absent", "ENTRY=none"]),
-      bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", body]), path: fx(t: release_bins_lookup_file(r: release_bins_main_lookup_ref()))),
-    ],
-    lookup_decode_statements(r: release_bins_main_lookup_ref()),
-    [cmd(ws: [fx(t: "echo"), words(ws: [fx(t: "decoded standing="), var(n: "STANDING")])])],
-  ])
-}
-
-
-test fn release_bins_lookup_valid_empty_answer_is_absence() -> Bool {
-  succeeded_with(statements: decode_main_answer(body: "{\"total_count\":0,\"actions_caches\":[]}"), marker: "decoded standing=absent")
-}
-
-test fn release_bins_RED_lookup_count_without_rows_refuses() -> Bool {
-  refused_as(statements: decode_main_answer(body: "{\"total_count\": 1}"), refusal: "LookupAnswerUnusable")
-}
-
-test fn release_bins_RED_lookup_truncated_answer_refuses() -> Bool {
-  refused_as(statements: decode_main_answer(body: "{\"total_count\": 1,"), refusal: "LookupAnswerUnusable")
-}
-
-test fn release_bins_RED_lookup_count_disagreeing_with_rows_refuses() -> Bool {
-  refused_as(statements: decode_main_answer(body: "{\"total_count\": 1, \"actions_caches\": []}"), refusal: "LookupAnswerUnusable")
-}
-
-test fn release_bins_RED_lookup_wrong_shape_row_refuses() -> Bool {
-  refused_as(statements: decode_main_answer(body: "{\"total_count\":1,\"actions_caches\":[{\"x\":{\"key\":\"k\"},\"key\":5,\"ref\":\"refs/heads/main\"}]}"), refusal: "LookupAnswerUnusable")
-}
-
-// ── P2-4: the effective build environment is keyed or refused ──────────────────────────────────
-fn key_twice(first: List<Node>, second: List<Node>) -> List<Node> {
-  seq(parts: [
-    fixture(),
-    first,
-    release_bins_key_statements(),
-    [bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key1"))],
-    [cmd(ws: [fx(t: "cp"), fx(t: "/dev/null"), var(n: "GITHUB_OUTPUT")])],
-    second,
-    release_bins_key_statements(),
-    [bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key2"))],
-    [bash_build_if_else_cmp()],
-  ])
-}
-
-fn bash_build_if_else_cmp() -> Node {
+// ── THE SHARED PARTS, each emitted once ────────────────────────────────────────────────────────
+data part_produced_store: Outcome<String> = e(statements: produced_store())
+data part_fixture: Outcome<String> = e(statements: fixture())
+data part_key: Outcome<String> = e(statements: release_bins_key_statements())
+data part_restore_prep: Outcome<String> = e(statements: [
+  cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: release_bins_staging_dir), fx(t: "target")]),
+  cmd(ws: [fx(t: "cp"), fx(t: "-r"), in_t(path: "/store"), fx(t: release_bins_staging_dir)]),
+  cmdl(ls: ["export", "LOOKUP_STANDING=present", "LOOKUP_ENTRY=fixture", "CACHE_HIT=true"]),
+])
+data part_outcome: Outcome<String> = e(statements: release_bins_outcome_statements())
+data part_consume_prep: Outcome<String> = e(statements: [
+  cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: "target")]),
+  cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: ".")]),
+])
+data part_consumer: Outcome<String> = e(statements: release_bins_consumer_statements())
+data part_decode: Outcome<String> = e(statements: concat(
+  concat([export_key(), cmdl(ls: ["export", "STANDING=absent", "ENTRY=none"])], lookup_decode_statements(r: release_bins_main_lookup_ref())),
+  [cmd(ws: [fx(t: "echo"), words(ws: [fx(t: "decoded standing="), var(n: "STANDING")])])],
+))
+data part_first_key: Outcome<String> = e(statements: [
+  bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key1")),
+  cmd(ws: [fx(t: "cp"), fx(t: "/dev/null"), var(n: "GITHUB_OUTPUT")]),
+])
+data part_second_key_compare: Outcome<String> = e(statements: [
+  bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key2")),
   bash_build_if_else(
     cond: cmd(ws: [fx(t: "cmp"), fx(t: "-s"), in_t(path: "/key1"), in_t(path: "/key2")]),
     then_body: bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: ["echo", "keys equal"])]),
     else_body: bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: ["echo", "keys differ"])]),
-  )
+  ),
+])
+
+fn restore_after(mutation: Outcome<String>) -> List<Outcome<String>> {
+  [part_produced_store, mutation, part_restore_prep, part_outcome]
 }
 
+fn consume_after(mutation: Outcome<String>) -> List<Outcome<String>> {
+  [part_produced_store, mutation, part_consume_prep, part_consumer]
+}
+
+fn key_twice(first: Outcome<String>, second: Outcome<String>) -> List<Outcome<String>> {
+  [part_fixture, first, part_key, part_first_key, second, part_key, part_second_key_compare]
+}
+
+fn decode_answer(body: Outcome<String>) -> List<Outcome<String>> {
+  [part_fixture, part_key, body, part_decode]
+}
+
+fn answer_body(body: String) -> Outcome<String> {
+  e(statements: [bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", body]), path: fx(t: release_bins_lookup_file(r: release_bins_main_lookup_ref())))])
+}
+
+fn exports(assignments: List<String>) -> Outcome<String> {
+  e(statements: [cmdl(ls: concat(["export"], assignments))])
+}
+
+data part_no_mutation: Outcome<String> = e(statements: [cmdl(ls: [":", "no-op"])])
+
+// ── P1-1: a malformed manifest line cannot hide an altered member ──────────────────────────────
+data malformed_gunbc_line_edit: String = "s/^[0-9a-f]{64}  gunbc$/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  gunbc/"
+
+data mutation_malformed_line_and_altered_gunbc: Outcome<String> = e(statements: concat(
+  [cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), fx(t: malformed_gunbc_line_edit), in_t(path: join(["/store/", release_bins_manifest_name], ""))])],
+  repack(edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])], names: ci_floor_required_artifact_names()),
+))
+
+data mutation_altered_gunbc: Outcome<String> = e(statements: repack(
+  edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])],
+  names: ci_floor_required_artifact_names(),
+))
+
+test fn release_bins_restore_positive_promotes_verified_members() -> Bool {
+  succeeded_with(parts: restore_after(mutation: part_no_mutation), marker: "ReleaseBinsReuseReceipt")
+}
+
+test fn release_bins_consumer_positive_promotes_verified_members() -> Bool {
+  succeeded_with(parts: consume_after(mutation: part_no_mutation), marker: "")
+}
+
+test fn release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses() -> Bool {
+  refused_as(parts: restore_after(mutation: mutation_malformed_line_and_altered_gunbc), refusal: "ManifestMalformed")
+}
+
+test fn release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses() -> Bool {
+  refused_as(parts: consume_after(mutation: mutation_malformed_line_and_altered_gunbc), refusal: "ManifestMalformed")
+}
+
+test fn release_bins_RED_restore_altered_member_with_valid_manifest_refuses() -> Bool {
+  refused_as(parts: restore_after(mutation: mutation_altered_gunbc), refusal: "MemberDigestMismatch")
+}
+
+// ── P1-2: the pack is exactly the roster of self-contained executable regular files ─────────────
+data mutation_symlinked_gunbc_with_matching_digest: Outcome<String> = e(statements: concat(
+  repack(
+    edit: [
+      write_file(path: in_t(path: "/outside"), lines: ["outside the pack"]),
+      cmd(ws: [fx(t: "rm"), in_t(path: "/re/gunbc")]),
+      cmd(ws: [fx(t: "ln"), fx(t: "-s"), in_t(path: "/outside"), in_t(path: "/re/gunbc")]),
+    ],
+    names: ci_floor_required_artifact_names(),
+  ),
+  [
+    bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sha256sum"), in_t(path: "/outside")]), path: in_t(path: "/outside.sum")),
+    assign_sub(name: "OUTSIDE_SUM", body: cmd(ws: [fx(t: "cut"), fx(t: "-c"), fx(t: "1-64"), in_t(path: "/outside.sum")])),
+    cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), words(ws: [fx(t: "s/^[0-9a-f]{64}  gunbc$/"), var(n: "OUTSIDE_SUM"), fx(t: "  gunbc/")]), in_t(path: join(["/store/", release_bins_manifest_name], ""))]),
+  ],
+))
+
+data mutation_extra_member: Outcome<String> = e(statements: repack(
+  edit: [write_file(path: in_t(path: "/re/extra"), lines: ["#!/bin/sh"]), cmd(ws: [fx(t: "chmod"), fx(t: "+x"), in_t(path: "/re/extra")])],
+  names: concat(ci_floor_required_artifact_names(), ["extra"]),
+))
+
+data mutation_duplicate_member: Outcome<String> = e(statements: repack(edit: [], names: concat(ci_floor_required_artifact_names(), ["gunbc"])))
+
+test fn release_bins_RED_restore_symlink_member_refuses() -> Bool {
+  refused_as(parts: restore_after(mutation: mutation_symlinked_gunbc_with_matching_digest), refusal: "MemberNotRegularFile")
+}
+
+test fn release_bins_RED_consumer_symlink_member_refuses() -> Bool {
+  refused_as(parts: consume_after(mutation: mutation_symlinked_gunbc_with_matching_digest), refusal: "MemberNotRegularFile")
+}
+
+test fn release_bins_RED_restore_extra_member_refuses() -> Bool {
+  refused_as(parts: restore_after(mutation: mutation_extra_member), refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_consumer_extra_member_refuses() -> Bool {
+  refused_as(parts: consume_after(mutation: mutation_extra_member), refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_restore_duplicate_member_refuses() -> Bool {
+  refused_as(parts: restore_after(mutation: mutation_duplicate_member), refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_consumer_duplicate_member_refuses() -> Bool {
+  refused_as(parts: consume_after(mutation: mutation_duplicate_member), refusal: "PackListingNotRoster")
+}
+
+// ── P2-3: only one complete, admitted-shape cache-API answer decides standing ───────────────────
+data body_valid_empty: Outcome<String> = answer_body(body: "{\"total_count\":0,\"actions_caches\":[]}")
+data body_count_without_rows: Outcome<String> = answer_body(body: "{\"total_count\": 1}")
+data body_truncated: Outcome<String> = answer_body(body: "{\"total_count\": 1,")
+data body_count_disagreeing: Outcome<String> = answer_body(body: "{\"total_count\": 1, \"actions_caches\": []}")
+data body_wrong_shape_row: Outcome<String> = answer_body(body: "{\"total_count\":1,\"actions_caches\":[{\"x\":{\"key\":\"k\"},\"key\":5,\"ref\":\"refs/heads/main\"}]}")
+data body_value_stream: Outcome<String> = answer_body(body: "\"absent\"\n\"present\"")
+data body_two_documents: Outcome<String> = answer_body(body: "{\"total_count\":0,\"actions_caches\":[]}\n{\"total_count\":0,\"actions_caches\":[]}")
+
+test fn release_bins_lookup_valid_empty_answer_is_absence() -> Bool {
+  succeeded_with(parts: decode_answer(body: body_valid_empty), marker: "decoded standing=absent")
+}
+
+test fn release_bins_RED_lookup_count_without_rows_refuses() -> Bool {
+  refused_as(parts: decode_answer(body: body_count_without_rows), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_truncated_answer_refuses() -> Bool {
+  refused_as(parts: decode_answer(body: body_truncated), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_count_disagreeing_with_rows_refuses() -> Bool {
+  refused_as(parts: decode_answer(body: body_count_disagreeing), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_wrong_shape_row_refuses() -> Bool {
+  refused_as(parts: decode_answer(body: body_wrong_shape_row), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_value_stream_refuses() -> Bool {
+  refused_as(parts: decode_answer(body: body_value_stream), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_two_documents_refuses() -> Bool {
+  refused_as(parts: decode_answer(body: body_two_documents), refusal: "LookupAnswerUnusable")
+}
+
+// ── P2-4 and review 5332937814: the effective build environment is keyed losslessly or refused ──
+data env_none: Outcome<String> = part_no_mutation
+data env_opt_level_0: Outcome<String> = exports(assignments: ["CARGO_PROFILE_RELEASE_OPT_LEVEL=0"])
+data env_opt_level_3: Outcome<String> = exports(assignments: ["CARGO_PROFILE_RELEASE_OPT_LEVEL=3"])
+data env_rustflags_one_line: Outcome<String> = exports(assignments: ["RUSTFLAGS=-Copt-level=3"])
+data env_rustflags_two_lines: Outcome<String> = exports(assignments: ["RUSTFLAGS=-Copt-level=3\n-Cdebug-assertions=yes"])
+data env_rustc_override: Outcome<String> = exports(assignments: ["RUSTC=/usr/bin/rustc"])
+data env_ancestor_config: Outcome<String> = e(statements: [
+  cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/.cargo")]),
+  cmd(ws: [fx(t: "touch"), in_t(path: "/.cargo/config.toml")]),
+])
+data release_bins_credential_sentinel: String = "fixture-credential-sentinel-7f3a"
+data env_registry_token: Outcome<String> = exports(assignments: [join(["CARGO_REGISTRY_TOKEN=", release_bins_credential_sentinel], "")])
+data env_named_registry_token: Outcome<String> = exports(assignments: [join(["CARGO_REGISTRIES_PRIVATE_TOKEN=", release_bins_credential_sentinel], "")])
+data env_partial_print_rustc: Outcome<String> = e(statements: fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (partial'", "exit 1"]))
+
 test fn release_bins_unchanged_inputs_key_equally() -> Bool {
-  succeeded_with(statements: key_twice(first: [], second: []), marker: "keys equal")
+  succeeded_with(parts: key_twice(first: env_none, second: env_none), marker: "keys equal")
 }
 
 test fn release_bins_release_opt_level_override_changes_the_key() -> Bool {
-  succeeded_with(
-    statements: key_twice(
-      first: [cmdl(ls: ["export", "CARGO_PROFILE_RELEASE_OPT_LEVEL=0"])],
-      second: [cmdl(ls: ["export", "CARGO_PROFILE_RELEASE_OPT_LEVEL=3"])],
-    ),
-    marker: "keys differ",
-  )
+  succeeded_with(parts: key_twice(first: env_opt_level_0, second: env_opt_level_3), marker: "keys differ")
+}
+
+test fn release_bins_multiline_rustflags_keys_apart_from_its_first_line() -> Bool {
+  succeeded_with(parts: key_twice(first: env_rustflags_one_line, second: env_rustflags_two_lines), marker: "keys differ")
 }
 
 test fn release_bins_RED_compiler_override_refuses() -> Bool {
-  refused_as(statements: concat(fixture(), concat([cmdl(ls: ["export", "RUSTC=/usr/bin/rustc"])], release_bins_key_statements())), refusal: "BuildOverrideNotAdmitted")
+  refused_as(parts: [part_fixture, env_rustc_override, part_key], refusal: "BuildOverrideNotAdmitted")
 }
 
 test fn release_bins_RED_ancestor_cargo_config_refuses() -> Bool {
-  refused_as(
-    statements: concat(fixture(), concat([
-      cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/.cargo")]),
-      cmd(ws: [fx(t: "touch"), in_t(path: "/.cargo/config.toml")]),
-    ], release_bins_key_statements())),
-    refusal: "AncestorCargoConfigPresent",
-  )
+  refused_as(parts: [part_fixture, env_ancestor_config, part_key], refusal: "AncestorCargoConfigPresent")
 }
 
-// ── Producer status: a producer that prints part of its output and then fails stops the key ────
-test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() -> Bool {
-  let r = run_script(statements: seq(parts: [
-    fixture(),
-    fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (partial'", "exit 1"]),
-    release_bins_key_statements(),
-  ]))
-  r.ran && !r.success && !string_contains(s: r.stdout, pattern: "release-bins request key")
-}
-
-// ── Review 5332937814: lossless environment framing, credential-free environment, one document ──
-test fn release_bins_multiline_rustflags_keys_apart_from_its_first_line() -> Bool {
-  succeeded_with(
-    statements: key_twice(
-      first: [cmdl(ls: ["export", "RUSTFLAGS=-Copt-level=3"])],
-      second: [cmdl(ls: ["export", "RUSTFLAGS=-Copt-level=3\n-Cdebug-assertions=yes"])],
-    ),
-    marker: "keys differ",
-  )
-}
-
-data release_bins_credential_sentinel: String = "fixture-credential-sentinel-7f3a"
-
-fn credential_refused_unprinted(variable: String) -> Bool {
-  let r = run_script(statements: concat(fixture(), concat([cmdl(ls: ["export", join([variable, "=", release_bins_credential_sentinel], "")])], release_bins_key_statements())))
+fn credential_refused_unprinted(export_part: Outcome<String>) -> Bool {
+  let r = run_script(parts: [part_fixture, export_part, part_key])
   r.ran && !r.success
     && string_contains(s: r.stdout, pattern: "title=release-bins CredentialInBuildEnvironment::")
     && !string_contains(s: r.stdout, pattern: release_bins_credential_sentinel)
 }
 
 test fn release_bins_RED_registry_token_refuses_and_is_never_printed() -> Bool {
-  credential_refused_unprinted(variable: "CARGO_REGISTRY_TOKEN")
+  credential_refused_unprinted(export_part: env_registry_token)
 }
 
 test fn release_bins_RED_named_registry_token_refuses_and_is_never_printed() -> Bool {
-  credential_refused_unprinted(variable: "CARGO_REGISTRIES_PRIVATE_TOKEN")
+  credential_refused_unprinted(export_part: env_named_registry_token)
 }
 
-test fn release_bins_RED_lookup_value_stream_refuses() -> Bool {
-  refused_as(statements: decode_main_answer(body: "\"absent\"\n\"present\""), refusal: "LookupAnswerUnusable")
-}
-
-test fn release_bins_RED_lookup_two_documents_refuses() -> Bool {
-  refused_as(statements: decode_main_answer(body: "{\"total_count\":0,\"actions_caches\":[]}\n{\"total_count\":0,\"actions_caches\":[]}"), refusal: "LookupAnswerUnusable")
+// ── Producer status: a producer that prints part of its output and then fails stops the key ────
+test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() -> Bool {
+  let r = run_script(parts: [part_fixture, env_partial_print_rustc, part_key])
+  r.ran && !r.success && !string_contains(s: r.stdout, pattern: "release-bins request key")
 }

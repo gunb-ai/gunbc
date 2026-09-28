@@ -2,7 +2,7 @@ module gunbc.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int, list_length }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import v2.std.optional { Present, Absent }
@@ -1011,15 +1011,28 @@ fn release_bins_emitted(statements: List<Node>) -> Outcome<String> {
   bash_emit_stmts(statements: statements, set_e: true)
 }
 
-// THE ONE ROUTE FROM A RELEASE-BINS RUNNER TO A TransportScript, admitted by name in
-// extdeps.shell.exec transport_script_seal. It takes the fold's Outcome, so only text bash_emit
-// actually produced can reach a shell through it, and a refusal is Absent, never an empty script.
-// Its consumer is the retained executing controls, which run the same runners the workflow runs.
-fn release_bins_transport(outcome: Outcome<String>) -> TransportScript? {
-  match outcome {
+// THE ONE ROUTE FROM RELEASE-BINS RUNNERS TO A TransportScript, admitted by name in
+// extdeps.shell.exec transport_script_seal. It takes the fold's Outcomes -- one per emitted part, so
+// a caller can join parts it emitted once and shared -- so only text bash_emit actually produced can
+// reach a shell through it, and if ANY part was refused the result is Absent, never an empty or
+// partial script. Its consumer is the retained executing controls, which run the same runners the
+// workflow runs.
+fn release_bins_transport(parts: List<Outcome<String>>) -> TransportScript? {
+  match release_bins_joined(parts: parts) {
     Accepted { value: v, diagnostics: _ } => Present { value: transport_script_seal(body: v) }
     Rejected { diagnostics: _ } => Absent
   }
+}
+
+// The parts' texts joined in order; the first refused part makes the whole join that refusal.
+fn release_bins_joined(parts: List<Outcome<String>>) -> Outcome<String> {
+  fold(parts, init: outcome_accepted(""), f: (acc, p) => match acc {
+    Accepted { value: a, diagnostics: _ } => match p {
+      Accepted { value: b, diagnostics: _ } => outcome_accepted(join([a, b], "\n"))
+      Rejected { diagnostics: _ } => p
+    }
+    Rejected { diagnostics: _ } => acc
+  })
 }
 
 fn release_bins_script_text(outcome: Outcome<String>) -> String {
