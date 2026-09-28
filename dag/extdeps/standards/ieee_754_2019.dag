@@ -87,14 +87,14 @@ type Ieee754ClauseCitation {
   spec_term: NonEmptyStr
 }
 
-fn ieee_754_2019_cite(decl_name: String, clause: String, spec_term: String) -> Ieee754ClauseCitation {
+fn ieee_754_2019_cite(decl_name: String, clause: NonEmptyStr, spec_term: NonEmptyStr) -> Ieee754ClauseCitation {
   Ieee754ClauseCitation {
     citation: FactCitation {
       fact: decl_ref(module_path: "extdeps.standards.ieee_754_2019", decl_name: decl_name),
       authority: extdeps_external_authority_anchor
     },
-    clause: clause as NonEmptyStr,
-    spec_term: spec_term as NonEmptyStr
+    clause: clause,
+    spec_term: spec_term
   }
 }
 
