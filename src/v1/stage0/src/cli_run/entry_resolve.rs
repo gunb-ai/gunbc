@@ -353,18 +353,8 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
     // reaches reads this one.
     let adjacency = build_import_adjacency(&edges, &nodes);
-    // Selection tier: import edges + strict reference edges.
-    let mut selection_edges = edges.clone();
-    selection_edges.extend(reference_edges_as_import_facts(
-        &reference_resolution_facts(&roots, &roots, EXCLUDE),
-        /* strict */ true,
-    ));
-    let selection_adjacency = build_import_adjacency(&selection_edges, &nodes);
-    let reference_unaccounted: HashSet<String> =
-        reference_accounting_refusals(&roots, &roots, EXCLUDE)
-            .into_iter()
-            .map(|r| workspace_relative_repo_path(&r.path))
-            .collect();
+    // The selection tier (import edges + strict reference edges) is NOT built here: see
+    // `ModuleGraphFactsLive::selection`. It is built from these facts on a whole reader's demand.
     let declared_paths = nodes
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
@@ -373,12 +363,22 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .iter()
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
+    let module_to_repo_path: HashMap<String, String> = nodes
+        .iter()
+        .map(|n| (n.module.clone(), workspace_relative_repo_path(&n.path)))
+        .collect();
+    let repo_path_to_source: HashMap<String, String> = nodes
+        .iter()
+        .map(|n| (workspace_relative_repo_path(&n.path), n.path.clone()))
+        .collect();
     ModuleGraphFactsLive {
         nodes,
         adjacency,
-        selection_adjacency,
+        selection: Rc::new(std::cell::OnceCell::new()),
+        pool_roots: roots.clone(),
+        module_to_repo_path,
+        repo_path_to_source,
         declared_paths,
-        reference_unaccounted,
         path_to_module,
         read_refusals: observation.read_refusals,
     }
@@ -2472,9 +2472,347 @@ pub(crate) fn parse_module_node_tolerant(
     result.module.clone()
 }
 
+/// Pass 1 of the reference producer: the pool's declaration-name index (name -> declaring
+/// modules) and its declared-module set, first root wins on a module declared under two roots
+/// (as `build_module_path_index`).
+///
+/// READ FROM THE HEADS READING, not the full one. The index consumes declaration NAMES only, and
+/// the heads reading is the same grammar with bodies skipped (`census_heads_module_node`; its
+/// corpus differential is `heads_reading_differential` `declaration_names_divergent`). The full
+/// reading built every body in the pool for a consumer that discards them. A file the heads
+/// reading refuses contributes nothing, as a full-parse failure did before; a file whose body
+/// alone is broken now contributes its names, which is the heads reading's declared narrowing.
+///
+/// Tolerant rather than fail-closed on purpose: a file this index cannot read is not refused
+/// HERE, it is refused per file by `reference_rows_for_file` as `parse-failed`, located to the
+/// file, which is the contract every consumer of the accounting channel already reads.
+pub(crate) struct ReferenceNameIndex {
+    decl_index: HashMap<String, std::collections::BTreeSet<String>>,
+    module_names: std::collections::HashSet<String>,
+}
+
+thread_local! {
+    static REFERENCE_NAME_INDEX_CACHE: RefCell<std::collections::HashMap<String, Rc<ReferenceNameIndex>>> =
+        RefCell::new(std::collections::HashMap::new());
+    /// One file's rows, keyed by (pool roots, file). The unit of demand: the loader asks for the
+    /// files its closure holds, and the whole-pool producer asks for every file through the same
+    /// cell, so a row is produced at most once per process whichever consumer asks first.
+    static REFERENCE_FILE_ROWS_CACHE: RefCell<std::collections::HashMap<(String, String), Rc<ReferenceFileRows>>> =
+        RefCell::new(std::collections::HashMap::new());
+}
+
+/// The files whose reference rows this process has produced over `pool_roots`: the route
+/// control's reading of which demand reached the producer.
+#[cfg(test)]
+pub(crate) fn reference_rows_produced_for_test(pool_roots: &[String]) -> BTreeSet<String> {
+    let key = reference_pool_key(&pool_roots_abs(pool_roots));
+    REFERENCE_FILE_ROWS_CACHE.with(|c| {
+        c.borrow()
+            .keys()
+            .filter(|(pool, _)| *pool == key)
+            .map(|(_, file)| file.clone())
+            .collect()
+    })
+}
+
+fn reference_pool_key(abs_pool_roots: &[String]) -> String {
+    abs_pool_roots.join("\u{1e}")
+}
+
+/// A module's declaration names under the heads reading, shared with `pool_parse` through
+/// `pool_acquire::heads_decl_names` so a pool the loader already read is not parsed again.
+fn heads_decl_names(rel: &str, content: &str) -> Option<Rc<Vec<String>>> {
+    super::pool_acquire::heads_decl_names(content, || {
+        parse_module_heads_tolerant(rel, content).map(|tree| collect_module_decl_names(&tree))
+    })
+}
+
+/// Parse one module through the HEADS reading, tolerantly (`None` on a refusal).
+fn parse_module_heads_tolerant(rel: &str, content: &str) -> Option<Rc<crate::v1_std_core::Node>> {
+    let filename = rel.to_string();
+    let tokens = super::pool_acquire::tokens_for(&filename, content);
+    let source_index = super::pool_acquire::newline_index_for(&filename, content);
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename, source_index);
+    let parsed = crate::v1_compiler_parse::parse_heads_with_table(
+        tokens,
+        Rc::new(source_indices),
+        seed_kernel_intern_names(empty_intern_table()),
+    );
+    if parsed.result.error.is_some() {
+        return None;
+    }
+    parsed
+        .result
+        .module
+        .clone()
+        .map(v1_compiler_compile::census_heads_module_node)
+}
+
+fn build_reference_name_index(
+    abs_pool_roots: &[String],
+    decl_names: impl Fn(&str, &str) -> Option<Rc<Vec<String>>>,
+) -> ReferenceNameIndex {
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for root in abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let Some(module_name) = extract_module_path(&content) else {
+                continue;
+            };
+            let Some(names) = decl_names(&rel, &content) else {
+                continue;
+            };
+            if module_names.insert(module_name.clone()) {
+                for name in names.iter().cloned() {
+                    decl_index
+                        .entry(name)
+                        .or_default()
+                        .insert(module_name.clone());
+                }
+            }
+        }
+    }
+    ReferenceNameIndex {
+        decl_index,
+        module_names,
+    }
+}
+
+pub(crate) fn reference_name_index(pool_roots: &[String]) -> Rc<ReferenceNameIndex> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let key = reference_pool_key(&abs_pool_roots);
+    if let Some(hit) = REFERENCE_NAME_INDEX_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let built = Rc::new(build_reference_name_index(
+        &abs_pool_roots,
+        heads_decl_names,
+    ));
+    REFERENCE_NAME_INDEX_CACHE.with(|c| c.borrow_mut().insert(key, built.clone()));
+    built
+}
+
+/// What the reference producer answers for ONE file.
+pub(crate) enum ReferenceFileRows {
+    /// The file carries `import` lines: `import_resolution_facts` owns its edges exactly.
+    ImportBearing,
+    Rows(Vec<ReferenceEdgeRaw>),
+    /// The producer could not ask what this import-less file depends on (DESIGN §5: ignorance,
+    /// not an empty answer).
+    Unaccounted(ReferenceAccountingRefusal),
+}
+
+/// One file's rows over `pool_roots`, produced at most once per process. The one producer: the
+/// whole-pool `reference_resolution_facts` maps it over every importer file, and the loader asks
+/// it only for the files its closure reaches (`ModuleGraphFactsLive::reference_only_direct_import_paths`).
+pub(crate) fn reference_rows_for_file(pool_roots: &[String], file: &Path) -> Rc<ReferenceFileRows> {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let rel = rel_path_for_layer_import(file);
+    let key = (reference_pool_key(&abs_pool_roots), rel.clone());
+    if let Some(hit) = REFERENCE_FILE_ROWS_CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let names = reference_name_index(pool_roots);
+    let rows = Rc::new(produce_reference_rows_for_file(&names, file, &rel));
+    REFERENCE_FILE_ROWS_CACHE.with(|c| c.borrow_mut().insert(key, rows.clone()));
+    rows
+}
+
+fn produce_reference_rows_for_file(
+    names: &ReferenceNameIndex,
+    file: &Path,
+    rel: &str,
+) -> ReferenceFileRows {
+    let unaccounted = |cause: &'static str| {
+        ReferenceFileRows::Unaccounted(ReferenceAccountingRefusal {
+            path: rel.to_string(),
+            cause,
+        })
+    };
+    let Ok(content) = std::fs::read_to_string(file) else {
+        return unaccounted("unreadable");
+    };
+    // Import-bearing: accounted EXACTLY by `import_resolution_facts`, so this is not a refusal --
+    // the other producer owns this file's edges, and emitting reference edges would over-connect.
+    if !extract_import_paths(&content).is_empty() {
+        return ReferenceFileRows::ImportBearing;
+    }
+    let Some(self_module) = extract_module_path(&content) else {
+        return unaccounted("no-module-line");
+    };
+    let Some(tree) = parse_module_node_tolerant(rel, &content) else {
+        return unaccounted("parse-failed");
+    };
+    let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut chains: Vec<Vec<String>> = Vec::new();
+    // THE INDEX IS BUILT FROM THE BYTES THIS PRODUCER ALREADY READ, not fetched from a
+    // prepared subject that does not exist at this point: `collect_node_refs` recovers a
+    // lambda parameter's name from its authored span, and a missing index would leave
+    // those names unbound and let them resolve as references.
+    let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    file_indices.insert(
+        rel.to_string(),
+        crate::v1_std_core::build_newline_index(rel.to_string(), content.clone()),
+    );
+    let file_indices = Rc::new(file_indices);
+    // THIS PRODUCER ANSWERS A CORPUS-WIDE QUESTION BEFORE ANY SUBJECT IS PREPARED, so it
+    // has no declaration index to classify against and cannot decide
+    // DeclaredElsewhere / NamesNothingKnown. It supplies an EMPTY index, under which
+    // every unbound name classifies as a reference — the behaviour this producer already
+    // had, preserved deliberately rather than by omission. The totality guarantee is
+    // therefore scoped to the floor's index build, which is the consumer that has the
+    // declarations; this one keeps its own looser contract and its own counters.
+    let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+    let mut scratch_unclassified: Vec<String> = Vec::new();
+    let mut classify = ExprVarClassification {
+        decl_index: None,
+        module_names: Some(&names.module_names),
+        module_path_heads: std::collections::HashSet::new(),
+        tally: &mut scratch_tally,
+        unclassified: &mut scratch_unclassified,
+        module: self_module.clone(),
+        value_refs: std::collections::BTreeSet::new(),
+        occurrences: 0,
+        free_reference_edges: 0,
+        bound_occurrences_suppressed: 0,
+        chain_head_occurrences: 0,
+        refusals: Vec::new(),
+    };
+    for item in tree.children.iter() {
+        collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
+    }
+    // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
+    // two failure states and neither is survivable for a graph that is about to be
+    // published: an unsupported binder form means the binder set is incomplete, so a name
+    // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
+    // miss means the occurrences do not add up, which is the same statement arrived at by
+    // counting. Reading them and proceeding anyway would publish an under-bound, possibly
+    // widened graph while the refusal sat unread in a field — the fail-open this
+    // classification exists to remove, one consumer away from the floor path that checks
+    // it correctly (review 55667).
+    //
+    // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
+    // syntax the collector must learn, and a reconciliation miss names an accounting
+    // defect in the collector itself. Collapsing them would send both to whichever
+    // remedy the shared symbol happened to suggest.
+    //
+    // The file is SKIPPED rather than published, matching this producer's three existing
+    // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
+    // and record. The narrowing is therefore typed, located and countable through
+    // `reference_accounting_refusals`, not silent — a skipped file is visible in that
+    // channel, which is what separates it from the empty-observation narrow.
+    if !classify.refusals.is_empty() {
+        return ReferenceFileRows::Unaccounted(ReferenceAccountingRefusal {
+            path: rel.to_string(),
+            cause: "binder-refusal",
+        });
+    }
+    if !classify.reconciles() {
+        return ReferenceFileRows::Unaccounted(ReferenceAccountingRefusal {
+            path: rel.to_string(),
+            cause: "occurrence-accounting-mismatch",
+        });
+    }
+    // Resolve to per-file (target_module → strongest confidence).
+    let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
+        std::collections::BTreeMap::new();
+    let mut upgrade = |m: String, res: RefEdgeResolution| {
+        let entry = file_edges.entry(m).or_insert(res);
+        if res.rank() > entry.rank() {
+            *entry = res;
+        }
+    };
+    for chain in &chains {
+        if let Some(m) = longest_declared_module_prefix(chain, &names.module_names) {
+            if m != self_module {
+                upgrade(m, RefEdgeResolution::Qualified);
+            }
+        }
+    }
+    for name in &bare {
+        // A kernel or container spelling binds no module (`is_substrate_vocabulary`), so
+        // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
+        // std.string_type, a module the resolver never loads for that spelling.
+        if super::is_substrate_vocabulary(name) {
+            continue;
+        }
+        if let Some(mods) = names.decl_index.get(name) {
+            // Same-module declaration wins by lexical scope (namespace-only): a bare name the
+            // referencing file itself declares resolves LOCALLY — no cross-module edge. This
+            // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
+            // declared top-level in ~670 test files) from fanning every referrer out to every
+            // declarer.
+            if mods.contains(&self_module) {
+                continue;
+            }
+            // Proximity disambiguation (namespace-only "nearest in the containment tree"):
+            // among declarers, prefer the one sharing the longest module-path prefix with the
+            // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
+            // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
+            let mut best_len = 0usize;
+            let mut winners: Vec<&String> = Vec::new();
+            for m in mods.iter() {
+                let shared = module_prefix_shared_len(&self_module, m);
+                if winners.is_empty() || shared > best_len {
+                    best_len = shared;
+                    winners.clear();
+                    winners.push(m);
+                } else if shared == best_len {
+                    winners.push(m);
+                }
+            }
+            match winners.len() {
+                0 => {}
+                1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
+                _ => {
+                    // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
+                    // AmbiguousBare is a bare ref, in a file that does not declare it, whose
+                    // nearest declarers tie — the definitive "needs qualification" site.
+                    if std::env::var("REFAMBIG_DUMP").is_ok() {
+                        let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                        let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                        eprintln!(
+                            "REFAMBIG\t{}\t{}\t{}\t{}",
+                            if is_witness { "witness" } else { "compile" },
+                            rel,
+                            name,
+                            cands.join(",")
+                        );
+                    }
+                    for t in winners {
+                        upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
+                    }
+                }
+            }
+        }
+    }
+    ReferenceFileRows::Rows(
+        file_edges
+            .into_iter()
+            .map(|(m, res)| ReferenceEdgeRaw {
+                path: rel.to_string(),
+                target_module: m,
+                resolution: res,
+            })
+            .collect(),
+    )
+}
+
 /// Reference-derived analogue of `import_resolution_facts`: emit one edge per (file, referenced
 /// module). Same row shape channel as import facts, plus a `resolution` confidence tag. Cached by
-/// (pool_roots, importer_roots, excludes).
+/// (pool_roots, importer_roots, excludes). The whole-pool demand of `reference_rows_for_file`.
 pub fn reference_resolution_facts(
     pool_roots: &[String],
     importer_roots: &[String],
@@ -2492,66 +2830,9 @@ pub fn reference_resolution_facts(
         shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
-    // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
-    // from here so the claim that happens to reach it first is not read as the claim that costs
-    // it; see `shared_fill` for why the per-row number alone cannot answer that.
     shared_fill::begin_fill();
     let reference_edges_fill_start = std::time::Instant::now();
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
-
-    // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
-    // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
-    // parsed tree so edge emission does not re-parse.
-    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // `has_imports` decides per-file whether reference edges are emitted at all: a file that still
-    // carries `import` lines is covered EXACTLY by `import_resolution_facts` (no regression, no
-    // over-connection). Only an import-less (stripped) file falls back to reference edges. So on the
-    // un-stripped tree this producer emits nothing and the module graph is byte-identical to before.
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
-        HashMap::new();
-    for root in &abs_pool_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let module_name = match extract_module_path(&content) {
-                Some(m) => m,
-                None => continue,
-            };
-            let tree = match parse_module_node_tolerant(&rel, &content) {
-                Some(t) => t,
-                None => continue,
-            };
-            let has_imports = !extract_import_paths(&content).is_empty();
-            // Precedence: a module name already claimed by an earlier root does not re-contribute
-            // exported names (first-root-wins, as `build_module_path_index`).
-            if seen_modules.insert(module_name.clone()) {
-                module_names.insert(module_name.clone());
-                for name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(name)
-                        .or_default()
-                        .insert(module_name.clone());
-                }
-            }
-            pool_trees
-                .entry(rel)
-                .or_insert((module_name, tree, has_imports));
-        }
-    }
-
-    // ── Pass 2: for each importer file, collect its reference use sites and resolve them to modules.
     let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
@@ -2566,214 +2847,13 @@ pub fn reference_resolution_facts(
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
-            let (self_module, tree) = match pool_trees.get(&rel) {
-                // A file that still carries imports is covered exactly by `import_resolution_facts`;
-                // emitting reference edges for it would only over-connect. Skip — reference edges are
-                // for import-less (stripped) files.
-                Some((_, _, true)) => continue,
-                Some((m, t, false)) => (m.clone(), t.clone()),
-                // Absent from pass 1 means pass 1 skipped it: unreadable, no module line, or a
-                // parse failure. Each is the producer being UNABLE TO ASK what this file depends
-                // on — ignorance, not an answer — so each is recorded as a located refusal rather
-                // than silently yielding an edgeless file that downstream reads as "no
-                // dependencies" (DESIGN §5: a failure arm must refuse, never widen).
-                None => {
-                    let content = match std::fs::read_to_string(&file) {
-                        Ok(c) => c,
-                        Err(_) => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "unreadable",
-                            });
-                            continue;
-                        }
-                    };
-                    // Import-bearing: accounted EXACTLY by `import_resolution_facts`, so this is
-                    // not a refusal — the other producer owns this file's edges.
-                    if !extract_import_paths(&content).is_empty() {
-                        continue;
-                    }
-                    let module_name = match extract_module_path(&content) {
-                        Some(m) => m,
-                        None => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "no-module-line",
-                            });
-                            continue;
-                        }
-                    };
-                    match parse_module_node_tolerant(&rel, &content) {
-                        Some(t) => (module_name, t),
-                        None => {
-                            unaccounted.push(ReferenceAccountingRefusal {
-                                path: rel.clone(),
-                                cause: "parse-failed",
-                            });
-                            continue;
-                        }
-                    }
-                }
-            };
-            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut chains: Vec<Vec<String>> = Vec::new();
-            // THE INDEX IS BUILT FROM THE BYTES THIS PRODUCER ALREADY READ, not fetched from a
-            // prepared subject that does not exist at this point: `collect_node_refs` recovers a
-            // lambda parameter's name from its authored span, and a missing index would leave
-            // those names unbound and let them resolve as references.
-            let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
-            if let Ok(content) = std::fs::read_to_string(&file) {
-                file_indices.insert(
-                    rel.clone(),
-                    crate::v1_std_core::build_newline_index(rel.clone(), content),
-                );
-            }
-            let file_indices = Rc::new(file_indices);
-            // THIS PRODUCER ANSWERS A CORPUS-WIDE QUESTION BEFORE ANY SUBJECT IS PREPARED, so it
-            // has no declaration index to classify against and cannot decide
-            // DeclaredElsewhere / NamesNothingKnown. It supplies an EMPTY index, under which
-            // every unbound name classifies as a reference — the behaviour this producer already
-            // had, preserved deliberately rather than by omission. The totality guarantee is
-            // therefore scoped to the floor's index build, which is the consumer that has the
-            // declarations; this one keeps its own looser contract and its own counters.
-            let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
-            let mut scratch_unclassified: Vec<String> = Vec::new();
-            let mut classify = ExprVarClassification {
-                decl_index: None,
-                module_names: Some(&module_names),
-                module_path_heads: std::collections::HashSet::new(),
-                tally: &mut scratch_tally,
-                unclassified: &mut scratch_unclassified,
-                module: self_module.clone(),
-                value_refs: std::collections::BTreeSet::new(),
-                occurrences: 0,
-                free_reference_edges: 0,
-                bound_occurrences_suppressed: 0,
-                chain_head_occurrences: 0,
-                refusals: Vec::new(),
-            };
-            for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
-            }
-            // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
-            // two failure states and neither is survivable for a graph that is about to be
-            // published: an unsupported binder form means the binder set is incomplete, so a name
-            // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
-            // miss means the occurrences do not add up, which is the same statement arrived at by
-            // counting. Reading them and proceeding anyway would publish an under-bound, possibly
-            // widened graph while the refusal sat unread in a field — the fail-open this
-            // classification exists to remove, one consumer away from the floor path that checks
-            // it correctly (review 55667).
-            //
-            // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
-            // syntax the collector must learn, and a reconciliation miss names an accounting
-            // defect in the collector itself. Collapsing them would send both to whichever
-            // remedy the shared symbol happened to suggest.
-            //
-            // The file is SKIPPED rather than published, matching this producer's three existing
-            // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
-            // and record. The narrowing is therefore typed, located and countable through
-            // `reference_accounting_refusals`, not silent — a skipped file is visible in that
-            // channel, which is what separates it from the empty-observation narrow.
-            if !classify.refusals.is_empty() {
-                unaccounted.push(ReferenceAccountingRefusal {
-                    path: rel.clone(),
-                    cause: "binder-refusal",
-                });
-                continue;
-            }
-            if !classify.reconciles() {
-                unaccounted.push(ReferenceAccountingRefusal {
-                    path: rel.clone(),
-                    cause: "occurrence-accounting-mismatch",
-                });
-                continue;
-            }
-            // Resolve to per-file (target_module → strongest confidence).
-            let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
-                std::collections::BTreeMap::new();
-            let mut upgrade = |m: String, res: RefEdgeResolution| {
-                let entry = file_edges.entry(m).or_insert(res);
-                if res.rank() > entry.rank() {
-                    *entry = res;
-                }
-            };
-            for chain in &chains {
-                if let Some(m) = longest_declared_module_prefix(chain, &module_names) {
-                    if m != self_module {
-                        upgrade(m, RefEdgeResolution::Qualified);
-                    }
-                }
-            }
-            for name in &bare {
-                // A kernel or container spelling binds no module (`is_substrate_vocabulary`), so
-                // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
-                // std.string_type, a module the resolver never loads for that spelling.
-                if super::is_substrate_vocabulary(name) {
-                    continue;
-                }
-                if let Some(mods) = decl_index.get(name) {
-                    // Same-module declaration wins by lexical scope (namespace-only): a bare name the
-                    // referencing file itself declares resolves LOCALLY — no cross-module edge. This
-                    // is what keeps a ubiquitous fixture `data` (e.g. `live_tree_disposition`,
-                    // declared top-level in ~670 test files) from fanning every referrer out to every
-                    // declarer.
-                    if mods.contains(&self_module) {
-                        continue;
-                    }
-                    // Proximity disambiguation (namespace-only "nearest in the containment tree"):
-                    // among declarers, prefer the one sharing the longest module-path prefix with the
-                    // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
-                    // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
-                    let mut best_len = 0usize;
-                    let mut winners: Vec<&String> = Vec::new();
-                    for m in mods.iter() {
-                        let shared = module_prefix_shared_len(&self_module, m);
-                        if winners.is_empty() || shared > best_len {
-                            best_len = shared;
-                            winners.clear();
-                            winners.push(m);
-                        } else if shared == best_len {
-                            winners.push(m);
-                        }
-                    }
-                    match winners.len() {
-                        0 => {}
-                        1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
-                        _ => {
-                            // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
-                            // AmbiguousBare is a bare ref, in a file that does not declare it, whose
-                            // nearest declarers tie — the definitive "needs qualification" site.
-                            if std::env::var("REFAMBIG_DUMP").is_ok() {
-                                let is_witness =
-                                    rel.contains("/test/") || rel.ends_with("_test.dag");
-                                let cands: Vec<String> =
-                                    winners.iter().map(|s| (*s).clone()).collect();
-                                eprintln!(
-                                    "REFAMBIG\t{}\t{}\t{}\t{}",
-                                    if is_witness { "witness" } else { "compile" },
-                                    rel,
-                                    name,
-                                    cands.join(",")
-                                );
-                            }
-                            for t in winners {
-                                upgrade(t.clone(), RefEdgeResolution::AmbiguousBare);
-                            }
-                        }
-                    }
-                }
-            }
-            for (m, res) in file_edges {
-                edges.push(ReferenceEdgeRaw {
-                    path: rel.clone(),
-                    target_module: m,
-                    resolution: res,
-                });
+            match &*reference_rows_for_file(pool_roots, &file) {
+                ReferenceFileRows::ImportBearing => {}
+                ReferenceFileRows::Rows(rows) => edges.extend(rows.iter().cloned()),
+                ReferenceFileRows::Unaccounted(refusal) => unaccounted.push(refusal.clone()),
             }
         }
     }
-
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
     shared_fill::record_fill(
         "reference_edges",
@@ -2783,4 +2863,231 @@ pub fn reference_resolution_facts(
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
+}
+
+/// THE INSTRUMENT for a cold entry resolve's per-term cost on the live `[dag, src/v2]` pool: one
+/// fresh process builds the shared index, resolves two small workflow entries, then forces the
+/// whole-pool selection tier as a whole reader would, printing `PROBE` rows and the resolve stage
+/// totals. It reports; it asserts only that the entries resolve. Run it with
+/// `cargo test --release -p v1-compiler --lib live_pool_entry_resolve_attribution -- --ignored --nocapture`.
+#[cfg(test)]
+mod live_pool_entry_resolve_attribution {
+    use super::*;
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn live_pool_entry_resolve_attribution() {
+        let t0 = std::time::Instant::now();
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().into_owned())
+            .collect();
+        let t = std::time::Instant::now();
+        let index = process_shared_index(&roots);
+        eprintln!("PROBE shared_index(cold, includes facts) {:?}", t.elapsed());
+        for e in [
+            "src/v2/workflow/regen_convergence_transaction.dag",
+            "src/v2/workflow/required_regen.dag",
+        ] {
+            let entry = root.join(e);
+            let t = std::time::Instant::now();
+            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            assert!(r.is_ok(), "{e} resolves");
+            eprintln!(
+                "PROBE resolve {e} {:?} ok={} tier_built={} rows_produced={} stages={:?}",
+                t.elapsed(),
+                r.is_ok(),
+                index.module_graph_facts.selection_tier_built(),
+                reference_rows_produced_for_test(&index.module_graph_facts.pool_roots).len(),
+                resolve_stage_totals()
+            );
+        }
+        let t = std::time::Instant::now();
+        let n = index.module_graph_facts.selection_adjacency().len();
+        eprintln!(
+            "PROBE selection_tier(whole reader) {:?} rows={n}",
+            t.elapsed()
+        );
+        eprintln!("PROBE total {:?}", t0.elapsed());
+    }
+}
+
+#[cfg(test)]
+mod reference_rows_demand_tests {
+    use super::*;
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
+        // paths outside the workspace root.
+        process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-refrows-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
+        std::fs::write(&p, content).expect("write dag");
+    }
+
+    /// THE ROUTE, not the timing. An `--entry` resolve asks the reference producer for the rows of
+    /// the files its closure holds and for nothing else: the whole-pool selection tier stays
+    /// unbuilt and the whole-pool edge census never runs. `far.dag` is import-less and references
+    /// a name, so a loader that still built the whole tier would have produced its row; the red
+    /// this discriminates is exactly that (`selection_tier_built`, and `far.dag` in the produced
+    /// set). The entry's own row being present shows the per-file demand really ran.
+    #[test]
+    fn an_entry_resolve_produces_only_its_closure_rows() {
+        let root = fixture_root("route");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "decl.dag",
+            "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n",
+        );
+        write(
+            &root,
+            "entry.dag",
+            "module test.entry\n\nfn main() -> Bool {\n  shared_fn()\n}\n",
+        );
+        write(
+            &root,
+            "far.dag",
+            "module test.far\n\nfn far() -> Bool {\n  shared_fn()\n}\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let index = build_multi_entry_index(&roots);
+        let entry = root.join("entry.dag");
+        let resolved = resolve_entry_with_index(&index, &entry.to_string_lossy());
+        let produced = reference_rows_produced_for_test(&roots);
+        let tier_built = index.module_graph_facts.selection_tier_built();
+        let _ = std::fs::remove_dir_all(&root);
+        resolved.expect("the fixture entry resolves");
+        assert!(
+            !tier_built,
+            "the loader forced the whole-pool selection tier"
+        );
+        assert!(
+            produced.iter().any(|f| f.ends_with("entry.dag")),
+            "the entry's own row was demanded: {produced:?}"
+        );
+        assert!(
+            !produced.iter().any(|f| f.ends_with("far.dag")),
+            "a file outside the closure was produced: {produced:?}"
+        );
+    }
+
+    fn whole_pool_rows(
+        names: &ReferenceNameIndex,
+        abs_roots: &[String],
+    ) -> (BTreeSet<String>, BTreeSet<String>) {
+        let mut rows = BTreeSet::new();
+        let mut refused = BTreeSet::new();
+        for root in abs_roots {
+            let mut files: Vec<PathBuf> = Vec::new();
+            collect_dag_files_tolerant(Path::new(root), &mut files);
+            for file in files {
+                let rel = rel_path_for_layer_import(&file);
+                match produce_reference_rows_for_file(names, &file, &rel) {
+                    ReferenceFileRows::ImportBearing => {}
+                    ReferenceFileRows::Rows(found) => rows.extend(
+                        found
+                            .iter()
+                            .map(|e| format!("{}|{}|{:?}", e.path, e.target_module, e.resolution)),
+                    ),
+                    ReferenceFileRows::Unaccounted(r) => {
+                        refused.insert(format!("{}|{}", r.path, r.cause));
+                    }
+                }
+            }
+        }
+        (rows, refused)
+    }
+
+    /// THE IDENTITY-GRAIN DIFFERENTIAL on the real pool. The one change to what the producer
+    /// ANSWERS is its name index: the heads reading replaces the full reading. Every row and every
+    /// accounting refusal over `[dag, src/v2]` is compared at (file, target, resolution) grain
+    /// against the full reading, and the loader's per-file route against the whole-pool tier it
+    /// replaces, for every declared module.
+    #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn heads_named_reference_rows_equal_full_named_rows_on_the_live_pool() {
+        let workspace = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace.join(r).to_string_lossy().into_owned())
+            .collect();
+        let abs = pool_roots_abs(&roots);
+        // The loader route first: a real resolve forces `pool_parse`, which publishes every
+        // file's heads names, so the index below is SERVED from what the loader read. It must
+        // equal a fresh tolerant heads read of every file, which never consults that memo.
+        let index = process_shared_index(&roots);
+        resolve_entry_with_index_for_discovery_corpus(
+            &index,
+            &workspace
+                .join("src/v2/workflow/regen_convergence_transaction.dag")
+                .to_string_lossy(),
+        )
+        .expect("the loader route resolves");
+        let fresh = build_reference_name_index(&abs, |rel, content| {
+            parse_module_heads_tolerant(rel, content)
+                .map(|t| Rc::new(collect_module_decl_names(&t)))
+        });
+        let full = build_reference_name_index(&abs, |rel, content| {
+            parse_module_node_tolerant(rel, content).map(|t| Rc::new(collect_module_decl_names(&t)))
+        });
+        let heads = build_reference_name_index(&abs, heads_decl_names);
+        assert!(
+            heads.module_names == fresh.module_names && heads.decl_index == fresh.decl_index,
+            "names served from pool_parse differ from a fresh heads read"
+        );
+        let (full_rows, full_refused) = whole_pool_rows(&full, &abs);
+        let (heads_rows, heads_refused) = whole_pool_rows(&heads, &abs);
+        assert!(!full_rows.is_empty(), "the pool produced no reference rows");
+        let only_full: Vec<_> = full_rows.difference(&heads_rows).take(20).collect();
+        let only_heads: Vec<_> = heads_rows.difference(&full_rows).take(20).collect();
+        assert!(
+            only_full.is_empty() && only_heads.is_empty(),
+            "rows diverge: only_full={only_full:?} only_heads={only_heads:?}"
+        );
+        assert_eq!(full_refused, heads_refused, "accounting refusals diverge");
+
+        let facts = build_module_graph_facts_live(&roots);
+        let mut diverged = Vec::new();
+        for repo_path in facts.declared_paths.iter() {
+            let per_file = facts.reference_only_direct_import_paths(repo_path);
+            let imports: HashSet<&String> = facts
+                .adjacency
+                .get(repo_path)
+                .into_iter()
+                .flatten()
+                .collect();
+            let mut whole: Vec<String> = facts
+                .selection_adjacency()
+                .get(repo_path)
+                .into_iter()
+                .flatten()
+                .filter(|p| !imports.contains(p))
+                .cloned()
+                .collect();
+            whole.sort();
+            whole.dedup();
+            if per_file != whole {
+                diverged.push(format!(
+                    "{repo_path}: per_file={per_file:?} whole={whole:?}"
+                ));
+            }
+        }
+        eprintln!(
+            "reference-rows differential: {} rows, {} refusals, {} declared modules",
+            full_rows.len(),
+            full_refused.len(),
+            facts.declared_paths.len()
+        );
+        assert!(
+            diverged.is_empty(),
+            "the loader's per-file route diverges from the whole tier: {:?}",
+            &diverged[..diverged.len().min(20)]
+        );
+    }
 }

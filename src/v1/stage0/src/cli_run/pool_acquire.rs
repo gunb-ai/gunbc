@@ -139,3 +139,56 @@ pub fn artifact_for(file: &str, content: &str) -> Rc<V1LexArtifact> {
 pub fn newline_index_for(file: &str, content: &str) -> Rc<NewlineIndex> {
     acquire(file, content).newline_index.clone()
 }
+
+/// A file's DECLARATION NAMES under the heads reading, once per bytes. Two whole-pool readers
+/// want them: `pool_parse` (the fail-closed census the loader forces) and the reference
+/// producer's tolerant name index (`entry_resolve::reference_name_index`). They spell files
+/// differently, so the token memo above cannot join them, but the names are a function of the
+/// bytes alone -- the spelling only labels spans. So the key is the content, and a heads parse
+/// either reader already ran answers the other. `None` is a heads-reading refusal, remembered as
+/// such: the tolerant reader skips that file, and the fail-closed reader never publishes one.
+type DeclNamesSlot = Vec<(Rc<String>, Option<Rc<Vec<String>>>)>;
+
+thread_local! {
+    static DECL_NAMES: RefCell<HashMap<(usize, u64), DeclNamesSlot>> = RefCell::new(HashMap::new());
+}
+
+fn decl_names_hit(content: &str) -> Option<Option<Rc<Vec<String>>>> {
+    let key = content_fingerprint(content);
+    DECL_NAMES.with(|m| {
+        m.borrow().get(&key).and_then(|slot| {
+            slot.iter()
+                .find(|(bytes, _)| bytes.as_str() == content)
+                .map(|(_, names)| names.clone())
+        })
+    })
+}
+
+fn decl_names_store(content: &str, names: Option<Rc<Vec<String>>>) {
+    let key = content_fingerprint(content);
+    DECL_NAMES.with(|m| {
+        let mut m = m.borrow_mut();
+        let slot = m.entry(key).or_default();
+        if !slot.iter().any(|(bytes, _)| bytes.as_str() == content) {
+            slot.push((Rc::new(content.to_string()), names));
+        }
+    });
+}
+
+/// Record the names a successful heads parse of `content` declared.
+pub fn publish_heads_decl_names(content: &str, names: Vec<String>) {
+    decl_names_store(content, Some(Rc::new(names)));
+}
+
+/// The names the heads reading of `content` declares, running `read` only on a miss.
+pub fn heads_decl_names(
+    content: &str,
+    read: impl FnOnce() -> Option<Vec<String>>,
+) -> Option<Rc<Vec<String>>> {
+    if let Some(hit) = decl_names_hit(content) {
+        return hit;
+    }
+    let names = read().map(Rc::new);
+    decl_names_store(content, names.clone());
+    names
+}

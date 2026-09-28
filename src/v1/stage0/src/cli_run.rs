@@ -5896,7 +5896,9 @@ pub struct ModuleGraphFactsLive {
     // set per entry (bare-minimum-cost, DESIGN §6).
     pub(crate) declared_paths: HashSet<String>,
     // SELECTION-ONLY adjacency: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
-    // reference-derived edges for import-less files.
+    // reference-derived edges for import-less files, and the import-less files the reference
+    // producer could not answer for. Read through `selection_adjacency()` /
+    // `reference_unaccounted()`.
     //
     // A second map rather than a widening of `adjacency` because the two consumers need
     // different tiers, and mixing them is a measured regression: `adjacency` also feeds LOADER
@@ -5905,13 +5907,23 @@ pub struct ModuleGraphFactsLive {
     // Unioning reference edges into it grew the mock-corpus precompute closure until it pulled
     // `dag/` modules importing `v2.*` into a dag-only pool where those imports cannot resolve
     // (82 keys to a hard failure). Selection wants maximum precision; the loader wants a safe
-    // superset over a pool it can resolve. Same facts build, two answers, no shared tier.
-    pub(crate) selection_adjacency: HashMap<String, Vec<String>>,
-    // Import-less files the reference-edge producer could not answer for (unreadable / no module
-    // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
-    // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
-    // a known-empty dependency set and a precise `{self}` closure.
-    pub(crate) reference_unaccounted: HashSet<String>,
+    // superset over a pool it can resolve.
+    //
+    // BUILT ONLY WHERE IT IS CONSUMED WHOLE. The map is a whole-pool reference census, and its
+    // only whole readers are affected-set selection. It was built with every facts build, so
+    // every `--entry` resolve paid the whole pool's reference census (29.3s on the
+    // `[dag, src/v2]` pool, one BuildBuddy runner, 2026-09-28) to read the rows of the few files
+    // its closure holds. The loader now asks `reference_rows_for_file` for exactly those rows
+    // (`reference_only_direct_import_paths`), and this cell is forced by a whole reader alone.
+    // Shared across the facts' clones, so one facts build pays it at most once.
+    pub(crate) selection: Rc<std::cell::OnceCell<Rc<SelectionTier>>>,
+    // The module-graph pool roots these facts were built over: the reference producer's pool.
+    pub(crate) pool_roots: Vec<String>,
+    // Declared module name -> repo path, and repo path -> the source path the scan read. The
+    // per-file reference rows are keyed by the scanned source path and name target MODULES; these
+    // turn a row into the repo-path edge `build_import_adjacency` would have produced.
+    pub(crate) module_to_repo_path: HashMap<String, String>,
+    pub(crate) repo_path_to_source: HashMap<String, String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
     // repo path, built once per facts build. Read by the discovery witness run loop (a witness
     // entry with no module identity refuses rather than fabricating a `DeclarationRef`) and by
@@ -5925,6 +5937,16 @@ pub struct ModuleGraphFactsLive {
     // the facts read it, and keeping it only widened the cross-worker snapshot payload (gunbc
     // Cut 4).
     pub(crate) read_refusals: Vec<(String, String)>,
+}
+
+/// The whole-pool selection tier of `ModuleGraphFactsLive` (see its `selection` field).
+pub(crate) struct SelectionTier {
+    pub(crate) adjacency: HashMap<String, Vec<String>>,
+    // Import-less files the reference-edge producer could not answer for (unreadable / no module
+    // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
+    // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
+    // a known-empty dependency set and a precise `{self}` closure.
+    pub(crate) unaccounted: HashSet<String>,
 }
 
 #[cfg(test)]
@@ -6907,21 +6929,79 @@ impl ModuleGraphFactsLive {
         self.declared_paths.contains(rel)
     }
 
-    /// The dotted module names `importer_repo_path` depends on ONLY through a strict-tier
-    /// reference edge (`selection_adjacency` minus `adjacency`) — i.e. the direct-import term
-    /// a stripped (no `import` line) module is otherwise missing from its typed-module content
-    /// key (DESIGN §3: consumes the same `selection_adjacency` authority affected-set selection
-    /// already reads; no second reference-edge producer). An import-bearing file's declared
-    /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
-    /// (`adjacency` and `selection_adjacency` agree on such a file — see
-    /// `reference_resolution_facts` pass 2).
+    /// The whole-pool selection tier, built on first demand from the one reference producer.
+    /// Only whole readers (affected-set selection) force it; the loader never does.
+    fn selection_tier(&self) -> &Rc<SelectionTier> {
+        self.selection.get_or_init(|| {
+            let reference_edges = reference_edges_as_import_facts(
+                &reference_resolution_facts(&self.pool_roots, &self.pool_roots, &[]),
+                /* strict */ true,
+            );
+            // `adjacency` first, then the reference targets it does not already carry: the
+            // order `build_import_adjacency` gave the union of import and reference edges.
+            let mut adjacency = self.adjacency.clone();
+            for (importer, targets) in build_import_adjacency(&reference_edges, &self.nodes) {
+                let row = adjacency.entry(importer).or_default();
+                for target in targets {
+                    if !row.contains(&target) {
+                        row.push(target);
+                    }
+                }
+            }
+            let unaccounted =
+                reference_accounting_refusals(&self.pool_roots, &self.pool_roots, &[])
+                    .into_iter()
+                    .map(|r| workspace_relative_repo_path(&r.path))
+                    .collect();
+            Rc::new(SelectionTier {
+                adjacency,
+                unaccounted,
+            })
+        })
+    }
+
+    pub(crate) fn selection_adjacency(&self) -> &HashMap<String, Vec<String>> {
+        &self.selection_tier().adjacency
+    }
+
+    pub(crate) fn reference_unaccounted(&self) -> &HashSet<String> {
+        &self.selection_tier().unaccounted
+    }
+
+    /// Has a whole reader forced the selection tier? The loader's route control reads this.
+    #[cfg(test)]
+    pub(crate) fn selection_tier_built(&self) -> bool {
+        self.selection.get().is_some()
+    }
+
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
-    /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
-    /// `selection_adjacency` already carries; module names are derived only for diagnostics.
+    /// reference edge -- the direct-import term a stripped (no `import` line) module is otherwise
+    /// missing from its typed-module content key. An import-bearing file's declared imports are
+    /// already covered by `resolved.resolved_imports`, so this returns empty for it.
+    ///
+    /// ONE FILE'S ROWS, NOT THE POOL'S. This is the loader's demand, asked once per closure
+    /// module, so it asks the one reference producer (`reference_rows_for_file`) for this file
+    /// alone; the whole-pool tier stays unbuilt (DESIGN §3: one producer, two demands). A file the
+    /// producer could not account for has no rows here, as it had no selection row before.
     pub(crate) fn reference_only_direct_import_paths(
         &self,
         importer_repo_path: &str,
     ) -> Vec<String> {
+        let Some(source) = self.repo_path_to_source.get(importer_repo_path) else {
+            return Vec::new();
+        };
+        // Anchored at the process workspace as the whole-pool producer anchors its roots, so
+        // both demands read the same file and share one memo row.
+        let source = std::path::Path::new(source);
+        let file = if source.is_absolute() {
+            source.to_path_buf()
+        } else {
+            process_workspace_root().join(source)
+        };
+        let rows = reference_rows_for_file(&self.pool_roots, &file);
+        let ReferenceFileRows::Rows(rows) = &*rows else {
+            return Vec::new();
+        };
         let import_targets: HashSet<&str> = self
             .adjacency
             .get(importer_repo_path)
@@ -6929,12 +7009,11 @@ impl ModuleGraphFactsLive {
             .flatten()
             .map(|s| s.as_str())
             .collect();
-        let mut out: Vec<String> = self
-            .selection_adjacency
-            .get(importer_repo_path)
-            .into_iter()
-            .flatten()
-            .filter(|p| !import_targets.contains(p.as_str()))
+        let mut out: Vec<String> = rows
+            .iter()
+            .filter(|row| row.resolution != RefEdgeResolution::AmbiguousBare)
+            .filter_map(|row| self.module_to_repo_path.get(&row.target_module))
+            .filter(|path| !import_targets.contains(path.as_str()))
             .cloned()
             .collect();
         out.sort();
@@ -7004,7 +7083,7 @@ fn entry_file_touched_via_import_closure(
     // "affected" for it (the arm deleted here) conflated ⊤-as-ignorance with ⊤-as-answer and,
     // being silent and uncounted, zeroed the deficit's observed frequency by construction while
     // the cost surfaced as a 95-minute CI floor rather than a diagnostic (DESIGN §5).
-    if facts.reference_unaccounted.contains(&entry_rel) {
+    if facts.reference_unaccounted().contains(&entry_rel) {
         return Err(format!(
             "AFFECTED-SET REFUSAL cause=ReferenceEdgesUnaccounted entry={entry_rel} — the \
              reference-edge producer could not read or parse this import-less entry, so its \
@@ -7012,7 +7091,7 @@ fn entry_file_touched_via_import_closure(
              run-all or narrowing to skip"
         ));
     }
-    let closure = import_closure_from_adjacency(entry_path, &facts.selection_adjacency);
+    let closure = import_closure_from_adjacency(entry_path, facts.selection_adjacency());
     Ok(touched_paths.iter().any(|touched| {
         closure
             .iter()
@@ -16930,7 +17009,8 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
             .get(&module_path)
             .cloned()
             .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_heads_for_pool_census(index, source)?;
+        let (module, nl_index) = parse_module_heads_for_pool_census(index, source.clone())?;
+        pool_acquire::publish_heads_decl_names(&source.content, collect_module_decl_names(&module));
         let file = nl_index.file.clone();
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
@@ -31687,9 +31767,16 @@ mod module_graph_read_refusal_tests {
         ModuleGraphFactsLive {
             nodes: node_rows,
             adjacency: adjacency.clone(),
-            selection_adjacency: adjacency,
+            selection: std::rc::Rc::new(std::cell::OnceCell::from(std::rc::Rc::new(
+                super::SelectionTier {
+                    adjacency,
+                    unaccounted: std::collections::HashSet::new(),
+                },
+            ))),
+            pool_roots: Vec::new(),
+            module_to_repo_path: im::HashMap::new(),
+            repo_path_to_source: im::HashMap::new(),
             declared_paths,
-            reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
             read_refusals: Vec::new(),
         }
@@ -37100,7 +37187,7 @@ mod witness_layer_roots_compile_clean_tests {
             // Wiring receipt: the entry declares no imports, so a non-empty adjacency here is
             // reference-derived by construction.
             let targets = facts
-                .selection_adjacency
+                .selection_adjacency()
                 .get(entry)
                 .cloned()
                 .unwrap_or_default();
@@ -37166,7 +37253,7 @@ mod witness_layer_roots_compile_clean_tests {
                 .iter()
                 .filter(|p| {
                     facts
-                        .selection_adjacency
+                        .selection_adjacency()
                         .get(*p)
                         .is_none_or(|targets| targets.is_empty())
                 })
