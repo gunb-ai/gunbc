@@ -1010,7 +1010,7 @@ fn roadmap_serve_selection_response_over(
         release_revision: release_revision,
       )
     SelectedStatic { route: r } =>
-      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+      ServeHttpResponse { headers: [], status: r.status_on_hit, content_type: r.content_type, body: r.body }
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
