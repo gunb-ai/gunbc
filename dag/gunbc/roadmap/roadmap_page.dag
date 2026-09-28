@@ -11,6 +11,7 @@ import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
   fabric_workflow_principal, fabric_display_alias,
 }
+import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap_component { standing_chip_class }
 import std.types { list_length }
 import gunbc.harness.harness_throughput {
@@ -625,7 +626,7 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<Ev
         attr(name: "type", value: "hidden" ),
         attr(name: "value", value: expected_revision ),
       ], []),
-      el_class("div", "issue-assign-suggestions", map(suggestions, issue_assign_suggestion_nodes)),
+      el_class("div", "issue-assign-suggestions", map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: view.profiles))),
       el_attrs("button", [
         attr(name: "class", value: "issue-assign-submit issue-action-text" ),
         attr(name: "disabled", value: "disabled" ),
@@ -673,10 +674,11 @@ fn suggestion_selector_of(p: EventPrincipal) -> String {
 }
 
 // ONE SUGGESTION ROW, avatar-backed per the mandate: the avatar chip (initials under the
-// never-blocks law — the /avatar image endpoint is the realization, follow-up), the display name,
-// the selector, and the workflow badge for the fabric endpoint so it never masquerades as human.
-fn issue_assign_suggestion_nodes(p: EventPrincipal) -> Fragment {
-  let display = event_principal_display(p: p)
+// never-blocks law — the /avatar image endpoint is the realization, follow-up), the display name
+// through the profile-bound projection (the store's name/email replace the raw label), the
+// selector, and the workflow badge for the fabric endpoint so it never masquerades as human.
+fn issue_assign_suggestion_nodes(p: EventPrincipal, profiles: List<PrincipalProfile>) -> Fragment {
+  let display = event_principal_display_with_profile(p: p, profiles: profiles)
   el_attrs("div", [
     attr(name: "class", value: "issue-assign-suggestion" ),
     attr(name: "data-principal", value: event_principal_label(p: p) ),
@@ -724,6 +726,86 @@ fn event_principal_display(p: EventPrincipal) -> EventPrincipalDisplay {
   }
 }
 
+// THE PROFILE-BOUND DISPLAY PROJECTION (owner ask 2026-09-28: the assignee surfaces show the
+// person's real identity — email/name and their Google photo — instead of the raw principal label
+// or a digit-derived initial). The profile store (gunbc.auth.profile_projection, bound at login
+// and read once per render entry) IS the A9 directory binding event_principal_display's fallback
+// deferred: a known principal renders the profile's name (email local part, then label, as the
+// name preference order), the email as the detail, initials from the display name, and
+// AvatarResolved when a picture was observed. THE NEVER-BLOCKS LAW HOLDS: a principal with no
+// profile in the roster — or a roster read that failed upstream and arrived empty — renders
+// EXACTLY the projection-less fallback, never a refusal.
+fn event_principal_display_with_profile(p: EventPrincipal, profiles: List<PrincipalProfile>) -> EventPrincipalDisplay {
+  match p {
+    EventPrincipalAuthenticated { ref } =>
+      if principal_ref_eq(a: ref, b: fabric_workflow_principal) {
+        event_principal_display(p: p)
+      } else {
+        match principal_profile_of(ref: ref, profiles: profiles) {
+          Absent => event_principal_display(p: p)
+          Present { value: prof } => profile_display_projection(ref: ref, profile: prof)
+        }
+      }
+    LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => event_principal_display(p: p)
+  }
+}
+
+// THE PROFILE-BOUND PROJECTION BODY: the display name decides the initials, the email rides the
+// detail, the stored picture resolves the standing.
+fn profile_display_projection(ref: PrincipalRef, profile: PrincipalProfile) -> EventPrincipalDisplay {
+  let name = profile_display_name(ref: ref, profile: profile)
+  EventPrincipalDisplay {
+    name: name,
+    detail: profile_display_detail(ref: ref, profile: profile),
+    initials: avatar_initials_of(display_name: name),
+    avatar: profile_display_avatar(profile: profile),
+  }
+}
+
+// THE PROFILE LOOKUP, by principal equality — the label never enters the match. (The Present
+// binder rides the short spelling p: the binder spelling 'profile' is a named resolver failure
+// mode — gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup.)
+fn principal_profile_of(ref: PrincipalRef, profiles: List<PrincipalProfile>) -> PrincipalProfile? {
+  match profiles.first() {
+    Absent => none
+    Present { value: p } =>
+      if principal_ref_eq(a: p.principal, b: ref) {
+        Present { value: p }
+      } else {
+        principal_profile_of(ref: ref, profiles: profiles.skip(n: 1))
+      }
+  }
+}
+
+// THE NAME PREFERENCE ORDER: the profile's name, then the email's local part, then the principal
+// label — the label is the last resort, never the first choice.
+fn profile_display_name(ref: PrincipalRef, profile: PrincipalProfile) -> String {
+  match profile.name {
+    Present { value: n } => n
+    Absent => match profile.email {
+      Present { value: e } => principal_display_name_of(email: e as String)
+      Absent => principal_ref_label(p: ref)
+    }
+  }
+}
+
+// THE DETAIL LINE: the email when the profile observed one, else the label.
+fn profile_display_detail(ref: PrincipalRef, profile: PrincipalProfile) -> String {
+  match profile.email {
+    Present { value: e } => e as String
+    Absent => principal_ref_label(p: ref)
+  }
+}
+
+// THE AVATAR STANDING: a stored picture resolves the avatar (the chip's img realization rides the
+// standing); no picture keeps the initials fallback.
+fn profile_display_avatar(profile: PrincipalProfile) -> AvatarStanding {
+  match profile.picture {
+    Present { value: _ } => AvatarResolved
+    Absent => AvatarAbsent
+  }
+}
+
 // THE PRINCIPAL'S OWN INITIAL when no profile names it: the subject's first character — a
 // deterministic placeholder, not an identity claim.
 fn principal_subject_initial(ref: PrincipalRef) -> String {
@@ -758,12 +840,17 @@ fn issue_avatar_chip_node(display: EventPrincipalDisplay, workflow: Bool) -> Fra
 }
 
 // THE RESULTS TABLE'S ASSIGNEE CHIP (owner ruling 2026-09-25, "make assignee always be the pfp (or
-// a default/placeholder) of the email account"): the holder principal's circular chip — initials
-// under the avatar law, the workflow badge for Fabric — NEVER the raw identity text (the full
-// identity rides the title attribute, and the detail page).
-fn issue_assignee_chip_node(holder: EventPrincipal) -> Fragment {
-  let display = event_principal_display(p: holder)
-  el_attrs("span", [
+// a default/placeholder) of the email account"; owner ask 2026-09-28: the chip PAIRS its circular
+// avatar with the person's real identity text): the holder principal's circular chip — initials
+// under the avatar law (the stored Google photo resolves the standing), the workflow badge for
+// Fabric — PLUS, WHEN THE PROJECTION KNOWS THE PRINCIPAL, a visible text span (class
+// issue-assignee-text) carrying the EMAIL when one is known, else the display name; the full
+// identity (name — detail) rides the title attribute. A principal the profile roster does not
+// name renders EXACTLY the chip alone — the pre-profile behavior, never a refusal. Fabric wears
+// the badge alone (its identity is the workflow endpoint, not a person).
+fn issue_assignee_chip_node(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> List<Fragment> {
+  let display = event_principal_display_with_profile(p: holder, profiles: profiles)
+  let chip = el_attrs("span", [
     attr(name: "class", value: join([
       "issue-avatar",
       if event_principal_is_fabric(p: holder) { " issue-avatar-workflow" } else { "" },
@@ -777,6 +864,37 @@ fn issue_assignee_chip_node(holder: EventPrincipal) -> Fragment {
     } else {
       []
     }))
+  match issue_assignee_chip_text(holder: holder, profiles: profiles) {
+    Absent => [ chip ]
+    Present { value: text } => concat([ chip ], [ el_class("span", "issue-assignee-text", [ txt(text) ]) ])
+  }
+}
+
+// THE CHIP'S VISIBLE TEXT, present exactly when the projection knows the principal's identity: a
+// stored profile contributes its email (preferred, the owner ask) or its name; a legacy email
+// principal contributes its email (the identity it carries, unverified marker riding the
+// suggestion rows); a principal with no profile and Fabric name no text — the initials chip
+// stands alone as before.
+fn issue_assignee_chip_text(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> String? {
+  match holder {
+    EventPrincipalAuthenticated { ref } =>
+      if principal_ref_eq(a: ref, b: fabric_workflow_principal) {
+        none
+      } else {
+        match principal_profile_of(ref: ref, profiles: profiles) {
+          Absent => none
+          Present { value: p } =>
+            match p.email {
+              Present { value: e } => Present { value: e as String }
+              Absent => match p.name {
+                Present { value: n } => Present { value: n }
+                Absent => none
+              }
+            }
+        }
+      }
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } => Present { value: email as String }
+  }
 }
 
 // THE DETAIL ACTION BAR: the durable Assign form alone (owner ruling 2026-09-25 — the table rows
@@ -1224,8 +1342,11 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
   node_li_attributes_for(view: view, class_infix: "")
 }
 
+// THE TREE ROW carries no profile roster: the roadmap tree is the static render path (no instance
+// in scope) and its rows name no assignee surface — the empty roster renders every fallback
+// exactly as before.
 fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false)
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr }, worker_alive: false, standing: none, launch: launch, attempt_stale: false, profiles: [])
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
@@ -1571,11 +1692,12 @@ fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgre
 }
 
 // THE FIELD-ROW TEXT for the assignee row (the rail's plain-text spelling): the holder's display
-// name, empty when no holder exists — never a bare label.
+// name through the profile-bound projection (real name when the store knows one), empty when no
+// holder exists — never a bare label.
 fn issue_assignee_value(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> String {
   match issue_assignee_holder(view: view, attempts: attempts) {
     Absent => ""
-    Present { value: holder } => event_principal_display(p: holder).name
+    Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).name
   }
 }
 
@@ -1656,7 +1778,7 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "data-assign-node", value: view.node_id),
         ], match issue_assignee_holder(view: view, attempts: []) {
           Absent => [ txt(issue_assignee_unassigned_display as String) ]
-          Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
+          Present { value: holder } => issue_assignee_chip_node(holder: holder, profiles: view.profiles)
         }) ]
     IssueColumnStatus =>
       if bar.signal == "" { [] } else {
@@ -1674,7 +1796,7 @@ fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBa
     IssueColumnTitle => view.headline
     IssueColumnAssignee => match issue_assignee_holder(view: view, attempts: []) {
       Absent => ""
-      Present { value: holder } => event_principal_display(p: holder).name
+      Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).name
     }
     IssueColumnStatus => bar.signal
     IssueColumnLastModified => ""
@@ -1949,8 +2071,8 @@ fn issue_description_node(view: WorkRowView) -> Fragment {
 // the ordinal anchor AND the row id (the location bar lands on the comment), the created and
 // edited timestamps, the markdown body, and the reply marker naming the comment answered. A
 // DELETED comment renders its tombstone with the ordinal RETAINED — the deep link stays addressed.
-fn issue_comment_row_node(node_id: String, comments: List<IssueComment>, c: IssueComment) -> Fragment {
-  let display = event_principal_display(p: c.author)
+fn issue_comment_row_node(node_id: String, comments: List<IssueComment>, c: IssueComment, profiles: List<PrincipalProfile>) -> Fragment {
+  let display = event_principal_display_with_profile(p: c.author, profiles: profiles)
   el_attrs("div", [
     attr(name: "class", value: join(["issue-comment", if c.deleted { " issue-comment-deleted" } else { "" }], "") ),
     attr(name: "id", value: issue_comment_anchor(ordinal: c.ordinal) ),
@@ -2040,18 +2162,18 @@ fn issue_entry_insert(sorted: List<IssueStreamEntry>, e: IssueStreamEntry) -> Li
   }
 }
 
-fn issue_comments_stream_node(node_id: String, envs: List<RoadmapEventEnvelope>) -> Fragment {
+fn issue_comments_stream_node(node_id: String, envs: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile>) -> Fragment {
   let entries = issue_stream_entries(envs: envs)
   el_class("div", "issue-comments", [
     el_class("h2", "issue-comments-heading", [ txt(join(["Comments · ", to_string(value: count(roadmap_issue_comments(envs: envs)))], "")) ]),
-    el_class("div", "issue-comment-stream", map(entries, e => issue_stream_entry_row_node(node_id: node_id, envs: envs, entries: entries, e: e))),
+    el_class("div", "issue-comment-stream", map(entries, e => issue_stream_entry_row_node(node_id: node_id, envs: envs, entries: entries, e: e, profiles: profiles))),
   ])
 }
 
-fn issue_stream_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, entries: List<IssueStreamEntry>, e: IssueStreamEntry) -> Fragment {
+fn issue_stream_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, entries: List<IssueStreamEntry>, e: IssueStreamEntry, profiles: List<PrincipalProfile>) -> Fragment {
   match e {
-    StreamComment { comment } => issue_comment_row_node(node_id: node_id, comments: roadmap_comments_of(entries: entries), c: comment)
-    StreamPublication { env } => issue_publication_entry_row_node(node_id: node_id, envs: envs, env: env)
+    StreamComment { comment } => issue_comment_row_node(node_id: node_id, comments: roadmap_comments_of(entries: entries), c: comment, profiles: profiles)
+    StreamPublication { env } => issue_publication_entry_row_node(node_id: node_id, envs: envs, env: env, profiles: profiles)
   }
 }
 
@@ -2065,10 +2187,10 @@ fn roadmap_comments_of(entries: List<IssueStreamEntry>) -> List<IssueComment> {
 // THE COMPACT AUTOMATED HANDOFF ENTRY (owner mandate: one compact automated comment with PR/head,
 // reassigned for merge): fabric's service avatar, the PR and head, and the merge-owner the fold
 // reassigned to — the durable event is the comment; nothing is synthesized twice.
-fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope) -> Fragment {
+fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> Fragment {
   match env.event.kind {
     PublicationObserved { pr, head } =>
-      let display = event_principal_display(p: env.event.author)
+      let display = event_principal_display_with_profile(p: env.event.author, profiles: profiles)
       el_attrs("div", [
         attr(name: "class", value: "issue-comment issue-publication" ),
         attr(name: "data-event-kind", value: "publication_observed" ),
@@ -2081,7 +2203,7 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
               [ el_class("span", "issue-comment-at", [ txt(env.event.recorded_at) ]) ],
               [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ]))),
           el_class("div", "issue-comment-body", [
-            txt(join(["published ", pr as String, " at ", head as String, " — reassigned for merge to ", issue_publication_merge_target(envs: envs)], "")),
+            txt(join(["published ", pr as String, " at ", head as String, " — reassigned for merge to ", issue_publication_merge_target(envs: envs, profiles: profiles)], "")),
           ]),
         ]),
       ])
@@ -2093,9 +2215,9 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
 // THE MERGE TARGET the entry names: the holder the fold now reads (the stored return_to after the
 // publication) — computed from the node's full event set, so the name rides the fold, never a
 // second guess.
-fn issue_publication_merge_target(envs: List<RoadmapEventEnvelope>) -> String {
+fn issue_publication_merge_target(envs: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile>) -> String {
   match roadmap_issue_assignment(envs: envs).holder {
-    Present { value: holder } => event_principal_display(p: holder).name
+    Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: profiles).name
     Absent => "the stored merge owner"
   }
 }
@@ -2244,7 +2366,7 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
   concat(
     [
       issue_description_node(view: view),
-      issue_comments_stream_node(node_id: view.node_id, envs: events),
+      issue_comments_stream_node(node_id: view.node_id, envs: events, profiles: view.profiles),
       issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, csrf: csrf),
     ],
     disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
@@ -2311,7 +2433,7 @@ fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: 
     issue_rail_optional_row(label: "blocked by", value: issue_links_text(panel: panel, blocked: true)),
     issue_rail_optional_row(label: "blocking", value: issue_links_text(panel: panel, blocked: false)),
     issue_rail_optional_row(label: "delivery", value: issue_delivery_value(attempts: attempts)),
-    issue_rail_return_to_row(assignment: assignment),
+    issue_rail_return_to_row(view: view, assignment: assignment),
     issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
     issue_rail_optional_row(label: "observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
   ])
@@ -2331,11 +2453,12 @@ fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>)
 }
 
 // THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
-// Assign control — the editable field the mandate puts in the rail.
+// Assign control — the editable field the mandate puts in the rail. The chip projects the
+// profile-bound identity (view.profiles, read once at the render entry).
 fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
   let holder_chip = match issue_assignee_holder(view: view, attempts: attempts) {
     Absent => [ txt(issue_assignee_unassigned_display as String) ]
-    Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
+    Present { value: holder } => issue_assignee_chip_node(holder: holder, profiles: view.profiles)
   }
   issue_field_row(label: "assignee", value: concat(
     holder_chip,
@@ -2344,10 +2467,10 @@ fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProg
 
 // THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's
 // target) — rendered when any assignment recorded one.
-fn issue_rail_return_to_row(assignment: IssueAssignmentProjection) -> Fragment {
+fn issue_rail_return_to_row(view: WorkRowView, assignment: IssueAssignmentProjection) -> Fragment {
   match assignment.return_to {
     Present { value: return_to } =>
-      issue_field_row(label: "return to", value: [ issue_assignee_chip_node(holder: return_to) ])
+      issue_field_row(label: "return to", value: issue_assignee_chip_node(holder: return_to, profiles: view.profiles))
     Absent =>
       el_class("div", "issue-field", [])
   }
@@ -2443,12 +2566,13 @@ fn issue_detail_page_for(
   viewer: String,
   recents: List<EventPrincipal>,
   csrf: String,
+  profiles: List<PrincipalProfile>,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_daily_workspace_page_for_projection_observed_stale(
         proj: proj, attempts: attempts, attempts_refused: attempts_refused,
-        standings: standings, launch: launch, stale_nodes: stale_nodes)
+        standings: standings, launch: launch, stale_nodes: stale_nodes, profiles: profiles)
     RoadmapAuthorityProjected { doc, accepted: accepted, withheld: withheld } =>
       let nodes = doc_all_nodes(doc: doc)
       let edges = doc_all_edges(doc: doc)
@@ -2467,7 +2591,8 @@ fn issue_detail_page_for(
               worker_alive: daily_row_worker_alive(node_id: node_id, attempts: attempts, attempts_refused: attempts_refused),
               standing: standing_for_node(standings: standings, node_id: node_id),
               launch: ctx,
-              attempt_stale: any(stale_nodes, s => s == node_id)),
+              attempt_stale: any(stale_nodes, s => s == node_id),
+              profiles: profiles),
             panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
             observation: observation,
             attempts: attempts,
@@ -2612,6 +2737,7 @@ fn daily_workspace_view_of_for_accepted(
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
+  profiles: List<PrincipalProfile>,
 ) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
@@ -2624,7 +2750,8 @@ fn daily_workspace_view_of_for_accepted(
     worker_alive: daily_row_worker_alive(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
     standing: standing_for_node(standings: standings, node_id: rn.node as String),
     launch: ctx,
-    attempt_stale: any(stale_nodes, s => s == rn.node as String)))
+    attempt_stale: any(stale_nodes, s => s == rn.node as String),
+    profiles: profiles))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   daily_workspace_view(
@@ -2647,6 +2774,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
+  profiles: List<PrincipalProfile>,
 ) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
@@ -2657,6 +2785,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     attempts_refused: attempts_refused, standings: standings,
     launch: launch,
     stale_nodes: stale_nodes,
+    profiles: profiles,
   )
   let program_strip = match ws.program {
     Present { value: v } => [ program_progress_markup_of(v: v) ]
@@ -2837,21 +2966,24 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 // can name the public accepted set any more, and these two get the empty one, which is what their
 // own "the event carrier is not consulted" already claimed and did not deliver.
 
+// Static daily renders consult no auth profile store (no instance in scope): the empty roster
+// renders every assignee surface's fallback exactly as before.
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render(), stale_nodes: [])
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render(), stale_nodes: [], profiles: [])
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch, stale_nodes: [])
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch, stale_nodes: [], profiles: [])
 }
 
-// The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it.
+// The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it. profiles is the read-once auth profile roster the tick passes down (gunbc.roadmap_served_observation); every non-belt entry passes the empty roster.
 fn roadmap_daily_workspace_page_for_projection_observed(
   proj: RoadmapAuthorityProjection,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
+  profiles: List<PrincipalProfile>,
 ) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed_stale(
     proj: proj,
@@ -2860,6 +2992,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
     standings: standings,
     launch: launch,
     stale_nodes: [],
+    profiles: profiles,
   )
 }
 
@@ -2877,6 +3010,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
   standings: RoadmapStandings,
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
+  profiles: List<PrincipalProfile>,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -2894,6 +3028,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         standings: standings,
         launch: launch,
         stale_nodes: stale_nodes,
+        profiles: profiles,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -2909,6 +3044,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         standings: standings,
         launch: launch,
         stale_nodes: stale_nodes,
+        profiles: profiles,
       )
   }
 }
@@ -2924,5 +3060,6 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection)
     attempts_refused: none,
     standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" },
     launch: launch_host_unobserved_static_render(),
+    profiles: [],
   )
 }

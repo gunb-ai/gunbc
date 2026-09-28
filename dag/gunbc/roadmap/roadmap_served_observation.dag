@@ -16,6 +16,7 @@ import extdeps.languages.json.parse {
 }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.auth.profile_projection { profile_store_layout_for_instance, profile_store_read_all, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile }
 import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed, roadmap_daily_workspace_page_for_projection_observed_stale }
 import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body, site_artifact_digest }
@@ -221,10 +222,14 @@ fn served_attempt_revision_observations(instance: HostDashboardInstance, attempt
 
 // The daily page is RENDERED HERE, at the tick, and only read back at request time -- so this is
 // where the plan a snapshot is about has to arrive. It is the same parameter the serve entry takes,
-// travelling the other route into the same page fold.
+// travelling the other route into the same page fold. THE AUTH PROFILE ROSTER is read ONCE here
+// (the tick has the instance in hand; serve reads only the finished bytes) and rides every row the
+// page renders — the assignee chips project real identity under the never-blocks law: a store read
+// that refuses degrades to the empty roster, never a failed page.
 fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
   let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
   let standings = roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
+  let profiles = served_observation_profiles_for_instance(instance: instance)
   let page = match observed {
     WorkflowAttemptsObserved { attempts } =>
       roadmap_daily_workspace_page_for_projection_observed_stale(
@@ -236,13 +241,21 @@ fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: 
         stale_nodes: stale_attempt_nodes(
           observations: served_attempt_revision_observations(instance: instance, attempts: attempts),
           current_revision_hex: served_current_revision_hex(launch: launch)),
+        profiles: profiles,
       )
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch)
+      roadmap_daily_workspace_page_for_projection_observed(proj: plan, attempts: [], attempts_refused: Present { value: reason }, standings: standings, launch: launch, profiles: profiles)
   }
   match try_serialize_html_source(node: page) {
     EmitOk { html } => ServedObservationSurface { kind: DailyPage, status: 200, body: html }
     EmitRejected { reason } => ServedObservationSurface { kind: DailyPage, status: 500, body: page_render_refusal_body(reason: reason) }
+  }
+}
+
+fn served_observation_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
+  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+    ProfileStoreRead { profiles } => profiles
+    ProfileStoreUnread { step: _, reason: _ } => []
   }
 }
 

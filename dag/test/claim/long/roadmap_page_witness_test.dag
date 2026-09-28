@@ -23,7 +23,13 @@ import gunbc.roadmap_page {
   dispatch_client_script,
   finish_line_row,
   issue_detail_page_launch,
+  issue_assignee_chip_node,
 }
+import gunbc.auth.profile_projection { PrincipalProfile, ProfileSourceGoogleOidcLogin }
+import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
+import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
+import extdeps.uri { Uri, Https }
+import std.types { Email }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_model {
@@ -676,6 +682,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
     worker_alive: false,
     standing: none,
     attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -777,6 +784,7 @@ test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
     worker_alive: false,
     standing: none,
     attempt_stale: true,
+    profiles: [],
   }
   match try_serialize_html_source(node: Element {
     tag: "li",
@@ -1010,7 +1018,7 @@ fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
     rn: rn, nodes: nodes, edges: edges, merged: [],
     activity: gunbc.roadmap_presentation.NoActiveWork,
     rounds: RoundsUnobserved { reason: "no active attempt" as NonEmptyStr },
-    worker_alive: false, standing: none, launch: ctx, attempt_stale: false))
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: []))
   match (filter(rows, r => r.node_id == "page-chain-c1")).first() {
     Absent => fx_project_tree_view(auto_open: false)
     Present { value: top } =>
@@ -1178,6 +1186,7 @@ fn hero_row_view(node_id: String, activity: gunbc.roadmap_presentation.ActivityV
     worker_alive: alive,
     standing: none,
     attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -1425,7 +1434,8 @@ fn fx_shell_live_rows(refused: Bool) -> List<gunbc.roadmap_presentation.WorkRowV
       worker_alive: is_live,
       standing: none,
       attempt_stale: false,
-      launch: ctx)
+      launch: ctx,
+      profiles: [])
   })
 }
 
@@ -1558,6 +1568,7 @@ fn issue_detail_fixture_view() -> gunbc.roadmap_presentation.WorkRowView {
     worker_alive: true,
     standing: Present { value: NodeClaimed { by: fixture_human_principal(), since: "2026-09-23" } },
     attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -1707,7 +1718,8 @@ fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
       NodeStandingRow { node_id: "page-task-one", standing: NodeInProgress { by: fixture_human_principal(), last_note: "working" as NonEmptyStr } },
     ] },
     launch: dispatch_doc_standing(),
-    stale_nodes: if stale { ["page-task-one"] } else { [] }))
+    stale_nodes: if stale { ["page-task-one"] } else { [] },
+    profiles: []))
 }
 
 fn table_region(html: String) -> String {
@@ -1948,7 +1960,8 @@ fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
     attempts_refused: none,
     standings: StandingsObserved { rows: [] },
     launch: dispatch_doc_standing(),
-    stale_nodes: []))
+    stale_nodes: [],
+    profiles: []))
 }
 
 test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
@@ -2279,6 +2292,7 @@ fn issue_detail_fixture_view_with_brief(lifecycle: gunbc.roadmap_presentation.Wo
     worker_alive: true,
     standing: Present { value: NodeClaimed { by: fixture_human_principal(), since: "2026-09-23" } },
     attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -2291,7 +2305,8 @@ fn brief_fixture_html(lifecycle: gunbc.roadmap_presentation.WorkLifecycle) -> Ht
     events: [],
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
-    expected_revision: ""))
+    expected_revision: "",
+    csrf: ""))
 }
 
 // THE AUTHORED FIELDS FOLD (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
@@ -2414,4 +2429,123 @@ test fn witness_issue_assign_form_fits_the_rail() -> Bool {
   string_contains(s: css, pattern: ".issue-assign-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) }")
     && string_contains(s: css, pattern: ".issue-assign-input { font-family: var(--font-mono); font-size: var(--text-13); color: var(--issue-text); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-3); padding: var(--space-2) var(--space-4); min-width: 0; flex: 1 }")
     && occurrence_count(s: css, pattern: "width: 34ch") == 1
+}
+
+// ── The profile-bound assignee identity (owner ask 2026-09-28) ──────────────────────────────────
+// THE FIXTURE PROFILE: the store record a completed login would have upserted for the fixture
+// human principal — a real name, the email, and the Google photo URI.
+fn fixture_human_profile() -> PrincipalProfile {
+  PrincipalProfile {
+    principal: fixture_human_ref(),
+    name: Present { value: "Fixture Viewer" },
+    email: Present { value: "viewer@gunb.ai" as Email },
+    picture: Present { value: Uri { scheme: Https, locator: "lh3.googleusercontent.com/a/fixture-picture" as NonEmptyStr } },
+    updated_at: "2026-09-28T00:00:00Z",
+    source: ProfileSourceGoogleOidcLogin,
+  }
+}
+
+fn fixture_stranger_ref() -> gunbc.principal_projection.PrincipalRef {
+  gunbc.principal_projection.PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-stranger" as NonEmptyStr }
+}
+
+fn fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipal, profiles: List<PrincipalProfile>) -> String {
+  match try_serialize_html_source(node: Element { tag: "span", attributes: [], children: issue_assignee_chip_node(holder: holder, profiles: profiles) }) {
+    EmitOk { html } => html
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+// THE ASSIGNEE CHIP under the profile binding: a KNOWN principal (the store names them) renders
+// the email as the visible issue-assignee-text beside the chip, the title carries "name — email",
+// the initials come from the display name, and the picture resolves the avatar standing; an
+// UNKNOWN principal — an empty roster (the read failed or the store has no record) or a roster
+// naming a DIFFERENT principal — renders EXACTLY the pre-profile fallback: the chip alone with
+// the absent standing, the label title, no text span.
+test fn witness_assignee_chip_renders_the_profile_identity_when_known() -> Bool {
+  let known = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [fixture_human_profile()])
+  let unknown = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [])
+  let stranger = fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() }, profiles: [fixture_human_profile()])
+  string_contains(s: known, pattern: "class=\"issue-avatar\" data-avatar=\"resolved\" title=\"Fixture Viewer — viewer@gunb.ai\">FV</span><span class=\"issue-assignee-text\">viewer@gunb.ai</span>")
+    && string_contains(s: unknown, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-viewer — principal:google-oidc/accounts/sub-viewer\">s</span>")
+    && !string_contains(s: unknown, pattern: "issue-assignee-text")
+    && string_contains(s: stranger, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-stranger — principal:google-oidc/accounts/sub-stranger\">s</span>")
+    && !string_contains(s: stranger, pattern: "issue-assignee-text")
+}
+
+// THE DETAIL PAGE carries the roster on the decided row: the rail's assignee chip and the
+// return-to chip both project the stored identity (the page-level half of the chip law; the
+// roster reaches the row read-once from the render entry — gunbc.roadmap_serve for the detail
+// route, gunbc.roadmap_served_observation for the daily page).
+fn issue_detail_profiled_fixture_view() -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
+    node_id: "issue-detail-specimen",
+    headline: "Specimen issue",
+    summary: none,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: gunbc.roadmap_presentation.NoActiveWork,
+    action: gunbc.roadmap_presentation.action_view(
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+      admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: "issue-detail-specimen", cause: Operator, mode: ManualReady) }),
+    supporting_facts: [ gunbc.roadmap_presentation.SupportingFact { label: "owner", value: "agent-35", href: "" } ],
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    rounds: hero_rounds_fixture(),
+    worker_alive: true,
+    standing: Present { value: NodeClaimed { by: fixture_human_principal(), since: "2026-09-23" } },
+    attempt_stale: false,
+    profiles: [fixture_human_profile()],
+  }
+}
+
+test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> Bool {
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_profiled_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: concat(fx_comment_stream_events(), fx_handoff_events()),
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "",
+    csrf: "")) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let rail_region = string_at(parts: split(s: h, delimiter: "<aside class=\"issue-rail\">"), index: 1)
+      occurrence_count(s: rail_region, pattern: "class=\"issue-avatar\" data-avatar=\"resolved\" title=\"Fixture Viewer — viewer@gunb.ai\">FV</span><span class=\"issue-assignee-text\">viewer@gunb.ai</span>") == 2
+        && string_contains(s: h, pattern: "class=\"issue-comment-author\">Fixture Viewer</span>")
+        && string_contains(s: h, pattern: "reassigned for merge to Fixture Viewer")
+  }
+}
+
+// THE PICKER'S CHIP_HTML carries the same display: the assignment context's options serialize the
+// profile-bound chip — the JSON string member escapes its quotes, so the pins ride the escaped
+// spelling. The seated viewer (self) binds the fixture profile; the unprofiled recent renders the
+// fallback chip with no text span.
+fn picker_session_fixture() -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "picker-fixture" as NonEmptyStr,
+    principal: fixture_human_ref(),
+    authenticated_at: "2026-09-28T00:00:00Z",
+    expires_at: "2026-09-29T00:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "picker-fixture-csrf" as NonEmptyStr },
+    profile: SessionProfile { picture: none, name: none, email: none },
+  }
+}
+
+test fn witness_inline_assignment_context_chip_html_carries_the_profile_display() -> Bool {
+  let body = inline_assignment_context_body(
+    session: picker_session_fixture(),
+    events: [],
+    recents: [ gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() } ],
+    profiles: [fixture_human_profile()])
+  string_contains(s: body, pattern: "picker-fixture-csrf")
+    && occurrence_count(s: body, pattern: "class=\\\"issue-assignee-text\\\">viewer@gunb.ai</span>") == 1
+    && occurrence_count(s: body, pattern: "data-avatar=\\\"resolved\\\"") == 1
+    && occurrence_count(s: body, pattern: "issue-assignee-text") == 1
+    && occurrence_count(s: body, pattern: "data-avatar=\\\"absent\\\"") == 2
+    && string_contains(s: body, pattern: "principal:google-oidc/accounts/sub-stranger")
 }

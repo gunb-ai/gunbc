@@ -1367,12 +1367,24 @@ type ArmMemoryExperimentAdmission
   = ArmMemoryExperimentAdmitted { plan: ArmMemoryExperimentPlan }
   | ArmMemoryExperimentRefused { cause: NonEmptyStr }
 
-// THE ADMITTED MAXIMUM RUNTIME for one experiment rank unit. Bounded by the engine's own
-// multi-node ready timeout: an engine that has not finished starting (including its profiling
-// pass, where the memory terms this experiment exists to measure are minted) within the window
-// its own base environment prescribes is not a slow measurement but a failed start.
+// THE ADMITTED MAXIMUM RUNTIME for one experiment rank unit — the WHOLE admitted sequence, not
+// the startup bound alone (2026-09-28 steering: the execution budget must cover startup +
+// profiling/readback + the admitted seat cohort + the churn window + the sampler's tail
+// backstop + settlement, or a client/unit deadline mid-sequence masquerades as an engine
+// failure — the q closing run's 14:42:37 RuntimeMaxSec expiry under the churn phase is the
+// named incident). The derivation: the engine's own ready timeout (startup, profiling,
+// readback) + 400s per full-window seat at the LARGEST admitted subject (8; the observed cold
+// price is ~323s per seat at the shared ~800 tok/s aggregate, so 400 covers it with margin)
+// + the churn window + the sampler's tail backstop (churn window + the churn request timeout
+// + one cadence) + settlement margin. The churn window derives from this figure (twelfths), so
+// the bound is the consistent figure of 10180 seconds: 3600 startup + 3200 seat cohort + the
+// derived 848s churn window + the 1453s sampler tail, with the remaining ~700s as settlement
+// slack. Uniform across
+// variants — a larger bound for a smaller variant costs nothing because the stall watchdog, not
+// the lifetime, is the hang detector; the stop contract's timeout disposition stays the failure
+// that outlived its window.
 fn arm_memory_experiment_runtime_seconds() -> Nat {
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds
+  glm_5_3_flash_vllm_engine_ready_timeout_seconds + 8 * 400 + 1200 + 1805 + 375
 }
 
 fn experiment_receipt_kind(component: ArmMemoryComponent) -> NonEmptyStr {

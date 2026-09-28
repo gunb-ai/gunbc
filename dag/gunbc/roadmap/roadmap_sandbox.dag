@@ -411,6 +411,7 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView, rounds: Harnes
     worker_alive: worker_alive,
     standing: standing,
     attempt_stale: false,
+    profiles: [],
   }
 }
 
@@ -490,6 +491,7 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     worker_alive: false,
     standing: none,
     attempt_stale: false,
+    profiles: [],
   }
 }
 

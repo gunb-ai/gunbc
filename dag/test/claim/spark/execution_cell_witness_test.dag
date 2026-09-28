@@ -594,7 +594,12 @@ test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
   }
 }
 
-// THE WORKLOAD SCRIPTS CARRY THE BOUNDS AND THE INSTRUMENTS, rendered where the review reads them:
+// THE WORKLOAD SCRIPTS CARRY THE BOUNDS AND THE INSTRUMENTS, rendered where the review reads them.
+// The scripts read the (a) row's deterministic no-watchdog render through fx_phase_for_variant —
+// the actuation supplies the cohort and the admitted seconds while the ACTIVE variant moves under
+// the parent's per-run flips, so this witness must not go red because a watchdog-armed variant is
+// selected (the 2026-09-28 q-active red). The budget arithmetic still reads the actuation's
+// admitted seconds:
 // the churn driver stops at the window end and the per-client count with the floor band and the
 // full-window ceiling rendered in, the prefill calibrates its per-block yield against the engine
 // and carries every seat's realized prompt_tokens, the prompt material varies per seat and per
@@ -603,8 +608,8 @@ test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
 test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool {
   match spark_native_experiment_default_actuation() {
     ArmExperimentActuationRefused { cause: _ } => false
-    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: admitted } =>
-      match workload {
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
+      match fx_phase_for_variant(name: "a-repro-six-full-window" as NonEmptyStr) {
         Absent => false
         Present { value: phase } =>
           let gate = phase.readiness_gate.plan.script
