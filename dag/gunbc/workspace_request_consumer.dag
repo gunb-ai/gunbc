@@ -1,0 +1,52 @@
+module gunbc.workspace_request_consumer
+
+import std.types { String, Timestamp }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation_store {
+  WorkspaceAllocation, WorkspaceStoreRead, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
+  WorkspaceRetired, WorkspaceReleased, workspace_read_owner,
+}
+import gunbc.workspace_allocation_lifecycle {
+  workspace_lease_standing, WorkspaceLeaseUnreadable, WorkspaceLeaseExpired, WorkspaceLeaseLive,
+}
+
+// This dispatch is deliberately independent of offer discovery. It carries durable intent to
+// the next existing authority; it does not claim that preparation, routing or settlement ran.
+type WorkspaceConsumerNext
+  = WorkspaceConsumerIdle
+  | WorkspaceConsumerRefused { reason: String }
+  | WorkspaceConsumerRetire { allocation: WorkspaceAllocation }
+  | WorkspaceConsumerPrepare { allocation: WorkspaceAllocation }
+  | WorkspaceConsumerRoute { allocation: WorkspaceAllocation }
+
+fn workspace_consumer_select(read: WorkspaceStoreRead, observed_at: Timestamp) -> WorkspaceConsumerNext {
+  match read {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceConsumerRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: snapshot } => {
+      let outstanding = filter(snapshot.allocations, allocation => allocation.phase != WorkspaceReleased)
+      if count(outstanding) > 1 {
+        WorkspaceConsumerRefused { reason: "owner ledger has multiple outstanding allocations" }
+      } else { match outstanding.first() {
+        Absent => WorkspaceConsumerIdle
+        Present { value: allocation } => if allocation.desired == WorkspaceRetired {
+          WorkspaceConsumerRetire { allocation: allocation }
+        } else { match workspace_lease_standing(expires_at: allocation.request.expires_at, observed_at: observed_at) {
+          WorkspaceLeaseUnreadable => WorkspaceConsumerRefused { reason: "allocation lease or consumer clock is unreadable" }
+          WorkspaceLeaseExpired => WorkspaceConsumerRetire { allocation: allocation }
+          WorkspaceLeaseLive { remaining: _ } => match allocation.plan {
+            Absent => WorkspaceConsumerPrepare { allocation: allocation }
+            Present { value: _ } => WorkspaceConsumerRoute { allocation: allocation }
+          }
+        } }
+      } }
+    }
+  }
+}
+
+// Restart discovery rereads the admitted owner's protected ledger. Notifications are optional;
+// no process-local queue or HTTP request identity is required to recover the obligation.
+fn workspace_consumer_discover(store: FabricStorageBinding, owner: PrincipalRef,
+  observed_at: Timestamp) -> WorkspaceConsumerNext {
+  workspace_consumer_select(read: workspace_read_owner(store: store, owner: owner), observed_at: observed_at)
+}

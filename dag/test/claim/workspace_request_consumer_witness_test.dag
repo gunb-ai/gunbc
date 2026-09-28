@@ -1,0 +1,50 @@
+module test.claim.workspace_request_consumer_witness_test
+
+import std.types { Bool, NonEmptyStr, Timestamp }
+import std.durable_compare_and_set { ExpectSlotAbsent }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_policy_ref }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired }
+import gunbc.workspace_request_consumer { workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare }
+
+fn recorded() -> WorkspaceAllocation {
+  WorkspaceAllocation { retired_at: "", recorded_at: "2026-09-27T12:00:00Z", plan: none, desired: WorkspaceWanted,
+    request: WorkspaceRequest { owner: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "consumer-test" },
+      idempotency_key: "consumer-test", profile: SmallWorkspace, image: "test-image", public_key_ref: "test-key",
+      expires_at: "2026-09-27T13:00:00Z", policy: workspace_policy_ref() },
+    reservation: none, phase: WorkspaceRecorded, connection: "", observed_at: "", reason: "Request recorded" }
+}
+
+test fn unreadable_discovery_is_not_idle() -> Bool {
+  match workspace_consumer_select(read: WorkspaceStoreUnreadable { reason: "store unavailable" }, observed_at: "2026-09-27T12:01:00Z") {
+    WorkspaceConsumerRefused { reason: reason } => reason == "store unavailable"
+    other => false
+  }
+}
+
+test fn expired_unplanned_request_retires_without_supply() -> Bool {
+  let allocation = recorded()
+  match workspace_consumer_select(read: WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot {
+    owner: allocation.request.owner, expected: ExpectSlotAbsent, allocations: [allocation] } }, observed_at: "2026-09-27T13:00:00Z") {
+    WorkspaceConsumerRetire { allocation: found } => found.request == allocation.request
+    other => false
+  }
+}
+
+test fn explicit_retirement_does_not_require_a_readable_clock_or_supply() -> Bool {
+  let allocation = workspace_retired(allocation: recorded(), reason: "owner release")
+  match workspace_consumer_select(read: WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot {
+    owner: allocation.request.owner, expected: ExpectSlotAbsent, allocations: [allocation] } }, observed_at: "") {
+    WorkspaceConsumerRetire { allocation: found } => found.request == allocation.request
+    other => false
+  }
+}
+
+test fn live_unplanned_request_selects_preparation_without_extending_lease() -> Bool {
+  let allocation = recorded()
+  match workspace_consumer_select(read: WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot {
+    owner: allocation.request.owner, expected: ExpectSlotAbsent, allocations: [allocation] } }, observed_at: "2026-09-27T12:01:00Z") {
+    WorkspaceConsumerPrepare { allocation: found } => found.request.expires_at == allocation.request.expires_at
+    other => false
+  }
+}

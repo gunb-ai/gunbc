@@ -1,7 +1,7 @@
 module test.claim.principal_projection_witness_test
 
 import std.types { Bool, NonEmptyStr, String, Email }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
 import extdeps.auth.jwt {
@@ -217,8 +217,9 @@ test fn the_standard_claims_enter_classified_only_behind_the_verdict() -> Bool {
 // admitted wrappers.
 data probe_dir: String = "dag/test/probe/"
 
-fn probe_source(name: String) -> String {
-  filesystem_read(path: probe_dir + name + ".dag").content
+fn probe_source(name: String) -> String? {
+  let read = Filesystem.Read(path: probe_dir + name + ".dag")
+  if read.success { Present { value: read.content } } else { none }
 }
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
@@ -236,7 +237,10 @@ fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
 }
 
 test fn the_human_principal_mint_refuses_callers_outside_the_roster() -> Bool {
-  blocking_count_for_class(c: census_of(source: probe_source(name: "principal_mint_unadmitted_probe")), wanted: "ConstructorCallAdmissionRefused") >= 1
+  match probe_source(name: "principal_mint_unadmitted_probe") {
+    Absent => false
+    Present { value: source } => blocking_count_for_class(c: census_of(source: source), wanted: "ConstructorCallAdmissionRefused") >= 1
+  }
 }
 
 // THE LABEL PARSE, the v3 codec's decode arm: the ruling's spelling round-trips label -> ref ->
