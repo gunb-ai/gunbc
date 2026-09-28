@@ -579,7 +579,9 @@ test fn bcn_cast_between_sibling_refinements_refuses() -> Bool {
   bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_ref(leaf: ^Neg)))
 }
 
-// (16) THE IDENTITY CAST INTO A REFINEMENT IS ADMITTED BY THE EXACT RULE. `x as Pos` from `x: Pos`:
+// (16) THE IDENTITY CAST INTO A REFINEMENT IS ADMITTED BY THE EXACT RULE -- and the required control of
+// neat-boar-16's ResolvedTree ruling: `fn positive(x: Int)` beside `fn f(x: Pos)`, where x in f must ground
+// as Pos (the frozen parameter scope search), or this cast refuses. `x as Pos` from `x: Pos`:
 // infer grounds x as the Pos declaration-reference from f's own domain, and coercion_cast_crossing
 // finds the target structurally equal. The RED beside it: the same operand cast to Bool refuses
 // (row 15's partner), so this is a judged crossing, not the frontier passing it over. RED BEFORE
