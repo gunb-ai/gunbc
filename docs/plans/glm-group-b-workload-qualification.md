@@ -63,6 +63,57 @@ timing on representative steps, not by more repro campaigns.
    token counts (the response's prompt_tokens_details.cached_tokens, not inferred reuse) plus
    request-level timing. A fast replay alone does not establish free general follow-ups.
 
+## The frozen objective and the unified qualification (2026-09-28 steering)
+
+**Objective: restore GLM at a qualified 262,144-token x 8-seat configuration, then stop.** One
+deliverable: an operational eight-seat service with its exact acceptance bundle and persistent
+readback. DeepSeek reuse continues independently and never becomes a deployment prerequisite.
+
+The closing qualification is ONE frozen eight-seat candidate and ONE exclusively owned
+execution — not separate campaigns:
+
+    freeze candidate (eight requested; executable derived; the old summary-based six-seat
+      derivation retained as floor only)
+    -> all-rank startup + resolved allocation evidence (the eight-seat candidate's OWN
+       allocation plan and per-rank phase bounds; the six-seat run's 1,035-block inventory is
+       a conditional expectation, never the verdict)
+    -> W2 cache-reuse legs (cold prime / exact replay / suffix continuation / prefix miss)
+       BEFORE any unrelated churn can evict the prefix under test
+    -> occupancy high-water evidence: live request identities, resident context/block demands,
+       concurrent decode/workspace shape, per-rank memory standing — eight submitted
+       max_tokens=1 requests do NOT establish eight simultaneously resident full-window
+       contexts; the run records the population it actually exercised
+    -> real decode + at least one real harness protocol interaction (one-token completions do
+       not establish tool-call parsing, multi-turn continuation, or sustained decode)
+    -> settlement: cancellation, its observed completion, deterministic stop
+    -> promotion through persistent convergence; deployed configuration, generation, and route
+       verified after the existing readiness/access gates
+
+The execution budget covers the WHOLE sequence (startup + readback + queued and executing
+requests + reuse controls + settlement). A client deadline is never an engine failure, and a
+client's disappearance is never proof its engine work or reservation was released —
+cancellation and its observed completion ride the shared request lifecycle.
+
+Deployment gate vs follow-on (the release distinction):
+
+    REQUIRED before normal serving: exact runtime/checkpoint/config/rank identity; complete
+    applicable memory bounds including the allocator allowance; ENFORCED context/concurrency
+    limits (the first operational admission policy is conservative about NEW cold-prefill
+    work, and the restriction is enforced, never aspirational); correct generation and
+    required protocol behavior; exclusive ownership, settlement, restart, readback; route
+    withdrawal and cancellation/recovery; any latency/reuse guarantee actually advertised.
+
+    FOLLOW-ON unless explicitly promised: W1b performance attribution (blocks only if it
+    uncovers a correctness/resource defect or an explicitly required operating contract);
+    maximizing concurrent cold-prefill throughput; broad benchmark matrices; an unadvertised
+    "nearly free warm continuation" objective (a cache miss is not a deployment failure when
+    cold execution is safe); DeepSeek's complete deployment.
+
+Safety-term closure order for each open term: derive a defensible bound from the mechanism;
+use a justified conservative bound where exact derivation is unnecessary (a conservative bound
+covers the candidate's actual allocation behavior — never an arbitrary allowance beside a
+green result); measure the specifically unresolved term where needed.
+
 ## The three qualification workloads (replace the single cold stress test)
 
 W1. ONE COLD FULL-WINDOW REQUEST — the attributable cold-prefill cost. One 262K request,

@@ -60,18 +60,22 @@ data group_b_restoration_window_tokens: Nat = 262144
 // at exactly the place the number changed.
 data group_b_restoration_seats: Nat = group_b_kv_inventory_tokens / group_b_restoration_window_tokens
 
-// THE EXPERIMENT SUBJECT MOVES TO EIGHT (owner directive 2026-09-28, "could we move to 262k x 8
-// now"), authorized by the EXACT HYBRID BLOCK FOLD, not the linear token inventory: the
-// allocation-plan fold prices eight full-window seats at 984 of 1035 allocator blocks (95.07%,
-// a 4.93% reserve) on the limiting rank, because the exact roster (fixed KDA state, growing
-// sparse MLA, pooled KPool, fixed tail) prices a seat below the linear 262144-token figure the
-// floor derivation uses. The derived SIX stays as the restoration floor above; eight is the
-// experiment subject. What the override does NOT mint: the profile-shape binding at
-// max-num-seqs 8 (the activation/CUDA-graph receipt is a six-seat capture; an eight-seat plan
-// needs its own), the eight-way liveness observation, and the SERVICE PROMISE — the arm stays
-// Unestablished, the wet qualification at eight is the next single-owner run, and the block
-// fold's own reserve (51 blocks) marks eight as the hard ceiling, not the normal-service
-// candidate (seven under a one-full-seat reserve is the named middle standing).
+// THE REQUESTED CANDIDATE IS EIGHT (owner directive 2026-09-28, "could we move to 262k x 8
+// now"; frozen as the objective 2026-09-28: restore GLM at a qualified 262,144-token x 8-seat
+// configuration). THE REQUESTED CAPACITY IS A POLICY INPUT, and the OBSERVED capacity is
+// evidence — neither manufactures the other: the six-seat run's 1,035-block inventory prices
+// eight seats at 984 blocks (4.93% reserve) as a CONDITIONAL EXPECTATION ONLY, because
+// max-num-seqs 8 can change the runtime's graph/capture and workspace and thereby the residual
+// arena. The eight-seat verdict must come from THE EIGHT-SEAT CANDIDATE'S OWN resolved
+// allocation plan and per-rank phase bounds — the wet readback — never carried from the
+// six-seat execution. The derived SIX stays as the restoration floor above (the older
+// summary-based derivation, retained as the floor and nothing more). What the request does
+// NOT mint: the profile-shape binding at max-num-seqs 8, the eight-way liveness observation,
+// and the SERVICE PROMISE — the arm stays Unestablished; promotion happens only through
+// persistent convergence after the existing safety and functional gates, and W1b (performance
+// attribution) and W2 (warm-reuse evidence) are follow-ups that do not hold a safe service
+// offline — a cache miss blocks only a warm-reuse PROMISE, never serving. The sequence budget
+// means input PLUS generated context, not a 262K input followed by an unbounded answer.
 data group_b_experiment_subject_seats: Nat = 8
 
 data group_b_restoration_intent_admission: ServingCapacityIntentAdmission = uniform_cold_seats(
