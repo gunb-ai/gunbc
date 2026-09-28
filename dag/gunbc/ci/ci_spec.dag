@@ -59,7 +59,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
-import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
+import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
@@ -78,7 +78,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
-import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count }
+import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -143,7 +143,7 @@ import extdeps.git {
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef, Int, String, List, NonEmptyStr }
-import v2.std.algebra { FreeSemigroup, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -2013,19 +2013,42 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // not survive; moving the shell leaves the invocation untouched.
 data heal_publisher_cgroup_name: String = "gunbc-publish"
 
-// 12 GiB against the 4 vCPU / 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
-data heal_publisher_cgroup_memory_max_bytes: Int = 12884901888
+// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
+// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
+fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
+  gibibyte(count: 12)
+}
+
+// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
+// tests in the clippy lane (gunbc.compiler_gate_workflow). The callers differ in the leaf's name and
+// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
+// afterwards inherits a memory.max that gunbc.host_budget_source reads as an ordinary observation.
+// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
+// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
+data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings shared by the heal publisher prelude and the clippy lane's rust_unit_tests step (gunbc.compiler_gate_workflow compiler_gate_unit_test_command) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; both callers then consume that op and this function is deleted")
+
+fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
+  [
+    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
+    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
+    "sudo mkdir -p \"$GUNBC_CG\"",
+    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
+    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
+    "cat \"$GUNBC_CG/memory.max\"",
+  ]
+}
 
 fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
-  [
-    app_mint_step(command: "set -euo pipefail"),
-    app_mint_step(command: concat("GUNBC_CG=/sys/fs/cgroup/", heal_publisher_cgroup_name)),
-    app_mint_step(command: "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null"),
-    app_mint_step(command: "sudo mkdir -p \"$GUNBC_CG\""),
-    app_mint_step(command: concat(concat("echo ", to_string(heal_publisher_cgroup_memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null")),
-    app_mint_step(command: "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null"),
-    app_mint_step(command: "cat \"$GUNBC_CG/memory.max\""),
-  ]
+  concat(
+    [app_mint_step(command: "set -euo pipefail")],
+    list_map(
+      xs: hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: heal_publisher_cgroup_name,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
+      ),
+      f: fn(c) { app_mint_step(command: c) },
+    )
+  )
 }
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
@@ -2841,49 +2864,64 @@ fn bappend(line: Node, path: Node) -> Node {
   bash_build_pipe(left: bcmd(words: [bl(text: "echo"), line]), right: bcmd(words: [bl(text: "dd"), bcat(parts: [bl(text: "of="), path]), bl(text: "oflag=append"), bl(text: "conv=notrunc"), bl(text: "status=none")]))
 }
 
+fn bset(name: String, value: String) -> Node { bash_build_assign(name: name, value: bl(text: value)) }
+fn bif_else(cond: Node, then_stmts: List<Node>, else_stmts: List<Node>) -> Node {
+  bash_build_if_else(cond: cond, then_body: bash_build_stmt_list_from_nodes(stmts: then_stmts), else_body: bash_build_stmt_list_from_nodes(stmts: else_stmts))
+}
+fn bhold(script_var: String, label: String, record: Node) -> Node {
+  bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: script_var), bl(text: label), record])
+}
+
+// THE TRAP KEEPS FOUR RESULTS APART and reports every one before the step's final exit: the boot
+// command's status (rc), the watcher's (obs), whether a still-running watcher had to be stopped and
+// whether that stop resolved (wclean), and whether the collector release and the credential cleanup
+// succeeded (col, clean). The watcher is judged by its RECORDED IDENTITY, never a bare pid: the hold's
+// owned check (mtcollins1_sol_hold_owned_check_script) decides whether the recorded "<pid> <starttime>"
+// is still that process, and a still-running watcher is stopped through the hold's identity-checked
+// release (mtcollins1_sol_hold_release_script), which signals nothing that is not that instance. Cleanup
+// runs as a checked condition, so a failed removal is reported beside the others instead of aborting
+// the trap under errexit before they are reported.
+//
 // The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
-// through the same identity-checked script: its record sits in this run's attempt directory, and a
-// missing record exits 0.
+// through the same identity-checked release, as its own checked result (kvm): its record sits in this
+// run's attempt directory, and a missing record exits 0.
 fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
+  let watcher_record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
+  let failed = [bl(text: "(boot command exited "), bv(name: "rc"), bl(text: "; watcher result "), bv(name: "obs"), bl(text: "; watcher cleanup "), bv(name: "wclean"), bl(text: "; collector release "), bv(name: "col"), bl(text: "; KVM observer release "), bv(name: "kvm"), bl(text: "; credential cleanup "), bv(name: "clean"), bl(text: "; delivery ledger "), bv(name: "SOL_DELIVERY"), bl(text: ")")]
   [
     bash_build_assign(name: "rc", value: bv(name: "?")),
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_WORKFLOW")]), then_stmts: [
       bor_true(stmt: bappend(line: bcat(parts: [bl(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bcmdl(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bv(name: "SOL_WORKFLOW"))),
     ]),
-    bash_build_or_else(
-      left: bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: "SOL_RELEASE"), bl(text: "sol-release"), bv(name: "SOL_PID_FILE")]),
-      right: becho(parts: [bl(text: "::error::mtcollins1 SOL collector survived KILL at step exit")]),
-    ),
-    bash_build_or_else(
-      left: bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: "SOL_RELEASE"), bl(text: "kvm-release"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])]),
-      right: becho(parts: [bl(text: "::error::mtcollins1 KVM observer survived KILL at step exit")]),
-    ),
-    bash_build_assign(name: "obs", value: bl(text: "unstarted")),
+    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bv(name: "SOL_PID_FILE")), then_stmts: [bset(name: "col", value: "ok")], else_stmts: [bset(name: "col", value: "survived-KILL")]),
+    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])), then_stmts: [bset(name: "kvm", value: "ok")], else_stmts: [bset(name: "kvm", value: "survived-KILL")]),
+    bset(name: "obs", value: "unstarted"),
+    bset(name: "wclean", value: "none"),
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [
       bor_true(stmt: btruncate(path: bsol(suffix: mtcollins1_sol_notice_stop_suffix))),
       bor_true(stmt: bcmd(words: [bl(text: "timeout"), bl(text: to_string(second_count(s: mtcollins1_sol_notice_final_allowance))), bl(text: "tail"), bcat(parts: [bl(text: "--pid="), bv(name: "SOL_NOTICE_WATCH")]), bl(text: "-f"), bl(text: "/dev/null")])),
-      bash_build_if_else(
-        cond: bquiet(stmt: bcmd(words: [bl(text: "kill"), bl(text: "-0"), bv(name: "SOL_NOTICE_WATCH")])),
-        then_body: bash_build_stmt_list_from_nodes(stmts: [
-          bor_true(stmt: bquiet(stmt: bcmd(words: [bl(text: "kill"), bv(name: "SOL_NOTICE_WATCH")]))),
-          bash_build_assign(name: "obs", value: bl(text: "unfinished")),
-        ]),
-        else_body: bash_build_stmt_list_from_nodes(stmts: [
-          bash_build_if_else(
-            cond: bcmd(words: [bl(text: "wait"), bv(name: "SOL_NOTICE_WATCH")]),
-            then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_assign(name: "obs", value: bl(text: "0"))]),
-            else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_assign(name: "obs", value: bv(name: "?"))]),
-          ),
-        ]),
+      bif_else(
+        cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record),
+        then_stmts: [
+          bset(name: "obs", value: "unfinished"),
+          bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bset(name: "wclean", value: "stopped")], else_stmts: [bset(name: "wclean", value: "unresolved-survived-KILL")]),
+        ],
+        else_stmts: [
+          bif_else(cond: bcmd(words: [bl(text: "wait"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [bset(name: "obs", value: "0")], else_stmts: [bash_build_assign(name: "obs", value: bv(name: "?"))]),
+        ],
       ),
     ]),
-    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "SOL_PID_FILE")]),
+    bif_else(cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "SOL_PID_FILE")]), then_stmts: [bset(name: "clean", value: "ok")], else_stmts: [bset(name: "clean", value: "failed")]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "0")]), right: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "unstarted")])),
-      then_stmts: [
-        becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher result: "), bv(name: "obs"), bl(text: " (the boot command exited "), bv(name: "rc"), bl(text: "); delivery ledger: "), bv(name: "SOL_DELIVERY")]),
-        bash_build_if_from_stmts(cond: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), then_stmts: [bash_build_assign(name: "rc", value: bl(text: "1"))]),
-      ],
+      then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher did not succeed ")].concat(failed)), bset(name: "fail", value: "1")],
+    ),
+    bash_build_if_from_stmts(cond: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector survived KILL at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(cond: btest(words: [bv(name: "kvm"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 KVM observer survived KILL at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(cond: btest(words: [bv(name: "clean"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(
+      cond: bash_build_and_then(left: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), right: btest(words: [bv(name: "fail"), bl(text: "="), bl(text: "1")])),
+      then_stmts: [bset(name: "rc", value: "1")],
     ),
     bcmd(words: [bl(text: "exit"), bv(name: "rc")]),
   ]
@@ -2899,6 +2937,8 @@ fn gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: String) -> List<Node> 
     bash_build_assign(name: "SOL_PID_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: "/mtcollins1-sol.pid")])),
     bash_build_assign(name: "SOL_OUT", value: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts/mtcollins1-boot-sol.capture")])),
     bash_build_assign(name: "SOL_RELEASE", value: bl(text: mtcollins1_sol_hold_release_script)),
+    bash_build_assign(name: "SOL_OWNED", value: bl(text: mtcollins1_sol_hold_owned_check_script)),
+    bash_build_assign(name: "fail", value: bl(text: "0")),
     bash_build_assign(name: "SOL_WORKFLOW", value: bl(text: "")),
     bash_build_assign(name: "SOL_DELIVERY", value: bl(text: "")),
     bash_build_assign(name: "SOL_NOTICE_WATCH", value: bl(text: "")),

@@ -1657,7 +1657,11 @@ fn mtcollins1_boot_await_capture_terminal(
       )
       TerminalWatch { outcome: exit_failure(reason: observation_channel_lost_text(lost: lost)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
     }
-    WatchContinue { reason: why } =>
+    WatchContinue { reason: why } => {
+      match mtcollins1_sol_observer_refusal(capture_path: capture_path) {
+        Present { value: gone } => return TerminalWatch { outcome: exit_failure(reason: concat(gone, "; observed during the capture watch, so the watch stops rather than continuing unreported")), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
+        _ => {}
+      }
       if remaining <= 0 {
         TerminalWatch { outcome: exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete")), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
       } else {
@@ -1681,6 +1685,7 @@ fn mtcollins1_boot_await_capture_terminal(
           screen_reported: reported,
         )
       }
+    }
   }
 }
 
@@ -1887,14 +1892,8 @@ fn power_after_phase_result(p: PowerAfterAttempt) -> MtCollins1PhaseRunResult {
   }
 }
 
-fn sol_release_phase_result(t: HeldLeaseObservedState) -> MtCollins1PhaseRunResult {
-  match t {
-    LeaseAbsent => PhaseVerified
-    LeaseRunningExpected => PhaseRefused { cause: "SOL collector still held after deactivate" }
-    LeaseRunningStale => PhaseRefused { cause: "SOL pid file stale after deactivate" }
-    LeasePortForeign => PhaseRefused { cause: "SOL observed foreign after deactivate" }
-    LeaseInaccessible => PhaseRefused { cause: "SOL state inaccessible after deactivate" }
-  }
+fn sol_release_phase_result(t: SolReleaseOutcome) -> MtCollins1PhaseRunResult {
+  if sol_release_is_clean(outcome: t) { PhaseVerified } else { PhaseRefused { cause: sol_release_outcome_text(outcome: t) } }
 }
 
 // WHAT THE WATCH ENDED WITH, before the after-read and the releases complete the actuation record.
@@ -1960,18 +1959,114 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
 // exit on the deactivate is not left holding the pipe or the capture. The observation that follows is
 // what the actuation's outcome reads -- ReleaseHeld's own success is not trusted as the postcondition.
 // The step's EXIT trap runs the same release on cancel and timeout, where this code never runs.
-fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String, capture_path: String) -> HeldLeaseObservedState
+// THE RELEASE ENDS IN AN OBSERVED TERMINAL STATE FOR OUR INSTANCE, and then retires the record.
+// "Ours" is decided before anything is signalled: the pid file's "<pid> <starttime>" must be the
+// identity this attempt established (the activation receipt, mtcollins1_sol_activation_suffix, names
+// exactly that). A record naming anything else -- an earlier run's, a replaced one -- is
+// SolReleaseForeignRecord and nothing is signalled or deleted. For our instance the hold's release
+// stops it by that identity (gunbc.machine_intake.sol_hold ReleaseHeld), and the fold then observes it
+// gone, polling up to mtcollins1_sol_release_observe_allowance for a client still exiting. Only an
+// OBSERVED exit retires the pid record and the receipt, so the next read is Absent and a healthy boot's
+// release is SolReleased; a process still held, or one that cannot be observed, keeps its record and
+// is reported as such.
+type SolReleaseOutcome
+  = SolReleased { evidence: SolExitEvidence }
+  | SolReleaseNoRecord
+  | SolReleaseForeignRecord { record: String, receipt: String }
+  | SolReleaseStillHeld
+  | SolReleaseUnobservable { cause: String }
+  | SolReleaseRetireFailed { detail: String }
+
+data mtcollins1_sol_release_observe_allowance: Second = second(count: 5)
+
+fn sol_release_outcome_text(outcome: SolReleaseOutcome) -> String {
+  match outcome {
+    SolReleased { evidence: _ } => "released: our collector was observed gone and its record retired"
+    SolReleaseNoRecord => "released: no collector record was held"
+    SolReleaseForeignRecord { record: r, receipt: c } => concat("SOL pid record is not this attempt's collector (record ", concat(r, concat(", activation receipt ", concat(if c == "" { "(none)" } else { c }, "); nothing signalled or retired"))))
+    SolReleaseStillHeld => concat("SOL collector still held ", concat(to_string(second_count(s: mtcollins1_sol_release_observe_allowance)), " s after release"))
+    SolReleaseUnobservable { cause: c } => concat("SOL collector state unobservable after release: ", c)
+    SolReleaseRetireFailed { detail: d } => concat("SOL collector observed gone but its record could not be retired: ", d)
+  }
+}
+
+fn sol_release_is_clean(outcome: SolReleaseOutcome) -> Bool {
+  match outcome {
+    SolReleased { evidence: _ } => true
+    SolReleaseNoRecord => true
+    _ => false
+  }
+}
+
+// Whether the pid file names the instance this attempt established: the receipt's identity prefix.
+fn sol_record_is_ours(record: String, receipt: String) -> Bool {
+  sol_activation_receipt_names(receipt: receipt, identity: trim(s: record))
+}
+
+fn sol_release_no_record() -> SolReleaseOutcome {
+  SolReleaseNoRecord
+}
+
+fn sol_release_await_gone(pid_path: String, remaining: Int) -> SolReleaseOutcome {
+  match mtcollins1_sol_collector_observe(pid_path: pid_path) {
+    SolCollectorExited { evidence: e } => SolReleased { evidence: e }
+    SolCollectorUnrecorded => sol_release_no_record()
+    SolCollectorPathUnset => sol_release_no_record()
+    SolCollectorUnobservable { cause: c } => SolReleaseUnobservable { cause: c }
+    SolCollectorHeld =>
+      if remaining <= 0 {
+        SolReleaseStillHeld
+      } else {
+        let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+        sol_release_await_gone(pid_path: pid_path, remaining: remaining - 1)
+      }
+  }
+}
+
+fn sol_release_retire(pid_path: String, released: SolReleaseOutcome) -> SolReleaseOutcome {
+  match released {
+    SolReleased { evidence: _ } => {
+      let pid = Filesystem.Delete(path: pid_path)
+      let receipt = Filesystem.Delete(path: concat(pid_path, mtcollins1_sol_activation_suffix))
+      if pid.success && receipt.success { released } else { SolReleaseRetireFailed { detail: concat(pid.error, concat(" ", receipt.error)) } }
+    }
+    other => other
+  }
+}
+
+// THE OWNED PART OF THE RELEASE, with no BMC in it: ownership, the identity-checked stop, the bounded
+// observation and the retirement. mtcollins1_boot_release_sol runs it after the BMC deactivate.
+fn mtcollins1_sol_release_owned(pid_path: String) -> SolReleaseOutcome {
+  if pid_path == "" {
+    return sol_release_no_record()
+  }
+  let record = Filesystem.Read(path: pid_path)
+  if !record.success && record.error_kind == "not_found" {
+    return sol_release_no_record()
+  }
+  if !record.success {
+    return SolReleaseUnobservable { cause: proc_read_refused_text(what: "the pid file", kind: record.error_kind, error: record.error) }
+  }
+  let receipt = Filesystem.Read(path: concat(pid_path, mtcollins1_sol_activation_suffix))
+  let receipt_text = if receipt.success { trim(s: receipt.content) } else { "" }
+  if !sol_record_is_ours(record: record.content, receipt: receipt_text) {
+    return SolReleaseForeignRecord { record: trim(s: record.content), receipt: receipt_text }
+  }
+  let _stopped = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr).success
+  sol_release_retire(pid_path: pid_path, released: sol_release_await_gone(pid_path: pid_path, remaining: second_count(s: mtcollins1_sol_release_observe_allowance) as Int))
+}
+
+fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String, capture_path: String) -> SolReleaseOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
   match mtcollins1_bmc_username {
-    Absent => LeaseInaccessible
+    Absent => SolReleaseUnobservable { cause: "the BMC is not BmcSecured, so no deactivate was issued" }
     Present { value: user } => {
       let _recorded = mtcollins1_sol_teardown_record(capture_path: capture_path, act: mtcollins1_sol_teardown_act)
       let _attempted = mtcollins1_sol_release(proof: proof, username: user, password_file: password_file as NonEmptyStr)
-      let _stopped = if pid_path == "" { false } else { gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr).success }
-      held_lease_of_collector(observation: mtcollins1_sol_collector_observe(pid_path: pid_path))
+      mtcollins1_sol_release_owned(pid_path: pid_path)
     }
   }
 }
@@ -1986,8 +2081,14 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
 type MediaGatedHandoff {
   result: MtCollins1HandoffResult
   media: MtCollins1HandoffMedia
+  live_at: String
 }
 
+// THE SOL SUPERVISION CHECK SITS AFTER THE BLOCKING PRESENTATION RECHECK and immediately before the
+// handoff it guards, so no network read separates the observation of the collector and its notice
+// watcher from the boot-device and power writes. A loss there withholds the handoff (HandoffMediaNotReached
+// with the frozen incident's reason). live_at is the last instant the collector was observed held, which
+// the capture watch measures its detection bound from.
 fn mtcollins1_boot_handoff_when_media_ready(
   proof: UnitHoldProof,
   media: MtCollins1MediaAttachRecord,
@@ -1995,6 +2096,9 @@ fn mtcollins1_boot_handoff_when_media_ready(
   password_file: String,
   attempt: String,
   selection: IpmiBootSelection,
+  pid_path: String,
+  capture_path: String,
+  last_live_at: String,
 ) -> MediaGatedHandoff
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
@@ -2002,11 +2106,19 @@ fn mtcollins1_boot_handoff_when_media_ready(
 {
   match mtcollins1_media_gate(record: media) {
     MediaGateWithheld { reason: why } =>
-      MediaGatedHandoff { result: handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why } }
+      MediaGatedHandoff { result: handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
       let before = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "before-handoff")
       match presentation_still_served(result: before) {
         PresentationStillReady => {
+          let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
+            SolLostAt { outcome: o } => return MediaGatedHandoff {
+              result: handoff_not_issued(outcome: o),
+              media: HandoffMediaNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
+              live_at: last_live_at,
+            }
+            SolHeldAt { at: a } => a as String
+          }
           let handed = mtcollins1_drive_handoff(
             proof: proof,
             label: "mtcollins1 cdrom handoff",
@@ -2022,12 +2134,14 @@ fn mtcollins1_boot_handoff_when_media_ready(
               handoff: match handed.outcome { ExitSuccess => HandoffConfirmed  ExitFailure { code: _, reason: r } => HandoffAttemptedUnconfirmed { reason: r } },
               after: after,
             },
+            live_at: supervised_at,
           }
         }
         _ =>
           MediaGatedHandoff {
             result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
             media: HandoffMediaWithheldAtRecheck { before: before },
+            live_at: last_live_at,
           }
       }
     }
@@ -2099,35 +2213,25 @@ fn mtcollins1_boot_actuate(
         MediaGateWithheld { reason: why } => exit_failure(reason: why as String)
       }
       let attach_verified = proc_uptime_read()
-      let before_handoff = match attached {
-        ExitSuccess => mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: attach_live_at)
-        _ => SolHeldAt { at: attach_live_at as NonEmptyStr }
-      }
-      let gated = match before_handoff {
-        SolLostAt { outcome: o } => MediaGatedHandoff {
-          result: MtCollins1HandoffResult { outcome: o, start: BootStartUnobserved { reason: "the SOL collector or its observer was lost before the handoff, so none was issued" } },
-          media: HandoffMediaNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
+      let gated = match kvm_handoff_admission(start: screen) {
+        KvmHandoffRefused { cause: why } => MediaGatedHandoff {
+          result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: the required KVM observer was not established: ", why))),
+          media: HandoffMediaNotReached { reason: concat("the required KVM observer was not established: ", why) as NonEmptyStr },
+          live_at: attach_live_at,
         }
-        SolHeldAt { at: _ } =>
-          match kvm_handoff_admission(start: screen) {
-            KvmHandoffRefused { cause: why } => MediaGatedHandoff {
-              result: MtCollins1HandoffResult { outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: ", why)), start: BootStartUnobserved { reason: "the required KVM observer was not established, so no handoff was issued" } },
-              media: HandoffMediaNotReached { reason: concat("the required KVM observer was not established: ", why) as NonEmptyStr },
-            }
-            KvmHandoffAdmitted { session: _ } => mtcollins1_boot_handoff_when_media_ready(
-              proof: proof,
-              media: media,
-              image_name: subject.image_name,
-              password_file: password_file,
-              attempt: attempt,
-              selection: subject.selection,
-            )
-          }
+        KvmHandoffAdmitted { session: _ } => mtcollins1_boot_handoff_when_media_ready(
+          proof: proof,
+          media: media,
+          image_name: subject.image_name,
+          password_file: password_file,
+          attempt: attempt,
+          selection: subject.selection,
+          pid_path: sol_pid_path,
+          capture_path: sol_capture_path,
+          last_live_at: attach_live_at,
+        )
       }
-      let handoff_live_at = match before_handoff {
-        SolHeldAt { at: a } => a as String
-        SolLostAt { outcome: _ } => attach_live_at
-      }
+      let handoff_live_at = gated.live_at
       let handoff = match gated.media {
         HandoffMediaAttempted { before: _, handoff: _, after: _ } =>
           HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() }, live_at: handoff_live_at }
@@ -2194,13 +2298,7 @@ fn mtcollins1_boot_actuate(
         power_after: power_after,
         outcome: match observed.outcome {
           ExitSuccess =>
-            match teardown {
-              LeaseRunningExpected =>
-                exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
-              LeaseRunningStale =>
-                exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
-              _ => ExitSuccess
-            }
+            if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
           other => other
         },
         stage: observed.stage,

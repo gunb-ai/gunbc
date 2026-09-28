@@ -1137,30 +1137,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet" },
-      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
-      function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet" },
-      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
-      function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_judges_exactly_what_the_runners_log_read_returned" },
-      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
-      function: "the_live_entry_judges_exactly_what_the_runners_log_read_returned",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer" },
-      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
-      function: "the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution",
@@ -2274,6 +2250,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "earlier_exits_stay_demanded_when_later_ones_appear" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "earlier_exits_stay_demanded_when_later_ones_appear",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "our_collector_is_released_observed_gone_and_its_record_retired" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "our_collector_is_released_observed_gone_and_its_record_retired",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_record_this_attempt_did_not_establish_is_not_released" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_record_this_attempt_did_not_establish_is_not_released",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_release_signals_only_the_recorded_instance" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_release_signals_only_the_recorded_instance",
       expectation: ExpectedToHold {}
     }
   ]

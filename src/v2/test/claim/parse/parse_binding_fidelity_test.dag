@@ -45,7 +45,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.grammar { ParseTree, node_atom_identity_optional }
-import v2.std.compilers.lexing { TokenStream, symbol_lexeme }
+import v2.std.compilers.lexing { TokenStream }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -56,6 +56,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  symbol_lexeme,
 }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }

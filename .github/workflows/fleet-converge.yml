@@ -1890,7 +1890,7 @@ jobs:
       - name: Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)
         id: mtcollins1_boot
         run: |
-          # 🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld AND ReleaseHeld — two bash -c scripts held as strings: ActivateHeld holds `ipmitool sol activate` as a background collector (stdin from an unlinked read-write fifo, stdout line-buffered to the capture, stderr to the client file), runs a supervisor subshell that publishes the holder's identity as "<pid> <starttime>", stops the child it created if that publication fails, and records the collector's exit status and instant; ReleaseHeld (mtcollins1_sol_hold_release_script, also spliced into the boot step's EXIT trap) reads /proc/<pid>/stat field 20 and signals TERM then KILL only while the process is still that identity; and the one line of the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_watcher_background_line) that starts the SOL notice watcher with `&` and captures its pid from $!, the step being otherwise bash_build nodes. Paths are positional data (`$1`…`$7`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) lands, or a typed process-hold realization provides the WHOLE lifecycle -- start a streaming session with a held-open silent input and redirected output, publish an instance-bound identity, supervise and record the exit, and release by that identity (never by a bare pid) -- without a medium-as-string script; a realization that only starts the session does not satisfy this trigger
+          # 🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — a bash -c script held as a string: it holds `ipmitool sol activate` as a background collector (stdin from an unlinked read-write fifo, stdout line-buffered to the capture, stderr to the client file), runs a supervisor subshell that publishes the holder's identity as "<pid> <starttime>", stops the child it created if that publication fails, and records the collector's exit status and instant; and the one line of the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_watcher_background_line) that starts the SOL notice watcher with `&` and captures its pid from $!, the step being otherwise bash_build nodes. Paths are positional data (`$1`…`$7`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) lands, or a typed process-hold realization provides the WHOLE lifecycle -- start a streaming session with a held-open silent input and redirected output, publish an instance-bound identity, and supervise and record the exit -- without a medium-as-string script; the release by identity is already bash_build nodes (mtcollins1_sol_hold_release_script)
           set -e
           'set' '-uo' 'pipefail'
           'umask' '077'
@@ -1899,18 +1899,45 @@ jobs:
           DEST_FILE="$RUNNER_TEMP"'/mtcollins1-bmc-credential'
           SOL_PID_FILE="$RUNNER_TEMP"'/mtcollins1-sol.pid'
           SOL_OUT="$GITHUB_WORKSPACE"'/artifacts/mtcollins1-boot-sol.capture'
-          SOL_RELEASE='f="$1"; owned() { st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=${st##*) }; set -f; set -- $st; [ "$1" != Z ] && [ "${20}" = "$s" ]; }; [ -f "$f" ] || exit 0; read -r p s < "$f"; [ -n "$p" ] && [ -n "$s" ] || exit 0; owned || exit 0; kill "$p"; for i in 1 2 3 4 5 6 7 8 9 10; do owned || exit 0; sleep 0.2; done; owned && kill -9 "$p"; for i in 1 2 3 4 5; do owned || exit 0; sleep 0.2; done; exit 1'
+          SOL_RELEASE='f="$1"
+          if ! '\''['\'' '\''-f'\'' "$f" '\'']'\''; then exit 0; fi
+          p=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f1'\'' "$f")
+          s=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f2'\'' "$f")
+          if ! ('\''['\'' '\''-n'\'' "$p" '\'']'\'' && '\''['\'' '\''-n'\'' "$s" '\'']'\''); then exit 0; fi
+          if ! ('\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') '\''='\'' "$s" '\'']'\'' && '\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') '\''!='\'' '\''Z'\'' '\'']'\''); then exit 0; fi
+          '\''kill'\'' "$p" 2>/dev/null || '\''true'\''
+          '\''timeout'\'' '\''2'\'' '\''tail'\'' '\''--pid='\''"$p" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''
+          if ! ('\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') '\''='\'' "$s" '\'']'\'' && '\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') '\''!='\'' '\''Z'\'' '\'']'\''); then exit 0; fi
+          '\''kill'\'' '\''-9'\'' "$p" 2>/dev/null || '\''true'\''
+          '\''timeout'\'' '\''1'\'' '\''tail'\'' '\''--pid='\''"$p" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''
+          if ! ('\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') '\''='\'' "$s" '\'']'\'' && '\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') '\''!='\'' '\''Z'\'' '\'']'\''); then exit 0; fi
+          exit 1
+          '
+          SOL_OWNED='f="$1"
+          if ! '\''['\'' '\''-f'\'' "$f" '\'']'\''; then exit 1; fi
+          p=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f1'\'' "$f")
+          s=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f2'\'' "$f")
+          if ! ('\''['\'' '\''-n'\'' "$p" '\'']'\'' && '\''['\'' '\''-n'\'' "$s" '\'']'\''); then exit 1; fi
+          if '\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') '\''='\'' "$s" '\'']'\'' && '\''['\'' $('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') '\''!='\'' '\''Z'\'' '\'']'\''; then exit 0; fi
+          exit 1
+          '
+          fail='0'
           SOL_WORKFLOW=''
           SOL_DELIVERY=''
           SOL_NOTICE_WATCH=''
           'trap' 'rc="$?"
           if '\''['\'' '\''-n'\'' "$SOL_WORKFLOW" '\'']'\''; then '\''echo'\'' '\''gunbc-workflow: collector release requested by the step exit trap at='\''$('\''date'\'' '\''-u'\'' '\''+%Y-%m-%dT%H:%M:%SZ'\'') | '\''dd'\'' '\''of='\''"$SOL_WORKFLOW" '\''oflag=append'\'' '\''conv=notrunc'\'' '\''status=none'\'' || '\''true'\''; fi
-          '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_PID_FILE" || '\''echo'\'' '\''::error::mtcollins1 SOL collector survived KILL at step exit'\''
-          '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''kvm-release'\'' "$GITHUB_WORKSPACE"'\''/artifacts/mtcollins1-boot-kvm-'\''"$GITHUB_RUN_ID"'\''/observer.pid'\'' || '\''echo'\'' '\''::error::mtcollins1 KVM observer survived KILL at step exit'\''
+          if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_PID_FILE"; then col='\''ok'\''; else col='\''survived-KILL'\''; fi
+          if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''kvm-release'\'' "$GITHUB_WORKSPACE"'\''/artifacts/mtcollins1-boot-kvm-'\''"$GITHUB_RUN_ID"'\''/observer.pid'\''; then kvm='\''ok'\''; else kvm='\''survived-KILL'\''; fi
           obs='\''unstarted'\''
-          if '\''['\'' '\''-n'\'' "$SOL_NOTICE_WATCH" '\'']'\''; then '\'':'\'' > "$SOL_OUT"'\''.notice.stop'\'' || '\''true'\''; '\''timeout'\'' '\''10'\'' '\''tail'\'' '\''--pid='\''"$SOL_NOTICE_WATCH" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''; if '\''kill'\'' '\''-0'\'' "$SOL_NOTICE_WATCH" 2>/dev/null; then '\''kill'\'' "$SOL_NOTICE_WATCH" 2>/dev/null || '\''true'\''; obs='\''unfinished'\''; else if '\''wait'\'' "$SOL_NOTICE_WATCH"; then obs='\''0'\''; else obs="$?"; fi; fi; fi
-          '\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"
-          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher result: '\''"$obs"'\'' (the boot command exited '\''"$rc"'\''); delivery ledger: '\''"$SOL_DELIVERY"; if '\''['\'' "$rc" '\''='\'' '\''0'\'' '\'']'\''; then rc='\''1'\''; fi; fi
+          wclean='\''none'\''
+          if '\''['\'' '\''-n'\'' "$SOL_NOTICE_WATCH" '\'']'\''; then '\'':'\'' > "$SOL_OUT"'\''.notice.stop'\'' || '\''true'\''; '\''timeout'\'' '\''10'\'' '\''tail'\'' '\''--pid='\''"$SOL_NOTICE_WATCH" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''; if '\''bash'\'' '\''-c'\'' "$SOL_OWNED" '\''sol-owned'\'' "$SOL_OUT"'\''.notice.watcher'\''; then obs='\''unfinished'\''; if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_OUT"'\''.notice.watcher'\''; then wclean='\''stopped'\''; else wclean='\''unresolved-survived-KILL'\''; fi; else if '\''wait'\'' "$SOL_NOTICE_WATCH"; then obs='\''0'\''; else obs="$?"; fi; fi; fi
+          if '\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"; then clean='\''ok'\''; else clean='\''failed'\''; fi
+          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher did not succeed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$col" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL collector survived KILL at step exit '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$kvm" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 KVM observer survived KILL at step exit '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$clean" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 boot credential cleanup failed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$rc" '\''='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$fail" '\''='\'' '\''1'\'' '\'']'\''; then rc='\''1'\''; fi
           '\''exit'\'' "$rc"
           ' 'EXIT'
           'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
