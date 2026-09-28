@@ -286,11 +286,14 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 }
 
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
-  let bindings = namespace_bindings_augment_from_module_atoms(
-    root: tree.root,
-    bindings: empty_map()
-  )
   let declared_in = namespace_tree_module_qn(tree: tree)
+  let bindings = harvest_conj_named_bindings(
+    root: namespace_tree_module_body(root: tree.root, module_qn: declared_in),
+    acc: namespace_bindings_augment_from_module_atoms(
+      root: tree.root,
+      bindings: empty_map()
+    )
+  )
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
@@ -304,6 +307,26 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     declared_in: declared_in,
     imported_origins: empty_map()
   }
+}
+
+// THE MODULE'S OWN DECLARATIONS BIND AT THE ROOT OF A SINGLE-TREE NAMESPACE. A normalized module
+// carries its declarations in the body under its captured projection and module path
+// (captured -> m -> t), not as the root's named edges, so harvesting the root alone left every
+// module-level declaration unbound on this route: `type Myint` refused as unbound, and a module's
+// own `type Int` fell through to the kernel spelling and was silently bound to the kernel Int
+// (review 5342739525 on #12540). The body is found by the path the namespace records as its owner
+// (declared_in), and an absent step yields the root, which harvests nothing new.
+fn namespace_tree_module_body(root: Node, module_qn: QualifiedName) -> Node {
+  let start = match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Accepted { value: captured, diagnostics: _ } => captured
+    Rejected { diagnostics: _ } => root
+  }
+  fold_list(xs: module_qn, empty: start, cons: fn(acc, seg) {
+    match find_named_child(root: acc, name: seg) {
+      Accepted { value: child, diagnostics: _ } => child
+      Rejected { diagnostics: _ } => root
+    }
+  })
 }
 
 // A single-tree namespace has no module path of its own (module_qn stays Empty, as before), but its
@@ -945,6 +968,14 @@ fn kernel_type_spelling_foreign_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// WHETHER A DECLARATION IS THE REFERENCING MODULE'S OWN, read from where the namespace records its
+// owner. declared_in is that owner on both namespace routes: build_program_namespace (single tree,
+// whose module_qn stays Empty) and the admitted subject (where it equals module_qn). root_binding_origin
+// reads the same field, so the root door and the symbol-index door agree on ownership.
+fn namespace_owns_declaration(namespace: Namespace, path: QualifiedName) -> Bool {
+  qualified_name_init(qn: path) == namespace.declared_in
+}
+
 // One door's declaration, read for a kernel spelling before it is bound.
 fn resolve_atom_declared(
   ctx: ResolveContext,
@@ -956,7 +987,7 @@ fn resolve_atom_declared(
   match resolve_kernel_type_reading(
     identity: identity,
     path: path,
-    declared_here: qualified_name_init(qn: path) == ctx.namespace.module_qn
+    declared_here: namespace_owns_declaration(namespace: ctx.namespace, path: path)
   ) {
     KernelTypeBinding { canonical: canonical } =>
       Accepted {
