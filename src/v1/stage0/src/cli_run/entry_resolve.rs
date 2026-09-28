@@ -741,6 +741,7 @@ pub(crate) fn on_live_pool_thread<T: Send + 'static>(
     sender
         .send(Box::new(move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+            release_per_entry_graphs_on_live_pool_thread();
             let _ = done_tx.send(outcome);
         }))
         .expect("the live-pool thread accepts work");
@@ -748,6 +749,22 @@ pub(crate) fn on_live_pool_thread<T: Send + 'static>(
         Ok(value) => value,
         Err(payload) => std::panic::resume_unwind(payload),
     }
+}
+
+/// What the live-pool thread keeps between claims, and what it drops. The shared FACT is the
+/// pool: its module index, graph facts, heads parse, censuses and the capped typed-module cache,
+/// which every claim's entry reuses. A claim's own resolved entry graphs are not shared -- no
+/// later claim asks for the same entry -- so holding them would only grow the thread's resident
+/// set claim by claim (measured: 39 live-pool claims peaked at 10.6 GiB with them held, against a
+/// 12 GiB `memory.max` on the hosted runner). They are dropped after every claim.
+#[cfg(test)]
+fn release_per_entry_graphs_on_live_pool_thread() {
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
+    PROCESS_RESOLVE_INDEX.with(|slots| {
+        for (_, index) in slots.borrow().iter().flatten() {
+            clear_resolved_graph_memo_for_test(index);
+        }
+    });
 }
 
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
@@ -2842,7 +2859,9 @@ mod live_pool_thread_tests {
     use super::*;
 
     fn one_module_pool(tag: &str) -> (PathBuf, Vec<String>) {
-        let root = std::env::temp_dir().join(format!(
+        // Under the workspace `target/` (gitignored): the module-graph facts normalize every pool
+        // path repo-relative and refuse one outside the workspace.
+        let root = process_workspace_root().join("target").join(format!(
             "gunbc-live-pool-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
