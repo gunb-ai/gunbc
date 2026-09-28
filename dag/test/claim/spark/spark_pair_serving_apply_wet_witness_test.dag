@@ -8,29 +8,39 @@ import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_plans, spark_pair_apply_plan_refusals }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread,
+  current_pair_serving_authorities, current_authority_wire,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE APPLY SEAM'S LIVE BINDING, EXECUTED. test.claim.spark.spark_pair_serving_apply_witness drives
-// the plan fold over a SUPPLIED roster; this is the other half of DESIGN §3's pairing obligation:
-// spark_pair_apply_plans reads the executor's hostname, resolves its event log layout and reads
-// every claimed group's authority from the log before planning anything. On the wet lane's
-// runner that read does not reach a log, so every claimed group's plan is a refusal that NAMES
-// THE READ -- "the serving authority could not be read" -- and nothing is planned from the
-// resting row. Deleting the log read, or letting an unreadable log fall back to the row, turns
-// these refusals into plans and this claim red.
-test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet() -> Bool {
+// THE APPLY SEAM'S LIVE BINDING, EXECUTED, HONEST ON EVERY RUNNER. test.claim.spark.spark_pair_serving_apply_witness
+// drives the plan fold over SUPPLIED readings of both arms -- read and unread; this is the one
+// inhabitance claim of the real path (DESIGN §3, the pairing obligation). spark_pair_apply_plans
+// reads the executor's hostname, resolves its event log and reads every claimed group before
+// planning. Which arm the read yields depends on the runner, so the claim asserts the ROUTE, not
+// the arm: one plan per claimed group, and every unread group's plan is a refusal carrying that
+// read's own wire -- never a plan built from the resting row. Deleting the log read, or letting
+// an unreadable log fall back to the row, turns an unread group's refusal into a plan and this
+// claim red on any runner that cannot read the log.
+test fn the_apply_seam_reads_the_authority_before_planning() -> Bool {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: _ } => false
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
       match now_epoch_seconds() {
         Absent => false
         Present { value: at } => {
+          let current = current_pair_serving_authorities(short_hostname: executor, at: at)
           let plans = spark_pair_apply_plans(executor: executor, at: at)
           let refusals = spark_pair_apply_plan_refusals(plans: plans)
           length(plans) == length(spark_pair_serving_authorities)
-            && length(refusals) == length(plans)
-            && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read"))
+            && length(current) == length(spark_pair_serving_authorities)
+            && all(current, c => match c {
+                 CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => true
+                 CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
+                   any(refusals, r => string_contains(s: r, pattern: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "")))
+               })
         }
       }
   }

@@ -21,13 +21,13 @@ import gunbc.instruments.fabric_capacity_standing {
   GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing_current,
   standing_for_authority,
 }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, AuthorityTransitionRecord }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord }
 import product.capacity.event_chain { HeadAbsent }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, ReleasedToFleet, PairRealizationUnestablished,
-  spark_pair_serving_authorities,
+  spark_pair_serving_authorities, pair_serving_authority_group,
 }
 
 fn w_cell(name: ProbeFieldName) -> String {
@@ -387,4 +387,18 @@ test fn an_ordinary_authority_routes_to_the_live_probe() -> Bool {
   })
   let direct = group_report(group: FabricGroupA)
   (via_authority.admitting == direct.admitting) && (via_authority.text == direct.text)
+}
+
+// RED -- AN UNREADABLE AUTHORITY IS NEVER JUDGED FROM THE RESTING ROW. The supplied roster says the
+// log could not be read for every claimed group; the verdict refuses and names each group's read
+// step. This is the arm an off-fleet runner reads live, supplied here so it runs on every runner
+// (the wet witness asserts only the route, since which arm the live read yields is host-dependent).
+test fn an_unread_authority_refuses_the_standing_naming_the_read() -> Bool {
+  let unread = map(spark_pair_serving_authorities, a => CurrentAuthorityUnread { group: pair_serving_authority_group(a: a), step: "fetch" as String, reason: "witness: the partition could not be fetched" as String })
+  match fabric_capacity_standing_current(current: unread) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      length(unread) >= 1
+        && string_contains(s: reason, pattern: "group-a: serving authority could not be read at fetch: witness: the partition could not be fetched")
+  }
 }

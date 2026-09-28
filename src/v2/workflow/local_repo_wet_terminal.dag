@@ -1046,15 +1046,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging" },
       entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
-      function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet",
+      function: "the_live_entry_reads_the_authority_before_judging",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning" },
       entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
-      function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet",
+      function: "the_apply_seam_reads_the_authority_before_planning",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

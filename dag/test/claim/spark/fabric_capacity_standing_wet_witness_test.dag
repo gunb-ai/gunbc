@@ -2,26 +2,59 @@ module test.claim.spark.fabric_capacity_standing_wet_witness
 
 import std.logic { Bool }
 import std.types { String }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitSuccess, ExitFailure }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread,
+  current_pair_serving_authorities, current_authority_group,
+}
 import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE LIVE ENTRY, EXECUTED. test.claim.spark.fabric_capacity_standing_witness drives the verdict
-// over a SUPPLIED roster so the real group_report producer and its binding run hermetically; this
-// file is the other half of DESIGN §3's pairing obligation, the one that cannot be hermetic: the
-// entry reads the executor's hostname (shell.Exec.RunArgv, no mock_response), resolves its event
-// log layout and reads every claimed group's authority from the log before any standing is
-// judged. On the wet lane's runner that read does not reach a log -- the runner is no dashboard
-// host, or its remote is unreachable -- so the honest verdict is a refusal that NAMES THE READ:
-// every claimed group is reported "serving authority could not be read at <step>", and no
-// group's capacity is stood for. That is the route: deleting the live binding, or letting an
-// unreadable log fall back to the source row, changes this text.
-test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
-  match fabric_capacity_standing() {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: reason } =>
-      string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+// Whether the entry's verdict carries exactly what this reading of one group owes it: an unread
+// group is refused naming the read's step, and a read group is judged, never reported unread.
+fn verdict_routes_reading(reason: String, c: CurrentAuthority) -> Bool {
+  let unread_text = join([fabric_group_wire(g: current_authority_group(c: c)) as String, ": serving authority could not be read at "], "")
+  match c {
+    CurrentAuthorityUnread { group: _, step: s, reason: _ } => string_contains(s: reason, pattern: join([unread_text, s], ""))
+    CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+      string_contains(s: reason, pattern: unread_text) == false
+  }
+}
+
+// THE LIVE ENTRY, EXECUTED, HONEST ON EVERY RUNNER. test.claim.spark.fabric_capacity_standing_witness
+// drives both arms of the reading -- read (the resting roster) and unread -- as SUPPLIED values;
+// this is the one inhabitance claim of the real path (DESIGN §3, the pairing obligation). The entry
+// reads the executor's hostname, resolves its event log and reads every claimed group before
+// judging. WHICH arm that read yields depends on the runner -- a host with no readable store reads
+// Unread, a fleet host whose store holds an established authority reads Read -- so the claim does
+// not assert an arm. It asserts the ROUTE: the log is read once per claimed group, and the entry's
+// verdict carries each group's reading -- an unread group refused naming its step, a read group
+// judged on the log's authority. Deleting the live binding or falling back to the source row on
+// an unread log changes the verdict text and turns this red on whichever arm the runner reads.
+test fn the_live_entry_reads_the_authority_before_judging() -> Bool {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: _ } => false
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => false
+        Present { value: at } => {
+          let current = current_pair_serving_authorities(short_hostname: executor, at: at)
+          length(current) == length(spark_pair_serving_authorities) && length(current) >= 1
+            && match fabric_capacity_standing() {
+                 ExitSuccess => all(current, c => match c {
+                   CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
+                   CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => true
+                 })
+                 ExitFailure { code: _, reason: reason } => all(current, c => verdict_routes_reading(reason: reason, c: c))
+               }
+        }
+      }
   }
 }
