@@ -3,6 +3,7 @@ module gunbc.bmc_model
 import std.types { Bool, Int, List, String }
 import std.measure { Second, second_count }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }

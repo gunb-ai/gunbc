@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
 import extdeps.bmc.megarac {
   MegaRacSessionReply, MegaRacSessionOpened, MegaRacSessionRefused,
   megarac_session_reply_status, megarac_session_reply_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
@@ -80,7 +81,7 @@ data megarac_web_transport_script: String = "const http=require('http');const cr
 // ports (the second only serves the cross-origin image an unreadable canvas is drawn from), with the
 // transport's own request log and its pid beside them.
 service gunbc.bmc_megarac_web.transport {
-  operation Start {
+  operation ServeScript {
     input { script: NonEmptyStr, port: NonEmptyStr, image_port: NonEmptyStr, script_path: NonEmptyStr, log_path: NonEmptyStr, pid_path: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -92,7 +93,7 @@ service gunbc.bmc_megarac_web.transport {
     }
   }
 
-  operation Stop {
+  operation StopServing {
     input { pid_path: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell {
