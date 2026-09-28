@@ -112,7 +112,8 @@ test fn w_the_derived_profile_is_not_the_retired_crash_looping_shape() -> Bool {
     Present { value: executable } =>
       let profile = executable.profile
       token_count_value(t: profile.max_model_len) == 262144
-        && profile.max_num_seqs == 6
+        && profile.max_num_seqs == 8
+        && profile.max_num_seqs == group_b_experiment_subject_seats
         && !(profile.max_num_seqs == 16)
         && basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8567
         && !(basis_point_count(bp: profile.decided_gpu_memory_basis_points) == 8400)

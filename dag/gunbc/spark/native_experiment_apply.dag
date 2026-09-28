@@ -289,6 +289,11 @@ fn spark_seat_window_tokens(context_window: Nat) -> Nat? {
 // subject cohort for this shape (the four legs are fixed by the renderer); the two-seat
 // "near-identical bodies" design was rejected because the token-exact construction's per-seat
 // header makes seat 2 a prefix MISS, not a replay.
+// THE Q ROW (2026-09-28) is the eight-seat capacity qualification: the experiment subject moved
+// to 262K x 8 (group_b_serving_capacity's override, authorized by the exact block fold's
+// 984/1035), and this row is its wet shape — eight concurrent full-window seats with the stall
+// watchdog riding (the matrix's law for every run that can hang), the timing TSV and /metrics
+// deltas on every seat.
 // WHICH VARIANT RUNS is the operator's
 // per-run call, spelled as one named row the parent flips between wet runs; the default is
 // variant a, the deterministic repro the parent runs
@@ -356,6 +361,13 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkCacheReuseQualification,
     watchdog: false,
+  },
+  SparkWorkloadVariant {
+    name: "q-eight-concurrent-full-window" as NonEmptyStr,
+    seat_count: 8,
+    window_tokens: 262144,
+    mode: SparkSeatsConcurrent,
+    watchdog: true,
   },
 ]
 
