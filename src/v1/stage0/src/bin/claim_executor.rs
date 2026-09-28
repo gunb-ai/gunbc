@@ -1008,10 +1008,18 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!(
                 "required-ci: phase bare-reference-admission (every pool file, one judgment)"
             );
-            match v1_compiler::cli_run::run_required_bare_reference_admission(&source_roots) {
-                Ok(coverage) => eprintln!("required-ci: bare-reference-admission OK {coverage}"),
+            let phase_started = std::time::Instant::now();
+            let judgment =
+                v1_compiler::cli_run::run_required_bare_reference_admission(&source_roots);
+            let phase_wall_ms = phase_started.elapsed().as_millis();
+            match judgment {
+                Ok(coverage) => eprintln!(
+                    "required-ci: bare-reference-admission OK {coverage} wall_ms={phase_wall_ms}"
+                ),
                 Err(e) => {
-                    eprintln!("required-ci: bare-reference-admission REFUSED {e}");
+                    eprintln!(
+                        "required-ci: bare-reference-admission REFUSED wall_ms={phase_wall_ms} {e}"
+                    );
                     phase_failures.push(format!("bare-reference-admission refused: {e}"));
                 }
             }
@@ -1047,6 +1055,21 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("floor");
+        }
+
+        // THE WHOLE-POOL ADMISSION'S COMPLETION IS THE PRODUCER'S RECORD, NOT THE MARKER. The
+        // ran-set below compares literals this driver pushes; for this phase the evidence that the
+        // judgment happened is what the producer recorded, so a driver that kept the marker and
+        // lost the call refuses here, under this phase's own name.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            if let Some(failure) =
+                v1_compiler::cli_run::required_bare_reference_admission_completion_failure(
+                    &source_roots,
+                )
+            {
+                eprintln!("required-ci: {failure}");
+                phase_failures.push(failure);
+            }
         }
 
         // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints

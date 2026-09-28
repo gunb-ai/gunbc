@@ -9597,15 +9597,42 @@ pub(crate) fn unimported_bare_providers(
     Ok(out.into_iter().collect())
 }
 
+/// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
+/// The driver's ran-marker is a literal it pushes after the call; this record is the evidence
+/// that the call happened and what it judged, so a driver that retained the marker but lost the
+/// call is caught by `required_bare_reference_admission_completion_failure`, attributed to this
+/// phase, rather than by some later whole-pool refusal or not at all.
+#[derive(Clone, Debug)]
+pub struct BareReferenceAdmissionCompletion {
+    pub roots: Vec<String>,
+    pub judged: usize,
+    pub pool: usize,
+    pub verdict: Result<(), String>,
+}
+
+thread_local! {
+    static BARE_REFERENCE_ADMISSION_COMPLETION: RefCell<Option<BareReferenceAdmissionCompletion>> =
+        const { RefCell::new(None) };
+}
+
 /// THE REQUIRED WHOLE-POOL PHASE (`gunbc.required_ci_phase_roster` `BareReferenceAdmissionPhase`).
-/// Judges every pool file on the process-shared index the floor then prepares from, and refuses
-/// unless every file carries a verdict: coverage is checked, not assumed from a fold that
-/// returned. Returns the coverage it established.
+/// Judges every pool file on the process-shared index the floor then prepares from, records what
+/// it judged, and refuses unless every file carries a verdict: coverage is checked, not assumed
+/// from a fold that returned. Returns the coverage it established.
 pub fn run_required_bare_reference_admission(source_roots: &[String]) -> Result<String, String> {
     let index = try_process_shared_index(source_roots)?;
-    admit_pool_bare_references(&index)?;
+    let verdict = admit_pool_bare_references(&index);
     let judged = index.bare_reference_admission.borrow().len();
     let pool = index.source_files.len();
+    BARE_REFERENCE_ADMISSION_COMPLETION.with(|c| {
+        *c.borrow_mut() = Some(BareReferenceAdmissionCompletion {
+            roots: canonical_shared_index_roots(source_roots),
+            judged,
+            pool,
+            verdict: verdict.clone(),
+        })
+    });
+    verdict?;
     if judged != pool {
         return Err(format!(
             "coverage incomplete: {judged} of {pool} pool files carry a bare-reference verdict"
@@ -9619,6 +9646,41 @@ pub fn run_required_bare_reference_admission(source_roots: &[String]) -> Result<
     Ok(format!(
         "judged={judged} pool={pool} import_less={eligible}"
     ))
+}
+
+/// The required driver's completion check for this phase: `None` when the producer recorded a
+/// judgment over `source_roots` -- a refusal, or a success covering every pool file -- and a
+/// located failure otherwise. A missing record means the producer never ran for these roots,
+/// whatever ran-marker the driver pushed.
+pub fn required_bare_reference_admission_completion_failure(
+    source_roots: &[String],
+) -> Option<String> {
+    let roots = canonical_shared_index_roots(source_roots);
+    let record = BARE_REFERENCE_ADMISSION_COMPLETION.with(|c| c.borrow().clone());
+    match record {
+        None => Some(
+            "bare-reference-admission bypassed: the phase was selected but its producer recorded \
+             no judgment"
+                .to_string(),
+        ),
+        Some(r) if r.roots != roots => Some(format!(
+            "bare-reference-admission bypassed: the producer judged roots {:?}, not the run's {:?}",
+            r.roots, roots
+        )),
+        Some(r) => match r.verdict {
+            Err(_) => None,
+            Ok(()) if r.judged == r.pool => None,
+            Ok(()) => Some(format!(
+                "bare-reference-admission incomplete: {} of {} pool files judged",
+                r.judged, r.pool
+            )),
+        },
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn reset_bare_reference_admission_completion_for_test() {
+    BARE_REFERENCE_ADMISSION_COMPLETION.with(|c| *c.borrow_mut() = None);
 }
 
 /// ONE FILE'S BARE-REFERENCE ADMISSION: the judgment both demands fold.
@@ -10265,6 +10327,70 @@ mod closure_edge_demand_tests {
                 assert!(admit_pool_bare_references(&index).is_err());
             }
         }
+    }
+
+    /// THE REQUIRED PHASE'S OWN PRODUCER over the specimen and its twin, and the completion check
+    /// the required driver runs. The specimen: the clean entry is admitted, the phase REFUSES the
+    /// unrelated bad file with its located cause, and that refusal is a recorded judgment (no
+    /// completion failure). The twin: the phase admits with every pool file judged. BYPASS: with no
+    /// producer run recorded for these roots -- the state a driver that kept its ran-marker but
+    /// lost the call is in -- the completion check fails under this phase's name.
+    #[test]
+    fn required_phase_refuses_the_specimen_admits_the_twin_and_catches_a_bypass() {
+        let bad = Fixture::new(&[
+            ("clean.dag", "module clean_entry\nfn main() -> Int { 1 }\n"),
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "b.dag",
+                "module frontier.child\nfn duplicated() -> Int { 2 }\n",
+            ),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let bad_roots = vec![bad.0.to_string_lossy().into_owned()];
+        reset_bare_reference_admission_completion_for_test();
+        assert!(
+            required_bare_reference_admission_completion_failure(&bad_roots)
+                .is_some_and(|f| f.contains("bypassed")),
+            "no producer run recorded must fail as a bypass"
+        );
+        let index = process_shared_index(&bad_roots);
+        assert!(load_sources_for_entry_with_pool(
+            &index,
+            &bad.0.join("clean.dag").to_string_lossy()
+        )
+        .is_ok());
+        let refused = run_required_bare_reference_admission(&bad_roots).unwrap_err();
+        assert!(refused.contains("AMBIGUOUS"), "{refused}");
+        assert!(refused.contains("c.dag"), "{refused}");
+        assert_eq!(
+            required_bare_reference_admission_completion_failure(&bad_roots),
+            None,
+            "a refusal is a recorded judgment"
+        );
+
+        let twin = Fixture::new(&[
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let twin_roots = vec![twin.0.to_string_lossy().into_owned()];
+        assert!(
+            required_bare_reference_admission_completion_failure(&twin_roots)
+                .is_some_and(|f| f.contains("bypassed")),
+            "a judgment of OTHER roots is not a judgment of these"
+        );
+        let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
+        assert!(ok.contains("judged=2 pool=2"), "{ok}");
+        assert_eq!(
+            required_bare_reference_admission_completion_failure(&twin_roots),
+            None
+        );
+        reset_bare_reference_admission_completion_for_test();
     }
 
     /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
