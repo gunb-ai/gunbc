@@ -652,6 +652,8 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: prefill, pattern: "context_window_tokens=")
             && !string_contains(s: prefill, pattern: "stall-watchdog")
             && string_contains(s: churn, pattern: "churn-driver-launched")
+            && string_contains(s: churn, pattern: "churn_large.lock")
+            && string_contains(s: churn, pattern: "512000")
             && string_contains(s: churn, pattern: "nohup")
             && string_contains(s: churn, pattern: "GUNBC_CHURN_DRIVER_EOF")
             && string_contains(s: churn, pattern: join(["while [ \"$(date +%s)\" -lt \"$end\" ] && [ \"$n\" -lt ", to_string(spark_churn_requests_per_seat), " ]"], ""))

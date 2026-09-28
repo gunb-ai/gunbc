@@ -692,6 +692,15 @@ fn systemd_workload_cache_reuse_script(member: SystemdExecutionMember, serve_por
 // driver writes its exit file as its LAST act — "done fail=0" only when every client finished
 // inside both bounds with every request answered — and the sampler reaps it through that file, so a
 // driver that is killed without writing refuses located instead of reading as a quiet success.
+// THE LARGE-REQUEST SERIALIZER (2026-09-28, bounded workaround over an OPEN defect): the
+// q2 closing run's churn leg failed with rc=52 (empty reply) on every request body above
+// ~500KB fired CONCURRENTLY — successes at 52K/130K/318K/409K, failures at 623K/854K/858K/
+// 911K, while sequential ~1MB seat bodies always worked, and the server logged nothing. The
+// engine-side admission limit for concurrent large uploads is UNROOTED (a live-engine repro
+// leg is the named follow-up); until it lands, request bodies over this threshold ride one
+// flock so the closing run exercises the full band the seats already proved sequentially.
+data systemd_workload_churn_large_request_bytes: Nat = 512000
+
 fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmptyStr, state_dir: String, body: String, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
   join([
     "# churn driver, rendered by gunbc.spark.systemd_execution_cell; bounded by design\n",
@@ -719,7 +728,12 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
     "      awk -v alias=\"$served_alias\" -v body=\"$body\" -v client=\"$client\" -v req=\"$n\" -v reps=\"$units\" -v marker=\"", systemd_workload_unit_marker as String, "\" 'BEGIN { printf \"{\\\"model\\\":\\\"%s\\\",\\\"prompt\\\":\\\"\", alias; printf \"c%02dr%05d %s \", client, req, body; r = 1; while (r < reps) { printf \"%s %s \", marker, body; r = r + 1 } printf \"\\\",\\\"max_tokens\\\":1,\\\"temperature\\\":0}\" }' > \"$state/churn_\"$client\"_\"$n\".json\"\n",
     "      last_hdr=\"$state/churn_c\"$client\"_last.hdr\"\n",
     "      last_resp=\"$state/churn_c\"$client\"_last.resp\"\n",
-    "      if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
+    "      request_bytes=$(wc -c < \"$state/churn_\"$client\"_\"$n\".json\")\n",
+    "      if [ \"$request_bytes\" -gt ", to_string(systemd_workload_churn_large_request_bytes), " ]; then\n",
+    "        flock \"$state/churn_large.lock\" curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\" && churn_rc=0 || churn_rc=$?\n",
+    "      else\n",
+    "        if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
+    "      fi\n",
     "      churn_http=$(head -1 \"$last_hdr\" 2>/dev/null | cut -d' ' -f2)\n",
     "      if [ \"$churn_rc\" != \"0\" ]; then echo \"churn-request-failed client=$client request=$n transport rc=$churn_rc body=$(tr -d '\\n' < \"$last_resp\")\"; exit 31; fi\n",
     "      if [ \"$churn_http\" != \"200\" ]; then echo \"churn-request-failed client=$client request=$n http=$churn_http body=$(tr -d '\\n' < \"$last_resp\")\"; exit 31; fi\n",
