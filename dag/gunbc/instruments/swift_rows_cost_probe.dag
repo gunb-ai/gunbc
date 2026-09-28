@@ -3,7 +3,7 @@ module tools.swift_rows_cost_probe
 import std.types { Bool, Int, List }
 import v2.std.algebra { list_snoc_item }
 import v2.std.witness { Holds, Violates }
-import v2.std.grammar { derive_grammar_relation_row_node, formal_production_for_lhs_exact }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs, formal_production_for_lhs_exact }
 import v2.extdeps.languages.swift.syntax { SwiftSourceFile, SwiftDecl, sw_field, sw_t, sw_struct }
 import v2.extdeps.languages.swift.rows { swift_rows_emit_source_file, SwiftRowEmitted, SwiftRowEmissionRefused, swl_file, swift_row_productions }
 import gunbc.approve_ios_swift_wire { approve_ios_wire_swift_file }
@@ -46,14 +46,8 @@ fn selects(f: SwiftSourceFile) -> Bool {
 }
 
 fn derives(f: SwiftSourceFile) -> Bool {
-  let program = swl_file(f: f)
-  let productions = swift_row_productions()
-  match formal_production_for_lhs_exact(productions: productions, lhs: ^swr_file, child: program) {
-    Holds { value: production } =>
-      match derive_grammar_relation_row_node(production: production, productions: productions, emitted: program) {
-        Holds { value: _ } => true
-        Violates { diagnostic: _ } => false
-      }
+  match derive_grammar_relation_row_for_lhs(productions: swift_row_productions(), lhs: ^swr_file, emitted: swl_file(f: f)) {
+    Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
 }
@@ -70,3 +64,5 @@ fn fixed_productions() -> Bool { swift_row_productions() != [] }
 fn fixed_catalog() -> Bool { v2.std.grammar.formal_productions_catalog_to_node(productions: swift_row_productions()) != v2.extdeps.languages.swift.rows.swl_file(f: SwiftSourceFile { declarations: [] }) }
 fn tiny_emits() -> Bool { emitted(f: fields_struct(n: 1)) }
 fn tiny_derives() -> Bool { derives(f: fields_struct(n: 1)) }
+fn fixed_index() -> Bool { v2.std.grammar.formal_production_index(productions: swift_row_productions()) != v2.std.grammar.formal_production_index(productions: []) }
+fn tiny_lowers() -> Bool { swl_file(f: fields_struct(n: 1)) != swl_file(f: SwiftSourceFile { declarations: [] }) }
