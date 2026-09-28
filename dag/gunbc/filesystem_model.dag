@@ -1,0 +1,202 @@
+module gunbc.filesystem_model
+
+import std.types { Bool, List, String }
+import std.measure { second }
+import v2.std.operation_argv { OperationRef, BoundOperationInvocation }
+import v2.std.operation_realization {
+  OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
+  FileObserved, operation_input_text,
+}
+import extdeps.transports.file { FileExchangeObservation, FileOperationSucceeded, FileOperationFailed }
+import extdeps.filesystem.filesystem_io {
+  FilesystemNotFound, FilesystemAlreadyExists, FilesystemNotDirectory, FilesystemOtherFailure,
+}
+
+// A MODELED FILESYSTEM: the subset of POSIX file behaviour the file transport realizes, as a pure
+// value a modeled operation realization embeds in its scenario state. It is generic -- a hold store,
+// a SOL pid file and a capture file are all just paths in it -- and it reproduces the realization's
+// own contract (v1 interpreter dispatch_file), not an idealised filesystem:
+//   - a write needs its parent directory to exist, and answers not_found otherwise;
+//   - write_create_new answers already_exists when the path exists, and never overwrites;
+//   - a listing is the immediate children's names, sorted, one per line; listing a file answers
+//     not_a_directory and listing an absent path answers not_found;
+//   - reading or writing a directory as a file answers `other`, as an EISDIR does.
+// WHAT IT DOES NOT MODEL, stated so a green over it is not over-read: file modes (the declared mode of
+// write_create_new_with_mode is accepted and not stored), ownership, symlinks, partial writes, and
+// the atomicity of a real create-exclusive under concurrent processes. Those are properties of the real
+// filesystem, and their evidence is the file-store tests that run against a real directory.
+// byte_count is the content's string length, which equals its byte length for the ASCII content the
+// consumers here write.
+type ModeledFile {
+  path: String
+  content: String
+}
+
+type ModeledFilesystem {
+  directories: List<String>
+  files: List<ModeledFile>
+}
+
+fn fs_is_directory(fs: ModeledFilesystem, path: String) -> Bool {
+  any_string(xs: fs.directories, x: path)
+}
+
+fn any_string(xs: List<String>, x: String) -> Bool {
+  !all(xs, y => y != x)
+}
+
+fn fs_file(fs: ModeledFilesystem, path: String) -> ModeledFile? {
+  fold(fs.files, init: none, f: fn(acc, file) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if file.path == path { Present { value: file } } else { none }
+    }
+  })
+}
+
+// The parent of an absolute path: everything before its last separator. "/a/b" -> "/a", "/a" -> "/".
+fn fs_parent(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  let kept = segments.take(n: count(segments) - 1)
+  let joined = join(kept, "/")
+  if joined == "" { "/" } else { joined }
+}
+
+fn fs_leaf(path: String) -> String {
+  match split(s: path, delimiter: "/").last() {
+    Present { value: leaf } => leaf
+    Absent => path
+  }
+}
+
+fn failed_with(kind: extdeps.filesystem.filesystem_io.FilesystemFailureKind, message: String) -> FileExchangeObservation {
+  FileOperationFailed { kind: kind, error: message }
+}
+
+fn fs_read(fs: ModeledFilesystem, path: String) -> FileExchangeObservation {
+  match fs_file(fs: fs, path: path) {
+    Present { value: file } => FileOperationSucceeded { byte_count: string_length(s: file.content), content: file.content }
+    Absent =>
+      if fs_is_directory(fs: fs, path: path) { failed_with(kind: FilesystemOtherFailure, message: concat("Is a directory: ", path)) }
+      else { failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", path)) }
+  }
+}
+
+type ModeledFileWrite {
+  fs: ModeledFilesystem
+  observation: FileExchangeObservation
+}
+
+fn fs_write(fs: ModeledFilesystem, path: String, content: String, create_new: Bool) -> ModeledFileWrite {
+  if !fs_is_directory(fs: fs, path: fs_parent(path: path)) {
+    ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", path)) }
+  } else if fs_is_directory(fs: fs, path: path) {
+    ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemOtherFailure, message: concat("Is a directory: ", path)) }
+  } else {
+    match fs_file(fs: fs, path: path) {
+      Present { value: _ } =>
+        if create_new {
+          ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemAlreadyExists, message: concat("File exists: ", path)) }
+        } else {
+          ModeledFileWrite { fs: fs_with_file(fs: fs, path: path, content: content), observation: FileOperationSucceeded { byte_count: string_length(s: content), content: "" } }
+        }
+      Absent =>
+        ModeledFileWrite { fs: fs_with_file(fs: fs, path: path, content: content), observation: FileOperationSucceeded { byte_count: string_length(s: content), content: "" } }
+    }
+  }
+}
+
+fn fs_with_file(fs: ModeledFilesystem, path: String, content: String) -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: fs.directories,
+    files: list_append(filter(fs.files, f => f.path != path), ModeledFile { path: path, content: content }),
+  }
+}
+
+fn fs_delete(fs: ModeledFilesystem, path: String) -> ModeledFileWrite {
+  match fs_file(fs: fs, path: path) {
+    Present { value: _ } =>
+      ModeledFileWrite { fs: ModeledFilesystem { directories: fs.directories, files: filter(fs.files, f => f.path != path) }, observation: FileOperationSucceeded { byte_count: 0, content: "" } }
+    Absent =>
+      if fs_is_directory(fs: fs, path: path) { ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemOtherFailure, message: concat("Is a directory: ", path)) } }
+      else { ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", path)) } }
+  }
+}
+
+fn fs_list(fs: ModeledFilesystem, path: String) -> FileExchangeObservation {
+  if fs_is_directory(fs: fs, path: path) {
+    let file_names = map(filter(fs.files, f => fs_parent(path: f.path) == path), f => fs_leaf(path: f.path))
+    let dir_names = map(filter(fs.directories, d => d != path && fs_parent(path: d) == path), d => fs_leaf(path: d))
+    let listing = join(sort_by(concat_lists(a: file_names, b: dir_names), n => n), "\n")
+    FileOperationSucceeded { byte_count: string_length(s: listing), content: listing }
+  } else {
+    match fs_file(fs: fs, path: path) {
+      Present { value: _ } => failed_with(kind: FilesystemNotDirectory, message: concat("Not a directory: ", path))
+      Absent => failed_with(kind: FilesystemNotFound, message: concat("No such file or directory: ", path))
+    }
+  }
+}
+
+fn concat_lists(a: List<String>, b: List<String>) -> List<String> {
+  fold(b, init: a, f: fn(acc, x) { list_append(acc, x) })
+}
+
+// THE BINDINGS, through a lens into the scenario state, so any scenario world can embed a filesystem
+// without this module knowing its shape. Filesystem operations take no virtual time.
+data filesystem_io_operation_path: String = "dag/extdeps/filesystem/filesystem_io.dag"
+
+fn filesystem_operation(operation: String) -> OperationRef {
+  OperationRef { path: filesystem_io_operation_path, service: "Filesystem", operation: operation }
+}
+
+fn file_step<S>(state: S, observation: FileExchangeObservation) -> OperationStep<S> {
+  OperationObserved { observation: FileObserved { observation: observation }, state: state, elapsed: second(count: 0) }
+}
+
+fn filesystem_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S) -> List<OperationBinding<S>> {
+  let reading = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "a filesystem read was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => file_step(state: state, observation: fs_read(fs: get(state), path: path))
+    }
+  }
+  let listing = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "a filesystem list was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => file_step(state: state, observation: fs_list(fs: get(state), path: path))
+    }
+  }
+  let deleting = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "a filesystem delete was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => {
+        let w = fs_delete(fs: get(state), path: path)
+        file_step(state: put(state, w.fs), observation: w.observation)
+      }
+    }
+  }
+  [
+    OperationBinding { at: filesystem_operation(operation: "Read"), handler: reading },
+    OperationBinding { at: filesystem_operation(operation: "List"), handler: listing },
+    OperationBinding { at: filesystem_operation(operation: "Delete"), handler: deleting },
+    OperationBinding { at: filesystem_operation(operation: "Write"), handler: writing(get: get, put: put, create_new: false) },
+    OperationBinding { at: filesystem_operation(operation: "WriteOwnerOnly"), handler: writing(get: get, put: put, create_new: false) },
+    OperationBinding { at: filesystem_operation(operation: "WriteCreateNew"), handler: writing(get: get, put: put, create_new: true) },
+    OperationBinding { at: filesystem_operation(operation: "WriteCreateNewWithMode"), handler: writing(get: get, put: put, create_new: true) },
+  ]
+}
+
+fn writing<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S, create_new: Bool) -> fn(S, OperationCall) -> OperationStep<S> {
+  fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "a filesystem write was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => match operation_input_text(invocation: call.invocation, name: "content") {
+        Absent => OperationHarnessFault { reason: "a filesystem write was dispatched without content" as NonEmptyStr }
+        Present { value: content } => {
+          let w = fs_write(fs: get(state), path: path, content: content, create_new: create_new)
+          file_step(state: put(state, w.fs), observation: w.observation)
+        }
+      }
+    }
+  }
+}

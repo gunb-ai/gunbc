@@ -1,6 +1,7 @@
 module extdeps.transports.file
 
-import std.types { FermiDepth }
+import std.types { FermiDepth, Int, String }
+import extdeps.filesystem.filesystem_io { FilesystemFailureKind }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -17,3 +18,14 @@ data file_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, 
 type FileTransportConfig {
   base_path: String
 }
+
+// WHAT THE FILE TRANSPORT OBSERVES, as a value: an operation that succeeded with its byte count and
+// any content it read or listed, or one that failed with the host's CLOSED failure kind and its
+// message. This is the observation a modeled operation realization (v2.std.operation_realization)
+// supplies in place of a real filesystem call; the interpreter feeds it to the same declared-output
+// projection a real file result reaches, so success, error, error_kind, content and byte_count are
+// derived exactly as from a real call. A listing's content follows the realization's own contract:
+// the entry names, sorted, one per line.
+type FileExchangeObservation
+  = FileOperationSucceeded { byte_count: Int, content: String }
+  | FileOperationFailed { kind: FilesystemFailureKind, error: String }
