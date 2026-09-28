@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet, BrowserToolchainReady }
 import gunbc.bmc_model { BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle }
 import gunbc.bmc_megarac_web_adapter { megarac_web_protocol_script, megarac_web_transport_script }
 import gunbc.machine_intake_mtcollins1_kvm_still {
@@ -14,7 +14,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverEstablished, KvmObserverRefused, KvmSeatBusy,
   KvmJournalConnectionLost, KvmJournalAcquisitionFailed, KvmNotConnected, KvmCanvasUnreadable,
   KvmStillHashed, KvmTeardownRecorded,
-  kvm_observer_launch_in, kvm_observer_trigger, mtcollins1_kvm_observer_finish, mtcollins1_kvm_still_toolchain_dir_env,
+  kvm_observer_launch_in, kvm_observer_trigger, mtcollins1_kvm_observer_finish,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
 
@@ -22,8 +22,8 @@ import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundar
 // the REAL held observer -- the same kvm_observer_launch_in, triggers and mtcollins1_kvm_observer_finish
 // the boot runs -- in headless Chromium against a loopback controller whose every answer is a
 // gunbc.bmc_model transition (gunbc.bmc_megarac_web_adapter), so the observer and the one BMC model
-// cannot drift. It needs the declared toolchain on GUNBC_KVM_STILL_TOOLCHAIN; without it the observer
-// refuses and every control here is RED, never skipped. The hardware half is the boot itself: its
+// cannot drift. It needs gunbc.runner_browser_toolchain ready on the executing runner; without it the observer
+// is not started and every control here is RED, never skipped. The hardware half is the boot itself: its
 // receipt carries the observer's established line and first hash-bound still (REAL ROUTE UNEXECUTED
 // until the first hold-lifted boot runs it).
 
@@ -62,7 +62,7 @@ fn rig(w: BmcWorld, port: Int) -> Rig {
   let pw_path = concat(dir, "/credential")
   let _script = Filesystem.Write(path: script_path, content: megarac_web_protocol_script(initial: w, username: "admin", password: "pw", extended_privilege: 259))
   let _pw = Filesystem.Write(path: pw_path, content: "pw")
-  let _served = gunbc.bmc_megarac_web.transport.Start(
+  let _served = gunbc.bmc_megarac_web.transport.ServeScript(
     script: megarac_web_transport_script as NonEmptyStr,
     port: to_string(port) as NonEmptyStr,
     image_port: to_string(port + 1) as NonEmptyStr,
@@ -71,13 +71,14 @@ fn rig(w: BmcWorld, port: Int) -> Rig {
     pid_path: concat(dir, "/controller.pid") as NonEmptyStr,
   )
   let obs = concat(dir, "/observer")
+  let loc = match runner_browser_toolchain_here_wet() { BrowserToolchainReady { location: l, standing: _ } => Present { value: l }  _ => none }
   let _made = shell.Mkdir.Parents(path: obs as FilePath)
-  let start = kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", to_string(port)), username: "admin", password_file: pw_path, toolchain_dir: actions_variable_trimmed(name: mtcollins1_kvm_still_toolchain_dir_env), attempt: "wet")
+  let start = match loc { Absent => KvmObserverNotStarted { reason: "the runner browser toolchain is not ready on this host" }  Present { value: loc } => kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", to_string(port)), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet") }
   Rig { dir: dir, start: start, transport_log: log_path }
 }
 
 fn close_rig(r: Rig) -> Bool {
-  let _stopped = gunbc.bmc_megarac_web.transport.Stop(pid_path: concat(r.dir, "/controller.pid") as NonEmptyStr)
+  let _stopped = gunbc.bmc_megarac_web.transport.StopServing(pid_path: concat(r.dir, "/controller.pid") as NonEmptyStr)
   shell.Remove.RecursiveForce(path: r.dir).success
 }
 

@@ -23,6 +23,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   mtcollins1_kvm_observer_dir, kvm_observer_trigger, kvm_released_text,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
+import gunbc.runner_browser_toolchain { BrowserToolchainUnresolved }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -117,11 +118,17 @@ test fn a_still_is_retained_only_when_hash_bound() -> Bool {
 // THE REAL START, EXECUTED, WITH NOTHING TO DRIVE: an uncatalogued firmware and an unbound credential
 // each refuse before any process starts, and a trigger on an observer that never started is refused.
 test fn the_start_refuses_without_driving_when_firmware_or_credential_is_missing() -> Bool {
-  let other = mtcollins1_kvm_observer_start(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.99"), bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain_dir: "", attempt: "1")
-  let nocred = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "", toolchain_dir: "", attempt: "1")
+  let other = mtcollins1_kvm_observer_start(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.99"), bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness: no toolchain" }, attempt: "1")
+  let nocred = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "", toolchain: BrowserToolchainUnresolved { cause: "witness: no toolchain" }, attempt: "1")
   let a = match other { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "not catalogued")  _ => false }
   let b = match nocred { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no BMC credential")  _ => false }
   a && b && !kvm_observer_trigger(start: nocred, order: 1, reason: "power-on-verified")
+}
+
+// AN UNREADY TOOLCHAIN IS A RECORDED NON-START, WITH THE TOOLCHAIN'S OWN WORDS.
+test fn an_unresolved_toolchain_is_a_recorded_non_start() -> Bool {
+  let s = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "host not in the floor pool" }, attempt: "1")
+  match s { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "unresolved: host not in the floor pool")  _ => false }
 }
 
 // RETAINED WITH THE BUNDLE: the observer's directory sits under the boot's upload prefix.

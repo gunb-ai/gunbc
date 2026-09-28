@@ -84,11 +84,12 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
-  mtcollins1_bmc_firmware, mtcollins1_kvm_still_toolchain_dir_env, mtcollins1_kvm_still_allowance,
+  mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
 }
 
 data mtcollins1_boot_label: String = "mtcollins1 boot"
@@ -1441,7 +1442,7 @@ fn mtcollins1_boot_screen_start(password_file: String, attempt: String) -> KvmOb
         bmc_host: mtcollins1_endpoint.host,
         username: user,
         password_file: password_file,
-        toolchain_dir: actions_variable_trimmed(name: mtcollins1_kvm_still_toolchain_dir_env),
+        toolchain: runner_browser_toolchain_here_wet(),
         attempt: attempt,
       )
   }

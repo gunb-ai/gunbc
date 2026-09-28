@@ -14,6 +14,7 @@ import gunbc.fleet_converge_workflow {
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   RunnerPasswordSessionToolConverge,
+  RunnerBrowserToolchainConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
   fleet_converge_job_edges, fleet_converge_release_bins_job_id,
@@ -537,6 +538,12 @@ test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool 
 test fn the_password_session_tool_mode_is_on_the_roster_with_distinct_wires() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
   any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerPasswordSessionToolConverge))
+    && unique(xs: wires, eq: (a, b) => a == b)
+}
+
+test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerBrowserToolchainConverge))
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 

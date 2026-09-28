@@ -125,7 +125,8 @@ type IpmitoolSolActivateRefusal
   | SolPayloadActivationUnanswered
 
 fn ipmitool_sol_activate_line(output: String, pattern: String) -> String {
-  match filter(split(s: output, delimiter: "\n"), l => string_contains(s: l, pattern: pattern)).first() {
+  let matching: List<String> = filter(split(s: output, delimiter: "\n"), l => string_contains(s: l, pattern: pattern))
+  match matching.first() {
     Present { value: l } => trim(s: l)
     Absent => ""
   }

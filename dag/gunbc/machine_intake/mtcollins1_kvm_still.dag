@@ -8,8 +8,11 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.crypto.hash { Digest }
-import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
-import extdeps.automation.playwright { PlaywrightBuild, PlaywrightBrowserBinaryProvenance, PlaywrightManagedChromiumDownload, playwright_1_62_1 }
+import extdeps.exec.command { argv_words }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainResolution, BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+  RunnerBrowserToolchainLocation, runner_browser_toolchain_node_command, runner_browser_toolchain_standing_text,
+}
 import extdeps.bmc.megarac {
   ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
   ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing, megarac_firmware_0_32,
@@ -17,6 +20,7 @@ import extdeps.bmc.megarac {
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -40,35 +44,18 @@ import gunbc.machine_intake_sol_hold
 // boot records beside its own verdict; nothing here can change an attempt's outcome, and the boot
 // run binds no decision to a still.
 
-// THE DECLARED TOOLCHAIN (condition 4 of the route-A ruling: Chromium on srv1 is a declared
-// dependency, not ambient). The capture resolves `playwright` from the toolchain directory the
-// runner provisions and launches the Chromium that Playwright build downloads; a runner without it
-// answers KvmStillToolchainUnavailable, recorded, and the boot continues.
-type KvmStillToolchain {
-  automation: PlaywrightBuild
-  browser: ChromiumBuild
-  provenance: PlaywrightBrowserBinaryProvenance
-}
-
-data mtcollins1_kvm_still_toolchain: KvmStillToolchain = KvmStillToolchain {
-  automation: playwright_1_62_1,
-  browser: chromium_151_0_7922_34,
-  provenance: PlaywrightManagedChromiumDownload,
-}
-
 // THE FIRMWARE THE CAPTURE IS KEYED TO. mtcollins1's controller served the 0.32 UI whose bundles
 // the route is recovered from (gunbc.machine_intake_megarac_served_ui_catalog_observation, and the
 // 2026-09-27 probe cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute).
 data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
 
-// Where the runner keeps that toolchain: `npm install --prefix <dir> playwright@<version>` puts the
-// package under <dir>/node_modules, which the capture puts on NODE_PATH.
-data mtcollins1_kvm_still_toolchain_dir_env: NonEmptyStr = "GUNBC_KVM_STILL_TOOLCHAIN"
-
-// THE TOOLCHAIN IS NOT PROVISIONED HERE (eager-owl-205, 2026-09-28). A boot-step `npm install` is an
-// undeclared toolchain on a fleet host; the runner toolchain and its converge are their own modeled
-// route (a separate lane). Until that route binds GUNBC_KVM_STILL_TOOLCHAIN on the runner, the
-// observer refuses with cause=toolchain, which the bundle records and the boot ignores.
+// THE TOOLCHAIN IS RESOLVED, NEVER ASSUMED. gunbc.runner_browser_toolchain places the pinned node,
+// Playwright and Chromium on the fleet runners through its own converge, and hands a consumer a
+// location only over a standing that read back ready. The observer is launched through
+// runner_browser_toolchain_node_command -- the pinned node, NODE_PATH and PLAYWRIGHT_BROWSERS_PATH
+// from that location -- and never through a node on PATH. A runner the converge has not placed
+// answers NotReady or Unresolved, which the observer records as NotStarted with that text; the boot
+// does not read it.
 
 // DRIVING THE VENDOR'S VIEWER IS REALIZATION, NOT THE MEGARAC INTERFACE. The steps are the UI's own,
 // recovered from the served bundles cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute: POST
@@ -109,33 +96,23 @@ data mtcollins1_kvm_observer_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data mtcollins1_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer Start -- the held MegaRAC H5 viewer is a node -e script string (login, seat check, viewer.html, WebSocket boundary events, canvas toDataURL on cadence and trigger files, journal, session DELETE on every reachable exit) launched as a bash background hold. DISSOLVES WHEN a typed browser-automation realization (an extdeps.automation.playwright operation shape bound to a transport handler) can express navigate, evaluate-in-page, WebSocket lifecycle events and a guaranteed release step, and a typed process-hold realization can hold it, so the sequence is rows over those shapes rather than medium-as-string scripts")
+data mtcollins1_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer LaunchObserver -- the held MegaRAC H5 viewer is a node -e script string (login, seat check, viewer.html, WebSocket boundary events, canvas toDataURL on cadence and trigger files, journal, session DELETE on every reachable exit) launched as a bash background hold. DISSOLVES WHEN a typed browser-automation realization (an extdeps.automation.playwright operation shape bound to a transport handler) can express navigate, evaluate-in-page, WebSocket lifecycle events and a guaranteed release step, and a typed process-hold realization can hold it, so the sequence is rows over those shapes rather than medium-as-string scripts")
 
 data mtcollins1_kvm_observer_script: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n');}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300);}let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j('refused','cause=credential-unreadable detail='+JSON.stringify(one(e)));process.exit(14)}let chromium;try\{chromium=require('playwright').chromium}catch(e)\{j('refused','cause=toolchain detail='+JSON.stringify(one(e)));process.exit(13)}let browser=null,page=null,stopping=false,connected=false,loggedIn=false,seq=0,periodic=0;async function teardown(why,code)\{if(stopping)return;stopping=true;j('stop-requested','by='+why);let rel='released'; try\{if(page&&loggedIn)\{rel=await page.evaluate(async()=>\{const t=sessionStorage.getItem('garc');if(!t)return 'no-token';const r=await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}});return r.ok?'released':'http-'+r.status})}else\{rel='no-session'}}catch(e)\{rel='release-failed detail='+JSON.stringify(one(e))} try\{if(browser)await browser.close()}catch(e)\{} j('stopped','session='+rel);process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq; if(!connected)\{j('acquisition-failed','seq='+n+' reason='+reason+' cause=not-connected');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j('still','seq='+n+' reason='+reason+' file='+f+' bytes='+b.length)} catch(e)\{j('acquisition-failed','seq='+n+' reason='+reason+' cause=canvas-unreadable detail='+JSON.stringify(one(e)))}}(async()=>\{ try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j('refused','cause=toolchain detail='+JSON.stringify(one(e)));process.exit(13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();  await page.goto(base+'/',\{waitUntil:'domcontentloaded'});  const login=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let b=null;try\{b=await r.json()}catch(e)\{}return\{status:r.status,b:b}},[user,pw]);  if(login.status!==200||!login.b||login.b.ok!==0)\{j('refused','cause=login http='+login.status);return teardown('refused',11)}  loggedIn=true;  await page.evaluate(([b,u])=>\{sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[login.b,user]);  const seat=await page.evaluate(async()=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':sessionStorage.getItem('garc')}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null});  if(seat===null||seat===undefined)\{j('refused','cause=no-kvm-service');return teardown('refused',15)}  if(seat!==0)\{j('refused','cause=seat-busy viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{if(!/\\/kvm(\\?|$)/.test(ws.url()))return;connected=true;j('connection-open','url='+JSON.stringify(ws.url()));   ws.on('close',()=>\{if(connected)\{connected=false;j('connection-lost','url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j('connection-error','detail='+JSON.stringify(one(e)))})});  await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j('refused','cause=no-frame detail='+JSON.stringify(one(e)));return teardown('refused',12)}  if(!connected)\{j('refused','cause=no-kvm-websocket');return teardown('refused',12)}  j('established','host='+JSON.stringify(base)+' session='+String(login.b.racsession_id)+' attempt='+attempt);  let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   const tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort();   for(const n of tf)\{const p=path.join(dir,n);let r=n.slice(8);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+r)}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j('failed','detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
 
-// THE LAUNCH: the observer in the background with its stdout/stderr beside the journal, and its
-// holder recorded as "<pid> <starttime>" -- the same holder record the SOL hold writes, so the one
-// release (gunbc.machine_intake_sol_hold mtcollins1_sol_hold_release_script, which signals only a
-// process whose (pid, start time) still match) stops it and nothing else.
-data mtcollins1_kvm_observer_launch_script: String = "js=\"$1\"; tc=\"$2\"; base=\"$3\"; u=\"$4\"; pw=\"$5\"; dir=\"$6\"; att=\"$7\"; cad=\"$8\"; fw=\"$9\"; mx=\"$\{10\}\"; pf=\"$dir/observer.pid\"; ( NODE_PATH=\"$tc\" node -e \"$js\" \"$base\" \"$u\" \"$pw\" \"$dir\" \"$att\" \"$cad\" \"$fw\" \"$mx\" >> \"$dir/observer.log\" 2>&1 < /dev/null & p=$!; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf\" || \{ kill \"$p\" 2>/dev/null; echo \"observer pid not published; stopped\" >> \"$dir/observer.log\"; \}; wait \"$p\"; echo \"observer exited status=$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$dir/observer.log\" ) > /dev/null 2>&1 &"
+// THE LAUNCH: the toolchain's node command in the background, its stdout/stderr beside the journal,
+// and its holder recorded as "<pid> <starttime>" -- the same holder record the SOL hold writes, so the
+// one release (gunbc.machine_intake_sol_hold mtcollins1_sol_hold_release_script, which signals only a
+// process whose (pid, start time) still match) stops it and nothing else. The command is passed as
+// positional words after the directory, never interpolated into the script.
+data mtcollins1_kvm_observer_launch_script: String = "dir=\"$1\"; shift; pf=\"$dir/observer.pid\"; ( \"$@\" >> \"$dir/observer.log\" 2>&1 < /dev/null & p=$!; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf\" || \{ kill \"$p\" 2>/dev/null; echo \"observer pid not published; stopped\" >> \"$dir/observer.log\"; \}; wait \"$p\"; echo \"observer exited status=$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$dir/observer.log\" ) > /dev/null 2>&1 &"
 
 service gunbc.machine_intake.kvm_observer {
-  operation Start {
-    input {
-      script: NonEmptyStr
-      toolchain_node_path: String
-      base_url: NonEmptyStr
-      username: NonEmptyStr
-      password_file: NonEmptyStr
-      dir: NonEmptyStr
-      attempt: NonEmptyStr
-      cadence_ms: NonEmptyStr
-      frame_wait_ms: NonEmptyStr
-      periodic_limit: NonEmptyStr
-    }
+  operation LaunchObserver {
+    input { dir: NonEmptyStr, command: List<String> }
     output { stdout: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
     transport shell {
-      argv: ["bash", "-c", mtcollins1_kvm_observer_launch_script, "kvm-observer", "{script}", "{toolchain_node_path}", "{base_url}", "{username}", "{password_file}", "{dir}", "{attempt}", "{cadence_ms}", "{frame_wait_ms}", "{periodic_limit}"]
+      argv: ["bash", "-c", mtcollins1_kvm_observer_launch_script, "kvm-observer", "{dir}", command]
     }
     exit {
       0 => Unit
@@ -366,6 +343,13 @@ type KvmObserverTeardown
   = KvmTeardownRecorded { snapshot_path: String, snapshot_kept: Bool, requested_at: NonEmptyStr, stopped_seen: Bool, released: String, forced_release_at: String }
   | KvmTeardownNotNeeded { reason: NonEmptyStr }
 
+// DECLARED FRONTIER: READING THE STILL. Interpretation -- a model on the fabric reading a retained
+// still into text and diagnostics, and a watch or bugfix guided by that reading -- is deliberately
+// NOT here (operator ruling 2026-09-27: log now, interpret later). TRIGGER: an inference seat on the
+// fabric admits an image-input request (gunbc.serving) and a typed reading of a still exists whose
+// result names the still's sha256; its first consumer is this bundle's screen section. Until then a
+// still is evidence for a human reader of the artifact and nothing in the boot consumes its pixels.
+//
 // EVERYTHING THE ATTEMPT KEPT OF ITS SCREEN.
 type KvmObserverRecord {
   attempt: String
@@ -408,7 +392,7 @@ fn mtcollins1_kvm_observer_start(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: String,
-  toolchain_dir: String,
+  toolchain: RunnerBrowserToolchainResolution,
   attempt: String,
 ) -> KvmObserverStart {
   match megarac_screen_capture_standing(firmware: firmware, route: KvmClientCanvasJpeg) {
@@ -418,35 +402,40 @@ fn mtcollins1_kvm_observer_start(
         ScreenCaptureClientSideOnly =>
           if password_file == "" { KvmObserverNotStarted { reason: "no BMC credential path is bound, so no viewer login was attempted" } }
           else if attempt == "" { KvmObserverNotStarted { reason: "no attempt identity is bound, so the observer could not be named for it" } }
-          else { kvm_observer_launch(base_url: concat("https://", bmc_host as String), username: username, password_file: password_file, toolchain_dir: toolchain_dir, attempt: attempt) }
+          else {
+            match toolchain {
+              BrowserToolchainReady { location: loc, standing: _ } => kvm_observer_launch(base_url: concat("https://", bmc_host as String), username: username, password_file: password_file, toolchain: loc, attempt: attempt)
+              BrowserToolchainNotReady { standing: st } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is not ready: ", runner_browser_toolchain_standing_text(s: st)) as NonEmptyStr }
+              BrowserToolchainUnresolved { cause: c } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is unresolved: ", c) as NonEmptyStr }
+            }
+          }
         _ => KvmObserverNotStarted { reason: "the catalogued viewer route is not client-side; nothing was driven" }
       }
   }
 }
 
 // THE LAUNCH OVER A BASE URL. The boot passes https://<bmc>; the protocol controls pass a local fake.
-fn kvm_observer_launch(base_url: String, username: NonEmptyStr, password_file: String, toolchain_dir: String, attempt: String) -> KvmObserverStart {
+fn kvm_observer_launch(base_url: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String) -> KvmObserverStart {
   let dir = mtcollins1_kvm_observer_dir(attempt: attempt)
   let made = shell.Mkdir.Parents(path: dir as FilePath)
   if !made.success {
     return KvmObserverNotStarted { reason: concat("the observer directory could not be made: ", dir) as NonEmptyStr }
   }
-  kvm_observer_launch_in(dir: dir, base_url: base_url, username: username, password_file: password_file, toolchain_dir: toolchain_dir, attempt: attempt)
+  kvm_observer_launch_in(dir: dir, base_url: base_url, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt)
 }
 
-fn kvm_observer_launch_in(dir: String, base_url: String, username: NonEmptyStr, password_file: String, toolchain_dir: String, attempt: String) -> KvmObserverStart {
-  let launched = gunbc.machine_intake.kvm_observer.Start(
-    script: mtcollins1_kvm_observer_script as NonEmptyStr,
-    toolchain_node_path: if toolchain_dir == "" { "" } else { concat(toolchain_dir, "/node_modules") },
-    base_url: base_url as NonEmptyStr,
-    username: username,
-    password_file: password_file as NonEmptyStr,
-    dir: dir as NonEmptyStr,
-    attempt: attempt as NonEmptyStr,
-    cadence_ms: to_string((second_count(s: mtcollins1_kvm_observer_cadence) as Int) * 1000) as NonEmptyStr,
-    frame_wait_ms: to_string((second_count(s: mtcollins1_kvm_observer_frame_wait) as Int) * 1000) as NonEmptyStr,
-    periodic_limit: to_string(mtcollins1_kvm_observer_periodic_limit) as NonEmptyStr,
+fn kvm_observer_launch_in(dir: String, base_url: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String) -> KvmObserverStart {
+  let node = runner_browser_toolchain_node_command(
+    location: toolchain,
+    script: mtcollins1_kvm_observer_script,
+    operands: [
+      base_url, username as String, password_file, dir, attempt,
+      to_string((second_count(s: mtcollins1_kvm_observer_cadence) as Int) * 1000),
+      to_string((second_count(s: mtcollins1_kvm_observer_frame_wait) as Int) * 1000),
+      to_string(mtcollins1_kvm_observer_periodic_limit),
+    ],
   )
+  let launched = gunbc.machine_intake.kvm_observer.LaunchObserver(dir: dir as NonEmptyStr, command: argv_words(command: node))
   if !launched.success {
     return KvmObserverNotStarted { reason: concat("the observer launch failed: ", trim(s: launched.transport_stderr)) as NonEmptyStr }
   }
@@ -545,7 +534,8 @@ fn kvm_hash_stills(dir: String, events: List<KvmJournalEvent>) -> List<KvmRetain
 }
 
 fn kvm_released_text(events: List<KvmJournalEvent>) -> String {
-  match filter(events, e => match e { KvmJournalStopped { at: _, session: _ } => true  _ => false }).last() {
+  let stopped: List<KvmJournalEvent> = filter(events, e => match e { KvmJournalStopped { at: _, session: _ } => true  _ => false })
+  match stopped.last() {
     Present { value: e } => match e { KvmJournalStopped { at: a, session: s } => concat("session ", s, " at ", a.iso)  _ => "" }
     Absent => "NO stopped line: the observer's session release was NOT observed"
   }
@@ -622,6 +612,10 @@ fn kvm_observer_record_text(rec: KvmObserverRecord) -> String {
   }
 }
 
+fn kvm_hashed_stills(stills: List<KvmRetainedStill>) -> List<KvmRetainedStill> {
+  filter(stills, x => match x { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false })
+}
+
 // THE RECEIPT LINE: the executed real route (eager-owl-205, 2026-09-28). The boot runs the observer
 // against the real controller under the job's workload-identity credential, and its receipt carries
 // the established line and the first hash-bound still -- or, verbatim, why there is none.
@@ -629,16 +623,9 @@ fn kvm_observer_receipt_line(rec: KvmObserverRecord) -> String {
   concat("screen=", match rec.start {
     KvmObserverNotStarted { reason: r } => concat("observer not started: ", r as String)
     KvmObserverStarted { dir: _, standing: s, checked_at: _ } =>
-      concat(kvm_standing_text(s: s), "; ", match filter(rec.stills, x => match x { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }).first() {
+      concat(kvm_standing_text(s: s), "; ", match kvm_hashed_stills(stills: rec.stills).first() {
         Present { value: x } => concat("first hash-bound still ", kvm_retained_still_text(s: x))
         Absent => "no hash-bound still"
       })
   })
 }
-
-// DECLARED FRONTIER: READING THE STILL. Interpretation -- a model on the fabric reading a retained
-// still into text and diagnostics, and a watch or bugfix guided by that reading -- is deliberately
-// NOT here (operator ruling 2026-09-27: log now, interpret later). TRIGGER: an inference seat on the
-// fabric admits an image-input request (gunbc.serving) and a typed reading of a still exists whose
-// result names the still's sha256; its first consumer is this bundle's screen section. Until then a
-// still is evidence for a human reader of the artifact and nothing in the boot consumes its pixels.

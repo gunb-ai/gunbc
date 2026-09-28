@@ -478,6 +478,10 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
   ], "\n")
 }
 
+// `screen` is the attempt's KVM screen: the held observer's establishment, its journal of boundary
+// and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
+// gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
+// verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
 type MtCollins1BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -489,10 +493,6 @@ type MtCollins1BootDiagnosticBundle {
   inventory: InventoryReading
   console: ConsoleReading
   run: MtCollins1BootRunRecord
-  // The attempt's KVM screen: the held observer's establishment, its journal of boundary and
-  // lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
-  // gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
-  // verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
   screen: KvmObserverRecord
 }
 
