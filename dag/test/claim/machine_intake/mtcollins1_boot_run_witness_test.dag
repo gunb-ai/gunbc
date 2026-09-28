@@ -796,7 +796,7 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 
 // RELEASE SIGNALS ONLY THE PROCESS THE HOLD RECORDED, and only while it is still that process. The
 // data row is ReleaseHeld's argv, the one the teardown executes; the boot step's EXIT trap carries the same data row
-// (gunbc.ci_spec gunbc_ci_mtcollins1_boot_credential_prelude). Its executed controls are in
+// (gunbc.ci_spec gunbc_ci_mtcollins1_boot_trap_body). Its executed controls are in
 // test.claim.machine_intake.sol_hold_stdin_wet_witness.
 test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
   let script = mtcollins1_sol_hold_release_script

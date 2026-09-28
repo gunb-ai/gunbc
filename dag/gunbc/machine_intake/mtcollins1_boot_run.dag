@@ -122,9 +122,9 @@ data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
 data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
 // THE SOL NOTICE WATCHER'S TWO TERMS (gunbc.machine_intake_mtcollins1_sol_notice), inside this step's
-// budget like every other phase. PREPARATION: the step starts the watcher and does not start the boot
-// until it has published readiness; resolving its entry was measured at 340 s on a loaded host, so the
-// allowance is 900 s. FINAL DELIVERY: after the trap asks it to stop, the watcher drains what is still
+// budget like every other phase. PREPARATION: the boot waits (mtcollins1_sol_await_observer) until the
+// watcher has published readiness before any BMC contact; resolving its entry was measured at 340 s on
+// a loaded host, so the allowance is 900 s. FINAL DELIVERY: after the trap asks it to stop, the watcher drains what is still
 // owed (mtcollins1_sol_notice_final_passes one-second passes) and the trap waits this long for its
 // result before recording it as not finished.
 data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
@@ -396,7 +396,7 @@ fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
 // Where a lost observation channel is frozen the moment it is observed (mtcollins1_sol_loss_freeze).
 // Bound to the attempt with the capture, so an earlier attempt's incident is never read as this one's.
 // THIS FILE IS THE OPERATOR ROUTE'S SOURCE (operator ruling 2026-09-27: no ntfy, no new credential):
-// the boot step's prelude (gunbc.ci_spec gunbc_ci_mtcollins1_boot_credential_prelude) watches it and,
+// the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_invoke) watches it and,
 // within a second of it becoming non-empty, prints it as one Actions `::error::` annotation in the
 // live run log and appends it to the step summary -- so the notice leaves the runner while the watch
 // is still returning, before any enrichment read, teardown or diagnostic bundle. The suffix is one
@@ -1501,6 +1501,40 @@ fn mtcollins1_sol_supervised(stage: SolLossStage, pid_path: String, capture_path
 // does not power the machine off. The step's trap separately collects the watcher's exit status.
 data mtcollins1_sol_notice_file_infix: String = ".notice."
 
+// READINESS IS BOUND TO THIS STEP'S OWNED PROCESS. The step starts the watcher with a fresh token in
+// mtcollins1_sol_notice_token_env and records the child it started; the watcher writes that token to
+// capture + mtcollins1_sol_notice_ready_suffix once it is polling. The boot waits for both (below).
+data mtcollins1_sol_notice_ready_suffix: String = concat(mtcollins1_sol_notice_file_infix, "ready")
+
+data mtcollins1_sol_notice_token_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_NOTICE_TOKEN"
+
+// THE BOOT WAITS FOR ITS OBSERVER BEFORE ANY BMC CONTACT, here and not in the step's shell: the wait
+// is a bounded loop, and the step's shell grammar has none. Ready means the readiness file holds this
+// step's token AND the recorded watcher is the same live process. A watcher that has exited, been
+// replaced or cannot be observed refuses at once; one not yet ready is waited for up to
+// mtcollins1_sol_notice_ready_allowance, one second at a time, and then refused.
+fn mtcollins1_sol_await_observer(capture_path: String, token: String, remaining: Int) -> String? {
+  if token == "" {
+    return Present { value: concat("mtcollins1 boot: ", concat(mtcollins1_sol_notice_token_env as String, " is unset, so the SOL notice watcher's readiness cannot be bound to this step; controller untouched")) }
+  }
+  let ready = Filesystem.Read(path: concat(capture_path, mtcollins1_sol_notice_ready_suffix))
+  let is_ready = ready.success && trim(s: ready.content) == token
+  let recorded = Filesystem.Read(path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path)).success
+  let refusal = mtcollins1_sol_observer_refusal(capture_path: capture_path)
+  let observer_ok = match refusal { Present { value: _ } => false  _ => true }
+  if is_ready && observer_ok {
+    return none
+  }
+  if recorded && !observer_ok {
+    return Present { value: concat(match refusal { Present { value: why } => why  _ => "" }, "; controller untouched") }
+  }
+  if remaining <= 0 {
+    return Present { value: concat("mtcollins1 boot: the SOL notice watcher did not publish readiness under this step's token within ", concat(to_string(second_count(s: mtcollins1_sol_notice_ready_allowance)), " s; controller untouched")) }
+  }
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  mtcollins1_sol_await_observer(capture_path: capture_path, token: token, remaining: remaining - 1)
+}
+
 fn mtcollins1_sol_notice_watcher_path(capture_path: String) -> String {
   concat(capture_path, concat(mtcollins1_sol_notice_file_infix, "watcher"))
 }
@@ -2197,6 +2231,10 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
   }
   let sol_pid_path = actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env)
   let sol_capture_path = actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)
+  match mtcollins1_sol_await_observer(capture_path: sol_capture_path, token: actions_variable_trimmed(name: mtcollins1_sol_notice_token_env), remaining: second_count(s: mtcollins1_sol_notice_ready_allowance) as Int) {
+    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
+    _ => {}
+  }
   let run_id = match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
