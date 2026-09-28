@@ -114,3 +114,55 @@ data native_compiler_reuse_u1c_seed_growth_justification: SeedGrowthJustificatio
   current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs probe_cargo_command -> probe_build_flags(crate_dir, target_dir, probe_cargo_home) -> probe_cargo_command_bound; reached by every probe build: the required emit-compile phase, //gunbc/instruments:self-host, :v2-native-cli, :emitted-crate-workspace and gunbc test //v2/test/..."
 }
 
+
+// M1.c U1b: A BUILD RESOLVES NOTHING ITS COMMITTED LOCK DOES NOT ALREADY HOLD.
+//
+// MODIFIED, NOT ADDED (ExistingSeedItemModified, nothing netted): v1_compiler.emitted_closure_compile_host
+// ProbeCargoInvocation (the lock it ran against), probe_cargo_command_bound (`--locked` on a pinned
+// argv), probe_cargo_command, probe_cargo_invocation, run_cargo and establish_discriminating_red (take
+// the caller's lock), run_emit_compile_entry and fixture_closure_rustc_verdict (state why they are
+// unpinned), v1_compiler.cli_run.emitted_crate_workspace_host (states why it is unpinned) and
+// v1_compiler.cli_run.native_lane_runner prepare_emitted_compiler_for_entry (writes the pin, establishes
+// the binding red, prints the lock). The two committed pins under src/v1/stage0/emitted-crate-lock-pins
+// are cargo's own lock files, produced by regenerate_the_emitted_crate_lock_pins. The .dag authority is
+// gunbc.emitted_build_reproducibility emitted_build_locked_flag, which the route's admission requires
+// on the recorded argv (gunbc.witness_v2_native_route native_route_emitted_build_locked).
+data native_compiler_reuse_u1b_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "LOCKED_FLAG", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "EMITTED_CRATE_LOCK_PINS", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "EMITTED_CRATE_LOCK_PIN_SHAPES", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "ProbeLockDisposition", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_lock_disposition_summary", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "LockBlocks", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "lock_blocks", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "lock_block_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "lock_block_dependency_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "lock_root_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "manifest_dependency_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "select_lock_pin", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "render_probe_lock", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "semver_compatibility_class", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "lock_identity_join", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "pin_probe_crate_lock", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "establish_lock_binding_red", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "EMIT_COMPILE_LOCK_UNPINNED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FIXTURE_CLOSURE_LOCK_UNPINNED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "unit_test_unpinned", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "emitted_probe_manifest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "committed_pin", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "each_emitted_dependency_shape_selects_exactly_its_pin_or_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_pins_join_the_repository_lock_and_a_drift_is_named", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_rendered_lock_renames_only_the_root_and_keeps_cargos_order", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_pinned_lock_binds_cargo_on_every_native_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "regenerate_the_emitted_crate_lock_pins", field: WholeDeclaration }
+  ],
+
+  reason: "The emitted crate's manifest names its dependencies by semver range and no lock was written beside it, so cargo resolved them afresh on every build. Measured on the U0 builds of the emitted v2.compiler.compile crate: 166 registry packages, 91 of them shared with the seed, 54 of those at different versions than the seed links -- and the answer moves with the registry, an input no cross-run key can name. The native route now writes a committed pin as the crate's lock and passes --locked, under which cargo refuses rather than writing a different lock. The pin is selected by the manifest's exact dependency set (none or several refuses), refused if it disagrees with the repository lock on a package the seed also links (same version with another checksum, or another version in the same semver compatibility class), and shown to bind on every preparation: a lock missing one package must be refused by an error naming --locked, and the restored pin accepted and left byte-identical. The pins are cargo's own output, produced by a named regenerator from the emitter's own manifest and the repository lock. The other probe builds (the required emit-compile phase, fixture closures, the emitted-crate workspace) state why they stay unpinned instead of defaulting. WHY RUST: the subject is the seed's cargo spawn in the emit-compile host, which runs no interpreter. PURPOSE ADMISSION under gunbc.v1_maintenance_standing v1_seed_standing: it serves the v2 self-host program's native route; a bounded operational fix that only adds refusals (NoLockPinForDependencyDemand, LockPinAmbiguous, EmittedLockDivergesFromRepoLock, LockBindingNotDiscriminating, LockBindingUnattributed, and the admission clause emitted_build_not_locked) and admits nothing that refused before; not PublicSurfaceGrowth, not NewEscapeHatchOrAdmissionRow, not SeedFeatureCompletion. KNOWN COST, STATED: a repository lock change to a package a pin shares makes the native route refuse until the regenerator is run; the route is off the merge path (gunbc.rung_drop v2_native_route_off_the_merge_path), so that refusal surfaces when the route next runs, not at the change that caused it.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these items when the probe build is a modeled transport that reads its lock and dependency demand from a .dag authority for the emitted crate's dependency resolution, performed by a native v2 generation rather than the seed's emit-compile host. WHAT DOES NOT RETIRE THEM: dropping --locked while keeping the pins (the pin would be advice), vendoring the sources without a lock, or moving the pins under another seed path.",
+
+  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs pin_probe_crate_lock and establish_lock_binding_red, called from v1_compiler.cli_run.native_lane_runner prepare_emitted_compiler_for_entry behind gunbc test //v2/test/..., //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli; the Unpinned reasons at run_emit_compile_entry, fixture_closure_rustc_verdict and the emitted-crate workspace host"
+}

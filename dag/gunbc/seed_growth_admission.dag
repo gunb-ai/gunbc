@@ -106,7 +106,7 @@ import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_jus
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
-import gunbc.native_compiler_reuse_seed_growth { native_compiler_reuse_u2_seed_growth_justification, native_compiler_reuse_u1a_seed_growth_justification, native_compiler_reuse_u1c_seed_growth_justification }
+import gunbc.native_compiler_reuse_seed_growth { native_compiler_reuse_u2_seed_growth_justification, native_compiler_reuse_u1a_seed_growth_justification, native_compiler_reuse_u1c_seed_growth_justification, native_compiler_reuse_u1b_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition }
@@ -245,6 +245,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_compiler_reuse_u2_seed_growth_justification,
     native_compiler_reuse_u1a_seed_growth_justification,
     native_compiler_reuse_u1c_seed_growth_justification,
+    native_compiler_reuse_u1b_seed_growth_justification,
     claim_scope_fixture_seed_growth_justification,
     evaluation_store_address_census_seed_growth_justification,
     persisted_resolved_graph_format_wall_seed_growth_justification,

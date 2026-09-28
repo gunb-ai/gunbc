@@ -1,7 +1,7 @@
 module gunbc.emitted_build_reproducibility
 
 import std.types { String, List }
-import v2.std.algebra { length, list_find_first, skip }
+import v2.std.algebra { any, length, list_find_first, skip }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
@@ -88,4 +88,18 @@ fn emitted_build_rustflags_are_the_declared_composition(rustflags: String) -> Bo
 fn emitted_build_rustflags_deny_warnings(rustflags: String) -> Bool {
   rustflags == repo_self_warning_denial_rustflags()
   || emitted_build_rustflags_are_the_declared_composition(rustflags: rustflags)
+}
+
+// A BUILD RESOLVES NOTHING THE COMMITTED LOCK DOES NOT ALREADY HOLD. The emitted manifest names its
+// dependencies by semver range and no lock was written beside it, so cargo resolved them afresh on
+// every build: measured on 2026-09-28, the emitted compiler resolved 54 of the 91 packages it shares
+// with the seed to different versions than the seed links, and the answer moved with the registry --
+// an input no key names. The host writes a committed pin as the crate's lock and passes cargo's own
+// refusal flag, under which cargo stops rather than writing a different lock; the route's admission
+// requires the flag on the recorded argv. That the flag binds is established on every preparation by
+// the host (a lock missing one package must refuse, the restored lock must not), not assumed here.
+data emitted_build_locked_flag: String = "--locked"
+
+fn emitted_build_argv_locked(argv: List<String>) -> Bool {
+  any(xs: argv, predicate: fn(word) { word == emitted_build_locked_flag })
 }
