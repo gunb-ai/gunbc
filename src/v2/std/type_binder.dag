@@ -233,7 +233,7 @@ fn edge_is_cast_target(e: Edge) -> Bool {
 }
 
 // THE EDGE THAT CARRIES A PLANNED CAST (`e as T via refine`). A cast that names a declared
-// conversion plan (v2.std.conversion_plan) carries THIS edge in place of <cast-target>, pointing at a
+// conversion plan (std.conversion_plan) carries THIS edge in place of <cast-target>, pointing at a
 // labeled Conj { target: T, plan: P }, where P is an atom naming the plan. It is a different label rather
 // than a second shape under <cast-target>, so one label keeps one meaning and a raw reader cannot confuse a
 // plan-less cast with a planned one; the Transform still carries exactly one named edge

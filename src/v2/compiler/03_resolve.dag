@@ -116,7 +116,8 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed,
 }
-import v2.std.conversion_plan { PlanDuplicated, PlanFound, PlanUnknown, conversion_plan_for, conversion_plans }
+import v2.std.compilers.lexing { symbol_lexeme }
+import std.conversion_plan { PlanDuplicated, PlanFound, PlanUnknown, conversion_plan_for, conversion_plans }
 import v2.std.type_binder { cast_conversion_plan_field, edge_is_cast_conversion, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
@@ -1239,7 +1240,7 @@ fn resolve_transform_operator_child(
 
 // A PLANNED CAST's <cast-conversion> spec: its target resolves in type role exactly as <cast-target>'s
 // does, and its plan atom names a declared conversion plan -- bound against the plan roster
-// (v2.std.conversion_plan conversion_plans), never against the namespace, so a plan named `refine` does
+// (std.conversion_plan conversion_plans), never against the namespace, so a plan named `refine` does
 // not need a declaration called `refine` and an undeclared plan refuses located at the plan atom.
 fn resolve_cast_conversion(ctx: ResolveContext, spec: Node) -> ResolveNodeWalk {
   child_walk_node(n: spec, w: fold(spec.children, init: child_walk_init(), f: fn(acc, e) {
@@ -1262,7 +1263,7 @@ fn resolve_cast_conversion(ctx: ResolveContext, spec: Node) -> ResolveNodeWalk {
 fn resolve_conversion_plan_atom(plan: Node) -> Outcome<Node> {
   match plan.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      match conversion_plan_for(plans: conversion_plans, identity: id) {
+      match conversion_plan_for(plans: conversion_plans, identity: symbol_lexeme(sym: id)) {
         PlanFound { plan: _ } => outcome_accepted(value: plan)
         PlanUnknown => outcome_rejected(d: conversion_plan_diagnostic(reason: ^conversion_plan_unknown, n: plan))
         PlanDuplicated { count: _ } => outcome_rejected(d: conversion_plan_diagnostic(reason: ^conversion_plan_duplicated, n: plan))
