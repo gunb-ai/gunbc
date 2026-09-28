@@ -2349,7 +2349,7 @@ fn fleet_converge_approval_device_enrolment_code_issue_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_approval_device_enrolment_code_issue_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
