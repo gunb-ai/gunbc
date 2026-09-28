@@ -164,6 +164,10 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
 // approval_capability_signing_input, and only bytes that re-project to themselves are claims -- so
 // the reader admits exactly what issuance writes and verification recomputes, never a second
 // rendering (the duplicate-field and alternative-decoding family this section exists to close).
+// A DECLARED FRONTIER (DESIGN §3c): its consumer is the fabric store door, which rebuilds a presented
+// receipt's claims from the wire gunbc.auth.approval_store_receipt store_receipt_wire writes
+// (d0_store_operation_wall PR 4). TRIGGER: that door change lands reading receipts through this
+// parser; if it reads them another way, this is deleted with it.
 data proposed_decisions: List<ProposedDecision> = [ProposeApprove, ProposeDeny]
 
 fn parse_approval_capability_signing_input(text: String) -> ApprovalCapabilityClaims? {

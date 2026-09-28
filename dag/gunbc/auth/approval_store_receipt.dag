@@ -177,6 +177,16 @@ fn issue_store_receipt(escalation_id: NonEmptyStr, attempt: AttemptIdentity) -> 
 
 // ── THE STORE'S SIDE ──────────────────────────────────────────────────────────────────────────
 //
+// A DECLARED FRONTIER (DESIGN §3c), NOT A DANGLING HALF. approval_store_receipt_expectation,
+// verify_store_receipt and StoreReceiptVerification have no production caller in this change; their
+// consumer is the fabric store door, gunbc.fabric_storage_serve's advance arm, which admits an
+// approval-class write to a protected head only under a receipt this verifies (d0_store_operation_wall
+// PR 4). TRIGGER: that door change lands, calling verify_store_receipt from the served advance; if it
+// instead verifies some other way, these declarations are deleted with it, not kept beside it. They
+// land here, with the mint, so the witness that a minted receipt verifies is the same change that
+// mints it: issuance and verification must agree on one signing input, and splitting them across two
+// changes would leave each change's claim unable to see the other half.
+//
 // What the fabric store accepts, configured here and never read from the receipt (the
 // CapabilityExpectation rule): this issuer, this audience, the broker's authority, the suite. The
 // MAC is checked FIRST by verify_capability, before any claim is read.
