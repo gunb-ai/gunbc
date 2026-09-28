@@ -819,21 +819,18 @@ fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
-// Only the iterated body repeats. The domain is evaluated once, the bound is a measure and the
-// carrier is a binder, so none of the three is part of what the iteration folds.
-fn loop_edge_is_iterated_body(e: Edge) -> Bool {
-  match loop_edge_role(e: e) {
-    LoopIteratedBody => true
-    LoopDomainValue => false
-    LoopBoundMeasure => false
-    LoopCarrierBinder => false
-    LoopEdgeUnrecognized => false
-  }
-}
-
+// Of a Loop's edges only the iterated body repeats: the domain is evaluated once, the bound is a
+// measure and the carrier is a binder. Each consumer matches loop_edge_role itself.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
-    ComputationNode { behavior: Loop } => loop_edge_is_iterated_body(e: e)
+    ComputationNode { behavior: Loop } =>
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => true
+        LoopDomainValue => false
+        LoopBoundMeasure => false
+        LoopCarrierBinder => false
+        LoopEdgeUnrecognized => false
+      }
     _ =>
       match e.label {
         Positional => true
@@ -847,12 +844,19 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
 // the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the
 // iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to
 // use that function directly. A Loop's ^loop_domain_edge IS runtime work but is not iterated: it is
-// priced once, beside the iteration, by loop_edge_priced_once -- never multiplied into it and never
-// dropped.
+// priced once, beside the iteration, by v2.lens.cost cost_fold_step's LoopDomainValue arm -- never
+// multiplied into it and never dropped.
 
 fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
-    ComputationNode { behavior: Loop } => loop_edge_is_iterated_body(e: e)
+    ComputationNode { behavior: Loop } =>
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => true
+        LoopDomainValue => false
+        LoopBoundMeasure => false
+        LoopCarrierBinder => false
+        LoopEdgeUnrecognized => false
+      }
     TypeNode { connective: Arrow } =>
       match e.label {
         Positional => false
@@ -866,19 +870,6 @@ fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
   }
 }
 
-fn loop_edge_priced_once(parent: Node, e: Edge) -> Bool {
-  match parent.kind {
-    ComputationNode { behavior: Loop } =>
-      match loop_edge_role(e: e) {
-        LoopDomainValue => true
-        LoopIteratedBody => false
-        LoopBoundMeasure => false
-        LoopCarrierBinder => false
-        LoopEdgeUnrecognized => false
-      }
-    _ => false
-  }
-}
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
