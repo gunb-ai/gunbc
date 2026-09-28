@@ -1,7 +1,7 @@
 module gunbc.bmc_dry_realization
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.measure { second }
+import std.measure { Second, second }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
@@ -60,10 +60,11 @@ fn bmc_chassis_power_control_handler(world: BmcWorld, call: OperationCall) -> Op
   }
 }
 
-fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld) -> OperationRealization<BmcWorld> {
+fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) -> OperationRealization<BmcWorld> {
   OperationRealization {
     identity: identity,
     initial: initial,
+    epoch: epoch,
     bindings: [
       OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_chassis_status_handler },
       OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_chassis_power_control_handler },

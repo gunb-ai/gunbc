@@ -9,6 +9,7 @@ import v2.std.operation_argv { OperationRef, BoundOperationInvocation, InputText
 import std.list { first_duplicate_by_key }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 
 // A MODELED OPERATION REALIZATION: the dry arm of an operation's realization, bound per grant.
@@ -62,12 +63,19 @@ type OperationBinding<S> {
   handler: fn(S, OperationCall) -> OperationStep<S>
 }
 
+// epoch is the virtual instant the realization's clock starts at: virtual_clock_origin for a fresh
+// scenario, and for a resume the interrupted attempt's clock (WitnessInterrupted.now) plus whatever
+// absence the supervisor declares -- MODELED TIME DOES NOT ADVANCE WHILE THE WORKER IS ABSENT unless
+// the supervisor says so, because there is no clock between frames. The dispatcher applies advance at
+// the epoch before the subject runs, so every event due by then has fired.
+//
 // advance applies every scheduled event due at the given virtual instant. The interpreter calls it
 // whenever virtual time moves, so an event (a session lost, a process exiting) happens during a
 // quiet interval without any operation being issued.
 type OperationRealization<S> {
   identity: NonEmptyStr
   initial: S
+  epoch: Second
   bindings: List<OperationBinding<S>>
   advance: fn(S, Second) -> S
 }
@@ -77,6 +85,13 @@ type DispatchOutcome
   | DispatchWorkerKilled { committed: Bool }
   | DispatchHarnessFault { reason: NonEmptyStr }
   | DispatchUnbound { cause: OperationBindingRefusal }
+  | DispatchCallbackFailed { stage: CallbackStage, cause: String }
+
+// Which realization callback failed after the dispatch began: the handler itself (including one that
+// attempted an effect), or the advance after an observed step. The dispatch record keeps the cause.
+type CallbackStage
+  = HandlerFailed
+  | AdvanceFailed
 
 // ONE RECORD PER OPERATION THE SUBJECT ACTUALLY ISSUED, written by the dispatcher from the request it
 // dispatched and the binding it selected -- never by a handler. A scenario cannot author this log.
@@ -220,4 +235,15 @@ fn virtual_clock_origin() -> Second {
 
 fn virtual_clock_after(now: Second, elapsed: Second) -> Second {
   second(count: second_count(s: now) + second_count(s: elapsed))
+}
+
+// A MODELED REALIZATION IS THE DRY ARM, AND ONLY A DRY RUN MAY BE ANSWERED BY ONE. Wet and Record both
+// dispatch real effects (std.execution_mode), so a realization installed in either would silently
+// replace an admitted effect with a modeled answer; the dispatcher asks this before admitting a frame.
+fn modeled_realization_admitted_in(mode: ExecutionMode) -> Bool {
+  match mode {
+    Hermetic => true
+    Wet => false
+    Record => false
+  }
 }

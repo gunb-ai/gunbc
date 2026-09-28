@@ -96,7 +96,7 @@ fn grants_all_write_isolated(grants: List<Grant>) -> Bool {
 }
 
 fn grants_any_read_intersects_live_tree(grants: List<Grant>) -> Bool {
-  any(grants, g => verb_eq(a: g.verb, b: Read) && read_grant_intersects_live_tree(g: g))
+  !all(grants, g => !(verb_eq(a: g.verb, b: Read) && read_grant_intersects_live_tree(g: g)))
 }
 
 fn envelope_replayable(env: Envelope) -> Bool {

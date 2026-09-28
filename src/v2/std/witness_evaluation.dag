@@ -5,6 +5,7 @@ import std.effect_grant { Envelope }
 import extdeps.transports.rest { RestExchangeFixture }
 import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, AmbiguousIntent }
 import v2.std.operation_realization { OperationRealization, DispatchRecord }
+import std.measure { Second }
 
 // A witness evaluation is an ordinary scoped evaluation whose effects are supplied by an existing
 // Envelope. Envelope already owns its Frame, so this carrier does not duplicate a separately
@@ -29,7 +30,7 @@ type WitnessEvaluationFrame<S> {
 type WitnessEvaluation<A, S>
   = WitnessReturned { value: A, route: List<DispatchRecord>, state: S? }
   | WitnessRefused { diagnostic: Diagnostic, route: List<DispatchRecord>, state: S? }
-  | WitnessInterrupted { at: DispatchRecord, route: List<DispatchRecord>, state: S }
+  | WitnessInterrupted { at: DispatchRecord, route: List<DispatchRecord>, state: S, now: Second }
 
 // The v1 interpreter realizes this generic boundary by installing the frame for the dynamic extent
 // of subject(), returning its value or converting the interpreter refusal to a located Diagnostic,
@@ -42,7 +43,7 @@ type WitnessEvaluation<A, S>
 // `v1-interpreter-quarantine` then `v1-interpreter-delete`. WHAT IS DEFERRED, exactly: the
 // dynamic-extent install/remove of a frame, and -- since gunbc#12486 -- the dispatch of a frame's modeled
 // operation realization (admission, exclusive consultation, the dispatch log and the virtual clock
-// cursor; gunbc.v1_maintenance_standing v1_maintenance_modeled_operation_realization_admission_note),
+// cursor; gunbc.modeled_operation_realization_seed_growth modeled_operation_realization_seed_growth_justification),
 // and nothing else - the policy this boundary exists to
 // serve is modeled here and in extdeps.transports.rest, and the interpreter calls
 // rest_exchange_resolution back into .dag rather than deciding replay itself. DELETION CONDITION,
