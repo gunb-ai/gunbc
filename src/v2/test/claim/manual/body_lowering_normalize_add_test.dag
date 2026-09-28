@@ -33,14 +33,14 @@ import v2.std.optional {
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.logic { Bool }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node {
   Arrow,
   ComputationNode,
   Node,
   Transform,
   TypeNode,
-  well_formed
+  well_formed,
+  symbol_lexeme,
 }
 import v2.std.node_query { find_arrow_body_child }
 

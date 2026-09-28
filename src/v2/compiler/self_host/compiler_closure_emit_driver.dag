@@ -22,9 +22,8 @@ import v2.compiler.source_authority_read {
   source_root_ingest_build_from_source_refs
 }
 import v2.std.algebra { length }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.diagnostic {
   CorrectionNotModeled,
   Diagnostic,

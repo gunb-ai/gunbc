@@ -23,10 +23,9 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, declaration_reference_marker, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -315,19 +314,8 @@ fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOcc
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: occurrence_id)
 }
 
-// A DECLARATION REFERENCE IS MARKED, NOT RECOGNISED BY SHAPE. The spine above is a cons list, and a
-// cons list is not only a path: an integer literal lowers to the same list of digit atoms
-// (v2.std.integer, FreeMonoid<DecimalDigit>), so a reader keyed on the spine shape read the literal
-// 606060 as the "path" integer_tag_digit_6.integer_tag_digit_0... (gunbc.recurring_failure_mode
-// declaration_reference_recognised_by_a_shape_a_literal_also_has). The resolver therefore mints the
-// reference as a one-edge Conj whose only label is this marker, over the spine. The marker's lexeme
-// is not an identifier in the dag grammar, so no authored record field, binder or name can carry it:
-// a record literal lowers to a Conj whose labels are the author's field identifiers, and this label
-// is none of them. Only a producer that calls declaration_reference_node writes it.
-fn declaration_reference_marker() -> Symbol {
-  symbol_intern_lexeme(lexeme: "<declaration-reference>")
-}
-
+// The marker is v2.std.node declaration_reference_marker, beside the node kinds it labels, so
+// v2.std.node well_formed can hold an arrow body to it (gunbc#12377).
 // THE ONE PRODUCER OF THE MARKED CARRIER (consumed by v2.compiler.resolve resolved_reference_node).
 // The occurrence stays on the marker node alone, which is the node that stands where the reference
 // stood; the spine under it is synthetic, so one source occurrence is carried by exactly one node.

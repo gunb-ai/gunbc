@@ -17,7 +17,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Empty, list_append }
 import v2.std.algebra { fold_list }
-import v2.std.compilers.lexing { Token, symbol_intern_lexeme, token_stream_all }
+import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
@@ -43,6 +43,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  symbol_intern_lexeme,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

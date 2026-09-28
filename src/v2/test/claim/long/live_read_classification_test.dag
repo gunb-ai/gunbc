@@ -33,8 +33,7 @@ import v2.std.live_read {
   DeclFactsReflectionCarrier,
   live_read_carrier_homes_v0
 }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.fn_index {
   FnArrowDecl,
   fn_arrow_decl_facts_live,

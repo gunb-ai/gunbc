@@ -20,10 +20,10 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  symbol_lexeme,
 }
 import v2.std.node_query { edge_field_type_name }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.logic { Bool }
 import v2.std.optional {
   Absent,

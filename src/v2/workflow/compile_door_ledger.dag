@@ -35,12 +35,11 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 
 // The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5
 // factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in
@@ -210,7 +209,7 @@ type AffectedLedgerResult
   | AffectedLedgered { rows: List<DoorLedgerRow> }
 
 fn dag_module_paths(paths: List<String>) -> List<String> {
-  filter(xs: paths, predicate: fn(p) { ends_with(s: p, suffix: ".dag") })
+  filter(xs: paths, predicate: fn(p) { p.ends_with(suffix: ".dag") })
 }
 
 fn affected_ledger_from_diff(

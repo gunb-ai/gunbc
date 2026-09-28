@@ -1,12 +1,11 @@
 module v2.std.anonymous_binder
 
 import std.types { List }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Named, Positional, Symbol }
+import v2.std.node { Edge, Named, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { pattern_wildcard_name }
 
 // AN ANONYMOUS PARAMETER SLOT IS A MINTED BINDER, NOT A FIELD NAMED `_`. A function's domain is a

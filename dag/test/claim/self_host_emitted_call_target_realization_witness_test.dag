@@ -337,10 +337,10 @@ test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
 // been green throughout the defect; this asserts the call reaches the realization.
 test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_symbol_lexeme_probe.rs",
     ["v1_rt::symbol_lexeme("],
-    ["crate::v2_std_compilers_lexing::symbol_lexeme("]
+    ["crate::v2_std_node::symbol_lexeme("]
   )
 }
 
@@ -418,7 +418,7 @@ test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_
 // bridge, and ordinary emission writes the delegation by itself.
 test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_realized_seam_probe.rs",
     ["v1_rt::symbol_lexeme("],
     ["has no realization for this target"]
