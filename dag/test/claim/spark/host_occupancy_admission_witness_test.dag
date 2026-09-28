@@ -189,3 +189,51 @@ test fn an_unmodeled_unit_state_refuses_as_unread() -> Bool {
     _ => false
   }
 }
+
+// ── systemctl is-active EXIT 4: NO SUCH UNIT (the srv8 V4.1 image build, fleet-converge run 36323669511) ─
+// srv8 carries the pair worker unit but not the head unit (that is srv6's), and the retired units may be
+// gone everywhere. systemctl(1) v255 answers is-active for a unit that is not loaded with exit 4, "no
+// such unit"; every unit not in `loaded` answers exactly that here, the way srv8 did.
+fn not_loaded_run(h: FakeHost, loaded: List<String>) -> fn(List<String>) -> ArgvRun {
+  let otherwise = fake_run(h: h)
+  fn(argv) {
+    let line = join(argv, " ")
+    if starts_with(s: line, prefix: "systemctl is-active ") && !any(loaded, u => u == substring(s: line, start: 20, end: length(line))) {
+      ArgvRan { exit_code: 4, stdout: "inactive\n", stderr: "[sudo] password for briansrls:" }
+    } else { otherwise(argv) }
+  }
+}
+
+// GREEN: every unit but the worker is absent, and the worker is inactive -- nothing occupies, so it admits.
+test fn a_unit_that_does_not_exist_is_not_an_occupant_and_admits() -> Bool {
+  match spark_host_occupancy_admission(run: not_loaded_run(h: vacated(), loaded: [spark_pair_worker_unit_name as String]), need: need_16_gib) {
+    HostUnoccupied { available: a } => kibibyte_count(k: a) == 100000000
+    _ => false
+  }
+}
+
+// RED: the same absent head unit beside an ACTIVE worker still refuses on the worker -- exit 4 on one
+// unit cannot vacate another.
+test fn an_absent_unit_beside_an_active_worker_still_refuses() -> Bool {
+  match spark_host_occupancy_admission(run: not_loaded_run(h: srv8_serving(), loaded: [spark_pair_worker_unit_name as String]), need: need_16_gib) {
+    HostOccupiedBy { occupant: ServingUnitActive { unit: u, state: _ }, others: _, gpu_used: _ } => (u as String) == (spark_pair_worker_unit_name as String)
+    _ => false
+  }
+}
+
+// RED: an exit code systemctl(1) does not assign to is-active -- here 1, the shape of a sudo that did
+// not authenticate -- is a failed read and refuses; only 4 is "no such unit".
+fn unassigned_exit_run() -> fn(List<String>) -> ArgvRun {
+  let otherwise = fake_run(h: vacated())
+  fn(argv) {
+    if starts_with(s: join(argv, " "), prefix: "systemctl is-active ") { ArgvRan { exit_code: 1, stdout: "", stderr: "sudo: 1 incorrect password attempt" } }
+    else { otherwise(argv) }
+  }
+}
+
+test fn an_unassigned_is_active_exit_refuses_as_unread() -> Bool {
+  match spark_host_occupancy_admission(run: unassigned_exit_run(), need: need_16_gib) {
+    HostOccupancyNotRead { cause: c } => contains(c, "exited 1") && contains(c, "incorrect password")
+    _ => false
+  }
+}
