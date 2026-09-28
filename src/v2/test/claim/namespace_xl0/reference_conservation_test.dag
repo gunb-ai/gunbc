@@ -263,19 +263,16 @@ test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
 
 // ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
 
-// `rc_rep` is spelled three times in the declaration `rc_repeat`: as its parameter binder (rebuilt
-// into an edge label, so LocusErased against the pool's one label), as the named argument's LABEL at
-// the call (dropped: a call lowers its arguments positionally -- the rostered NamedArgumentLabel
-// shape), and as the argument's VALUE (its occurrence survives). The pool is declaration-scoped and
-// holds one copy, which the binder consumes, so exactly ONE DroppedReference remains -- neither zero
-// (a pool that failed to consume) nor two (a pool that was never read). `rc_callee`'s own `rc_rep`
-// binder and body use sit in a different declaration and cannot feed this pool.
-// RE-PINNED after gunbc#12221: the previous fixture dropped its repeated copy as the second of two
-// block statements (`{ rc_rep \n rc_rep }`), and #12221 made a statement followed by another refuse
-// located, so it no longer dropped one copy (red on origin/main 53828ae4b2). The multiset property is
-// the subject, not the statement shape, so the fixture now drops through the one shape still
-// rostered as a known drop.
-data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_rep: Bool) -> Bool { rc_rep }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_callee(rc_rep: rc_rep) }\n"
+// `rc_rep` is spelled four times in the declaration `rc_repeat`: as its parameter binder (rebuilt
+// into an edge label, so LocusErased against the pool's one label), as the let's binder (dropped: the
+// rostered StatementLetBinder shape), and as the let's value and the body's use (both survive). The pool is declaration-scoped and holds one copy, which the binder consumes,
+// so exactly ONE DroppedReference remains -- neither zero (a pool that failed to consume) nor two (a
+// pool that was never read).
+// RE-PINNED twice. After gunbc#12221 the fixture's second block statement no longer dropped; it then
+// dropped through the named-argument label, and MQ-1 (gunbc#12382) CONSERVED that label, retiring
+// KnownDropShape NamedArgumentLabel. The multiset property is the subject, not the drop shape, so the
+// fixture drops through a shape still rostered as a known drop.
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nfn rc_repeat(rc_rep: Int) -> Int {\n  let rc_rep = rc_rep\n  rc_rep\n}\n"
 
 fn repeated_spelling_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)
