@@ -27,6 +27,7 @@ import v2.compiler.inferred_tree {
 import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
+  DagCanonicalSymbolLiteral,
   DagCanonicalLiteral,
   dag_binding_denotation,
   dag_canonical_literal_from_node,
@@ -965,6 +966,7 @@ fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
   match literal {
     DagCanonicalBoolLiteral { value: _ } => ^dag_binding_type_bool
     DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
+    DagCanonicalSymbolLiteral { symbol: _ } => ^symbol_node_symbol
   }
 }
 
@@ -1200,6 +1202,8 @@ fn infer_match_bool_arm_body_type(
       }
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+    Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
     Rejected { diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
   }
@@ -1394,6 +1398,8 @@ fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern
     Accepted { value: DagCanonicalBoolLiteral { value: false }, diagnostics: _ } =>
       InferBoolLiteralPatternFalse
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
+      InferBoolLiteralPatternOther
+    Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
     Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
   }
@@ -2978,7 +2984,9 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
 
 // An integer literal's modeled type derives from its canonical representation, including its sole
 // named magnitude subtree. Its derivation discharges only that edge's local type frontier;
-// propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean
+// propagating it past the literal would report GroundingNotDerived after Int was derived. A symbol
+// literal's sole named name payload is its value, not a reference, so it is discharged the same way
+// once the literal is typed as Symbol. Boolean
 // literals are canonical only with no children, so no boolean payload can be discharged. Malformed
 // literals remain GroundingNotDerived and retain every child diagnostic.
 
@@ -2987,6 +2995,11 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       match edge.label {
         Named { name: field } => field == ^integer_literal_magnitude_field
+        Positional => false
+      }
+    Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
+      match edge.label {
+        Named { name: field } => field == ^symbol_literal_name_field
         Positional => false
       }
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
