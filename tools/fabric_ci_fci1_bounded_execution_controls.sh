@@ -2,10 +2,12 @@
 set -euo pipefail
 
 # FCI-1 bounded-driver one-axis controls. This starts no Work command and touches no reservation.
-# SCAFFOLD - dissolve-on: bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2)
-# realizes this runner through orchestration emit or typed host_effect_apply, without a
-# medium-as-string concat scaffold. That capability -- .dag-to-bash emission for a foreign
-# executor -- is what replaces a hand-shell carrier; modeled lifecycle actuation alone would
+# SCAFFOLD - dissolve-on: this runner is emitted from v2.extdeps.languages.bash_build nodes by
+# v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (set -euo pipefail, trap, export
+# and every argv here are ordinary commands on it), so the migration is unauthored, not blocked --
+# or it becomes typed host_effect_apply.
+# That capability -- .dag-to-bash emission for a foreign executor -- is what replaces a hand-shell
+# carrier; modeled lifecycle actuation alone would
 # sequence the gate and still leave this transport hand-authored.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || {
