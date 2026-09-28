@@ -1862,6 +1862,66 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_session_is_established_only_by_its_banner_not_by_a_live_pid" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_session_is_established_only_by_its_banner_not_by_a_live_pid",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_failed_annotation_write_is_retried_not_marked_delivered" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_failed_annotation_write_is_retried_not_marked_delivered",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_failed_summary_write_is_retried_not_marked_delivered" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_failed_summary_write_is_retried_not_marked_delivered",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_interrupted_delivery_is_redelivered_not_dropped" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_interrupted_delivery_is_redelivered_not_dropped",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_partial_exit_record_is_not_published" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_partial_exit_record_is_not_published",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_watcher_publishes_a_collector_exit_without_the_boot_watch" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_watcher_publishes_a_collector_exit_without_the_boot_watch",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unreadable_summary_is_refused_not_overwritten" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_unreadable_summary_is_refused_not_overwritten",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_later_collector_exit_is_not_suppressed_by_an_earlier_one" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_later_collector_exit_is_not_suppressed_by_an_earlier_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_adopted_collector_needs_a_receipt_naming_its_instance" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_adopted_collector_needs_a_receipt_naming_its_instance",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "establishment_waits_for_publication_and_refuses_an_exit_before_the_banner" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "establishment_waits_for_publication_and_refuses_an_exit_before_the_banner",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict",

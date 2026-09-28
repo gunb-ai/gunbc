@@ -1511,7 +1511,7 @@ jobs:
           SOL_PID_FILE="$RUNNER_TEMP/mtcollins1-sol.pid"
           SOL_OUT="$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture"
           SOL_RELEASE='f="$1"; owned() { st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=${st##*) }; set -f; set -- $st; [ "$1" != Z ] && [ "${20}" = "$s" ]; }; [ -f "$f" ] || exit 0; read -r p s < "$f"; [ -n "$p" ] && [ -n "$s" ] || exit 0; owned || exit 0; kill "$p"; for i in 1 2 3 4 5 6 7 8 9 10; do owned || exit 0; sleep 0.2; done; owned && kill -9 "$p"; for i in 1 2 3 4 5; do owned || exit 0; sleep 0.2; done; exit 1'
-          trap 'kill "${SOL_LOSS_WATCH:-}" 2>/dev/null || true; if type sol_loss_notice >/dev/null 2>&1; then sol_loss_notice || true; fi; bash -c "$SOL_RELEASE" sol-release "$SOL_PID_FILE" || echo "::error::mtcollins1 SOL collector survived KILL at step exit"; for kf in "$GITHUB_WORKSPACE"/artifacts/mtcollins1-boot-kvm-*/observer.pid; do [ -f "$kf" ] || continue; bash -c "$SOL_RELEASE" kvm-release "$kf" || echo "::error::mtcollins1 KVM observer survived KILL at step exit"; done; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"' EXIT
+          trap 'if [ -n "${SOL_WORKFLOW:-}" ]; then echo "gunbc-workflow: collector release requested by the step exit trap at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SOL_WORKFLOW" || true; fi; bash -c "$SOL_RELEASE" sol-release "$SOL_PID_FILE" || echo "::error::mtcollins1 SOL collector survived KILL at step exit"; for kf in "$GITHUB_WORKSPACE"/artifacts/mtcollins1-boot-kvm-*/observer.pid; do [ -f "$kf" ] || continue; bash -c "$SOL_RELEASE" kvm-release "$kf" || echo "::error::mtcollins1 KVM observer survived KILL at step exit"; done; if [ -n "${SOL_NOTICE_WATCH:-}" ]; then : > "$SOL_OUT.notice.stop" || true; for i in $(seq 1 40); do kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null || break; sleep 0.2; done; if kill "$SOL_NOTICE_WATCH" 2>/dev/null; then echo "::error::mtcollins1 SOL notice watcher had not finished 8 s after the stop request; see $SOL_DELIVERY"; fi; fi; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
           curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$DEST_FILE"
@@ -1520,11 +1520,10 @@ jobs:
           : > "$SOL_OUT"
           export GUNBC_MTCOLLINS1_SOL_CAPTURE="$SOL_OUT"
           export GUNBC_MTCOLLINS1_SOL_PID_FILE="$SOL_PID_FILE"
-          SOL_LOSS="$SOL_OUT.loss"
-          : > "$SOL_LOSS"
-          SOL_LOSS_NOTED="$RUNNER_TEMP/mtcollins1-sol-loss.noted"; rm -f "$SOL_LOSS_NOTED"
-          sol_loss_notice() { [ -s "$SOL_LOSS" ] && [ ! -e "$SOL_LOSS_NOTED" ] || return 1; : > "$SOL_LOSS_NOTED"; m=$(head -c 4000 "$SOL_LOSS" | tr -d '\r\n'); m=${m//\%/%25}; printf '::error title=mtcollins1 SOL observation lost::%s\n' "$m"; { printf '### mtcollins1 SOL observation lost\n\n'; cat "$SOL_LOSS"; } >> "$GITHUB_STEP_SUMMARY"; }
-          ( while :; do sol_loss_notice && exit 0; sleep 1; done ) & SOL_LOSS_WATCH=$!
+          SOL_LOSS="$SOL_OUT.loss"; SOL_CLIENT="$SOL_OUT.client"; SOL_WORKFLOW="$SOL_OUT.workflow"; SOL_DELIVERY="$SOL_OUT.delivery"
+          : > "$SOL_LOSS"; : > "$SOL_CLIENT"; : > "$SOL_WORKFLOW"; : > "$SOL_DELIVERY"; rm -f "$SOL_OUT.notice."*
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_sol_notice.dag --function mtcollins1_sol_notice_wet & SOL_NOTICE_WATCH=$!
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_wet
         env:

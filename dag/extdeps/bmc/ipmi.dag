@@ -124,6 +124,12 @@ type IpmitoolSolActivateRefusal
   | SolPayloadActivationError { detail: String }
   | SolPayloadActivationUnanswered
 
+// THE SESSION IS OPERATIONAL, AS ipmitool 1.8.19 SAYS IT: ipmi_sol_activate prints this banner on
+// STDOUT once the Activate Payload exchange (and any port handoff) has succeeded, immediately before
+// ipmi_sol_red_pill starts receiving -- so it is the first thing the session writes to stdout, ahead
+// of any host byte. It is printf-buffered; a consumer that needs it promptly must line-buffer stdout.
+data ipmitool_sol_operational_banner: String = "[SOL Session operational."
+
 fn ipmitool_sol_activate_line(output: String, pattern: String) -> String {
   let matching: List<String> = filter(split(s: output, delimiter: "\n"), l => string_contains(s: l, pattern: pattern))
   match matching.first() {

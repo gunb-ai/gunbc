@@ -290,33 +290,36 @@ type KvmGapFold {
   gaps: List<KvmStillGap>
 }
 
+fn kvm_gap_mark(e: KvmJournalEvent) -> List<KvmInstant> {
+  match e {
+    KvmJournalEstablished { at: a, host: _, session: _, attempt: _ } => [a]
+    KvmJournalStill { at: a, seq: _, reason: _, file: _ } => [a]
+    KvmJournalStopRequested { at: a, by: _ } => [a]
+    _ => []
+  }
+}
+
+fn kvm_gap_step(acc: KvmGapFold, at: KvmInstant, bound_ms: Int) -> KvmGapFold {
+  match acc.last {
+    Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+    Present { value: prev } =>
+      match checked_int_to_nat(n: (millisecond_count(m: at.since_epoch) as Int) - (millisecond_count(m: prev.since_epoch) as Int)) {
+        Present { value: d } =>
+          if (d as Int) > bound_ms {
+            KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmStillGap { from: prev, to: at, length: millisecond(count: d) }]) }
+          } else {
+            KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+          }
+        Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+      }
+  }
+}
+
 fn kvm_still_gaps(events: List<KvmJournalEvent>, cadence: Second) -> List<KvmStillGap> {
   let bound_ms = 2 * (second_count(s: cadence) as Int) * 1000
-  let marks = filter(map(events, e => match e {
-    KvmJournalEstablished { at: a, host: _, session: _, attempt: _ } => Present { value: a }
-    KvmJournalStill { at: a, seq: _, reason: _, file: _ } => Present { value: a }
-    KvmJournalStopRequested { at: a, by: _ } => Present { value: a }
-    _ => none
-  }), m => match m { Present { value: _ } => true  Absent => false })
+  let marks: List<KvmInstant> = fold(events, [], (acc, e) => acc.concat(kvm_gap_mark(e: e)))
   let start: KvmGapFold = KvmGapFold { last: none, gaps: [] }
-  let folded = fold(marks, start, (acc, m) =>
-    match m {
-      Absent => acc
-      Present { value: at } =>
-        match acc.last {
-          Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
-          Present { value: prev } =>
-            match checked_int_to_nat(n: (millisecond_count(m: at.since_epoch) as Int) - (millisecond_count(m: prev.since_epoch) as Int)) {
-              Present { value: d } =>
-                if (d as Int) > bound_ms {
-                  KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmStillGap { from: prev, to: at, length: millisecond(count: d) }]) }
-                } else {
-                  KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
-                }
-              Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
-            }
-        }
-    })
+  let folded: KvmGapFold = fold(marks, start, (acc, m) => kvm_gap_step(acc: acc, at: m, bound_ms: bound_ms))
   folded.gaps
 }
 

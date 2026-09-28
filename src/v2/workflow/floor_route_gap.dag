@@ -1718,8 +1718,28 @@ fn floor_route_gap_expectation_chunk_26() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_session_is_established_only_by_its_banner_not_by_a_live_pid", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_failed_annotation_write_is_retried_not_marked_delivered", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_failed_summary_write_is_retried_not_marked_delivered", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.an_interrupted_delivery_is_redelivered_not_dropped", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_partial_exit_record_is_not_published", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.the_watcher_publishes_a_collector_exit_without_the_boot_watch", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.an_unreadable_summary_is_refused_not_overwritten", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_later_collector_exit_is_not_suppressed_by_an_earlier_one", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.an_adopted_collector_needs_a_receipt_naming_its_instance", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.establishment_waits_for_publication_and_refuses_an_exit_before_the_banner", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } }
+    tail: Empty {} } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
