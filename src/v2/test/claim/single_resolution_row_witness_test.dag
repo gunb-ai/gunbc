@@ -62,18 +62,28 @@ test fn one_resolution_refuses_where_selection_refused() -> Bool {
 }
 
 // An exhausted budget refuses on the direct route exactly as it does on the reselecting route: the
-// same located reason, never a spelling rendered past the bound.
-test fn derived_row_refuses_an_exhausted_budget_as_the_reselecting_serializer_does() -> Bool {
+// same located reason, never a spelling rendered past the bound. Zero and a negative budget both
+// refuse; the positive control is serializing_the_derived_row_gives_the_reselecting_serializers_bytes
+// (4096 renders non-empty bytes).
+fn exhausted_budget_refuses_on_both_routes(remaining: Int) -> Bool {
   let row = one_resolution_row()
   let target = verilog_target_model_with_single_row(row: row)
-  match target_serialize_derived_row_bounded(remaining: 0, target: target, row: row) {
+  match target_serialize_derived_row_bounded(remaining: remaining, target: target, row: row) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: direct } =>
-      match target_serialize_relation_row_from_model_bounded(0, target, verilog_interlock_emitted()) {
+      match target_serialize_relation_row_from_model_bounded(remaining, target, verilog_interlock_emitted()) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: reselected } =>
           direct.head.reason == ^translate_serialize_recursion_limit_exhausted
             && reselected.head.reason == direct.head.reason
       }
   }
+}
+
+test fn derived_row_refuses_a_zero_budget_as_the_reselecting_serializer_does() -> Bool {
+  exhausted_budget_refuses_on_both_routes(remaining: 0)
+}
+
+test fn derived_row_refuses_a_negative_budget_as_the_reselecting_serializer_does() -> Bool {
+  exhausted_budget_refuses_on_both_routes(remaining: 0 - 1)
 }
