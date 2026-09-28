@@ -51,7 +51,7 @@ fn generated_artifact_producer_coverage_is_refused(c: GeneratedArtifactProducerC
   }
 }
 
-// THE REFUSAL SET over a supplied row population. The registry fold below hands it the real rows; a
+// THE REFUSAL SET over a supplied row population. generated_artifact_producer_refusals below hands it the real rows (gunbc.generated_artifact_registry generated_artifact_producer_rows); a
 // witness hands it a planted row whose producer names no declaration, which is the only way an
 // uncovered artifact can be authored while GeneratedArtifact stays closed and every rostered
 // producer resolves.
