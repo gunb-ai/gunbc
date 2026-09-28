@@ -124,10 +124,12 @@ fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool
       DirectoryDependent { who: service, needs: if writes { [Read, Write, Execute] } else { [Execute] } },
     ],
     ownership: Ensured,
-    // The ensure runs as the CI principal (the deploy's applying principal), which can repair only
-    // the entries it owns: the ones it created in process before the door cutover. Every later
-    // entry is the service's own, published at the derived mode by the store.
-    entries: if writes { EntriesReadableByDependents { repaired_by: fleet_posix_ci_runner_user } } else { EntriesUnmanaged },
+    // THE ENTRIES ARE NOT REPAIRED BY THE ENSURE ANY MORE: the service is the only writer, and it
+    // publishes every entry at the declared mode itself (fabric_storage_placed_file_root). Entries the
+    // CI principal wrote in process before the door cutover are ghrunner's and were repaired to
+    // other-read by the ensure this replaces; the service reads them through that bit, and a read
+    // that fails refuses loudly at the store rather than being papered over here.
+    entries: EntriesUnmanaged,
   }
 }
 

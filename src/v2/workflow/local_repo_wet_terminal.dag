@@ -1292,6 +1292,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_from_an_unrostered_local_account_is_refused_even_with_a_rostered_login_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_from_an_unrostered_local_account_is_refused_even_with_a_rostered_login_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_on_an_unattested_connection_is_refused_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_on_an_unattested_connection_is_refused_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_rostered_local_account_puts_and_advances_through_the_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_rostered_local_account_puts_and_advances_through_the_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution" },
       entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution",
