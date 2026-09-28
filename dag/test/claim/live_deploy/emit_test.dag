@@ -115,6 +115,8 @@ import gunbc.live_deploy.emit {
   ensure_managed_directory_command,
   approval_broker_tree_digest_substitution,
   approval_broker_tree_receipt_command,
+  approval_broker_tree_copy_command,
+  approval_broker_binary_install_command,
   managed_directory_entry_repair_commands,
   approval_broker_tree_receipt_path_for,
   approval_broker_release_dir,
@@ -1507,19 +1509,33 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 // THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
 // apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
 // fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
+//
+// THE ONE CLAIM THAT RENDERS THE REAL SCRIPT, AND SO THE INHABITANCE CLAIM FOR THE REST. The claims
+// below read the binary install, tree copy, receipt and unit off their producers with supplied
+// inputs; this one asserts the ROUTE -- that the script deployment_spec_srv1 renders actually carries
+// the binary install and the digest substitution those producers emit -- so deleting either from the
+// install pipeline reds here even though the per-field claims stay green (DESIGN §3 witness rule).
 test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
   let script = witness_approval_broker_dark_script_text
+  let revision = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
     && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
     && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
+    && string_contains(s: script, pattern: approval_broker_binary_install_command(release_dir: approval_broker_release_dir(root: srv1_gunbc_approval_broker_root as String, revision: revision)))
+    && string_contains(s: script, pattern: approval_broker_tree_digest_substitution(base_root: srv1_gunbc_approval_broker_root as String, revision: revision))
 }
 
 // IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
 // dark process; a unit whose ExecStart named no revision, or a different one, would make every
 // later reading a measurement of a build nobody deployed.
+// Read off the unit the install writes (live_deploy_approval_broker_unit_file), the one producer of
+// ExecStart, rather than searched for in the rendered script (DESIGN §3 witness rule).
 test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
   string_contains(
-    s: witness_approval_broker_dark_script_text,
+    s: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
+      spec: deployment_spec_srv1(),
+      revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    )),
     pattern: join(["--release-revision ", deploy_witness_release_revision as String], ""),
   )
 }
@@ -1641,15 +1657,21 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
 // AND THE DARK INSTALL PUTS A TREE THERE, because a unit pointed at an EMPTY directory
 // restart-loops exactly as one pointed at the wrong directory does. Asserting the unit's path
 // alone would not have caught the stage-A failure.
+// Read off the copy and receipt commands' producers with the release directory supplied; that the
+// real install carries them is asserted once, by the_dark_install_never_names_the_roadmap_unit.
 test fn the_dark_install_populates_the_broker_tree() -> Bool {
-  let script = witness_approval_broker_dark_script_text
   let release_dir = approval_broker_release_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: script, pattern: release_dir)
-    && string_contains(s: script, pattern: "rsync -a --delete")
-    && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
+  let copy = approval_broker_tree_copy_command(src_sub: "dag", root: release_dir)
+  let receipt = approval_broker_tree_receipt_command(
+    base_root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  )
+  string_contains(s: copy, pattern: join([release_dir, "/dag/"], ""))
+    && string_contains(s: copy, pattern: "rsync -a --delete")
+    && string_contains(s: receipt, pattern: approval_broker_tree_receipt_path_for(
       root: srv1_gunbc_approval_broker_root as String,
       revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     ))
@@ -1681,7 +1703,10 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
 // files on a host, and the stage-A readback is where it is established, by the process answering
 // /livez at all.
 test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
-  let script = witness_approval_broker_dark_script_text
+  let install = approval_broker_binary_install_command(release_dir: approval_broker_release_dir(
+    root: srv1_gunbc_approval_broker_root as String,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
   let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
@@ -1690,7 +1715,7 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: script, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
+  string_contains(s: install, pattern: join(["install -m 0755 \"$PWD\"/target/release/gunbc ", binary], ""))
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
     && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
