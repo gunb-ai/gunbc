@@ -4,6 +4,7 @@ import gunbc.roadmap.roadmap_task_routes { task_http_get_over, task_http_revise_
 import gunbc.roadmap.roadmap_event_carrier_instance { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_transport { roadmap_approval_transport_request }
 import gunbc.auth.request_authentication { DeploymentAccessPolicy }
 import gunbc.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
 import gunbc.roadmap_issue_routes { serve_issue_detail_response_over, serve_issue_assignment_context_over, serve_issue_assign_response_over, serve_issue_comment_response_over }
@@ -15,7 +16,7 @@ import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAb
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, auth_session_response, roadmap_serve_request_security }
 
 
-import extdeps.tailscale.identity { tailnet_identity_of, TailnetIdentity, TailnetIdentityAbsent }
+import extdeps.tailscale.identity { tailnet_identity_of }
 import std.types { String, Int, Bool, List, CommitSha, HttpStatus, NonEmptyStr }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
@@ -30,7 +31,7 @@ import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
-  ServeHttpRequest, RequestSecurityContext, AccessPathTailnetProxy,
+  ServeHttpRequest,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
   ServedRoute, StaticRoute, DynamicRoute,
@@ -787,21 +788,6 @@ fn roadmap_serve_invoke_over(
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
     ApprovalBrokerCutoverHandler { route: r } =>
       approval_broker_invoke(handler: r, params: params, request: roadmap_approval_transport_request(request: request), process: RoadmapProcess)
-  }
-}
-
-// The mounted legacy broker consumes transport evidence under its own capability/trust gates.
-// A Google session is never converted to that evidence; non-tailnet paths carry absence.
-fn roadmap_approval_transport_request(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpRequest<TailnetIdentity> {
-  ServeHttpRequest {
-    method: request.method, path: request.path, body: request.body,
-    security: RequestSecurityContext {
-      access_path: request.security.access_path,
-      authentication: match request.security.access_path {
-        AccessPathTailnetProxy { transport_observation: observed, route_readback: _ } => observed
-        _ => TailnetIdentityAbsent
-      },
-    },
   }
 }
 

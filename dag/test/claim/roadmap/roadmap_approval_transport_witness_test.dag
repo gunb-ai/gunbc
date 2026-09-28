@@ -5,7 +5,7 @@ import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest, RequestSecurityContext, AccessPathLocalDev, AccessPathTailnetProxy, TailnetRouteReadbackUnobserved }
 import extdeps.tailscale.identity { TailnetIdentityAbsent, TailnetUser }
 import gunbc.auth.request_authentication { AuthAbsent }
-import gunbc.roadmap_serve { roadmap_approval_transport_request }
+import gunbc.auth.approval_transport { roadmap_approval_transport_request }
 
 test fn non_tailnet_request_never_gains_a_broker_identity() -> Bool {
   let request = ServeHttpRequest {

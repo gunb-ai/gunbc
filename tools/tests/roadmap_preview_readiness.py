@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Qualify the full preview entry without sending requests or installing a service.
 
-Build the branch's binary first. Run this script inside a 6 GiB/no-swap scope.
+Build the branch's binary first. Run this script inside the declared serving-budget
+scope with swap disabled; the witness-test cap is a separate qualification.
 """
 import argparse
 import hashlib
