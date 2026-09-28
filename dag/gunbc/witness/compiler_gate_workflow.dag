@@ -388,7 +388,7 @@ fn compiler_gate_floor_run_step() -> Step {
 }
 
 // THE STEP NAME STATES ITS POPULATION, AND THE POPULATION IS NARROWER THAN "GENERATED ARTIFACTS".
-// generated_artifact_gate main reads gunbc.generated_artifact committed_generated_artifacts only. The
+// generated_artifact_gate main reads gunbc.generated_artifact_registry committed_generated_artifacts only. The
 // ~157 stage0 mirrors (src/v1/stage0/src/std_measure.rs and the rest of the compile_stage0 emitted
 // population) are adjudicated by claim_executor's GeneratedArtifact phase, which routes to
 // --required-lane build, and no job has invoked that lane since #11742. The earlier name,
