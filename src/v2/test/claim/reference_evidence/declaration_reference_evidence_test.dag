@@ -13,10 +13,13 @@ import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
+import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { DomainBinderLabels, DomainBinderLabelsUnreadable, Node, NodeFold, arrow_domain_binder_labels, fold_node }
+import v2.std.node { Node, NodeFold, TypeNode, Atom, fold_node }
+import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.collection { list_at_optional }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
 
 // THE REFERENCE-EVIDENCE BOUNDARY. A reference to a corpus declaration reaches
@@ -171,3 +174,20 @@ test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> 
       }
   }
 }
+
+// THE TWO-MODULE SAME-LEAF DISCRIMINATOR IS NOT IN THIS FILE, AND THAT IS A GAP, NOT AN OMISSION.
+// Five attempts did not produce one that discriminates. A single-module fixture cannot: a reference
+// reaching this arm denotes a module-level callable whose declaring path IS [module, leaf], so path
+// and leaf coincide and a leaf-keyed lookup is accidentally right. A two-module fixture reaches the
+// right shape -- two modules each declaring `shared(alpha: ...)` with different types, the consumer
+// importing one -- but the assertion needs the parameter's TYPE read out of the derived Arrow's
+// domain, and neither a walk-order atom search nor find_named_child on the domain produced the
+// declared type: the control stayed green under a mutation that forced the wrong declaration, then
+// went red on correct code once the reader changed. Both arms were wrong, so it distinguished
+// nothing.
+//
+// WHAT IS THEREFORE NOT CLAIMED: that this arm resists declaration-identity collapse. The path is
+// what it looks up and symbol_index_lookup is the guarded read, but no executed control here
+// demonstrates that a leaf-keyed answer would be caught. Qualifying it needs a reliable reader for a
+// parameter's declared type inside a derived Arrow domain, which is the missing piece and is worth
+// finding before the claim is made.
