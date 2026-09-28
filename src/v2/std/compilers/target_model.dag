@@ -890,6 +890,50 @@ fn target_lex_rule_literal_step(
   }
 }
 
+// A TARGET'S FIXED-TOKEN SPELLINGS, INDEXED BY CLASS ONCE PER SERIALIZATION. lex_rules_literal_for_class
+// folds over every lex rule for every fixed token it spells -- the same fact (which literal a class
+// has) recomputed per token (DESIGN §2). The index holds, for each class, the first literal or keyword
+// rule, exactly the one that fold selects; a class with none refuses with the same diagnostic.
+type LexLiteralIndex {
+  by_class: Map<Symbol, String>
+}
+
+fn lex_literal_index(rules: LexRules) -> LexLiteralIndex {
+  match rules {
+    VoidLexRules => LexLiteralIndex { by_class: empty_map() }
+    ModeledLexRules { root: set } =>
+      LexLiteralIndex {
+        by_class: fold_list(
+          xs: set.rules,
+          empty: empty_map(),
+          cons: fn(acc, rule) {
+            match rule {
+              TokenRule { token_class: c, pattern: pattern } =>
+                match map_lookup(m: acc, key: c) {
+                  Present { value: _ } => acc
+                  Absent =>
+                    match pattern {
+                      LiteralPattern { text: text } => map_insert(m: acc, key: c, value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+                      KeywordPattern { text: text } => map_insert(m: acc, key: c, value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+                      _ => acc
+                    }
+                }
+              TriviaRule { pattern: _ } => acc
+              AnnotationRule { annotation_class: _, pattern: _ } => acc
+            }
+          }
+        )
+      }
+  }
+}
+
+fn lex_literal_indexed(index: LexLiteralIndex, token_class: Symbol) -> Outcome<String> {
+  match map_lookup(m: index.by_class, key: token_class) {
+    Present { value: literal } => outcome_accepted(value: literal)
+    Absent => outcome_rejected(target_lex_rule_literal_not_found_diagnostic(token_class: token_class))
+  }
+}
+
 fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
   match rules {
     VoidLexRules =>
@@ -1157,14 +1201,14 @@ fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) ->
 // THE CARRIER-NATIVE TOKEN SPELLING: the lexeme (fixed: the lex literal; bound: the binding's
 // spelling) under the token class's emit transform, as TargetText, so an EmitLineBreaks class keeps
 // its line breaks.
-fn token_text_from_model(target: TargetModel, token: Node) -> Outcome<TargetText> {
+fn token_text_from_model(target: TargetModel, lex: LexLiteralIndex, token: Node) -> Outcome<TargetText> {
   bind_outcome(
     o: concrete_syntax_token_from_node(token: token),
     f: fn(decoded) {
       match decoded {
         FixedToken { token_class: token_class } =>
           bind_outcome(
-            o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+            o: lex_literal_indexed(index: lex, token_class: token_class),
             f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
           )
         BoundToken { token_class: token_class, binding: binding } =>
