@@ -203,14 +203,13 @@ test fn a_function_valued_field_initializer_lowers_whole_holds() -> Bool {
   vrr_lowered_whole(o: vrr_outcomes().field_initializer)
 }
 
-// A FOLD REFUSAL INSIDE A VALUE IS THE VALUE'S REFUSAL, NOT A CUE TO GO LOOKING FOR A SMALLER VALUE.
-// body_lower_value_lowered used to hand a value whose bottom-up fold refused to the top-down walker,
-// and the walker answered with the first lowerable SUBTREE -- here the `let y = leaf(e); y` body of
-// the `f:` literal -- so `folded` was bound to that body, the fold call and its lambda argument were
-// gone, and the module Accepted. The full-corpus census on the PR that deleted the value carry found
-// nine files Accepted this way (dag/extdeps/linux/proc_mountinfo.dag among them). The refusal is the
-// lambda argument's own (arrow_body_is_function_value_unmodeled since gunbc#12210), located at the lambda; the specimen's `f:` body carries
-// a `let` because a body the walker can lower is what the swallow latched onto.
+// THE FOLD SPECIMEN LOWERS WHOLE. It was written for the swallow: body_lower_value_lowered once handed a
+// value whose bottom-up fold refused to the top-down walker, which bound `folded` to the first
+// lowerable SUBTREE (the `let y = leaf(e); y` body of the `f:` literal), so the fold call and its
+// lambda argument were gone and the module Accepted (nine corpus files, dag/extdeps/linux/
+// proc_mountinfo.dag among them). The curried lambda argument `l => m => leaf(l)` now has a lowered
+// form (v2.std.node ArrowBodyForm FunctionValueBody), so the claim asserts the whole value lowers --
+// fold call, curried argument and `f:` literal together -- and the module Accepts.
 test fn a_curried_fold_argument_inside_a_let_value_lowers_whole_holds() -> Bool {
   vrr_lowered_whole(o: vrr_outcomes().swallowed_fold_refusal)
 }

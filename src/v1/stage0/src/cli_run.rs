@@ -1563,6 +1563,12 @@ mod process_cwd_mutation_reachability_gate {
     #[derive(Debug, Clone)]
     struct FnDecl {
         name: String,
+        /// The node this declaration is in the call graph: the bare name when the crate declares
+        /// it once, `name@file` otherwise. Bare-name keying merged one file's local `run` helper
+        /// with `pre_push`'s mutator-reaching `run` (native_lane_runner.rs, #10882), naming 22
+        /// unrelated tests as offenders -- the same merge the unique-callee rule below refuses
+        /// across files, arriving through the local arm.
+        id: String,
         start: usize,
         end: usize,
         is_test: bool,
@@ -1731,6 +1737,31 @@ mod process_cwd_mutation_reachability_gate {
             if name.is_empty() {
                 continue;
             }
+            // A destructor is never called by name -- Rust refuses an explicit `Drop::drop` call
+            // (E0040) -- so a bare `drop(x)` is always the prelude's `mem::drop`, and admitting it
+            // as an edge bridged every `drop(..)` in the file into the closure (#10544's
+            // `RestoreDirectory` in v1_interpreter.rs took the closure to half the crate). The
+            // destructor runs where its type's value goes out of scope, so it is declared under
+            // the TYPE's name: a tuple-struct construction `T(..)` is then the call edge.
+            let name = if name == "drop" {
+                (0..i)
+                    .rev()
+                    .take(4)
+                    .find_map(|j| {
+                        code[j]
+                            .trim_start()
+                            .strip_prefix("impl Drop for ")
+                            .map(|t| {
+                                t.chars()
+                                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                                    .collect::<String>()
+                            })
+                    })
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or(name)
+            } else {
+                name
+            };
             // The body opener may sit on a later line for a wrapped signature.
             let Some(open) = (i..code.len().min(i + 12)).find(|j| code[*j].contains('{')) else {
                 continue;
@@ -1757,6 +1788,7 @@ mod process_cwd_mutation_reachability_gate {
                 k -= 1;
             }
             decls.push(FnDecl {
+                id: name.clone(),
                 name,
                 start: i,
                 end,
@@ -1858,7 +1890,7 @@ mod process_cwd_mutation_reachability_gate {
     fn edges_in_file(
         code: &[String],
         decls: &[FnDecl],
-        local: &BTreeSet<String>,
+        local: &BTreeMap<String, String>,
         unique_crate_wide: &BTreeSet<String>,
         seeds: &mut BTreeSet<String>,
         callers_of: &mut BTreeMap<String, BTreeSet<String>>,
@@ -1867,13 +1899,18 @@ mod process_cwd_mutation_reachability_gate {
         let owner = owner_per_line(code.len(), decls);
         for (i, line) in code.iter().enumerate() {
             let Some(d) = owner[i] else { continue };
-            let caller = decls[d].name.as_str();
+            let caller = decls[d].id.as_str();
             for callee in called_names(line) {
                 if callee == MUTATOR_CALL {
                     seeds.insert(caller.to_string());
-                } else if callee == caller {
+                } else if callee == decls[d].name {
                     continue;
-                } else if local.contains(callee) || unique_crate_wide.contains(callee) {
+                } else if let Some(callee_id) = local.get(callee) {
+                    callers_of
+                        .entry(callee_id.clone())
+                        .or_default()
+                        .insert(caller.to_string());
+                } else if unique_crate_wide.contains(callee) {
                     callers_of
                         .entry(callee.to_string())
                         .or_default()
@@ -1894,13 +1931,17 @@ mod process_cwd_mutation_reachability_gate {
     /// control asserts against.
     fn mutator_reaching(code: &[String], decls: &[FnDecl]) -> BTreeSet<String> {
         let names: BTreeSet<String> = decls.iter().map(|d| d.name.clone()).collect();
+        let local: BTreeMap<String, String> = decls
+            .iter()
+            .map(|d| (d.name.clone(), d.id.clone()))
+            .collect();
         let mut seeds = BTreeSet::new();
         let mut callers_of = BTreeMap::new();
         let mut ambiguous_edges = BTreeMap::new();
         edges_in_file(
             code,
             decls,
-            &names,
+            &local,
             &names,
             &mut seeds,
             &mut callers_of,
@@ -1958,7 +1999,6 @@ mod process_cwd_mutation_reachability_gate {
             root.display()
         );
         let mut projected: Vec<(Vec<String>, Vec<FnDecl>)> = Vec::new();
-        let mut decls: Vec<FnDecl> = Vec::new();
         for file in &files {
             let text = std::fs::read_to_string(file).unwrap_or_else(|e| {
                 panic!("read {} for the cwd-mutation gate: {e}", file.display())
@@ -1967,7 +2007,6 @@ mod process_cwd_mutation_reachability_gate {
             let code = code_projection(&text);
             let depths = depth_at_line_start(&code);
             let file_decls = declarations(&raw, &code, &depths);
-            decls.extend(file_decls.iter().cloned());
             projected.push((code, file_decls));
         }
         let mut declared_in: BTreeMap<String, usize> = BTreeMap::new();
@@ -1995,8 +2034,22 @@ mod process_cwd_mutation_reachability_gate {
         let mut seeds: BTreeSet<String> = BTreeSet::new();
         let mut callers_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut callers_of_ambiguous: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (f, (_, file_decls)) in projected.iter_mut().enumerate() {
+            for d in file_decls.iter_mut() {
+                if !unique_crate_wide.contains(&d.name) {
+                    d.id = format!("{}@{f}", d.name);
+                }
+            }
+        }
+        let decls: Vec<FnDecl> = projected
+            .iter()
+            .flat_map(|(_, ds)| ds.iter().cloned())
+            .collect();
         for (code, file_decls) in &projected {
-            let local: BTreeSet<String> = file_decls.iter().map(|d| d.name.clone()).collect();
+            let local: BTreeMap<String, String> = file_decls
+                .iter()
+                .map(|d| (d.name.clone(), d.id.clone()))
+                .collect();
             edges_in_file(
                 code,
                 file_decls,
@@ -2024,10 +2077,10 @@ mod process_cwd_mutation_reachability_gate {
         // it — a `--lib` unit test does not call a binary entry point, and a new ambiguous name
         // entering this set is the event that would change that. The caller asserts membership,
         // not size, so the contract cannot be satisfied by a coincidence of counts.
-        let undecided: BTreeSet<String> = reaching
+        let undecided: BTreeSet<String> = decls
             .iter()
-            .filter(|n| declared_in.get(*n) == Some(&usize::MAX))
-            .cloned()
+            .filter(|d| d.id != d.name && reaching.contains(&d.id))
+            .map(|d| d.name.clone())
             .collect();
         (decls, reaching, undecided)
     }
@@ -2112,6 +2165,35 @@ mod process_cwd_mutation_reachability_gate {
             "a quote at end-of-line must not close a `##`-delimited raw string: {depths:?}"
         );
 
+        // A DESTRUCTOR THAT RESTORES THE CWD is reached by constructing its type, never by a bare
+        // `drop(..)`: that spelling is `mem::drop`, since Rust refuses an explicit destructor call.
+        // Declared as `drop`, the unrelated caller below joined the closure, and through it every
+        // caller of every `drop(..)` in v1_interpreter.rs did (#10544).
+        let guard = concat!(
+            "fn guarded() {\n",
+            "    struct RestoreDirectory(u8);\n",
+            "    impl Drop for RestoreDirectory {\n",
+            "        fn drop(&mut self) {\n",
+            "            std::env::set_",
+            "current_dir(p);\n",
+            "        }\n",
+            "    }\n",
+            "    let _r = RestoreDirectory(0);\n",
+            "}\n",
+            "fn unrelated(x: u8) {\n",
+            "    drop(x);\n",
+            "}\n"
+        );
+        let code = code_projection(guard);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&guard.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let reached = mutator_reaching(&code, &decls);
+        assert!(
+            reached.contains("guarded") && !reached.contains("unrelated"),
+            "a cwd-restoring destructor is reached through its type's construction, not through \
+             `mem::drop`: {reached:?}"
+        );
+
         // And the positive control, so the case above is not passing because the seed is broken:
         // the same call OUTSIDE a raw string must still be found.
         let real = concat!(
@@ -2135,7 +2217,7 @@ mod process_cwd_mutation_reachability_gate {
         let (decls, reaching, undecided) = closure_over_lib_sources();
         let offenders: Vec<&str> = decls
             .iter()
-            .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.name))
+            .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.id))
             .map(|d| d.name.as_str())
             .collect();
         assert!(
@@ -2150,7 +2232,24 @@ mod process_cwd_mutation_reachability_gate {
         // what makes the offender list above a verdict rather than a selection: if a gating test
         // could reach the mutator through an ambiguous spelling, it is named here instead of
         // being silently outside the walk.
-        let expected: BTreeSet<String> = ["main", "run"].iter().map(|s| s.to_string()).collect();
+        // Pinned, each with its reason, re-derived 2026-09-27 once the destructor and local-arm
+        // merges stopped the closure from swallowing the crate (which had hidden this set):
+        // `main`, `run` -- process entry points above `pre_push::run_inner`; `handle_serve`,
+        // `invoke_bound_target_producer` -- the CLI dispatch trait's handlers, declared in
+        // main.rs and gunbc_cli_dispatch_generated.rs and called only from that dispatch;
+        // `run_native_claim_program` -- the `gunbc test` producer in target_invocation_host.rs
+        // (#12250), called only from its own TargetProducer match (the other declaration, in
+        // native_lane_runner, is reached by the qualified `cli_run::` spelling).
+        let expected: BTreeSet<String> = [
+            "handle_serve",
+            "invoke_bound_target_producer",
+            "main",
+            "run",
+            "run_native_claim_program",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(
             undecided, expected,
             "the set of mutator-reaching names this scanner cannot resolve to one definition has \
@@ -2178,12 +2277,14 @@ mod process_cwd_mutation_reachability_gate {
             decls.len()
         );
         assert!(
-            reaching.contains("with_workspace_cwd"),
+            decls
+                .iter()
+                .any(|d| d.name == "with_workspace_cwd" && reaching.contains(&d.id)),
             "the direct-write scan lost a known mutator helper"
         );
         let residue: Vec<&str> = decls
             .iter()
-            .filter(|d| d.is_test && d.is_ignored && reaching.contains(&d.name))
+            .filter(|d| d.is_test && d.is_ignored && reaching.contains(&d.id))
             .map(|d| d.name.as_str())
             .collect();
         assert!(
