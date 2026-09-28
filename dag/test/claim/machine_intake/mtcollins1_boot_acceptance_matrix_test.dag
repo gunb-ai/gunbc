@@ -354,12 +354,14 @@ test fn the_right_filename_on_the_wrong_share_refuses_before_any_power_action() 
 }
 
 // THE LISTING NAMES THE IMAGE TWICE. Taking either row would let the controller's order choose which
-// file is attached, so nothing is started and nothing is powered.
+// file is attached, so nothing is started and nothing is powered. The cause is its own and names both
+// offered identities; the red is the old "not valid JSON" label (finding 5, repaired in #12553).
 test fn a_listing_that_names_the_image_twice_starts_nothing() -> Bool {
   let twice = [MegaRacImage { image_name: desired_image(), image_index: 5 }, MegaRacImage { image_name: desired_image(), image_index: 6 }]
   match run_attempt(world: media_varied(media: media_with(images: twice, share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
     WitnessReturned { value, route } =>
-      string_contains(s: outcome_reason(a: value), pattern: "names the image more than once, so its index is ambiguous")
+      string_contains(s: outcome_reason(a: value), pattern: "more than once (image_index 5, 6)")
+        && !string_contains(s: outcome_reason(a: value), pattern: "not valid JSON")
         && count_named(route: route, name: "megarac.Media.StartMedia") == 0
         && reached_no_power_action(route: route)
     _ => false
