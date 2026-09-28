@@ -738,7 +738,7 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
     "      last_resp=\"$state/churn_c\"$client\"_last.resp\"\n",
     "      request_bytes=$(wc -c < \"$state/churn_\"$client\"_\"$n\".json\")\n",
     "      if [ \"$request_bytes\" -gt ", to_string(systemd_workload_churn_large_request_bytes), " ]; then\n",
-    "        flock \"$state/churn_large.lock\" sh -c '[ \"$(date +%s)\" -lt \"$0\" ] || exit 42; curl -sS -m ", to_string(request_timeout_seconds), " -D \"$1\" -o \"$2\" -H 'Content-Type: application/json' -d @\"$3\" \"$4/v1/completions\"' \"$end\" \"$last_hdr\" \"$last_resp\" \"$state/churn_\"$client\"_\"$n\".json\" \"$base\" && churn_rc=0 || churn_rc=$?\n",
+    "        flock \"$state/churn_large.lock\" sh -c '[ \"$(date +%s)\" -lt \"$0\" ] || exit 42; curl -sS -m ", to_string(request_timeout_seconds), " -D \"$1\" -o \"$2\" -H \"Content-Type: application/json\" -d @\"$3\" \"$4/v1/completions\"' \"$end\" \"$last_hdr\" \"$last_resp\" \"$state/churn_\"$client\"_\"$n\".json\" \"$base\" && churn_rc=0 || churn_rc=$?\n",
     "        if [ \"$churn_rc\" = \"42\" ]; then echo \"churn-request-skipped-past-window client=$client request=$n\"; continue; fi\n",
     "      else\n",
     "        if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",

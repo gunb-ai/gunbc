@@ -1377,14 +1377,16 @@ type ArmMemoryExperimentAdmission
 // price is ~323s per seat at the shared ~800 tok/s aggregate, so 400 covers it with margin)
 // + the churn window + the sampler's tail backstop (churn window + the churn request timeout
 // + one cadence) + settlement margin. The churn window derives from this figure (twelfths), so
-// the bound is the consistent figure of 10180 seconds: 3600 startup + 3200 seat cohort + the
-// derived 848s churn window + the 1453s sampler tail, with the remaining ~700s as settlement
-// slack. Uniform across
+// the bound is the consistent figure of 12476 seconds: 3600 startup + 3200 seat cohort + the
+// derived 848s churn window + the 4453s sampler tail (window + the LARGEST variant's declared
+// churn timeout 3600 + cadence — q's churn requests are honest full-band work under the cohort,
+// and the closing run's two rc=28 expiries at the old 600s churn timeout with the endpoint alive
+// are the named counterexample) + settlement slack. Uniform across
 // variants — a larger bound for a smaller variant costs nothing because the stall watchdog, not
 // the lifetime, is the hang detector; the stop contract's timeout disposition stays the failure
 // that outlived its window.
 fn arm_memory_experiment_runtime_seconds() -> Nat {
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds + 8 * 400 + 1200 + 1805 + 375
+  glm_5_3_flash_vllm_engine_ready_timeout_seconds + 8 * 400 + 1200 + 4405 + 375
 }
 
 fn experiment_receipt_kind(component: ArmMemoryComponent) -> NonEmptyStr {

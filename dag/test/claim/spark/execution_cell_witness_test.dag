@@ -678,7 +678,7 @@ test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool
             && string_contains(s: sampling, pattern: "/v1/models")
             && string_contains(s: sampling, pattern: join(["sleep ", to_string(spark_allocator_sample_cadence_seconds)], ""))
             && string_contains(s: sampling, pattern: "allocator-gap-peak")
-            && string_contains(s: sampling, pattern: join([" + ", to_string(window), " + ", to_string(spark_churn_request_timeout_seconds)], ""))
+            && string_contains(s: sampling, pattern: join([" + ", to_string(window), " + ", to_string(phase.variant.request_timeout_seconds)], ""))
       }
   }
 }
@@ -1230,7 +1230,7 @@ test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_tear
         && string_contains(s: sampling, pattern: "stall_watchdog.pid")
         && string_contains(s: sampling, pattern: "stall-watchdog-reaped")
         && 3600 <= phase.readiness_bounded_seconds
-        && phase.churn_window_seconds + spark_churn_request_timeout_seconds < 3600
+        && phase.churn_window_seconds + phase.variant.request_timeout_seconds < arm_memory_experiment_runtime_seconds()
   }
 }
 

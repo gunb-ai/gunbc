@@ -231,6 +231,11 @@ data spark_allocator_sample_cadence_seconds: Nat = 5
 // the cell's remaining lifetime. Declared, not measured.
 data spark_churn_request_timeout_seconds: Nat = 600
 
+// 2026-09-28: the churn and sampler legs read the ACTIVE VARIANT's declared request_timeout_seconds
+// (600s under an eight-seat cohort expired two honest in-flight requests — endpoint_probe=200ok,
+// the listener alive the whole time); the global figure stays as the historical default for
+// fixtures and nothing else.
+
 // THE SEAT MARGIN IS ONE SCHEDULER BLOCK BELOW THE CONTEXT WINDOW. The engine's own
 // KV_ALLOCATION_PLAN emission names scheduler_block_size 2304 for this model
 // (test.fixture.kv_allocation_plan_emission real_262144x6_v2_line, pinned by
@@ -477,7 +482,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: spark_churn_request_timeout_seconds),
+              script: systemd_workload_churn_launch_script(member: head, serve_port: plan.profile.serve_port, served_alias: alias, clients: variant.seat_count, low_tokens: spark_churn_band_floor_tokens, high_tokens: seat_window, requests_per_client: spark_churn_requests_per_seat, window_seconds: window, request_timeout_seconds: variant.request_timeout_seconds),
             },
           },
           sampling: SparkExperimentWorkloadLeg {
@@ -485,7 +490,7 @@ fn spark_experiment_workload_phase(cohort: ExecutionCellCohort<SystemdExecutionM
             plan: SparkPairHostApplyPlan {
               host: head.host,
               unit_name: head.unit_name,
-              script: systemd_workload_sampling_script(member: head, serve_port: plan.profile.serve_port, window_seconds: window, cadence_seconds: spark_allocator_sample_cadence_seconds, request_timeout_seconds: spark_churn_request_timeout_seconds),
+              script: systemd_workload_sampling_script(member: head, serve_port: plan.profile.serve_port, window_seconds: window, cadence_seconds: spark_allocator_sample_cadence_seconds, request_timeout_seconds: variant.request_timeout_seconds),
             },
           },
           readiness_bounded_seconds: plan.max_runtime_seconds,
