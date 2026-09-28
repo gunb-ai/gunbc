@@ -237,7 +237,7 @@ data ci_native_cache_root_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
+data ci_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply")
 
 data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
 
