@@ -28,7 +28,7 @@ argument, source file, receipt, or GitHub variable. The ongoing workflow never
 falls back to this operator token. No service-account key is created.
 
 The missing deny-policy permission is a modeled dependency, not a console task.
-Under the operator's explicit authorization, the project IAM writer can publish a
+Under the operator's explicit authorization, the organization IAM writer can publish a
 time-limited `roles/iam.denyAdmin` grant to `user:briansrls@gunb.ai`, install the
 protection policy, then remove exactly that grant. GCP documents
 [Deny Admin](https://docs.cloud.google.com/iam/docs/deny-access) and
@@ -38,9 +38,9 @@ The account used for continuing automation never receives this grant.
 The operation ID and absolute UTC expiry identify one desired authority lease.
 The maximum remaining duration is one hour. Retries retain both values and the
 journal; they do not recalculate the expiry. A new lease requires a new explicit
-intent. The current credential must be able to read/write project IAM; if it
+intent. The current credential must be able to read/write organization IAM; if it
 cannot, convergence reports that upstream dependency. This is an observed
-boundary, not a declaration that project IAM authority must forever be manual.
+boundary, not a declaration that organization IAM authority must forever be manual.
 
 ## What bootstrap owns
 
@@ -121,14 +121,15 @@ refused deny-policy creation with HTTP 403, `iam.denypolicies.create` missing.
 Capability bindings, account-context probes, and workflow-trust grants were not
 reached. See `receipts/gcp-iam-bootstrap-2026-09-28/README.md` for that historical
 standing. The new dependency slice can obtain temporary deny authority through
-project IAM convergence. Its own receipts must establish the grant, use, and
+organization IAM convergence. Its own receipts must establish the grant, use, and
 cleanup before commissioning can be called complete.
 
 ## Temporary-authority dependency and recovery
 
 ```mermaid
 flowchart TD
-  R[Read project IAM] --> W[Project IAM write authority]
+  P[Read project ancestry; verify pinned organization] --> R[Read organization IAM]
+  R --> W[Organization IAM write authority]
   W --> I[Persist fixed operator lease intent]
   I --> E[Elect one publication]
   E --> G[CAS grant and read back exact conditioned cell]
@@ -141,13 +142,13 @@ flowchart TD
   U --> Q[Absent cell with unresolved write: keep obligation outstanding]
 ```
 
-`target/gcp-iam-authority-<operation>-*.txt` records the exact project, principal,
+`target/gcp-iam-authority-<operation>-*.txt` records the exact project, organization, principal,
 role, condition, and expiry before effects. Keep these records with the operator
 recovery workspace; they are local bootstrap state, not yet protected fabric
 storage. Intent drift or unreadable records refuse. A create-only election means
 at most one grant request is issued for this operation, even across retries.
-A grant observed present closes that publication; cleanup can recover a crash
-between removal and recording retirement. A definitive publication HTTP 403 also
+An acknowledged successful publication or a grant observed present closes that publication; cleanup can recover a crash
+between removal and recording retirement. A definitive publication HTTP 4xx also
 closes the no-effect attempt. Other unresolved write outcomes remain outstanding
 when a read sees absence. Neither a timeout nor expiry proves physical cleanup.
 The cloud condition independently bounds effective access after process loss.
@@ -161,3 +162,32 @@ using the same authority ID, expiry, journal, and operator token-file input.
 The downstream account-impersonation readback still requires its actual authority.
 That is a separate dependency to classify when reached, not permission to invent
 an approval or give the continuing workflow self-elevation rights.
+
+
+### Role grant scope correction
+
+The first dependency attempt was rejected with HTTP 400 because Deny Admin cannot
+be granted on a project. The current model uses the role's documented
+[organization-only grant scope](https://docs.cloud.google.com/iam/docs/roles-permissions/iam#iam.denyAdmin).
+A read-only Resource Manager observation established that active
+`projects/582015116396` (`gunbai-secrets`) belongs to
+`organizations/266638272282`. The authority declaration pins that organization;
+publication rereads the project and follows validated folder parents, refusing
+unknown, changed, cyclic, or incomplete ancestry. No project move or organization
+creation is inferred from missing ancestry.
+
+This temporary role is organization-scoped and time-limited; it is not represented
+as project-scoped access. Only the named human operator receives it. The modeled
+actuator still installs only the exact project deny policy. Cleanup addresses the
+pinned organization even if the project later moves. These local journals support
+one shared operator recovery workspace; they are not a distributed election across
+independent workspaces or hosts. The original project-level attempt was rejected,
+not an effective grant, and its historical receipt remains preserved.
+
+
+A newly read-back authority binding may not yet be effective. Deny installation
+permits at most 30 attempts separated by ten seconds, only after an explicit HTTP
+403 and while the original lease remains live. Transport/server faults are not
+retried as if nothing committed. An accepted create is followed by at most seven
+readbacks separated by ten seconds, with no additional creation request. Exhaustion
+or clock/deadline refusal enters the same authority cleanup obligation.

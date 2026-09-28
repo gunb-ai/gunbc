@@ -492,6 +492,7 @@ fn gcp_project_lifecycle_state_from_wire(raw: String) -> GcpProjectLifecycleStat
 }
 
 type GcpProjectResourceV3 {
+  parent: String?
   project_id: GcpProjectId from "projectId"
   state: String
   resource_name: String from "name"
@@ -504,8 +505,54 @@ type GcpProjectResourceV3 {
 // which for a converge keyed on project_id is the ordinary already-converged answer rather than a
 // failure, and is left for the caller to classify because this module does not know the caller's
 // intent for an id it did not choose.
+type GcpFolderResourceV3 { name: String, parent: String, state: String }
+
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetFolder {
+    input { access_token: Secret, folder: NonEmptyStr }
+    output { name: String, parent: String, state: String, outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/v3/\{folder\}" }
+    response {
+      200 => GcpFolderResourceV3
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetOrganizationIamPolicy {
+    input { access_token: Secret, organization: NonEmptyStr }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    readonly
+    transport rest { method: POST, path: "/v3/\{organization\}:getIamPolicy", body: { options: { requestedPolicyVersion: 3 } } }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetOrganizationIamPolicy {
+    input { access_token: Secret, organization: NonEmptyStr, policy: GcpPolicy }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    transport rest { method: POST, path: "/v3/\{organization\}:setIamPolicy", body: { policy: policy, updateMask: "bindings,etag" } }
+    response {
+      200 => GcpPolicy
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
 
   operation TestIamPermissions {
     input { access_token: Secret, project_id: GcpProjectId, permissions: List<String> }
@@ -523,7 +570,7 @@ service gcp.ResourceManager {
 
   operation GetProject {
     input { access_token: Secret, project_id: GcpProjectId }
-    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", outcome: RestOutcome }
+    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", parent: String?, outcome: RestOutcome }
     readonly
     transport rest { method: GET, path: "/v3/projects/\{project_id\}" }
     response {

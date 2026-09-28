@@ -1,25 +1,33 @@
 module gunbc.auth.gcp_iam_bootstrap_authority
 
-import std.types { String, Timestamp, Bool, List, path_segment_is_safe }
+import std.types { String, Timestamp, Bool, List, NonEmptyStr, Int, path_segment_is_safe }
+import extdeps.transports.rest { RestOutcome, RestStatusRefused, mutation_status_is_commit_ambiguous }
+import std.decimal { decimal_digits_only }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
 import gunbc.auth.gcp_iam_converge { cell_preimage }
 
 // The operator authorized this named human principal. No caller-controlled member, role, or
 // project is accepted. Ongoing iam-converge is never the beneficiary of bootstrap authority.
+// Observed from Resource Manager v3 on 2026-09-28. Publication revalidates ancestry;
+// cleanup uses this pinned subject even if the project subsequently moves.
+// Deny Admin is grantable only on an organization, per Google's role definition.
+data iam_bootstrap_authority_organization: NonEmptyStr = "organizations/266638272282"
+
 data iam_bootstrap_operator_member: String = "user:briansrls@gunb.ai"
 
 type BootstrapAuthorityIntent { operation: String, expires_at: Timestamp }
 
-type BootstrapAuthorityDependency = ProjectPolicyRead | ProjectPolicyWrite | TemporaryDenyAdministration | DenyPolicyReadback | TemporaryAuthorityRetired
+type BootstrapAuthorityDependency = OrganizationPolicyRead | OrganizationPolicyWrite | TemporaryDenyAdministration | DenyPolicyReadback | TemporaryAuthorityRetired
 
 fn bootstrap_authority_requires(subject: BootstrapAuthorityDependency) -> List<BootstrapAuthorityDependency> {
   match subject {
-    ProjectPolicyRead => []
-    ProjectPolicyWrite => [ProjectPolicyRead]
-    TemporaryDenyAdministration => [ProjectPolicyWrite]
+    OrganizationPolicyRead => []
+    OrganizationPolicyWrite => [OrganizationPolicyRead]
+    TemporaryDenyAdministration => [OrganizationPolicyWrite]
     DenyPolicyReadback => [TemporaryDenyAdministration]
-    TemporaryAuthorityRetired => [ProjectPolicyRead, ProjectPolicyWrite, DenyPolicyReadback]
+    TemporaryAuthorityRetired => [OrganizationPolicyRead, OrganizationPolicyWrite, DenyPolicyReadback]
   }
 }
 
@@ -44,7 +52,7 @@ fn bootstrap_authority_cell(intent: BootstrapAuthorityIntent) -> GcpIamBindingCe
 }
 
 fn bootstrap_authority_intent_wire(intent: BootstrapAuthorityIntent) -> String {
-  concat("project:gunbai-secrets;", cell_preimage(c: bootstrap_authority_cell(intent: intent)))
+  join(["target-project:", fleet_secrets_project_id as String, ";authority-resource:", iam_bootstrap_authority_organization as String, ";", cell_preimage(c: bootstrap_authority_cell(intent: intent))], "")
 }
 
 type BootstrapAuthorityObservation = AuthorityAbsent | AuthorityPresent | AuthorityUnreadable
@@ -63,4 +71,26 @@ fn bootstrap_authority_action(observed: BootstrapAuthorityObservation, publicati
       else if withdrawing { AuthoritySettled }
       else if live { PublishAuthority } else { AuthorityRefused }
   }
+}
+
+
+// Resource names are validated before interpolating a parent read; never follow arbitrary URLs.
+fn bootstrap_parent_name_valid(name: String, kind: String) -> Bool {
+  let prefix = concat(kind, "/")
+  starts_with(s: name, prefix: prefix) && string_length(s: name) > string_length(s: prefix)
+    && decimal_digits_only(s: substring(s: name, start: string_length(s: prefix), end: string_length(s: name)))
+}
+
+// Reuse the transport authority's distinction: a received 4xx rejects the mutation;
+// a transport fault, undecodable success, or server error does not establish non-commit.
+fn bootstrap_authority_publication_refused(outcome: RestOutcome) -> Bool {
+  match outcome {
+    RestStatusRefused { status, body: _ } => (status as Int) >= 400 && !mutation_status_is_commit_ambiguous(status: status)
+    _ => false
+  }
+}
+
+
+fn bootstrap_deny_retry_admitted(outcome: RestOutcome, remaining: Int, live: Bool) -> Bool {
+  remaining > 1 && live && match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403 _ => false }
 }

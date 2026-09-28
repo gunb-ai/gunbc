@@ -15,7 +15,7 @@ import extdeps.transports.rest { RestOutcome, RestStatusRefused }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
-import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number }
 import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present,
@@ -30,12 +30,15 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted,
   BootstrapAuthorityIntent, bootstrap_authority_intent_valid, bootstrap_authority_may_grant,
   bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_action,
   AuthorityAbsent, AuthorityPresent, AuthorityUnreadable, PublishAuthority, UseAuthority,
   RemoveAuthority, AuthoritySettled, AuthorityRefused,
 }
 import gunbc.auth.approval_gate { approval_instant_now }
+import std.measure { second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // Operator-authorized initial setup. This entry does not forge an app approval or workflow
 // identity. Its credential is never a fallback in the ongoing approval-gated job.
@@ -75,7 +78,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
-    "Deny dependency: project policy read/write -> temporary operator Deny Admin -> deny-policy readback -> exact grant retirement -> capabilities.",
+    "Deny dependency: verified project ancestry -> organization policy read/write -> temporary operator Deny Admin -> deny-policy readback -> exact grant retirement -> capabilities.",
     "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
     "The grant targets only user:briansrls@gunb.ai; its deadline is journaled, and retry cannot renew or republish it.",
   ]
@@ -127,17 +130,25 @@ fn iam_bootstrap_ensure_role(role: IamBootstrapRole, token: Secret) -> String {
 }
 
 fn iam_bootstrap_ensure_deny(token: Secret) -> String {
+  iam_bootstrap_ensure_deny_bounded(token: token, remaining: 0)
+}
+
+fn iam_bootstrap_ensure_deny_bounded(token: Secret, remaining: Int) -> String {
   let seen = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
   if rest_ok(o: seen.outcome) {
     if iam_bootstrap_deny_matches(rules: seen.rules) { "" } else { "existing bootstrap deny policy differs; refusing to weaken or adopt it" }
   } else if !outcome_is_not_found(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
   else {
-    let made = gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules())
-    if !rest_ok(o: made.outcome) { rest_refusal_text(o: made.outcome) }
+    if remaining > 0 && !iam_bootstrap_current_authority_live() { "authority deadline or clock does not admit another deny installation attempt" }
     else {
-      let check = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
-      if rest_ok(o: check.outcome) && iam_bootstrap_deny_matches(rules: check.rules) { "" }
-      else { "deny creation accepted but exact readback is not established; no capabilities or workflow trust granted" }
+      let made = gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules())
+      if !rest_ok(o: made.outcome) {
+        if bootstrap_deny_retry_admitted(outcome: made.outcome, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
+          if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
+            iam_bootstrap_ensure_deny_bounded(token: token, remaining: remaining - 1)
+          } else { "deny authority propagation wait failed" }
+        } else { rest_refusal_text(o: made.outcome) }
+      } else { iam_bootstrap_deny_creation_readback(token: token, remaining: 6) }
     }
   }
 }
@@ -215,7 +226,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
       } else if !outcome_is_not_found(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
       else {
         let authority = iam_bootstrap_authority_converge(token: token, withdrawing: false)
-        if authority != "" { authority } else { iam_bootstrap_ensure_deny(token: token) }
+        if authority != "" { authority } else { iam_bootstrap_ensure_deny_bounded(token: token, remaining: 30) }
       }
     }
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
@@ -385,11 +396,14 @@ fn iam_bootstrap_authority_converge(token: Secret, withdrawing: Bool) -> String 
   let operation = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID")
   let expiry = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT")
   if operation == "" && expiry == "" {
-    if withdrawing { "" } else { "dependency unsatisfied: temporary deny administration needs an authority operation ID and absolute expiry; project IAM write authority is its prerequisite" }
+    if withdrawing { "" } else { "dependency unsatisfied: temporary deny administration needs an authority operation ID and absolute expiry; verified organization IAM write authority is its prerequisite" }
   } else {
     let intent = BootstrapAuthorityIntent { operation: operation, expires_at: expiry as Timestamp }
     if !bootstrap_authority_intent_valid(intent: intent) { "authority intent has an invalid operation identity or UTC deadline" }
-    else { iam_bootstrap_authority_reconcile(intent: intent, token: token, withdrawing: withdrawing) }
+    else {
+      let ancestry = if withdrawing { "" } else { iam_bootstrap_authority_ancestry(token: token) }
+      if ancestry != "" { ancestry } else { iam_bootstrap_authority_reconcile(intent: intent, token: token, withdrawing: withdrawing) }
+    }
   }
 }
 
@@ -412,7 +426,7 @@ fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Se
     let closed = iam_authority_record_present(record: closed_record)
     let retired = iam_authority_record_present(record: retired_record)
     if !owned && (elected || closed || retired) { "authority intent missing beside publication history; recovery evidence unavailable" }
-    else { match iam_bootstrap_read_policy(resource: BootstrapProject, token: token) {
+    else { match iam_bootstrap_organization_policy_read(token: token) {
       PolicyObserved { policy } => {
         let cell = bootstrap_authority_cell(intent: intent)
         let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: policy))
@@ -430,11 +444,15 @@ fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Se
             UseAuthority => if iam_authority_pin(name: closed_name, wire: wire) { "" } else { "authority publication readback could not be recorded" }
             PublishAuthority => iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: false, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
             RemoveAuthority => if !iam_authority_pin(name: closed_name, wire: wire) { "authority readback could not be recorded before cleanup" }
-              else { iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: true, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name) }
+              else {
+                let removed = iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: true, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
+                if removed != "" || withdrawing { removed } else { "expired or retired authority cleaned up; no use admitted" }
+              }
           }
         }
       }
-      _ => "project policy cannot be read; dependency remains unknown and no authority change is attempted"
+      PolicyUnreadable { cause } => concat("organization IAM read dependency unresolved: ", cause)
+      PolicyResourceAbsent => "organization policy resource absent; no authority change attempted"
     } }
   }
 }
@@ -445,18 +463,19 @@ fn iam_bootstrap_authority_policy_change(intent: BootstrapAuthorityIntent, befor
   let cell = bootstrap_authority_cell(intent: intent)
   let wire = bootstrap_authority_intent_wire(intent: intent)
   match reconcile_gcp_policy(observed: before, desired_owned: if removing { [] } else { [cell] }, owned_universe: GcpIamOwnedCellUniverse { cells: [cell] }) {
-    GcpPolicyRepresentationLossy { conditional_roles: _ } => "project policy loses conditions; authority change refused"
+    GcpPolicyRepresentationLossy { conditional_roles: _ } => "organization policy loses conditions; authority change refused"
     GcpPolicyAlreadyConverged { policy: _ } => "authority policy moved before the intended change; reconverge"
     GcpPolicyDeltaRequired { policy: after, added: _, removed: _, preserved: _ } => if before.etag == "" { "authority mutation requires an etag" }
     else {
       let elected = if removing { true } else { Filesystem.WriteCreateNew(path: concat("target/", elected_name), content: wire).success }
       if !elected { "authority publication already elected or election unreadable; reread, never issue a second grant" }
       else {
-      let changed = iam_bootstrap_write_policy(resource: BootstrapProject, policy: after, token: token)
+      let changed = gcp.ResourceManager.SetOrganizationIamPolicy(access_token: token, organization: iam_bootstrap_authority_organization, policy: after).outcome
       if !rest_ok(o: changed) {
-        let terminal_refusal = if !removing && iam_bootstrap_is_forbidden(outcome: changed) { iam_authority_pin(name: closed_name, wire: wire) } else { false }
-        concat(if terminal_refusal { "project IAM writer dependency refused without publication: " } else { "authority mutation not established; recovery remains owed: " }, rest_refusal_text(o: changed))
-      } else { match iam_bootstrap_read_policy(resource: BootstrapProject, token: token) {
+        let terminal_refusal = if !removing && bootstrap_authority_publication_refused(outcome: changed) { iam_authority_pin(name: closed_name, wire: wire) } else { false }
+        concat(if terminal_refusal { "organization IAM writer dependency refused without publication: " } else { "authority mutation not established; recovery remains owed: " }, rest_refusal_text(o: changed))
+      } else if !removing && !iam_authority_pin(name: closed_name, wire: wire) { "acknowledged authority publication could not be recorded; recovery remains owed" }
+      else { match iam_bootstrap_organization_policy_read(token: token) {
         PolicyObserved { policy: checked } => {
           let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: checked))
           if present == removing { "authority mutation lacks the required independent readback" }
@@ -480,4 +499,54 @@ fn iam_bootstrap_authority_cleanup() -> ProcessExit {
       if result == "" { ExitSuccess } else { exit_failure(reason: result) }
     }
   }
+}
+
+
+fn iam_bootstrap_organization_policy_read(token: Secret) -> PolicyReading {
+  let r = gcp.ResourceManager.GetOrganizationIamPolicy(access_token: token, organization: iam_bootstrap_authority_organization)
+  iam_bootstrap_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version)
+}
+
+fn iam_bootstrap_authority_ancestry(token: Secret) -> String {
+  let p = gcp.ResourceManager.GetProject(access_token: token, project_id: fleet_secrets_project_id)
+  if !rest_ok(o: p.outcome) { concat("project ancestry unreadable: ", rest_refusal_text(o: p.outcome)) }
+  else if p.project_id != fleet_secrets_project_id || p.resource_name != concat("projects/", fleet_secrets_project_number) || p.state != "ACTIVE" {
+    "project ancestry subject or active state differs; no authority grant"
+  } else { match p.parent {
+    Absent => "project has no organization ancestor; organization attachment is an unresolved dependency, not an instruction to move it"
+    Present { value: parent } => iam_bootstrap_follow_parent(parent: parent, visited: [], remaining: 12, token: token)
+  } }
+}
+
+fn iam_bootstrap_follow_parent(parent: String, visited: List<String>, remaining: Int, token: Secret) -> String {
+  if remaining <= 0 || any(visited, p => p == parent) { "ancestry traversal incomplete or cyclic; no authority grant" }
+  else if bootstrap_parent_name_valid(name: parent, kind: "organizations") {
+    if parent == (iam_bootstrap_authority_organization as String) { "" } else { "project organization differs from the pinned authority subject" }
+  } else if bootstrap_parent_name_valid(name: parent, kind: "folders") {
+    let f = gcp.ResourceManager.GetFolder(access_token: token, folder: parent as NonEmptyStr)
+    if !rest_ok(o: f.outcome) { concat("folder ancestry unreadable: ", rest_refusal_text(o: f.outcome)) }
+    else if f.name != parent || f.state != "ACTIVE" { "folder ancestry subject or active state differs" }
+    else { iam_bootstrap_follow_parent(parent: f.parent, visited: visited + [parent], remaining: remaining - 1, token: token) }
+  } else { "invalid ancestry resource name; no authority grant" }
+}
+
+
+fn iam_bootstrap_current_authority_live() -> Bool {
+  let intent = BootstrapAuthorityIntent {
+    operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID"),
+    expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT") as Timestamp,
+  }
+  match approval_instant_now() { Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) Absent => false }
+}
+
+// An accepted asynchronous create is followed only by bounded reads, never another create.
+fn iam_bootstrap_deny_creation_readback(token: Secret, remaining: Int) -> String {
+  let check = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
+  if rest_ok(o: check.outcome) {
+    if iam_bootstrap_deny_matches(rules: check.rules) { "" } else { "created deny policy differs; no capabilities granted" }
+  } else if outcome_is_not_found(o: check.outcome) && remaining > 0 {
+    if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
+      iam_bootstrap_deny_creation_readback(token: token, remaining: remaining - 1)
+    } else { "deny creation readback wait failed" }
+  } else { concat("deny creation accepted but exact readback is not established: ", rest_refusal_text(o: check.outcome)) }
 }

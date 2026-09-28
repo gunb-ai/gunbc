@@ -1,6 +1,7 @@
 module test.claim.auth.gcp_iam_bootstrap_witness_test
 
 import std.types { Bool }
+import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
@@ -12,6 +13,7 @@ import gunbc.auth.gcp_iam_bootstrap {
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted,
   BootstrapAuthorityIntent, bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_may_grant,
   bootstrap_authority_action, AuthorityAbsent, AuthorityPresent, AuthorityUnreadable,
   AuthorityRefused, AuthoritySettled, RemoveAuthority, PublishAuthority,
@@ -95,4 +97,33 @@ test fn authority_retirement_preserves_existing_human_and_foreign_access() -> Bo
       && !gcp_cell_in(c: owned, xs: gcp_policy_cells(p: policy))
     _ => false
   }
+}
+
+
+test fn bootstrap_authority_requires_an_organization_resource() -> Bool {
+  bootstrap_parent_name_valid(name: iam_bootstrap_authority_organization, kind: "organizations")
+    && !bootstrap_parent_name_valid(name: "projects/582015116396", kind: "organizations")
+    && !bootstrap_parent_name_valid(name: "organizations/123?alt=other", kind: "organizations")
+    && !bootstrap_parent_name_valid(name: "folders/../../organizations/123", kind: "folders")
+    && !bootstrap_parent_name_valid(name: "organizations/", kind: "organizations")
+    && bootstrap_parent_name_valid(name: "folders/123", kind: "folders")
+}
+
+test fn definite_publication_rejection_is_distinct_from_unknown_commit() -> Bool {
+  bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 400, body: "unsupported role scope" })
+    && bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 403, body: "permission denied" })
+    && bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 409, body: "etag conflict" })
+    && !bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 500, body: "unknown" })
+    && !bootstrap_authority_publication_refused(outcome: RestTransportRefused { cause: "connection lost" })
+    && !bootstrap_authority_publication_refused(outcome: RestBodyUndecodable { status: 200, cause: "lost success body" })
+}
+
+
+test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() -> Bool {
+  let refused = RestStatusRefused { status: 403, body: "permission not established" }
+  bootstrap_deny_retry_admitted(outcome: refused, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(outcome: refused, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(outcome: refused, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(outcome: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
+    && !bootstrap_deny_retry_admitted(outcome: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
 }
