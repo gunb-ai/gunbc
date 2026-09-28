@@ -722,6 +722,7 @@ service Filesystem {
       entries: String from "entries"
       success: Bool from "list_success"
       error: String from "error"
+      error_kind: String from "error_kind"
     }
     readonly
     transport file { path: "{path}", verb: "list" }

@@ -1,5 +1,7 @@
 module gunbc.roadmap_page
 
+import gunbc.roadmap_issue_command { IssueFormContext }
+
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
@@ -599,14 +601,16 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
 // route records the Claimed event and then drives the SAME launch admission the /dispatch route
 // answers (see gunbc.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
 // typed vocabulary when fabric cannot start.
-fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> List<Fragment> {
+fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
   let suggestions = issue_assign_suggestions(viewer: viewer, recents: recents)
   [ el_attrs("form", [
       attr(name: "class", value: "issue-assign-form" ),
       attr(name: "method", value: "post" ),
-      attr(name: "enctype", value: "text/plain" ),
+      attr(name: "enctype", value: "application/x-www-form-urlencoded" ),
       attr(name: "action", value: join(["/issue/", view.node_id, "/assign"], "") ),
     ], [
+      el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-assign") }) ], []),
+      el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
       el_attrs("input", [
         attr(name: "class", value: "issue-assign-input" ),
         attr(name: "name", value: "assignee" ),
@@ -628,7 +632,6 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<Ev
       el_class("div", "issue-assign-suggestions", map(suggestions, issue_assign_suggestion_nodes)),
       el_attrs("button", [
         attr(name: "class", value: "issue-assign-submit issue-action-text" ),
-        attr(name: "disabled", value: "disabled" ),
         attr(name: "type", value: "submit" ),
         attr(name: "data-action", value: issue_action_wire(kind: IssueActionAssign) ),
         attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
@@ -781,8 +784,8 @@ fn issue_assignee_chip_node(holder: EventPrincipal) -> Fragment {
 
 // THE DETAIL ACTION BAR: the durable Assign form alone (owner ruling 2026-09-25 — the table rows
 // and the detail header carry no execution buttons; see issue_assign_action_nodes for the ruling).
-fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> List<Fragment> {
-  issue_assign_action_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision)
+fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
+  issue_assign_action_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -947,7 +950,7 @@ fn taskbar_fill_nodes(view: WorkRowView, bar: TaskBarView, project: ProjectTreeV
           taskbar_stage_fill(obligations: obligations, live: view.worker_alive)
         NoActiveWork => []
         LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => []
-        ActivityUnobservable { reason: _ } => []
+        ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
       }
   }
 }
@@ -985,7 +988,7 @@ fn taskbar_attention_attr(view: WorkRowView) -> List<Attribute> {
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => []
     CompletedWork { outcome: _, evidence: _, obligations: _ } => []
     NoActiveWork => []
-    ActivityUnobservable { reason: _ } => []
+    ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
   }
 }
 
@@ -1029,7 +1032,7 @@ fn inspect_attempt_nodes(view: WorkRowView, obligations: List<WorkflowSegment>, 
 fn inspect_attempt_evidence(view: WorkRowView) -> List<Fragment> {
   match view.activity {
     NoActiveWork => []
-    ActivityUnobservable { reason: _ } => []
+    ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
       inspect_attempt_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
     ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
@@ -2107,15 +2110,15 @@ fn issue_publication_merge_target(envs: List<RoadmapEventEnvelope>) -> String {
 // (gunbc.auth.request_authentication.human_write_admission), and the expected_revision pin
 // matching the assign form. The submit wears no .issue-action class — the client's bodyless action
 // bind must not race the native submit.
-fn issue_comment_composer_node(node_id: String, expected_revision: String) -> Fragment {
+fn issue_comment_composer_node(node_id: String, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   el_attrs("form", [
     attr(name: "class", value: "issue-comment-form" ),
     attr(name: "method", value: "post" ),
-    attr(name: "enctype", value: "text/plain" ),
+    attr(name: "enctype", value: "application/x-www-form-urlencoded" ),
     attr(name: "action", value: join(["/issue/", node_id, "/comment"], "") ),
   ], [
-    el_attrs("input", [ attr(name: "name", value: "key" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: "" ) ], []),
-    el_attrs("input", [ attr(name: "name", value: "csrf" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: "" ) ], []),
+    el_attrs("input", [ attr(name: "name", value: "key" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-comment") } ) ], []),
+    el_attrs("input", [ attr(name: "name", value: "csrf" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: command_context.csrf ) ], []),
     el_attrs("input", [ attr(name: "name", value: "expected_revision" ), attr(name: "type", value: "hidden" ), attr(name: "value", value: expected_revision ) ], []),
     el_attrs("textarea", [
       attr(name: "name", value: "body" ),
@@ -2143,7 +2146,7 @@ fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgres
       },
       match view.activity {
         NoActiveWork => []
-        ActivityUnobservable { reason: _ } => []
+        ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
         ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
           issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
         ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
@@ -2205,7 +2208,7 @@ fn issue_head_chip_nodes(view: WorkRowView) -> List<Fragment> {
       []))
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
@@ -2223,24 +2226,24 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
     ]),
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
-        el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision)),
+        el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
         el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, panel: panel)),
         el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
         el_class("section", "panel-history", issue_history_tab_nodes(events: events)),
       ]),
-      issue_metadata_rail_node(view: view, panel: panel, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision),
+      issue_metadata_rail_node(view: view, panel: panel, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
     ]),
   ])
 }
 
 // THE COMMENTS TAB: the description pinned above the stream, the composer below — the page's
 // default panel (the tab law renders it when data-tab is "comments").
-fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String) -> List<Fragment> {
+fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
   concat(
     [
       issue_description_node(view: view),
       issue_comments_stream_node(node_id: view.node_id, envs: events),
-      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision),
+      issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, command_context: command_context),
     ],
     disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
 }
@@ -2294,12 +2297,12 @@ fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>) -> List<Fragment>
 // component, parent, blocked-by/blocking, delivery, return-to, modified, observation — the
 // issue's identity and state at a glance, beside the narrative. Rows with no fact OMIT (the
 // mandate's empty-row law), except status and assignee which always render.
-fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+fn issue_metadata_rail_node(view: WorkRowView, panel: IssueLinkPanel, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   let assignment = roadmap_issue_assignment(envs: events)
   let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
   el_class("aside", "issue-rail", [
     issue_field_text_row(label: "status", value: issue_rail_status_text(view: view, events: events)),
-    issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision),
+    issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
     issue_field_text_row(label: "reporter", value: issue_owner_value(view: view)),
     issue_field_text_row(label: "component", value: issue_component_value(view: view)),
     issue_field_row(label: "parent", value: issue_parent_value(panel: panel)),
@@ -2327,14 +2330,14 @@ fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>)
 
 // THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
 // Assign control — the editable field the mandate puts in the rail.
-fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
-  let holder_chip = match issue_assignee_holder(view: view, attempts: attempts) {
+fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+  let holder_chip = match assignment.holder {
     Absent => [ txt(issue_assignee_unassigned_display as String) ]
     Present { value: holder } => [ issue_assignee_chip_node(holder: holder) ]
   }
   issue_field_row(label: "assignee", value: concat(
     holder_chip,
-    issue_detail_action_bar_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision)))
+    issue_detail_action_bar_nodes(view: view, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))
 }
 
 // THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's
@@ -2380,7 +2383,7 @@ fn issue_modified_value(events: List<RoadmapEventEnvelope>) -> String {
   }
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
@@ -2393,7 +2396,7 @@ fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observatio
       ]),
       el("body", [
         roadmap_header(page: "issue"),
-        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision),
+        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
         dispatch_client_script(),
       ]),
     ],
@@ -2437,6 +2440,7 @@ fn issue_detail_page_for(
   events: List<RoadmapEventEnvelope>,
   viewer: String,
   recents: List<EventPrincipal>,
+  command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" },
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -2467,7 +2471,7 @@ fn issue_detail_page_for(
             events: events,
             viewer: viewer,
             recents: recents,
-            expected_revision: issue_chain_head_id(envs: events))
+            expected_revision: issue_chain_head_id(envs: events), command_context: command_context)
       }
   }
 }

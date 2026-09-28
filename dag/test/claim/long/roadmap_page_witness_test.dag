@@ -1983,7 +1983,7 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         Absent => h
       }
       occurrence_count(s: body, pattern: "dispatch-btn") == 0
-        && string_contains(s: body, pattern: "<form class=\"issue-assign-form\" method=\"post\" enctype=\"text/plain\" action=\"/issue/issue-detail-specimen/assign\">")
+        && string_contains(s: body, pattern: "<form class=\"issue-assign-form\" method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"/issue/issue-detail-specimen/assign\">")
         && string_contains(s: body, pattern: "<input class=\"issue-assign-input\" name=\"assignee\" id=\"issue-assign-input\" type=\"text\" list=\"issue-assign-recents\"")
         && string_contains(s: body, pattern: "<datalist id=\"issue-assign-recents\">")
         && string_contains(s: body, pattern: "<option value=\"fabric@gunb.ai\"></option>")
@@ -2181,7 +2181,7 @@ test fn witness_issue_comment_composer_posts_text_plain_with_key_csrf_and_body_l
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "<form class=\"issue-comment-form\" method=\"post\" enctype=\"text/plain\" action=\"/issue/issue-detail-specimen/comment\">") == 1
+      occurrence_count(s: h, pattern: "<form class=\"issue-comment-form\" method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"/issue/issue-detail-specimen/comment\">") == 1
         && occurrence_count(s: h, pattern: "name=\"key\" type=\"hidden\"") == 1
         && occurrence_count(s: h, pattern: "name=\"csrf\" type=\"hidden\"") == 1
         && occurrence_count(s: h, pattern: "name=\"expected_revision\" type=\"hidden\"") == 2

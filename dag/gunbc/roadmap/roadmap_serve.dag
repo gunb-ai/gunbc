@@ -1,5 +1,12 @@
 module gunbc.roadmap_serve
 
+import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
+
+import gunbc.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
+
+import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
+
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.roadmap_allocation_page { allocation_page, allocation_client_path }
 import gunbc.roadmap_allocation_client { allocation_client_source }
@@ -850,30 +857,31 @@ fn serve_issue_detail_response_over(
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  let standings = roadmap_standings_read(layout: layout)
-  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
-  let recents = match roadmap_events_read_all(layout: layout) {
-    AllEventsRead { envelopes } => roadmap_recent_claimed_assignees(envs: envelopes)
-    AllEventsReadRefused { step: _, reason: _ } => []
-  }
-  let envelopes = match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
-    EventsRead { node: _, envelopes } => envelopes
-    EventsReadRefused { node: _, step: _, reason: _ } => []
-  }
-  let page = issue_detail_page_for(
-    proj: plan,
-    node_id: node_id,
-    attempts: [],
-    attempts_refused: none,
-    standings: standings,
-    launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
-    stale_nodes: [],
-    events: envelopes,
-    viewer: viewer,
-    recents: recents)
-  serve_page_response_with_status(
-    page: page,
-    status: if issue_detail_node_exists(proj: plan, node_id: node_id) { 200 } else { 404 })
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  else { match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+    EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
+      body: join(["Issue history unavailable at ", step, ": ", reason, ". No revision-pinned mutations are available."], ""))
+    EventsRead { node: _, envelopes } => {
+      let standing = roadmap_node_standing(envs: envelopes)
+      let standing_key = roadmap_node_standing_key(s: standing)
+      if standing_key == "forked" || standing_key == "history_incomplete" {
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", roadmap_node_standing_text(s: standing)))
+      } else {
+        let context = match request.security.authentication {
+          GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
+          _ => IssueFormContext { operation: "", csrf: "" }
+        }
+        let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) _ => [] }
+        let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: [],
+          attempts_refused: Present { value: "The per-issue attempt observation is not connected; no claim of zero attempts is made." },
+          standings: StandingsObserved { rows: [NodeStandingRow { node_id: node_id, standing: standing }] },
+          launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan), stale_nodes: [], events: envelopes,
+          viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context)
+        let response = serve_page_response_with_status(page: page, status: 200)
+        ServeHttpResponse { status: response.status, content_type: response.content_type, body: response.body, headers: concat(response.headers, [ServeResponseHeaderNoStore]) }
+      }
+    }
+  } }
 }
 
 // THE ASSIGNEE SUBMISSION, resolved to the stable PrincipalRef the v3 event records (owner
@@ -905,11 +913,13 @@ fn serve_issue_assignment_context_over(
               AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events)
               AllEventsReadRefused { step: _, reason: _ } => []
             }
-            serve_text_response_with_headers(
-              status: 200,
-              content_type: application_json_utf8,
-              body: inline_assignment_context_body(session: session, events: envelopes, recents: recents),
-              headers: [ServeResponseHeaderNoStore])
+            match issue_operation_nonce() {
+              Absent => serve_text_response(status: 503, content_type: text_plain_utf8, body: "Cannot prepare a stable assignment operation. Try again before submitting.")
+              Present { value: nonce } => serve_text_response_with_headers(
+                status: 200, content_type: application_json_utf8,
+                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, operation: nonce),
+                headers: [ServeResponseHeaderNoStore])
+            }
         }
       }
     AuthAbsent => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Sign in to assign this issue.")
@@ -967,7 +977,7 @@ fn assignee_lookup_refusal(raw: String) -> String {
 // never "assignment failed". RE-ASSIGNING THE SAME REVISION joins the existing request: the
 // admission's own already-live / already-accepted arms refuse the duplicate attempt, and the
 // response says the assignment stands beside the refusal. THE REQUEST BODY is the form's
-// text/plain encoding — newline-delimited k=v fields, no percent-encoding to undo.
+// application/x-www-form-urlencoded encoding, decoded once by the shared strict codec.
 fn serve_issue_assign_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -975,79 +985,49 @@ fn serve_issue_assign_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  if !issue_detail_node_exists(proj: plan, node_id: node_id) {
-    serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
-  } else {
-    let observed_at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-    match human_write_admission(
-      route_path: join(["/issue/", node_id, "/assign"], "") as NonEmptyStr,
-      action: ServeActionAssignIssue,
-      security: request.security,
-      authorization_policy: tracker_write_authorization_policy,
-      deployment_policy: roadmap_deployment_access_policy,
-      csrf_presented: issue_form_field(body: request.body, name: "csrf"),
-      observed_at: observed_at,
-    ) {
-      Deny { refusal } =>
-        serve_text_response(status: 403, content_type: text_plain_utf8, body: concat("assignment refused: ", access_refusal_reason(refusal: refusal)))
-      Permit =>
-        let author = authenticated_write_author_label(security: request.security)
-        let raw_assignee = issue_form_field(body: request.body, name: "assignee")
-        if !assignee_submission_shape_valid(s: raw_assignee) {
-          serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: '", raw_assignee, "' is not an email spelling, the fabric selector, or a principal spelling\n"], ""))
-        } else {
-          let raw_return_to = issue_form_field(body: request.body, name: "return_to")
-          if raw_return_to != "" && !assignee_submission_shape_valid(s: raw_return_to) {
-            serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to '", raw_return_to, "' is not an email spelling, the fabric selector, or a principal spelling\n"], ""))
-          } else {
-            let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-            let nid = node_id as NonEmptyStr as RoadmapNodeId
-            match roadmap_events_read(layout: layout, node: nid) {
-              EventsReadRefused { node: _, step, reason } =>
-                serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused: could not read the issue's history (", step, "): ", reason, "\n"], ""))
-              EventsRead { node: _, envelopes } =>
-                let standing = roadmap_node_standing(envs: envelopes)
-                let key = roadmap_node_standing_key(s: standing)
-                if key == "forked" || key == "history_incomplete" {
-                  serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue's history is ", key, ": ", roadmap_node_standing_text(s: standing), "\n"], ""))
-                } else {
-                  let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
-                  let head = match heads.first() { Present { value: h } => h.id as String  Absent => "" }
-                  let expected_revision = issue_form_field(body: request.body, name: "expected_revision")
-                  if expected_revision != head {
-                    serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["assignment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head, ") — reload and assign again\n"], ""))
-                  } else {
-                    let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                    match authenticated_write_author_principal(security: request.security) {
-                      Absent =>
-                        serve_text_response(status: 403, content_type: text_plain_utf8, body: "assignment refused: admitted write carried no author principal (unreachable past the write law)\n")
-                      Present { value: author_ref } =>
-                        match assignee_principal_of(raw: raw_assignee) {
-                          Absent =>
-                            serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: ", assignee_lookup_refusal(raw: raw_assignee), "\n"], ""))
-                          Present { value: assignee_ref } =>
-                            match (if raw_return_to == "" { Present { value: author_ref } } else { assignee_principal_of(raw: raw_return_to) }) {
-                              Absent =>
-                                serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["assignment refused: return_to ", assignee_lookup_refusal(raw: raw_return_to), "\n"], ""))
-                              Present { value: return_to_ref } =>
-                                match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: EventPrincipalAuthenticated { ref: author_ref }, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: Claimed { assignee: EventPrincipalAuthenticated { ref: assignee_ref }, return_to: EventPrincipalAuthenticated { ref: return_to_ref } }, recorded_at: at }) {
-                                  EventAppended { id } =>
-                                    serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee_ref, event_id: id as String)
-                                  EventAlreadyPresent { id } =>
-                                    serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee_ref, event_id: id as String)
-                                  EventAppendRefused { id: _, step, reason } =>
-                                    serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["assignment refused at ", step, ": ", reason, "\n"], ""))
-                                }
-                            }
-                        }
-                    }
-                  }
+  let observed_at = match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
+    action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignment refused: a valid operation key and explicit expected_revision are required") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => match assignee_principal_of(raw: issue_form_field(body: request.body, name: "assignee")) {
+          Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignee has no admitted principal")
+          Present { value: assignee } => {
+            let target = issue_form_field(body: request.body, name: "return_to")
+            match (if target == "" { Present { value: author } } else { assignee_principal_of(raw: target) }) {
+              Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "return_to has no admitted principal")
+              Present { value: return_to } => {
+                let expected = issue_form_field(body: request.body, name: "expected_revision")
+                let outcome = issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+                  command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
+                    author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
+                    expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
+                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at)
+                match outcome {
+                  EventAppended { id } => serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String)
+                  EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
+                  EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
                 }
+              }
             }
           }
         }
-    }
-  }
+      } }
+  } }
+}
+
+fn issue_command_form_valid(body: String) -> Bool {
+  issue_form_has_field(body: body, name: "expected_revision")
+    && roadmap_operation_identity_valid(operation: issue_form_field(body: body, name: "key"))
+}
+
+fn issue_command_refusal_response(step: String, reason: String) -> ServeHttpResponse {
+  serve_text_response(status: if step == "revision-conflict" || step == "operation-conflict" { 409 } else { 503 },
+    content_type: text_plain_utf8, body: join(["issue command refused at ", step, ": ", reason, "\n"], ""))
 }
 
 // THE AUTHOR PRINCIPAL OF AN ADMITTED WRITE, the typed form the v3 event records: a Google OIDC
@@ -1075,17 +1055,16 @@ fn authenticated_write_author_label(security: RequestSecurityContext<RequestAuth
   }
 }
 
-// ONE FIELD OF A TEXT/PLAIN FORM BODY (the issue forms ship enctype text/plain — newline-
-// delimited k=v fields, no percent-encoding to undo): the line "name=value", value taken verbatim
-// to the line end (the fields here are single-line by construction — an email spelling, an event
-// id; the comment body rides LAST and is parsed by its own rule, since markdown freely carries
-// newlines). A field absent from the body reads as "".
+// Both native and enhanced issue commands use the same admitted form codec.
 fn issue_form_field(body: String, name: String) -> String {
-  let prefix = join([name, "="], "")
-  match (filter(split(s: body, delimiter: "\n"), line => starts_with(s: line, prefix: prefix))).first() {
-    Present { value: line } => substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
+  match form_field(form: form_decode(wire: body), name: name) {
+    Present { value } => value
     Absent => ""
   }
+}
+
+fn issue_form_has_field(body: String, name: String) -> Bool {
+  match form_field(form: form_decode(wire: body), name: name) { Present { value: _ } => true Absent => false }
 }
 
 // THE EXECUTION ENTRY POINT'S FOLLOW-THROUGH, factored pure over the admission outcome so the
@@ -1126,94 +1105,49 @@ fn serve_fabric_assignment_response(node_id: String, assignee: PrincipalRef, eve
   }
 }
 
-// THE COMMENT ROUTE (owner mandate 2026-09-25: comments are durable events; retries never
-// duplicate): POST /issue/<id>/comment appends a CommentCreated to the SAME chained, fork-refusing
-// log — the event-CLI idiom again (read, refuse on forked/incomplete, parent = the single head,
-// probed clock, append through the carrier). The body ships enctype text/plain with the key line
-// first and the body LAST (markdown freely carries newlines). The key is the client's idempotency
-// token: already present, the request is a RETRY — 200 with the existing comment's deep link and
-// NOTHING appended (control 7: retries never duplicate; this is the duplicate-append-refused
-// arm). A composer that minted no key (the no-JS native form) still never duplicates a retry on
-// an unchanged history: same author, same body, same head is the retry. Visibility is recorded
-// ("public" this cut). The author is the AUTHENTICATED PRINCIPAL — the same write law as the
-// assign route: Google OIDC session + action authorization + CSRF, with the event recording the
-// session principal's stable label; tailnet transport alone refuses at the authentication axis.
-// The expected_revision guard matches the assign route — 409 STALE on a moved head.
+// Comment commands use the same strict URL-encoded codec as native and enhanced assignment.
+// Every form has a stable operation identity, explicit expected revision, and session CSRF.
+// A retry returns the original event and comment ordinal, even after intervening events;
+// equal text with another operation identity is an intentional second comment.
 fn serve_issue_comment_response_over(
   instance: HostDashboardInstance,
   request: ServeHttpRequest<RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let plan = roadmap_authority_projection()
-  if !issue_detail_node_exists(proj: plan, node_id: node_id) {
-    serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
-  } else {
-    let observed_at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-    match human_write_admission(
-      route_path: join(["/issue/", node_id, "/comment"], "") as NonEmptyStr,
-      action: ServeActionCommentIssue,
-      security: request.security,
-      authorization_policy: tracker_write_authorization_policy,
-      deployment_policy: roadmap_deployment_access_policy,
-      csrf_presented: issue_form_field(body: request.body, name: "csrf"),
-      observed_at: observed_at,
-    ) {
-      Deny { refusal } =>
-        serve_text_response(status: 403, content_type: text_plain_utf8, body: concat("comment refused: ", access_refusal_reason(refusal: refusal)))
-      Permit =>
-        let author_principal = authenticated_write_author_principal(security: request.security)
-        let body = issue_comment_body_of(wire: request.body)
-        if trim(body) == "" {
-          serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: the body is empty\n")
-        } else {
-          let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-          let nid = node_id as NonEmptyStr as RoadmapNodeId
-          match roadmap_events_read(layout: layout, node: nid) {
-            EventsReadRefused { node: _, step, reason } =>
-              serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["comment refused: could not read the issue's history (", step, "): ", reason, "\n"], ""))
-            EventsRead { node: _, envelopes } =>
-              let standing = roadmap_node_standing(envs: envelopes)
-              let key = roadmap_node_standing_key(s: standing)
-              if key == "forked" || key == "history_incomplete" {
-                serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["comment refused: the issue's history is ", key, ": ", roadmap_node_standing_text(s: standing), "\n"], ""))
-              } else {
-                let heads = filter(envelopes, e => !any(envelopes, o => match o.event.parent { Present { value: p } => (p as String) == (e.id as String)  Absent => false }))
-                let head_string = match heads.first() { Present { value: h } => h.id as String  Absent => "" }
-                let expected_revision = issue_form_field(body: request.body, name: "expected_revision")
-                if expected_revision != "" && expected_revision != head_string {
-                  serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["comment refused: the issue changed since the page rendered (expected revision ", expected_revision, ", head ", head_string, ") — reload and comment again\n"], ""))
-                } else {
-                  match author_principal {
-                    Absent =>
-                      serve_text_response(status: 403, content_type: text_plain_utf8, body: "comment refused: admitted write carried no author principal (unreachable past the write law)\n")
-                    Present { value: author_ref } =>
-                      let author_identity = EventPrincipalAuthenticated { ref: author_ref }
-                      let key_field = trim(issue_form_field(body: request.body, name: "key"))
-                      let comments = roadmap_issue_comments(envs: envelopes)
-                      if key_field != "" && roadmap_comment_created_key_present(envs: envelopes, comment: key_field as NonEmptyStr) {
-                        serve_comment_recorded_response(node_id: node_id, comments: comments, comment: key_field, event_id: "", already_present: true)
-                      } else if key_field == "" && roadmap_comment_retry_present(envs: envelopes, author: author_identity, body: body as NonEmptyStr, head: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }) {
-                        serve_comment_recorded_response(node_id: node_id, comments: comments, comment: "", event_id: "", already_present: true)
-                      } else {
-                        let at = match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
-                        let comment_id = if key_field == "" { join([principal_ref_label(p: author_ref), ":", body], "") as NonEmptyStr } else { key_field as NonEmptyStr }
-                        match roadmap_event_append(layout: layout, event: RoadmapEvent { node: nid, author: author_identity, parent: match heads.first() { Present { value: h } => Present { value: h.id }  Absent => none }, kind: CommentCreated { comment: comment_id, body: body as NonEmptyStr, visibility: "public" as NonEmptyStr, parent_comment: none }, recorded_at: at }) {
-                          EventAppended { id } =>
-                            serve_comment_recorded_response(node_id: node_id, comments: [IssueComment { ordinal: count(comments) + 1, comment: comment_id, author: author_identity, body: "", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "", edited_at: "", deleted: false }], comment: comment_id as String, event_id: id as String, already_present: false)
-                          EventAlreadyPresent { id } =>
-                            serve_comment_recorded_response(node_id: node_id, comments: comments, comment: comment_id as String, event_id: id as String, already_present: true)
-                          EventAppendRefused { id: _, step, reason } =>
-                            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["comment refused at ", step, ": ", reason, "\n"], ""))
-                        }
-                      }
-                  }
-                }
+  let observed_at = match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
+  if !issue_detail_node_exists(proj: roadmap_authority_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
+    action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: a valid operation key and explicit expected_revision are required") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => {
+          let body = issue_comment_body_of(wire: request.body)
+          if body == "" { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: empty body") }
+          else {
+            let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+            let expected = issue_form_field(body: request.body, name: "expected_revision")
+            let operation = issue_form_field(body: request.body, name: "key")
+            let outcome = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
+              node: node_id as NonEmptyStr as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: author }, operation: operation as NonEmptyStr,
+              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at)
+            match outcome {
+              EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+              _ => match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+                EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
+                  body: concat("comment commit acknowledged, but readback refused; retry with the same operation key: ", concat(step, concat(": ", reason))))
+                EventsRead { node: _, envelopes } => serve_comment_recorded_response(node_id: node_id, comments: roadmap_issue_comments(envs: envelopes), comment: operation,
+                  event_id: match outcome { EventAppended { id } => id as String EventAlreadyPresent { id } => id as String _ => "" },
+                  already_present: match outcome { EventAlreadyPresent { id: _ } => true _ => false })
               }
+            }
           }
         }
-    }
-  }
+      } }
+  } }
 }
 
 // THE COMMENT RESPONSE, factored pure over the recorded comments so the witness drives it without
@@ -1232,23 +1166,9 @@ fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>
   }
 }
 
-// THE COMMENT BODY'S WIRE SHAPE: the form orders key first, body LAST, so the body may carry any
-// character including newlines. The body is everything after the FIRST body= field opener —
-// occurrences inside the markdown stay verbatim because the cut is at the first, never the last.
+// The body is a decoded value; its newlines and field-looking text are never reparsed.
 fn issue_comment_body_of(wire: String) -> String {
-  if starts_with(s: wire, prefix: "body=") {
-    substring(s: wire, start: 5, end: string_length(s: wire))
-  } else {
-    let parts = split(s: wire, delimiter: "\nbody=")
-    if count(parts) == 1 {
-      ""
-    } else {
-      match parts.first() {
-        Present { value: before } => substring(s: wire, start: string_length(s: before) + 6, end: string_length(s: wire))
-        Absent => ""
-      }
-    }
-  }
+  issue_form_field(body: wire, name: "body")
 }
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {

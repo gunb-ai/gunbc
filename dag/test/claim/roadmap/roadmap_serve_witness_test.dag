@@ -657,8 +657,8 @@ test fn witness_issue_detail_route_selects() -> Bool {
 // THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
 // name=value line, absent reads as empty; no percent-encoding exists to undo, and a value never
 // bleeds across lines.
-test fn witness_assign_form_field_reads_the_text_plain_body() -> Bool {
-  let body = "expected_revision=abc123\nreturn_to=\nassignee=briansrls@gunb.ai"
+test fn witness_assign_form_field_reads_urlencoded_body() -> Bool {
+  let body = "expected_revision=abc123&return_to=&assignee=briansrls%40gunb.ai"
   issue_form_field(body: body, name: "assignee") == "briansrls@gunb.ai"
     && issue_form_field(body: body, name: "expected_revision") == "abc123"
     && issue_form_field(body: body, name: "return_to") == ""
@@ -798,10 +798,10 @@ test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
 // parse cuts at the FIRST body= opener and keeps everything after it verbatim, including a
 // literal "body=" inside the text or trailing newlines; a wire with no body field reads "".
 test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_verbatim() -> Bool {
-  let with_key = "key=abc-123\nexpected_revision=\nbody=first line\nsecond line\nbody= not a field"
+  let with_key = "key=abc-123&expected_revision=&body=first+line%0Asecond+line%0Abody%3D+not+a+field"
   let keyless = "body=just the body"
-  let trailing_newlines = "key=k\nbody=line\n\n"
-  let no_body = "key=k\nexpected_revision=x"
+  let trailing_newlines = "key=k&body=line%0A%0A"
+  let no_body = "key=k&expected_revision=x"
   issue_comment_body_of(wire: with_key) == "first line\nsecond line\nbody= not a field"
     && issue_comment_body_of(wire: keyless) == "just the body"
     && issue_comment_body_of(wire: trailing_newlines) == "line\n\n"
@@ -841,7 +841,7 @@ test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/issue/restore-group-b-serving/comment",
-    body: "key=k\nbody=",
+    body: "key=k&body=",
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
