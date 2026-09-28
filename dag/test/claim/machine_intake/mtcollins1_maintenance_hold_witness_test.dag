@@ -19,8 +19,11 @@ import gunbc.auth.mtcollins1_boot_federation {
 }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import v2.std.optional { Present, Absent }
+import gunbc.build_cache_instance { ProcessIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data holder_process: ProcessIdentity = ProcessIdentity { boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr, pid: 3975, start_time: "81234" as NonEmptyStr }
 
 // ── The interlock: the boot refuses under an active maintenance hold ──────────────────────────
 // Supplied at the interface (DESIGN §3, a witness discriminates at one interface), and only into the
@@ -55,12 +58,12 @@ test fn the_boot_refuses_under_an_active_maintenance_hold_and_names_the_holder()
     generation: first_generation(),
   }
   refused_naming(r: unit_hold_refusal(outcome: held), pattern: "operator-maintenance:reseating DIMMs")
-    && not_refused(r: unit_hold_refusal(outcome: FileHoldAcquired { slot_key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: "42"), generation: first_generation() }))
+    && not_refused(r: unit_hold_refusal(outcome: FileHoldAcquired { slot_key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: "42", process: holder_process), generation: first_generation() }))
 }
 
 // ANOTHER HOLDER IS A HOLDER: a running boot, or a host reset-return, excludes the next writer.
 test fn a_second_writer_refuses_while_another_run_holds_the_unit() -> Bool {
-  refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: boot_run_owner(run_id: "41"), generation: first_generation() }), pattern: "mtcollins1-boot:41")
+  refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: boot_run_owner(run_id: "41", process: holder_process), generation: first_generation() }), pattern: "mtcollins1-boot:41")
     && refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: host_reset_owner(attempt: "srv1-mtcollins1"), generation: first_generation() }), pattern: "host-reset-return:srv1-mtcollins1")
 }
 
@@ -138,7 +141,7 @@ fn round_trips(o: UnitHoldOwner, label: String) -> Bool {
 
 test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
   round_trips(o: OperatorMaintenance { reason: "reseating DIMMs" as NonEmptyStr }, label: "operator maintenance: reseating DIMMs")
-    && round_trips(o: BootRun { run_id: "41" as NonEmptyStr }, label: "the mtcollins1 boot run 41")
+    && round_trips(o: BootRun { run_id: "41" as NonEmptyStr, process: holder_process }, label: "the mtcollins1 boot run 41 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
     && round_trips(o: HostResetReturn { attempt: "srv1-mtcollins1" as NonEmptyStr }, label: "host reset-return attempt srv1-mtcollins1")
     && match decode_unit_hold_owner(owner: "someone-else:x" as DurableHoldOwnerRef) {
       UnitHoldOwnerUnrecognized { raw: _ } => true
@@ -148,4 +151,26 @@ test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
       UnitHoldOwnerUnrecognized { raw: _ } => true
       UnitHoldOwnerDecoded { owner: _ } => false
     }
+}
+
+// A BOOT OWNER NAMES ITS PROCESS AND DECODES BACK TO IT (gunbc#12533 finding 2): the rendered owner
+// carries boot id, pid and start time, and decodes to the same identity -- the identity a successor
+// observes the holder by. A boot owner written WITHOUT a process (the spelling before this change,
+// still possibly on disk) is not guessed into one: it decodes as unrecognized, so its holder is
+// unobservable and its hold is refused rather than broken.
+test fn a_boot_owner_carries_its_process_and_a_processless_one_is_not_recoverable() -> Bool {
+  let rendered = boot_run_owner(run_id: "4242", process: holder_process) as String
+  rendered == "mtcollins1-boot:4242@boot=73c8153e-0e0e-4480-a36c-bc7560c50e8b,pid=3975,start=81234"
+    && (match decode_unit_hold_owner(owner: rendered as DurableHoldOwnerRef) {
+      UnitHoldOwnerDecoded { owner: BootRun { run_id: r, process: p } } => (r as String) == "4242" && p.pid == 3975 && (p.start_time as String) == "81234"
+      _ => false
+    })
+    && (match decode_unit_hold_owner(owner: "mtcollins1-boot:4242" as DurableHoldOwnerRef) {
+      UnitHoldOwnerUnrecognized { raw: _ } => true
+      _ => false
+    })
+    && (match decode_unit_hold_owner(owner: "mtcollins1-boot:4242@boot=x,pid=-1,start=5" as DurableHoldOwnerRef) {
+      UnitHoldOwnerUnrecognized { raw: _ } => true
+      _ => false
+    })
 }
