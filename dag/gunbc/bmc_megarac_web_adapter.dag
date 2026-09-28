@@ -61,6 +61,13 @@ fn megarac_web_protocol_script(initial: BmcWorld, username: String, password: St
   ], "\n")
 }
 
+// CONSUMER (DESIGN §3c, declared frontier). The protocol script, the transport script and its two
+// operations are consumed by test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness
+// (gunbc#12492, stacked on this change): each failure control -- viewer seat busy, /kvm closed mid
+// session, canvas unreadable -- serves a gunbc.bmc_model world through ServeScript, points the real
+// KVM observer at it, and StopServing ends it. TRIGGER: gunbc#12492 lands; until then nothing in
+// this change executes them. The two node -e realizations here and in #12492 are scaffolds whose
+// approval is external to this diff and has been requested from the operator lane.
 // THE TRANSPORT: node's http server and a hand-rolled RFC 6455 handshake, serving the script above
 // and a stand-in viewer page (a canvas#kvm painted from the /kvm stream; the vendor's viewer is not
 // redistributable). It only encodes: it reads its answers from the script line by line.
