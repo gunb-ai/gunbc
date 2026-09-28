@@ -8,7 +8,11 @@ import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_plans, spark_pair_apply_plan_refusals }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthorityRead, CurrentAuthorityUnread,
+  current_pair_serving_authorities, current_authority_group, current_authority_wire,
+}
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -33,11 +37,15 @@ test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet
     && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read"))
 }
 
+data unread_refusal_prefix: String = "the serving authority could not be read, so nothing is converged: "
+
 // THE REAL READ, ON WHATEVER RUNNER THIS LANDS ON: the pairing claim for the supplied host above.
 // The executor is the runner's own hostname and the log is really read. The ROUTE holds whether or
-// not the runner can read the log: exactly the groups the log could not answer for are refused as
-// unread, so an unreadable authority never becomes a plan and a readable one is never reported
-// unreadable.
+// not the runner can read the log. It is an IDENTITY JOIN, not a count (DESIGN section 5: completeness is an
+// identity join): each unread reading is joined to the one refusal that carries exactly that
+// reading's wire (group, step, cause), and no group the log did answer for appears in any unread
+// refusal. So an unreadable authority never becomes a plan, a readable one is never reported
+// unreadable, and one group's refusal cannot stand in for another's.
 test fn the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer() -> Bool {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: _ } => false
@@ -47,14 +55,15 @@ test fn the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answe
         Present { value: at } => {
           let current = current_pair_serving_authorities(short_hostname: executor, at: at)
           let plans = spark_pair_apply_plans(executor: executor, at: at)
-          let unread = filter(current, c => match c {
-            CurrentAuthorityUnread { group: _, step: _, reason: _ } => true
-            CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => false
-          })
-          let unread_refusals = filter(spark_pair_apply_plan_refusals(plans: plans), r => string_contains(s: r, pattern: "the serving authority could not be read"))
+          let refusals = spark_pair_apply_plan_refusals(plans: plans)
           length(plans) == length(spark_pair_serving_authorities)
             && length(current) == length(spark_pair_serving_authorities)
-            && length(unread_refusals) == length(unread)
+            && all(current, c => match c {
+              CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
+                any(refusals, r => r == join([unread_refusal_prefix, current_authority_wire(c: c)], ""))
+              CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+                !any(refusals, r => string_contains(s: r, pattern: join([fabric_group_wire(g: current_authority_group(c: c)) as String, " authority unread at "], "")))
+            })
         }
       }
   }
