@@ -17,7 +17,7 @@
   "missing_credential_created_started_receipt": false,
   "cloud_bootstrap": {
     "status": "refused",
-    "attempts": 2,
+    "attempts": 3,
     "completed_stages": [
       "identities",
       "roles"
@@ -27,7 +27,8 @@
     "missing_permission": "iam.denypolicies.create",
     "capability_bindings_applied": false,
     "workflow_trust_applied": false,
-    "temporary_credentials_removed": true
+    "temporary_credentials_removed": true,
+    "fresh_token_retry": "same HTTP 403 at deny-policy creation"
   },
   "full_landing_suite": "not run",
   "oidc_approval_workflow_acceptance": "not run"

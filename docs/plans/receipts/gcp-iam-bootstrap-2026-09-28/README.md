@@ -46,3 +46,11 @@ permissions; they have not been qualified by this partial run.
 
 Successful deny readback, capability reconciliation, observer/apply checks, and
 final workload trust must precede the real approval-workflow acceptance run.
+
+## Fresh-token retry
+
+Attempt `20260928-a23a0f99c-3` used a newly supplied operator token and reread
+the existing identities and seven role definitions. GCP again refused deny-policy
+creation with HTTP 403 for `iam.denypolicies.create`. Capability and workflow
+trust stages were not reached. Temporary credential removal was independently
+checked. Refreshing the token did not supply the missing IAM permission.
