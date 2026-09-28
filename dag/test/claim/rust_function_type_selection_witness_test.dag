@@ -59,7 +59,11 @@ fn row_realization_at(position: FunctionTypePosition) -> String? {
   fold(rust_function_type_realization_rows, init: Absent, f: (acc, row) =>
     match acc {
       Present { value: _ } => acc
-      Absent => if row.position == position { Present { value: row.realization as String } } else { Absent }
+      Absent =>
+        match row.position == position {
+          true => Present { value: row.realization as String }
+          false => Absent
+        }
     }
   )
 }
