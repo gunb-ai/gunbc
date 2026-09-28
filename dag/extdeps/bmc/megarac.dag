@@ -402,22 +402,22 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 // simulated controller renders exactly these.
 data megarac_kvm_websocket_path: NonEmptyStr = "/kvm"
 
-type MegaRacSessionReply
-  = MegaRacSessionOpened { csrf_token: String, privilege: Int, extended_privilege: Int, racsession_id: Int }
-  | MegaRacSessionRefused {}
+type MegaRacLoginReply
+  = MegaRacLoginAccepted { csrf_token: String, privilege: Int, extended_privilege: Int, racsession_id: Int }
+  | MegaRacLoginRefused {}
 
-fn megarac_session_reply_status(reply: MegaRacSessionReply) -> Int {
+fn megarac_login_reply_status(reply: MegaRacLoginReply) -> Int {
   match reply {
-    MegaRacSessionOpened { csrf_token: _, privilege: _, extended_privilege: _, racsession_id: _ } => 200
-    MegaRacSessionRefused {} => 401
+    MegaRacLoginAccepted { csrf_token: _, privilege: _, extended_privilege: _, racsession_id: _ } => 200
+    MegaRacLoginRefused {} => 401
   }
 }
 
-fn megarac_session_reply_json(reply: MegaRacSessionReply) -> String {
+fn megarac_login_reply_json(reply: MegaRacLoginReply) -> String {
   match reply {
-    MegaRacSessionOpened { csrf_token: t, privilege: p, extended_privilege: x, racsession_id: r } =>
+    MegaRacLoginAccepted { csrf_token: t, privilege: p, extended_privilege: x, racsession_id: r } =>
       concat("\{\"ok\":0,\"CSRFToken\":\"", t, "\",\"privilege\":", to_string(p), ",\"extendedpriv\":", to_string(x), ",\"racsession_id\":", to_string(r), "}")
-    MegaRacSessionRefused {} => "\{}"
+    MegaRacLoginRefused {} => "\{}"
   }
 }
 
