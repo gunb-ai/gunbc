@@ -37,6 +37,7 @@ import v2.std.node {
   Instantiation,
   Loop,
   edge_contributes_to_cost_fold,
+  loop_edge_priced_once,
   Named,
   Node,
   NodeFold,
@@ -93,10 +94,19 @@ type CostCompositionMode
   | AlternativeCost
   | IterativeCost
 
+// `once` is the work a node performs a single time BESIDE its composed children: a Loop's domain
+// (v2.std.node loop_edge_priced_once) is evaluated once, so it is summed with the iteration rather than
+// multiplied into it. It is kept apart from `cost` so the answer does not depend on where a producer
+// placed the domain edge among the loop's children; symbolic_cost_fold_total joins the two.
 type SymbolicCostFoldState {
   mode: CostCompositionMode
   cost: SymbolicCost
+  once: SymbolicCost
   parent: Node
+}
+
+fn symbolic_cost_fold_total(s: SymbolicCostFoldState) -> SymbolicCost {
+  symbolic_sequential(a: s.cost, b: s.once)
 }
 
 fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
@@ -209,12 +219,14 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
       SymbolicCostFoldState {
         mode: cost_mode_for_connective(c: c),
         cost: base_cost_for_connective(c: c, n: n),
+        once: zero_cost(),
         parent: n
       }
     ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_behavior(b: b),
         cost: base_cost_for_behavior(b: b, n: n),
+        once: zero_cost(),
         parent: n
       }
   }
@@ -404,7 +416,15 @@ fn cost_fold_step(
   if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
-      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
+      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: symbolic_cost_fold_total(s: child)),
+      once: acc.once,
+      parent: acc.parent
+    }
+  } else if loop_edge_priced_once(parent: acc.parent, e: e) {
+    SymbolicCostFoldState {
+      mode: acc.mode,
+      cost: acc.cost,
+      once: symbolic_sequential(a: acc.once, b: symbolic_cost_fold_total(s: child)),
       parent: acc.parent
     }
   } else {
@@ -424,7 +444,7 @@ fn symbolic_cost_fold_state(n: Node) -> SymbolicCostFoldState {
 }
 
 fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
-  symbolic_cost_fold_state(n: n).cost
+  symbolic_cost_fold_total(s: symbolic_cost_fold_state(n: n))
 }
 
 fn cost_lens(n: Node) -> Witness<SymbolicCost> {
