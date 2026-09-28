@@ -875,6 +875,9 @@ pub(crate) struct ProbeCargoInvocation {
     /// `<path> <sha256>`. Recorded rather than neutralised: cargo has no switch to disable
     /// discovery, and the probe root sits under directories this host does not own.
     pub cargo_configuration: Vec<String>,
+    /// The lock the build ran against: a committed pin (and `--locked` on the argv above), or the
+    /// caller's stated reason for resolving afresh.
+    pub lock: ProbeLockDisposition,
 }
 
 /// Mirror of `gunbc.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
@@ -898,6 +901,11 @@ pub(crate) const REMAP_PATH_PREFIX_FLAG: &str = "--remap-path-prefix";
 pub(crate) const REMAPPED_CRATE_DIR: &str = "/gunbc-emitted/crate";
 pub(crate) const REMAPPED_TARGET_DIR: &str = "/gunbc-emitted/target";
 pub(crate) const REMAPPED_CARGO_HOME: &str = "/gunbc-emitted/cargo-home";
+
+/// Seed mirror of `gunbc.emitted_build_reproducibility` `emitted_build_locked_flag`: the route's
+/// admission requires it on the recorded argv (`emitted_build_not_locked`), so a drift here reds the
+/// route rather than passing silently.
+pub(crate) const LOCKED_FLAG: &str = "--locked";
 
 /// THE FLAGS A PROBE BUILD RUNS UNDER, in both channels cargo reads: the warning denial, then the
 /// crate directory, the target directory and the cargo home remapped to their fixed spellings, in the
@@ -946,6 +954,392 @@ fn probe_build_flags(
         plain: words.join(" "),
         encoded: words.join("\x1f"),
     })
+}
+
+/// THE COMMITTED DEPENDENCY LOCKS, one per dependency shape the emitter renders
+/// (`v1.compiler.emit_rust` `emitted_crate_dependency_lines`: the base set, and the base set with
+/// the async service stack). The emitted crate's manifest names dependencies by semver range and no
+/// lock was written, so cargo resolved them afresh on every build: measured on 2026-09-28, the
+/// emitted compiler resolved 54 of the 91 packages it shares with the seed to different versions
+/// than the seed links, and the resolution floats with the registry, an input no key names. A pin
+/// is cargo's own lock format, produced by seeding the emitted manifest with the repository's
+/// `Cargo.lock` and letting cargo make its minimal update (`cargo metadata`), so it keeps every
+/// repository-locked version and adds only what the repository does not use. Paths are relative to
+/// the workspace root, in the order of `EMITTED_CRATE_LOCK_PIN_SHAPES`.
+///
+/// THE PRODUCER IS NAMED, NOT A MANUAL COPY: `cargo test --release -p v1-compiler --lib --
+/// --ignored regenerate_the_emitted_crate_lock_pins` rewrites both files from the emitter's own
+/// manifest (`emit_cargo_toml`, the seed mirror) and the repository lock. It is run when the route
+/// refuses with `EmittedLockDivergesFromRepoLock` (the repository lock moved a package the pin
+/// shares) or `NoLockPinForDependencyDemand` (the emitter's dependency lines changed).
+pub(crate) const EMITTED_CRATE_LOCK_PINS: [&str; 2] = [
+    "src/v1/stage0/emitted-crate-lock-pins/base.Cargo.lock",
+    "src/v1/stage0/emitted-crate-lock-pins/async.Cargo.lock",
+];
+
+/// The emitter dependency demand each pin is produced from, `(renders_clap_cli,
+/// renders_async_services)`: the two shapes the native subjects emit. No native subject renders the
+/// clap CLI, so no pin covers it and a crate that does refuses rather than building unlocked.
+#[cfg(test)]
+const EMITTED_CRATE_LOCK_PIN_SHAPES: [(bool, bool); 2] = [(false, false), (false, true)];
+
+/// Whether a probe build ran against a committed lock. `Pinned` builds pass `--locked`, so cargo
+/// refuses rather than resolving anything the pin does not already hold; `Unpinned` is a caller's
+/// stated divergence with its reason, never a default.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProbeLockDisposition {
+    Pinned {
+        pin: String,
+        pin_sha256: String,
+        rendered_sha256: String,
+    },
+    Unpinned {
+        reason: String,
+    },
+}
+
+pub(crate) fn probe_lock_disposition_summary(lock: &ProbeLockDisposition) -> String {
+    match lock {
+        ProbeLockDisposition::Pinned {
+            pin,
+            pin_sha256,
+            rendered_sha256,
+        } => format!("pinned {pin} pin_sha256={pin_sha256} rendered_sha256={rendered_sha256}"),
+        ProbeLockDisposition::Unpinned { reason } => format!("unpinned ({reason})"),
+    }
+}
+
+/// A lock file in cargo's own layout: the header, then one `[[package]]` block per package. The
+/// blocks are kept as text so rendering never re-serialises a byte cargo wrote.
+struct LockBlocks {
+    header: String,
+    blocks: Vec<String>,
+}
+
+fn lock_blocks(text: &str) -> Result<LockBlocks, String> {
+    const MARKER: &str = "[[package]]\n";
+    let starts: Vec<usize> = text
+        .match_indices(MARKER)
+        .map(|(i, _)| i)
+        .filter(|&i| i == 0 || text.as_bytes()[i - 1] == b'\n')
+        .collect();
+    let first = *starts
+        .first()
+        .ok_or_else(|| "LockPinMalformed: no [[package]] block".to_string())?;
+    let mut blocks = Vec::with_capacity(starts.len());
+    for (k, &start) in starts.iter().enumerate() {
+        let end = starts.get(k + 1).copied().unwrap_or(text.len());
+        blocks.push(text[start..end].trim_end().to_string());
+    }
+    Ok(LockBlocks {
+        header: text[..first].to_string(),
+        blocks,
+    })
+}
+
+fn lock_block_field<'a>(block: &'a str, key: &str) -> Option<&'a str> {
+    block.lines().find_map(|line| {
+        line.strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix(" = \""))
+            .and_then(|rest| rest.strip_suffix('"'))
+    })
+}
+
+/// The package names a lock block lists in its `dependencies` array, each entry's first word
+/// (cargo writes `"name"` or `"name version"` when two versions share a name).
+fn lock_block_dependency_names(block: &str) -> std::collections::BTreeSet<String> {
+    let mut names = std::collections::BTreeSet::new();
+    let mut inside = false;
+    for line in block.lines() {
+        if line.starts_with("dependencies = [") {
+            inside = true;
+            continue;
+        }
+        if inside {
+            if line.trim_start().starts_with(']') {
+                break;
+            }
+            let entry = line.trim().trim_end_matches(',').trim_matches('"');
+            if let Some(name) = entry.split_whitespace().next() {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names
+}
+
+/// The lock's root: the one package with no `source`. Zero or several is a refusal -- a pin whose
+/// root cannot be named cannot be renamed to the probe package.
+fn lock_root_index(blocks: &LockBlocks) -> Result<usize, String> {
+    let roots: Vec<usize> = blocks
+        .blocks
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| lock_block_field(b, "source").is_none())
+        .map(|(i, _)| i)
+        .collect();
+    match roots.as_slice() {
+        [only] => Ok(*only),
+        other => Err(format!(
+            "LockPinRootUnidentifiable: {} packages carry no source",
+            other.len()
+        )),
+    }
+}
+
+/// The dependency names a rendered probe manifest declares, from its `[dependencies]` table.
+fn manifest_dependency_names(manifest: &str) -> Result<std::collections::BTreeSet<String>, String> {
+    let value: toml::Value = toml::from_str(manifest)
+        .map_err(|e| format!("ProbeManifestUnreadable: invalid Cargo.toml: {e}"))?;
+    Ok(value
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .map(|table| table.keys().cloned().collect())
+        .unwrap_or_default())
+}
+
+/// The pin whose root depends on EXACTLY the manifest's dependency names. None, or more than one,
+/// refuses: a shape without a pin is never built unlocked.
+fn select_lock_pin(
+    workspace: &Path,
+    manifest_dependencies: &std::collections::BTreeSet<String>,
+) -> Result<(String, String), String> {
+    let mut matches = Vec::new();
+    for pin in EMITTED_CRATE_LOCK_PINS {
+        let text = std::fs::read_to_string(workspace.join(pin))
+            .map_err(|e| format!("LockPinUnreadable: {pin}: {e}"))?;
+        let blocks = lock_blocks(&text)?;
+        let root = lock_root_index(&blocks)?;
+        if lock_block_dependency_names(&blocks.blocks[root]) == *manifest_dependencies {
+            matches.push((pin.to_string(), text));
+        }
+    }
+    match matches.len() {
+        1 => Ok(matches.remove(0)),
+        0 => Err(format!(
+            "NoLockPinForDependencyDemand: no committed pin's root depends on exactly {:?} \
+             (regenerate_the_emitted_crate_lock_pins)",
+            manifest_dependencies
+        )),
+        n => Err(format!(
+            "LockPinAmbiguous: {n} committed pins depend on exactly {:?}",
+            manifest_dependencies
+        )),
+    }
+}
+
+/// The pin, with its root renamed to the probe package and the blocks in cargo's order (packages
+/// sorted by name; a stable sort keeps the pin's order among one name's versions). The bytes are
+/// otherwise the pin's, so cargo's `--locked` comparison of the lock it would write against this
+/// file sees no difference unless the resolution itself differs.
+fn render_probe_lock(pin_text: &str, probe_package: &str) -> Result<String, String> {
+    let mut blocks = lock_blocks(pin_text)?;
+    let root = lock_root_index(&blocks)?;
+    let old_name = lock_block_field(&blocks.blocks[root], "name")
+        .ok_or_else(|| "LockPinRootUnidentifiable: the root has no name".to_string())?
+        .to_string();
+    blocks.blocks[root] = blocks.blocks[root].replacen(
+        &format!("name = \"{old_name}\""),
+        &format!("name = \"{probe_package}\""),
+        1,
+    );
+    blocks.blocks.sort_by(|a, b| {
+        lock_block_field(a, "name")
+            .unwrap_or("")
+            .cmp(lock_block_field(b, "name").unwrap_or(""))
+    });
+    Ok(format!("{}{}\n", blocks.header, blocks.blocks.join("\n\n")))
+}
+
+/// A version's semver compatibility class: the major for 1.x and above, else the first non-zero
+/// component, the rule cargo resolves `^` requirements by.
+fn semver_compatibility_class(version: &str) -> String {
+    let core = version.split(['-', '+']).next().unwrap_or(version);
+    let parts: Vec<&str> = core.split('.').collect();
+    let at = |i: usize| parts.get(i).copied().unwrap_or("0");
+    if at(0) != "0" {
+        at(0).to_string()
+    } else if at(1) != "0" {
+        format!("0.{}", at(1))
+    } else {
+        format!("0.0.{}", at(2))
+    }
+}
+
+/// ONE AUTHORITY FOR THE VERSIONS THE SEED AND THE EMITTED CRATE SHARE: every registry package the
+/// pin holds must agree with the repository lock -- the same version carries the same checksum, and
+/// no pin version sits in the compatibility class of a different repository version (the drift
+/// `serde 1.0.229` against `1.0.228` is exactly that). A version in a class the repository does not
+/// use (another major line a new dependency needs) is the pin's own. Returns the divergences.
+fn lock_identity_join(pin_text: &str, repo_text: &str) -> Result<Vec<String>, String> {
+    let read = |text: &str| -> Result<Vec<(String, String, Option<String>)>, String> {
+        Ok(lock_blocks(text)?
+            .blocks
+            .iter()
+            .filter(|b| lock_block_field(b, "source").is_some())
+            .filter_map(|b| {
+                Some((
+                    lock_block_field(b, "name")?.to_string(),
+                    lock_block_field(b, "version")?.to_string(),
+                    lock_block_field(b, "checksum").map(str::to_string),
+                ))
+            })
+            .collect())
+    };
+    let pin = read(pin_text)?;
+    let repo = read(repo_text)?;
+    let mut divergences = Vec::new();
+    for (name, version, checksum) in &pin {
+        for (repo_name, repo_version, repo_checksum) in &repo {
+            if repo_name != name {
+                continue;
+            }
+            if repo_version == version {
+                if repo_checksum != checksum {
+                    divergences.push(format!(
+                        "{name} {version}: checksum differs from the repository lock"
+                    ));
+                }
+            } else if semver_compatibility_class(repo_version)
+                == semver_compatibility_class(version)
+            {
+                divergences.push(format!(
+                    "{name}: pin {version} and repository {repo_version} share a compatibility class"
+                ));
+            }
+        }
+    }
+    Ok(divergences)
+}
+
+/// WRITE THE PROBE CRATE'S LOCK FROM ITS COMMITTED PIN. Selects the pin by the manifest's exact
+/// dependency names, refuses if it diverges from the repository lock, renders it for the probe
+/// package and writes it beside the manifest. The digests are of the committed pin (a pre-build
+/// input a cross-run key can read without running cargo) and of the rendered lock.
+pub(crate) fn pin_probe_crate_lock(
+    crate_dir: &Path,
+    entry: &str,
+    workspace: &Path,
+) -> Result<ProbeLockDisposition, String> {
+    let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml"))
+        .map_err(|e| format!("ProbeManifestUnreadable: {e}"))?;
+    let (pin, pin_text) = select_lock_pin(workspace, &manifest_dependency_names(&manifest)?)?;
+    let repo_text = std::fs::read_to_string(workspace.join("Cargo.lock"))
+        .map_err(|e| format!("RepositoryLockUnreadable: {e}"))?;
+    let divergences = lock_identity_join(&pin_text, &repo_text)?;
+    if !divergences.is_empty() {
+        return Err(format!(
+            "EmittedLockDivergesFromRepoLock: {pin}: {} (regenerate_the_emitted_crate_lock_pins)",
+            divergences.join("; ")
+        ));
+    }
+    let rendered = render_probe_lock(&pin_text, &probe_package_name(entry))?;
+    let lock_path = crate_dir.join("Cargo.lock");
+    std::fs::write(&lock_path, &rendered)
+        .map_err(|e| format!("writing {}: {e}", lock_path.display()))?;
+    let digest = |bytes: &[u8]| {
+        use sha2::Digest;
+        format!("{:x}", sha2::Sha256::digest(bytes))
+    };
+    Ok(ProbeLockDisposition::Pinned {
+        pin,
+        pin_sha256: digest(pin_text.as_bytes()),
+        rendered_sha256: digest(rendered.as_bytes()),
+    })
+}
+
+/// THE LOCK BINDS THE BUILD, established by a fault in every pinned preparation: one dependency's
+/// `[[package]]` block is removed from the written lock and `cargo fetch --locked` must refuse, by an
+/// error naming the flag; the bytes are restored exactly and the same command must succeed (fetching
+/// what the build needs). A lock cargo ignored would pass both arms, so the pair is what shows
+/// `--locked` is in force. No compile is involved.
+pub(crate) fn establish_lock_binding_red(crate_dir: &Path) -> Result<(), String> {
+    let lock_path = crate_dir.join("Cargo.lock");
+    let original = std::fs::read_to_string(&lock_path).map_err(|e| {
+        format!(
+            "LockBindingUnestablished: reading {}: {e}",
+            lock_path.display()
+        )
+    })?;
+    let blocks = lock_blocks(&original)?;
+    let root = lock_root_index(&blocks)?;
+    let victim = blocks
+        .blocks
+        .iter()
+        .enumerate()
+        .find(|(i, _)| *i != root)
+        .map(|(i, _)| i)
+        .ok_or_else(|| {
+            "LockBindingUnestablished: the lock has no dependency to remove".to_string()
+        })?;
+    let faulted: Vec<&str> = blocks
+        .blocks
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != victim)
+        .map(|(_, b)| b.as_str())
+        .collect();
+    let environment = constructed_probe_environment();
+    let toolchain = resolve_probe_toolchain(crate_dir, &environment)?;
+    let fetch = || {
+        std::process::Command::new(&toolchain.cargo)
+            .args(["fetch", LOCKED_FLAG, "--color", "never", "--manifest-path"])
+            .arg(crate_dir.join("Cargo.toml"))
+            .env_clear()
+            .envs(environment.entries.iter().map(|(n, v)| (n, v)))
+            .current_dir(crate_dir)
+            .output()
+            .map_err(|e| format!("LockBindingUnestablished: spawning cargo fetch: {e}"))
+    };
+    std::fs::write(
+        &lock_path,
+        format!("{}{}\n", blocks.header, faulted.join("\n\n")),
+    )
+    .map_err(|e| format!("LockBindingUnestablished: writing the faulted lock: {e}"))?;
+    let faulted_run = fetch();
+    std::fs::write(&lock_path, &original)
+        .map_err(|e| format!("LockBindingUnestablished: restoring the lock: {e}"))?;
+    let faulted_run = faulted_run?;
+    if faulted_run.status.success() {
+        return Err(
+            "LockBindingNotDiscriminating: cargo fetch --locked accepted a lock missing a package"
+                .to_string(),
+        );
+    }
+    // THE RED IS ATTRIBUTED TO THE LOCK OR IT IS NOT THE LOCK'S RED. A fetch can fail for reasons
+    // the lock did not cause -- an unreachable registry, a full disk -- and crediting that failure
+    // would report a binding nobody observed. Cargo's refusal names the flag that stopped it.
+    let faulted_stderr = String::from_utf8_lossy(&faulted_run.stderr);
+    if !faulted_stderr
+        .lines()
+        .any(|line| line.starts_with("error:") && line.contains(LOCKED_FLAG))
+    {
+        return Err(format!(
+            "LockBindingUnattributed: the faulted fetch failed without naming {LOCKED_FLAG}: {}",
+            faulted_stderr
+                .lines()
+                .rev()
+                .take(5)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+    let restored = fetch()?;
+    if !restored.status.success() {
+        return Err(format!(
+            "LockBindingUnestablished: cargo fetch --locked refused the restored pin: {}",
+            String::from_utf8_lossy(&restored.stderr)
+                .lines()
+                .rev()
+                .take(5)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+    if std::fs::read_to_string(&lock_path).ok().as_deref() != Some(original.as_str()) {
+        return Err("LockBindingUnestablished: cargo rewrote the pinned lock".to_string());
+    }
+    Ok(())
 }
 
 /// The cargo home a build reads dependency sources from: `CARGO_HOME` in the constructed
@@ -1261,6 +1655,7 @@ fn probe_cargo_command_bound(
     environment: &ProbeEnvironment,
     cargo_configuration: &[(PathBuf, String)],
     flags: &ProbeBuildFlags,
+    lock: &ProbeLockDisposition,
 ) -> (std::process::Command, ProbeCargoInvocation) {
     let cargo = toolchain.cargo.display().to_string();
     let manifest = crate_dir.join("Cargo.toml");
@@ -1270,15 +1665,16 @@ fn probe_cargo_command_bound(
     // answered NotDiscriminating ("no diagnostic names EMIT_COMPILE_MUTATION_PROBE") -- first
     // observed on gunbc#12091, the first run whose baseline got past main's E0573. The flag on the
     // argv outranks the ambient variable, and the argv is the receipt, so the receipt says it.
-    let argv: Vec<String> = vec![
-        cargo.clone(),
-        "build".to_string(),
-        "--release".to_string(),
+    let mut argv: Vec<String> = vec![cargo.clone(), "build".to_string(), "--release".to_string()];
+    if let ProbeLockDisposition::Pinned { .. } = lock {
+        argv.push(LOCKED_FLAG.to_string());
+    }
+    argv.extend([
         "--color".to_string(),
         "never".to_string(),
         "--manifest-path".to_string(),
         manifest.display().to_string(),
-    ];
+    ]);
     let mut command = std::process::Command::new(&toolchain.cargo);
     command
         .args(&argv[1..])
@@ -1312,6 +1708,7 @@ fn probe_cargo_command_bound(
                 .iter()
                 .map(|(path, digest)| format!("{} {digest}", path.display()))
                 .collect(),
+            lock: lock.clone(),
         },
     )
 }
@@ -1322,6 +1719,7 @@ fn probe_cargo_command_bound(
 fn probe_cargo_command(
     crate_dir: &Path,
     target_dir: &Path,
+    lock: &ProbeLockDisposition,
 ) -> Result<(std::process::Command, ProbeCargoInvocation), String> {
     let environment = constructed_probe_environment();
     let toolchain = resolve_probe_toolchain(crate_dir, &environment)?;
@@ -1334,6 +1732,7 @@ fn probe_cargo_command(
         &environment,
         &configuration,
         &flags,
+        lock,
     ))
 }
 
@@ -1342,8 +1741,9 @@ fn probe_cargo_command(
 pub(crate) fn probe_cargo_invocation(
     crate_dir: &Path,
     target_dir: &Path,
+    lock: &ProbeLockDisposition,
 ) -> Result<ProbeCargoInvocation, String> {
-    probe_cargo_command(crate_dir, target_dir).map(|(_, invocation)| invocation)
+    probe_cargo_command(crate_dir, target_dir, lock).map(|(_, invocation)| invocation)
 }
 
 /// `build --release` INTO THE RUN'S OWN TARGET DIRECTORY, `PrivateProbeRoot` `target_dir`.
@@ -1363,8 +1763,9 @@ pub(crate) fn run_cargo(
     crate_dir: &Path,
     target_dir: &Path,
     attribution_symbol: &str,
+    lock: &ProbeLockDisposition,
 ) -> CargoVerdict {
-    let (mut command, invocation) = match probe_cargo_command(crate_dir, target_dir) {
+    let (mut command, invocation) = match probe_cargo_command(crate_dir, target_dir, lock) {
         Ok(bound) => bound,
         Err(reason) => return CargoVerdict::NotAttempted { reason },
     };
@@ -1438,6 +1839,7 @@ pub(crate) fn establish_discriminating_red(
     crate_dir: &Path,
     target_dir: &Path,
     entry_module: &str,
+    lock: &ProbeLockDisposition,
 ) -> MutationVerdict {
     // NO FALLBACK ARM. A closure missing its own entry module is the finding -- substituting
     // another member would yield `Discriminated` over precisely the broken tree.
@@ -1461,7 +1863,7 @@ pub(crate) fn establish_discriminating_red(
         };
     }
 
-    let red = run_cargo(crate_dir, target_dir, MUTATION_PROBE_SYMBOL);
+    let red = run_cargo(crate_dir, target_dir, MUTATION_PROBE_SYMBOL, lock);
 
     // THE RESTORE RUNS WHATEVER THE FAULTED ARM ANSWERED, or the next run's baseline goes red for
     // a reason unrelated to the corpus.
@@ -1549,7 +1951,7 @@ pub(crate) fn establish_discriminating_red(
     };
     let attributed = attributed.to_string();
 
-    let restored = run_cargo(crate_dir, target_dir, MUTATION_PROBE_SYMBOL);
+    let restored = run_cargo(crate_dir, target_dir, MUTATION_PROBE_SYMBOL, lock);
     if !cargo_verdict_compiled(&restored) {
         return MutationVerdict::RestoreFailed {
             detail: format!(
@@ -1579,6 +1981,13 @@ pub(crate) fn entry_rust_module(entry: &str, workspace: &Path) -> Result<String,
         .map(|line| line.trim_start_matches("module ").trim().replace('.', "_"))
         .ok_or_else(|| format!("the entry {entry} declares no module line"))
 }
+
+/// WHY THE REQUIRED EMIT-COMPILE PHASE RESOLVES AFRESH. It asks whether each required entry's
+/// emission compiles and keeps no artifact across runs, so no cross-run key reads its dependency
+/// versions -- but its verdict still moves with the registry, which a pin would stop. Its entries
+/// have not been matched against `EMITTED_CRATE_LOCK_PINS`; that match is the trigger for pinning it.
+const EMIT_COMPILE_LOCK_UNPINNED: &str = "required emit-compile entries are not yet matched to \
+     committed lock pins; the phase keeps no artifact, and its verdict floats with the registry";
 
 /// One entry, end to end.
 pub fn run_emit_compile_entry(
@@ -1645,7 +2054,15 @@ pub fn run_emit_compile_entry(
         "emit-compile: {entry} emitted {emitted_files} file(s) into {} — cargo baseline",
         crate_dir.display()
     );
-    let baseline = run_cargo(&crate_dir, &probe_root.target_dir(), MUTATION_PROBE_SYMBOL);
+    let lock = ProbeLockDisposition::Unpinned {
+        reason: EMIT_COMPILE_LOCK_UNPINNED.to_string(),
+    };
+    let baseline = run_cargo(
+        &crate_dir,
+        &probe_root.target_dir(),
+        MUTATION_PROBE_SYMBOL,
+        &lock,
+    );
     eprintln!(
         "emit-compile: {entry} baseline {} — mutation",
         cargo_verdict_summary(&baseline)
@@ -1654,7 +2071,7 @@ pub fn run_emit_compile_entry(
     // tree goes red under the fault for a reason the fault did not cause -- a green control
     // wearing a red one's clothes.
     let mutation = if cargo_verdict_compiled(&baseline) {
-        establish_discriminating_red(&crate_dir, &probe_root.target_dir(), &entry_module)
+        establish_discriminating_red(&crate_dir, &probe_root.target_dir(), &entry_module, &lock)
     } else {
         MutationVerdict::NotAttempted {
             reason: format!(
@@ -1827,6 +2244,13 @@ fn fixture_rust_module(source: &str) -> Result<String, String> {
         .ok_or_else(|| "the fixture source declares no module line".to_string())
 }
 
+/// WHY A FIXTURE CLOSURE RESOLVES AFRESH: each fixture judges one emitter behaviour by rustc's
+/// verdict over a crate no key names and nothing keeps; its dependency shapes have not been matched
+/// against `EMITTED_CRATE_LOCK_PINS`, which is the trigger for pinning it.
+#[cfg(test)]
+const FIXTURE_CLOSURE_LOCK_UNPINNED: &str = "fixture closures are not yet matched to committed \
+     lock pins; no artifact is kept, and the verdict floats with the registry";
+
 /// Emit one in-memory `.dag` fixture's closure and hand it to rustc.
 ///
 /// The fixture's imports are resolved transitively against the live tree by
@@ -1877,6 +2301,9 @@ pub(crate) fn fixture_closure_rustc_verdict(
         &crate_dir,
         &probe_root.target_dir(),
         &format!("{rust_module}.rs"),
+        &ProbeLockDisposition::Unpinned {
+            reason: FIXTURE_CLOSURE_LOCK_UNPINNED.to_string(),
+        },
     );
     eprintln!(
         "fixture-closure: {rust_module} {}",
@@ -2745,6 +3172,231 @@ mod tests {
         dir
     }
 
+    fn unit_test_unpinned() -> ProbeLockDisposition {
+        ProbeLockDisposition::Unpinned {
+            reason: "a unit test's own crate".to_string(),
+        }
+    }
+
+    /// The probe manifest the real route writes for one emitter dependency demand: the emitter's own
+    /// `emit_cargo_toml` (the seed mirror of `v1.compiler.emit_rust`), through `probe_manifest`.
+    fn emitted_probe_manifest(entry: &str, clap: bool, async_services: bool) -> String {
+        let emitted = crate::v1_compiler_emit_rust::emit_cargo_toml(
+            "v1_compiled".to_string(),
+            crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                renders_clap_cli: clap,
+                renders_async_services: async_services,
+            },
+        );
+        probe_manifest(entry, &emitted.content).expect("the emitted manifest is a probe manifest")
+    }
+
+    fn committed_pin(pin: &str) -> String {
+        std::fs::read_to_string(crate::cli_run::process_workspace_root().join(pin))
+            .expect("read the committed pin")
+    }
+
+    /// K3 -- ONE PIN PER EMITTED DEPENDENCY SHAPE, SELECTED BY THE EXACT DEPENDENCY SET. The two
+    /// shapes the native subjects emit each select exactly their pin; the clap shape, which no
+    /// native subject emits and no pin covers, refuses by name rather than building unlocked.
+    #[test]
+    fn each_emitted_dependency_shape_selects_exactly_its_pin_or_refuses() {
+        let workspace = crate::cli_run::process_workspace_root();
+        for (async_services, expected) in [
+            (false, EMITTED_CRATE_LOCK_PINS[0]),
+            (true, EMITTED_CRATE_LOCK_PINS[1]),
+        ] {
+            let manifest = emitted_probe_manifest("src/probe.dag", false, async_services);
+            let names = manifest_dependency_names(&manifest).expect("read the manifest");
+            let (pin, _) = select_lock_pin(&workspace, &names).expect("one pin");
+            assert_eq!(pin, expected, "async_services={async_services}");
+        }
+        let clap = manifest_dependency_names(&emitted_probe_manifest("src/probe.dag", true, false))
+            .expect("read the manifest");
+        let refused = select_lock_pin(&workspace, &clap).expect_err("no pin covers clap");
+        assert!(
+            refused.starts_with("NoLockPinForDependencyDemand"),
+            "{refused}"
+        );
+    }
+
+    /// K2 -- THE PINS AGREE WITH THE REPOSITORY LOCK, AND THE JOIN CAN SAY WHEN ONE DOES NOT. Both
+    /// committed pins join the repository lock with no divergence. Planted: a same-class version
+    /// (`serde` moved within 1.x) and a same-version checksum change each diverge by name; a version
+    /// in a class the repository does not use (another major line) is the pin's own and does not.
+    #[test]
+    fn the_pins_join_the_repository_lock_and_a_drift_is_named() {
+        let repo =
+            std::fs::read_to_string(crate::cli_run::process_workspace_root().join("Cargo.lock"))
+                .expect("read the repository lock");
+        for pin in EMITTED_CRATE_LOCK_PINS {
+            assert_eq!(
+                lock_identity_join(&committed_pin(pin), &repo).expect("join"),
+                Vec::<String>::new(),
+                "{pin} agrees with the repository lock"
+            );
+        }
+        let block = |name: &str, version: &str, checksum: &str| {
+            format!(
+                "[[package]]\nname = \"{name}\"\nversion = \"{version}\"\nsource = \
+                 \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"{checksum}\"\n"
+            )
+        };
+        let lock = |blocks: &[String]| {
+            format!(
+                "version = 4\n\n[[package]]\nname = \"root\"\nversion = \"0.1.0\"\n\n{}",
+                blocks.join("\n")
+            )
+        };
+        let repo_lock = lock(&[
+            block("serde", "1.0.228", "aa"),
+            block("base64", "0.22.1", "bb"),
+        ]);
+        let same_class = lock(&[block("serde", "1.0.229", "cc")]);
+        let checksum = lock(&[block("serde", "1.0.228", "dd")]);
+        let other_class = lock(&[
+            block("base64", "0.23.1", "ee"),
+            block("serde", "1.0.228", "aa"),
+        ]);
+        let drift = lock_identity_join(&same_class, &repo_lock).expect("join");
+        assert_eq!(drift.len(), 1, "{drift:?}");
+        assert!(drift[0].contains("serde") && drift[0].contains("compatibility class"));
+        let changed = lock_identity_join(&checksum, &repo_lock).expect("join");
+        assert_eq!(changed.len(), 1, "{changed:?}");
+        assert!(changed[0].contains("checksum"));
+        assert_eq!(
+            lock_identity_join(&other_class, &repo_lock).expect("join"),
+            Vec::<String>::new()
+        );
+        assert_eq!(semver_compatibility_class("1.0.228"), "1");
+        assert_eq!(semver_compatibility_class("0.22.1"), "0.22");
+        assert_eq!(semver_compatibility_class("0.0.7"), "0.0.7");
+        assert_eq!(semver_compatibility_class("2.0.0-rc.1"), "2");
+    }
+
+    /// THE RENDERED LOCK IS THE PIN WITH ONE NAME CHANGED AND CARGO'S ORDER KEPT. The root carries
+    /// the probe package's name, every other block is byte-identical, and the blocks are sorted by
+    /// name -- so cargo's `--locked` comparison sees exactly the pin's resolution.
+    #[test]
+    fn the_rendered_lock_renames_only_the_root_and_keeps_cargos_order() {
+        let pin = committed_pin(EMITTED_CRATE_LOCK_PINS[1]);
+        let probe = probe_package_name("src/v2/compiler/00_compile.dag");
+        let rendered = render_probe_lock(&pin, &probe).expect("render");
+        let before = lock_blocks(&pin).expect("parse the pin");
+        let after = lock_blocks(&rendered).expect("parse the rendering");
+        assert_eq!(before.header, after.header);
+        assert_eq!(before.blocks.len(), after.blocks.len());
+        let root = lock_root_index(&after).expect("one root");
+        assert_eq!(
+            lock_block_field(&after.blocks[root], "name"),
+            Some(probe.as_str())
+        );
+        let mut unchanged: Vec<&String> = before
+            .blocks
+            .iter()
+            .filter(|b| lock_block_field(b, "source").is_some())
+            .collect();
+        let mut kept: Vec<&String> = after
+            .blocks
+            .iter()
+            .filter(|b| lock_block_field(b, "source").is_some())
+            .collect();
+        unchanged.sort();
+        kept.sort();
+        assert_eq!(unchanged, kept, "every non-root block is byte-identical");
+        let names: Vec<&str> = after
+            .blocks
+            .iter()
+            .map(|b| lock_block_field(b, "name").unwrap_or(""))
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted, "blocks are in cargo's name order");
+    }
+
+    /// K1 -- THE LOCK BINDS, ON BOTH SHAPES, AGAINST THE REAL CARGO. For each native dependency
+    /// shape a probe crate is written from the emitter's manifest, its pin is rendered beside it,
+    /// and `establish_lock_binding_red` must hold: a lock missing one package refuses under
+    /// `--locked`, the restored pin is accepted and left byte-identical. Ignored because it runs
+    /// cargo and may download the pinned sources.
+    #[test]
+    #[ignore]
+    fn the_pinned_lock_binds_cargo_on_every_native_shape() {
+        let workspace = crate::cli_run::process_workspace_root();
+        for async_services in [false, true] {
+            let root = u1a_scratch(&format!("lock-{async_services}"));
+            let entry = "src/v2/compiler/00_compile.dag";
+            std::fs::create_dir_all(root.join("src")).expect("mkdir src");
+            std::fs::write(root.join("src/lib.rs"), "").expect("write lib.rs");
+            std::fs::write(
+                root.join("Cargo.toml"),
+                emitted_probe_manifest(entry, false, async_services),
+            )
+            .expect("write the manifest");
+            let disposition = pin_probe_crate_lock(&root, entry, &workspace).expect("pin");
+            assert!(matches!(disposition, ProbeLockDisposition::Pinned { .. }));
+            establish_lock_binding_red(&root).expect("the lock binds");
+        }
+    }
+
+    /// THE PINS' PRODUCER. For each shape the emitter's own manifest is written beside a copy of
+    /// the repository lock and cargo makes its minimal update (`cargo metadata`, under the probe
+    /// build's constructed environment and toolchain): every package the repository locks keeps
+    /// its version, unused ones are pruned, and only what the repository does not use is resolved
+    /// from the registry. The result is written to the committed pin and must join the repository
+    /// lock and select for its shape. Ignored because it writes the source tree and may reach the
+    /// registry; run it when the route refuses with a lock-pin cause.
+    #[test]
+    #[ignore]
+    fn regenerate_the_emitted_crate_lock_pins() {
+        let workspace = crate::cli_run::process_workspace_root();
+        let repo = std::fs::read_to_string(workspace.join("Cargo.lock"))
+            .expect("read the repository lock");
+        let environment = constructed_probe_environment();
+        for (pin, (clap, async_services)) in EMITTED_CRATE_LOCK_PINS
+            .iter()
+            .zip(EMITTED_CRATE_LOCK_PIN_SHAPES)
+        {
+            let root = u1a_scratch(&format!("regenerate-{clap}-{async_services}"));
+            std::fs::create_dir_all(root.join("src")).expect("mkdir src");
+            std::fs::write(root.join("src/lib.rs"), "").expect("write lib.rs");
+            let emitted = crate::v1_compiler_emit_rust::emit_cargo_toml(
+                "v1_compiled".to_string(),
+                crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
+                    renders_clap_cli: clap,
+                    renders_async_services: async_services,
+                },
+            );
+            std::fs::write(root.join("Cargo.toml"), &emitted.content).expect("write the manifest");
+            std::fs::write(root.join("Cargo.lock"), &repo).expect("seed the repository lock");
+            let toolchain = resolve_probe_toolchain(&root, &environment).expect("toolchain");
+            let output = std::process::Command::new(&toolchain.cargo)
+                .args(["metadata", "--format-version", "1", "--color", "never"])
+                .arg("--manifest-path")
+                .arg(root.join("Cargo.toml"))
+                .env_clear()
+                .envs(environment.entries.iter().map(|(n, v)| (n, v)))
+                .current_dir(&root)
+                .output()
+                .expect("spawn cargo metadata");
+            assert!(
+                output.status.success(),
+                "cargo metadata: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let regenerated =
+                std::fs::read_to_string(root.join("Cargo.lock")).expect("read the updated lock");
+            assert_eq!(
+                lock_identity_join(&regenerated, &repo).expect("join"),
+                Vec::<String>::new(),
+                "{pin}: a minimal update keeps every repository version"
+            );
+            std::fs::write(workspace.join(pin), &regenerated).expect("write the pin");
+            let names = manifest_dependency_names(&emitted.content).expect("read the manifest");
+            assert_eq!(select_lock_pin(&workspace, &names).expect("select").0, *pin);
+        }
+    }
+
     /// THE CONSTRUCTED ENVIRONMENT ADMITS THE ROW BY EXACT NAME AND NOTHING ELSE. Asserted on the
     /// constructed VALUE: `Command::get_envs` never lists inherited variables, so an absence check
     /// there would pass with or without `env_clear` and prove nothing.
@@ -2812,6 +3464,7 @@ mod tests {
             &probe_environment_from(|_| None),
             &[],
             &flags,
+            &unit_test_unpinned(),
         );
         std::env::remove_var("CARGO");
         assert_eq!(command.get_program(), toolchain.cargo.as_os_str());
@@ -2926,8 +3579,8 @@ mod tests {
                     std::env::set_var(n, v);
                 }
             }
-            let (mut command, _) =
-                probe_cargo_command(&crate_dir, &target).expect("bind the probe build");
+            let (mut command, _) = probe_cargo_command(&crate_dir, &target, &unit_test_unpinned())
+                .expect("bind the probe build");
             let output = command.output().expect("run cargo");
             for (n, _) in planted {
                 std::env::remove_var(n);
@@ -2984,8 +3637,43 @@ mod tests {
         });
         let flags = probe_build_flags(crate_dir, workspace, Path::new("/home/probe/.cargo"))
             .expect("compose the flags");
-        let (command, invocation) =
-            probe_cargo_command_bound(crate_dir, workspace, &toolchain, &environment, &[], &flags);
+        let pinned = ProbeLockDisposition::Pinned {
+            pin: EMITTED_CRATE_LOCK_PINS[0].to_string(),
+            pin_sha256: "p".repeat(64),
+            rendered_sha256: "r".repeat(64),
+        };
+        let (command, invocation) = probe_cargo_command_bound(
+            crate_dir,
+            workspace,
+            &toolchain,
+            &environment,
+            &[],
+            &flags,
+            &pinned,
+        );
+        assert!(
+            invocation.argv.iter().any(|word| word == LOCKED_FLAG),
+            "a pinned build passes cargo's refusal flag: {:?}",
+            invocation.argv
+        );
+        assert_eq!(
+            invocation.lock, pinned,
+            "the receipt names the pin it ran against"
+        );
+        let (_, unpinned) = probe_cargo_command_bound(
+            crate_dir,
+            workspace,
+            &toolchain,
+            &environment,
+            &[],
+            &flags,
+            &unit_test_unpinned(),
+        );
+        assert!(
+            !unpinned.argv.iter().any(|word| word == LOCKED_FLAG),
+            "an unpinned build does not claim a lock it was not given: {:?}",
+            unpinned.argv
+        );
         assert_eq!(
             command.get_program(),
             toolchain.cargo.as_os_str(),
@@ -3096,6 +3784,7 @@ mod tests {
             &probe_environment_from(|_| None),
             &[],
             &flags,
+            &unit_test_unpinned(),
         );
         let resolved_named = resolve_probe_compiler();
         for (name, _) in planted {

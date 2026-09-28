@@ -405,14 +405,26 @@ pub fn run_emitted_crate_workspace(
     let target_dir = probe_root
         .target_dir()
         .join("emitted_crate_workspace_target");
+    // A DERIVED MULTI-CRATE WORKSPACE HAS NO COMMITTED PIN SHAPE: the pins are one lock per emitted
+    // single-crate dependency shape. It keeps no artifact, and its two verdicts float with the
+    // registry until a workspace pin exists.
+    let lock = super::emitted_closure_compile_host::ProbeLockDisposition::Unpinned {
+        reason: "a derived multi-crate workspace has no committed lock pin; the green and red \
+                 verdicts float with the registry"
+            .to_string(),
+    };
     let invocation =
-        super::emitted_closure_compile_host::probe_cargo_invocation(&root, &target_dir)
+        super::emitted_closure_compile_host::probe_cargo_invocation(&root, &target_dir, &lock)
             .map_err(|c| refusal("CargoNotResolved", c))?;
 
     // POSITIVE CONTROL: the derived partition builds.
     write_workspace(&root, &plan.rows)?;
-    let green =
-        super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &plan.red_to_module);
+    let green = super::emitted_closure_compile_host::run_cargo(
+        &root,
+        &target_dir,
+        &plan.red_to_module,
+        &lock,
+    );
     let (green_exit_status, green_warning_count) = match &green {
         super::emitted_closure_compile_host::CargoVerdict::Completed {
             status,
@@ -457,8 +469,12 @@ pub fn run_emitted_crate_workspace(
 
     // RED: the same tree with one derived dependency dropped from one crate.
     write_workspace(&root, &plan.red_rows)?;
-    let red =
-        super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &plan.red_to_module);
+    let red = super::emitted_closure_compile_host::run_cargo(
+        &root,
+        &target_dir,
+        &plan.red_to_module,
+        &lock,
+    );
     let red_diagnostic = match &red {
         super::emitted_closure_compile_host::CargoVerdict::Completed { status, .. } if *status != 0 => {
             match (

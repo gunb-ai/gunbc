@@ -350,12 +350,29 @@ fn prepare_emitted_compiler_for_entry(
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
+    // THE COMMITTED LOCK, WRITTEN AND SHOWN TO BIND BEFORE THE BUILD IS PAID FOR. The emitted
+    // manifest names its dependencies by range, so without a lock the versions this build links
+    // were whatever the registry answered today. The pin is selected by the manifest's exact
+    // dependency set and refused if it disagrees with the repository lock on a package the seed
+    // also links; then a lock missing one package must be refused under `--locked` and the restored
+    // pin accepted, or the flag the receipt records would be a flag cargo ignored.
+    let lock =
+        super::emitted_closure_compile_host::pin_probe_crate_lock(&crate_dir, entry, &workspace)
+            .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
+    super::emitted_closure_compile_host::establish_lock_binding_red(&crate_dir)
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
+    eprintln!(
+        "v2-native-route: lock bound (a lock missing one package was refused under --locked, the \
+         restored pin accepted) — {}",
+        super::emitted_closure_compile_host::probe_lock_disposition_summary(&lock)
+    );
     // The invocation resolves and binds the one compiler the build runs under and takes its
     // identity from the crate's own directory; a compiler that cannot be resolved or named is
     // a refusal before the build is paid for.
     let invocation = super::emitted_closure_compile_host::probe_cargo_invocation(
         &crate_dir,
         &probe_root.target_dir(),
+        &lock,
     )
     .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
     let rustc = invocation.rustc_identity.clone();
@@ -364,6 +381,8 @@ fn prepare_emitted_compiler_for_entry(
     let invocation_environment_names = invocation.environment_names.clone();
     let invocation_environment_digest = invocation.environment_digest.clone();
     let invocation_cargo_configuration = invocation.cargo_configuration.clone();
+    let invocation_lock =
+        super::emitted_closure_compile_host::probe_lock_disposition_summary(&invocation.lock);
     // THE BASELINE IS ATTRIBUTED TO THE SAME PROBE SYMBOL THE FAULTED ARM WILL CARRY. This
     // argument used to be the literal `"v2_native_lane_carries_no_mutation_probe"`, which was a
     // true statement about this lane and is now a false one: the discriminating red below is
@@ -374,6 +393,7 @@ fn prepare_emitted_compiler_for_entry(
         &crate_dir,
         &probe_root.target_dir(),
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
+        &lock,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
@@ -418,12 +438,13 @@ fn prepare_emitted_compiler_for_entry(
     // under.
     eprintln!(
         "v2-native-route: build inputs — cargo={} cargo_identity={:?} environment_names={:?} \
-         environment_sha256={} cargo_configuration={:?}",
+         environment_sha256={} cargo_configuration={:?} lock={}",
         invocation_cargo_path,
         invocation_cargo_identity,
         invocation_environment_names,
         invocation_environment_digest,
-        invocation_cargo_configuration
+        invocation_cargo_configuration,
+        invocation_lock
     );
     // Under the run's own target dir (`PrivateProbeRoot` `target_dir`), so the executable hashed
     // below and spawned by every entrypoint walk is one no other run can rebuild (review 70338).
@@ -473,6 +494,7 @@ fn prepare_emitted_compiler_for_entry(
         &crate_dir,
         &probe_root.target_dir(),
         &entry_module,
+        &lock,
     );
     eprintln!(
         "v2-native-route: discriminating red — {}",

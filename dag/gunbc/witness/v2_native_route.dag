@@ -23,7 +23,7 @@ import v2.workflow.compile_door_cause_ownership {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import gunbc.emitted_build_reproducibility { emitted_build_rustflags_are_the_declared_composition, emitted_build_rustflags_deny_warnings }
+import gunbc.emitted_build_reproducibility { emitted_build_argv_locked, emitted_build_rustflags_are_the_declared_composition, emitted_build_rustflags_deny_warnings }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -660,6 +660,7 @@ type NativeRouteAdmissionRefusalCause
   | EmittedBuildCompilerUnbound
   | EmittedBuildWarningsNotDenied
   | EmittedBuildPathsNotRemapped
+  | EmittedBuildNotLocked
   | EmittedBuildNotClean
 
 type NativeRouteAdmission
@@ -1126,6 +1127,14 @@ fn native_route_emitted_build_paths_remapped(receipt: NativeRouteReceipt) -> Boo
   emitted_build_rustflags_are_the_declared_composition(rustflags: receipt.emitted_build.rustflags)
 }
 
+// THE BUILD RESOLVED NOTHING ITS COMMITTED LOCK DID NOT HOLD: cargo was spawned with its refusal
+// flag (gunbc.emitted_build_reproducibility emitted_build_locked_flag) over the pinned lock the host
+// wrote. Without it the dependency versions were whatever the registry answered that day, so one
+// closure built on two days could link two different programs under one key.
+fn native_route_emitted_build_locked(receipt: NativeRouteReceipt) -> Bool {
+  emitted_build_argv_locked(argv: receipt.emitted_build.cargo_argv)
+}
+
 fn native_route_emitted_build_clean(receipt: NativeRouteReceipt) -> Bool {
   receipt.emitted_build.exit_status == 0 && receipt.emitted_build.warning_count == 0
 }
@@ -1170,6 +1179,7 @@ fn native_route_admission_with(receipt: NativeRouteReceipt, live_pair: NativeRou
     NativeRouteClauseCheck { holds: native_route_emitted_build_compiler_bound(receipt: receipt), cause: EmittedBuildCompilerUnbound },
     NativeRouteClauseCheck { holds: native_route_emitted_build_warnings_denied(receipt: receipt), cause: EmittedBuildWarningsNotDenied },
     NativeRouteClauseCheck { holds: native_route_emitted_build_paths_remapped(receipt: receipt), cause: EmittedBuildPathsNotRemapped },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_locked(receipt: receipt), cause: EmittedBuildNotLocked },
     NativeRouteClauseCheck { holds: native_route_emitted_build_clean(receipt: receipt), cause: EmittedBuildNotClean }
   ]
   let causes = fold_list(
@@ -1219,6 +1229,7 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     EmittedBuildCompilerUnbound => "emitted_build_compiler_unbound"
     EmittedBuildWarningsNotDenied => "emitted_build_warnings_not_denied"
     EmittedBuildPathsNotRemapped => "emitted_build_paths_not_remapped"
+    EmittedBuildNotLocked => "emitted_build_not_locked"
     EmittedBuildNotClean => "emitted_build_not_clean"
   }
 }

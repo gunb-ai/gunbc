@@ -139,7 +139,7 @@ fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFile
 // authority), rustc's identity, status 0, no warning header.
 fn clean_emitted_build() -> NativeRouteEmittedBuild {
   NativeRouteEmittedBuild {
-    cargo_argv: ["cargo", "build", "--release", "--manifest-path", "/emitted/Cargo.toml"],
+    cargo_argv: ["cargo", "build", "--release", "--locked", "--color", "never", "--manifest-path", "/emitted/Cargo.toml"],
     rustflags: emitted_build_rustflags(crate_dir: "/emitted/crate", target_dir: "/emitted/target", cargo_home: "/home/ci/.cargo"),
     compiler_path: "/toolchain/bin/rustc",
     rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); host: aarch64-unknown-linux-gnu",
@@ -1349,6 +1349,38 @@ test fn a_build_whose_directories_are_not_remapped_to_the_declared_spellings_is_
   && !native_route_admission_refused_with(admission: declared, cause_name: "emitted_build_warnings_not_denied")
 }
 
+// A BUILD MUST NOT RESOLVE WHAT ITS LOCK DOES NOT HOLD. An argv without cargo's refusal flag let
+// the registry decide the dependency versions, so it refuses by this name; the same argv with the
+// flag, wherever it sits, does not. Only the argv decides this clause: the rustflags, the compiler and
+// the status of both receipts are the clean build's.
+test fn a_build_that_may_resolve_past_its_lock_is_refused() -> Bool {
+  let clean = clean_emitted_build()
+  let unlocked = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+    build: NativeRouteEmittedBuild {
+      cargo_argv: ["cargo", "build", "--release", "--color", "never", "--manifest-path", "/emitted/Cargo.toml"],
+      rustflags: clean.rustflags,
+      compiler_path: clean.compiler_path,
+      rustc_identity: clean.rustc_identity,
+      exit_status: clean.exit_status,
+      warning_count: clean.warning_count
+    }
+  ))
+  let locked_last = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
+    build: NativeRouteEmittedBuild {
+      cargo_argv: ["cargo", "build", "--release", "--manifest-path", "/emitted/Cargo.toml", "--locked"],
+      rustflags: clean.rustflags,
+      compiler_path: clean.compiler_path,
+      rustc_identity: clean.rustc_identity,
+      exit_status: clean.exit_status,
+      warning_count: clean.warning_count
+    }
+  ))
+  let locked = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(build: clean))
+  native_route_admission_refused_with(admission: unlocked, cause_name: "emitted_build_not_locked")
+  && !native_route_admission_refused_with(admission: locked_last, cause_name: "emitted_build_not_locked")
+  && !native_route_admission_refused_with(admission: locked, cause_name: "emitted_build_not_locked")
+}
+
 test fn a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused() -> Bool {
   let warned = native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_with_build(
     build: emitted_build_with(rustflags: repo_self_warning_denial_rustflags(), rustc_identity: "rustc 1.93.0", exit_status: 0, warning_count: 1)
@@ -1396,6 +1428,7 @@ test fn one_red_run_names_every_violated_clause() -> Bool {
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_compiler_unbound")
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_warnings_not_denied")
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_paths_not_remapped")
+  && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_not_locked")
   && native_route_admission_refused_with(admission: admission, cause_name: "emitted_build_not_clean")
 }
 
@@ -1416,7 +1449,7 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
     malformed_control: MalformedSpecimenAccepted,
     old_route_control: OldRouteControlAbsent,
     emitted_build: NativeRouteEmittedBuild { cargo_argv: [], rustflags: "", compiler_path: "", rustc_identity: "", exit_status: 101, warning_count: 2 }
-  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed, emitted_build_rustc_unrecorded, emitted_build_compiler_unbound, emitted_build_warnings_not_denied, emitted_build_paths_not_remapped, emitted_build_not_clean"
+  })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed, emitted_build_rustc_unrecorded, emitted_build_compiler_unbound, emitted_build_warnings_not_denied, emitted_build_paths_not_remapped, emitted_build_not_locked, emitted_build_not_clean"
 }
 
 // THE DERIVED UNIVERSE'S TWO PRE-JOIN FACTS, JUDGED HERE BECAUSE THE ROUTE NOW OWNS THEM. Both
