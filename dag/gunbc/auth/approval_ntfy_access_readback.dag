@@ -305,7 +305,7 @@ fn approval_ntfy_run(read: NtfyRuntimeRead, pid: String, revision: ReleaseRevisi
 }
 
 // THE ONLY EFFECTFUL READER, sealed to the one root. It accepts only the release revision, which
-// names the one granted helper argv (gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_command)
+// names the one granted helper argv (gunbc.live_deploy.release_locus approval_ntfy_runtime_observe_helper_command)
 // and nothing else: every other read is a function of the declarations and of the MainPID its own
 // first read returned. The unit and its process's starttime are read first and last, so every other
 // read -- the helper's included -- sits inside the bracket.

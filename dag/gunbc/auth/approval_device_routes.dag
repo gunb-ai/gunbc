@@ -758,7 +758,7 @@ fn enrolment_code_delivery_of(publish: NotificationPublish) -> EnrolmentCodeDeli
 // approval_ntfy_runtime_reading: modeled reads of the running server, sealed to this function), and
 // the first match is that reading's verdict. Nothing is accepted from a caller but the release
 // revision it runs as (`--arg revision=<sha>`), which only names the one per-release observation
-// helper the reading runs (gunbc.live_deploy.emit approval_ntfy_runtime_observe_helper_command): no
+// helper the reading runs (gunbc.live_deploy.release_locus approval_ntfy_runtime_observe_helper_command): no
 // standing, no verdict, no listing. A revision naming no installed helper is a failed read and a
 // refusal. A refusal returns before the clock, the entropy, the slot, the token and the publish.
 fn issue_device_enrolment_code(revision: String) -> CliWireResponse
