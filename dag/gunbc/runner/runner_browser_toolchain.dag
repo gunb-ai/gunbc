@@ -36,6 +36,7 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.json.emit { serialize_json_object, json_kv, json_string }
 import std.content_hash { content_hash_atom, content_hash_validate_lower_hex_syntax }
 import extdeps.tools { apt_package_of }
 import extdeps.apt { package_xz_utils }
@@ -782,8 +783,11 @@ fn browser_toolchain_probe_page_path(scratch: String) -> String {
 
 // THE PROBE IS JAVASCRIPT HANDED TO node AS A STRING, AND THAT IS A DECLARED SCAFFOLD, NOT THE
 // TERMINAL SHAPE (review 72115): no .dag realization drives a browser, and no grammar rows emit
-// ECMAScript (extdeps.languages.ecmascript declares the subject only). The launch script and the
-// package-version script are the two strings it covers.
+// ECMAScript (extdeps.languages.ecmascript declares the subject only). It covers exactly three
+// strings, the JavaScript this module hands to node or writes for node to load:
+// browser_toolchain_launch_script, browser_toolchain_package_version_script and
+// browser_toolchain_decoy_index. (The decoy's package.json is emitted by extdeps.languages.json and is
+// not covered.)
 // ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_87357a75,
 // DEFAULT-APPROVED on recommendation A, 2026-09-28, after the operator did not answer within the
 // default window -- not an explicit operator ruling. An explicit ruling covering this and the two
@@ -798,7 +802,7 @@ data runner_browser_toolchain_probe_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script and browser_toolchain_package_version_script -- node -e script strings. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
+data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script, browser_toolchain_package_version_script and browser_toolchain_decoy_index -- JavaScript held as strings (two run by node -e, one written as the decoy module node would load). RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
 // headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page and the
@@ -813,7 +817,15 @@ data browser_toolchain_package_version_script: String = "console.log(require(pro
 // first. Its entry point throws, and its package.json names a version no pin carries. Together with
 // the resolved-identity check below (the launch must report the converged package's own entry file),
 // this discriminates the absolute-path resolution on every readback.
-data browser_toolchain_decoy_package_json: String = "{\"name\":\"playwright\",\"version\":\"0.0.0-gunbc-decoy\",\"main\":\"index.js\"}"
+// The decoy's package.json is a JSON document, emitted by extdeps.languages.json rather than written
+// as a string literal.
+data browser_toolchain_decoy_version: String = "0.0.0-gunbc-decoy"
+
+data browser_toolchain_decoy_package_json: String = serialize_json_object(members: [
+  json_kv(key: "name", value: json_string(s: "playwright")),
+  json_kv(key: "version", value: json_string(s: browser_toolchain_decoy_version)),
+  json_kv(key: "main", value: json_string(s: "index.js")),
+])
 
 data browser_toolchain_decoy_index: String = "throw new Error('gunbc decoy playwright resolved: a workspace package shadowed the converged toolchain');"
 
