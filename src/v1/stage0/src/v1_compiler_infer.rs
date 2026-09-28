@@ -9483,6 +9483,46 @@ pub fn annotate_pattern_parent_enums(
     })
 }
 
+pub fn present_arms_over_unresolved_scrutinee(
+    arms: Rc<Vec<Rc<Node>>>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for arm in arms.iter().cloned() {
+            __result.extend(
+                (*match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
+                    MatchPattern::VariantPattern {
+                        name: n,
+                        parent_enum: pe,
+                        ..
+                    } => {
+                        if ((crate::v1_std_core::qualified_last_segment(n.clone())
+                            == "Present".to_string())
+                            && (pe.clone() == std::option::Option::None))
+                        {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::PresentArmScrutineeTypeUnresolved {
+                                    pattern: n.clone(),
+                                    span: span.clone(),
+                                }),
+                                module_name.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                    _ => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
     {
         let new_locals = params.iter().cloned().fold(
@@ -12973,6 +13013,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     PatternSubject::PatternDynamic { span: _, .. } => Rc::new(vec![]),
                     PatternSubject::PatternLookupBlocked => Rc::new(vec![]),
                 };
+            let unresolved_present_arm_diags =
+                match (*resolve_pattern_subject(scope.clone(), scrut_subject.clone())).clone() {
+                    PatternSubject::PatternLookupBlocked => present_arms_over_unresolved_scrutinee(
+                        typed_arms.clone(),
+                        span.clone(),
+                        scope.module_name.clone(),
+                    ),
+                    _ => Rc::new(vec![]),
+                };
             let match_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprMatch),
@@ -12987,12 +13036,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 diagnostics: v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(scrut_diags.clone(), arm_diags.clone()),
-                            arm_join_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(scrut_diags.clone(), arm_diags.clone()),
+                                arm_join_diags.clone(),
+                            ),
+                            empty_arms_diags.clone(),
                         ),
-                        empty_arms_diags.clone(),
+                        exhaustiveness_diags.clone(),
                     ),
-                    exhaustiveness_diags.clone(),
+                    unresolved_present_arm_diags.clone(),
                 ),
             })
         }

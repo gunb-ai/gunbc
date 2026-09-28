@@ -1,5 +1,10 @@
 module gunbc.fleet_converge_workflow
 
+import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
+
+import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
+import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke }
+
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path }
 import std.measure { minute_count, second_count }
 
@@ -280,6 +285,7 @@ type FleetConvergeWorkflowMode
   | MicrovmRunnerGroupEnsure
   | OrgRunnerRosterObserve
   | GcpIamConverge
+  | NamecheapObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -328,6 +334,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     ApprovalDeviceEnrolmentCodeIssue => "approval_device_enrolment_code_issue"
     MtCollins1Boot => "mtcollins1_boot"
     GcpIamConverge => "gcp_iam_converge"
+    NamecheapObserve => "namecheap_observe"
     PairServingD0 => "pair_serving_d0"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
@@ -358,7 +365,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -426,6 +433,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     ApprovalDeviceEnrolmentCodeIssue => none
     MtCollins1Boot => none
     GcpIamConverge => none
+    NamecheapObserve => none
     PairServingD0 => none
     MtCollins1FanObserve => none
     FabricWriterIdentityObserve => none
@@ -557,6 +565,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
+    NamecheapObserve => FleetSshKeyNotConsumed
   }
 }
 
@@ -1116,6 +1125,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmRunnerGroupEnsure => ExecutorDomain
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
+    NamecheapObserve => ExecutorDomain
   }
 }
 
@@ -3055,6 +3065,7 @@ fn fleet_converge_spark_v41_row_store_readback_step() -> Step {
 data fleet_converge_checkout_ref_expr: String = join([
   "${{ (github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot),
   "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge),
+  "' || github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: NamecheapObserve),
   "') && github.sha || github.event.inputs.expected_revision || github.ref }}",
 ], "")
 
@@ -3112,6 +3123,7 @@ fn fleet_converge_consumer_prelude_steps() -> List<Step> {
 data fleet_converge_shared_job_if: String = join([
   "github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'",
   " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge), "'",
+  " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: NamecheapObserve), "'",
 ], "")
 
 // THE RUNNER AND THE CONCURRENCY DOMAIN ARE FIXED TO THE STORE HOST, never read from the dispatch's
@@ -3446,6 +3458,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: "approval-broker-dark-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "microvm-controller-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "rlm-launch-deployment-receipt" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "namecheap-observe" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: "gcp-iam-converge" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
 ]
 
@@ -3483,6 +3496,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_microvm_controller_install_job(),
     fleet_converge_rlm_launch_deployment_receipt_job(),
     fleet_converge_gcp_iam_converge_job(),
+    fleet_converge_namecheap_observe_job(),
   ]
 }
 
@@ -3812,5 +3826,46 @@ fn fleet_converge_yml_after_reset_assignment() -> FleetConvergeYamlGenerationOut
     }
   } else {
     FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }
+  }
+}
+
+
+fn fleet_converge_namecheap_observe_job() -> Job {
+  Job {
+    id: "namecheap-observe", name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    environment: Present { value: namecheap_environment as String },
+    steps: [
+      fleet_converge_event_sha_checkout_step(),
+      ci_release_bins_download_step(),
+      ci_release_bins_unpack_verify_step(),
+      ci_wif_auth_step_for(
+        name: "WIF auth (dedicated Namecheap reader)",
+        provider_resource: namecheap_provider_resource(),
+        service_account: namecheap_service_account as String,
+      ),
+      RunStep {
+        name: Present { value: "Observe Namecheap getHosts with the Secret Manager credential" },
+        id: Present { value: "namecheap_observe" },
+        run: gunbc_ci_namecheap_observe_invoke(), shell: none,
+        env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}"))] },
+        working_directory: none, if_condition: none, continue_on_error: none,
+        timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
+      },
+      fleet_converge_receipt_upload_step(
+        id: "namecheap_secret_receipt", name: "Upload Namecheap read-only DNS observation",
+        artifact: "namecheap-observation", path: namecheap_observation_receipt_path,
+        if_condition: "success()",
+      ),
+    ],
+    needs: fleet_converge_job_needs(id: "namecheap-observe" as NonEmptyStr),
+    env: none, outputs: none,
+    if_condition: Present { value: fleet_converge_mode_step_if(mode: NamecheapObserve) },
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
+    continue_on_error: none, concurrency: none,
+    permissions: Present { value: WorkflowPermissions {
+      contents: Present { value: PermRead }, pull_requests: none, issues: none,
+      actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+    } },
   }
 }
