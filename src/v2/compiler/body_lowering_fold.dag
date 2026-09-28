@@ -7117,7 +7117,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: Present { value: spine }, diagnostics: _ } => outcome_accepted(value: spine)
         Accepted { value: Absent, diagnostics: _ } =>
-      match body_lower_pattern_first_atom_optional(node: captured) {
+      match body_lower_pattern_leaf_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
@@ -7453,7 +7453,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             d: body_lower_diagnostic(reason: ^body_lowering_reason_caret_symbol_not_lowered, n: caret)
           )
         Absent =>
-      match body_lower_pattern_first_atom_optional(node: captured) {
+      match body_lower_pattern_leaf_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
