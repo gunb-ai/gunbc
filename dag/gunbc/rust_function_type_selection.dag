@@ -30,6 +30,7 @@ import std.decision {
   select_realization,
 }
 import extdeps.external_authority { CitedToAuthority }
+import v2.std.compilers.target_model { FunctionTypeAtFnBoundReturn, FunctionTypeAtItemReturn, FunctionTypePosition }
 import extdeps.languages.rust.function_type_forms {
   RustBoxDynFnForm,
   RustFnBoundReturn,
@@ -216,6 +217,19 @@ fn rust_fn_type_assessment(position: RustFunctionTypePosition) -> DecisionAssess
         VendorDocumentedCoupling { authority: rust_reference_closure_types, term: term_id, variable: var_id, subject: subject_id },
       ],
     },
+  }
+}
+
+// THE PROJECTION FROM RUST'S POSITION VOCABULARY TO THE TARGET MODEL'S. extdeps.languages.rust
+// function_type_forms names the positions Rust's own facts are stated at (E0562 is a fact about an
+// Fn bound's return); v2.std.compilers.target_model FunctionTypePosition is the target-agnostic
+// position the emitter's FunctionTypeRealizationRow is keyed on. This total map is the one link
+// between them, so a row is pinned to the selection for exactly the position it is keyed on and a
+// new position arm fails to compile here until it is mapped.
+fn target_function_type_position(position: RustFunctionTypePosition) -> FunctionTypePosition {
+  match position {
+    RustFnItemReturn => FunctionTypeAtItemReturn
+    RustFnBoundReturn => FunctionTypeAtFnBoundReturn
   }
 }
 

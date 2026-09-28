@@ -304,21 +304,6 @@ type FunctionTypeRealizationRow {
   value_close: List<Symbol>
 }
 
-fn function_type_position_eq(a: FunctionTypePosition, b: FunctionTypePosition) -> Bool {
-  match a {
-    FunctionTypeAtItemReturn =>
-      match b {
-        FunctionTypeAtItemReturn => true
-        FunctionTypeAtFnBoundReturn => false
-      }
-    FunctionTypeAtFnBoundReturn =>
-      match b {
-        FunctionTypeAtItemReturn => false
-        FunctionTypeAtFnBoundReturn => true
-      }
-  }
-}
-
 // The row a target declares for a position. Absent is not a default: the caller refuses.
 fn function_type_realization_at(
   rows: List<FunctionTypeRealizationRow>,
@@ -331,7 +316,7 @@ fn function_type_realization_at(
       match acc {
         Present { value: _ } => acc
         Absent =>
-          if function_type_position_eq(a: row.position, b: position) {
+          if row.position == position {
             optional_present(value: row)
           } else {
             acc

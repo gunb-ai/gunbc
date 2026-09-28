@@ -27,11 +27,10 @@ import gunbc.rust_function_type_selection {
   rust_fn_type_subject_identity,
   select_rust_function_type,
   select_rust_function_type_with_withheld_nameability,
+  target_function_type_position,
 }
 import v2.extdeps.languages.rust { rust_function_type_realization_rows }
 import v2.std.compilers.target_model {
-  FunctionTypeAtFnBoundReturn,
-  FunctionTypeAtItemReturn,
   FunctionTypePosition,
   FunctionTypeRealizationRow,
 }
@@ -60,19 +59,7 @@ fn row_realization_at(position: FunctionTypePosition) -> String? {
   fold(rust_function_type_realization_rows, init: Absent, f: (acc, row) =>
     match acc {
       Present { value: _ } => acc
-      Absent =>
-        match position {
-          FunctionTypeAtItemReturn =>
-            match row.position {
-              FunctionTypeAtItemReturn => Present { value: row.realization as String }
-              FunctionTypeAtFnBoundReturn => Absent
-            }
-          FunctionTypeAtFnBoundReturn =>
-            match row.position {
-              FunctionTypeAtItemReturn => Absent
-              FunctionTypeAtFnBoundReturn => Present { value: row.realization as String }
-            }
-        }
+      Absent => if row.position == position { Present { value: row.realization as String } } else { Absent }
     }
   )
 }
@@ -87,13 +74,13 @@ fn row_names(position: FunctionTypePosition, selected: DeclarationRef) -> Bool {
 fn pinned(
   result: RealizationSelectionResult<ParetoEntry>,
   expected: SelectionReceipt,
-  row_position: FunctionTypePosition,
+  position: RustFunctionTypePosition,
 ) -> Bool {
   match result {
     SelectedWithin { candidate: c, receipt: r } =>
       receipts_eq(a: r, b: expected)
         && declaration_ref_eq(a: c.identity, b: r.selected_identity)
-        && row_names(position: row_position, selected: r.selected_identity)
+        && row_names(position: target_function_type_position(position: position), selected: r.selected_identity)
     _ => false
   }
 }
@@ -109,7 +96,7 @@ test fn rust_item_return_row_is_the_selected_impl_trait() -> Bool {
       policy_authority: rust_fn_type_policy_identity(position: RustFnItemReturn),
       selected_identity: rust_fn_type_impl_trait,
     },
-    row_position: FunctionTypeAtItemReturn,
+    position: RustFnItemReturn,
   )
 }
 
@@ -125,7 +112,7 @@ test fn rust_fn_bound_return_row_is_box_because_e0562_excludes_impl() -> Bool {
       policy_authority: rust_fn_type_policy_identity(position: RustFnBoundReturn),
       selected_identity: rust_fn_type_boxed_trait_object,
     },
-    row_position: FunctionTypeAtFnBoundReturn,
+    position: RustFnBoundReturn,
   )
 }
 
