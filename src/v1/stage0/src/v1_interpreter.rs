@@ -21609,6 +21609,19 @@ macro_rules! v1_builtin_arms {
                     expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
                 let exclude_substrings =
                     expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                // A ROOT THAT IS NOT A DIRECTORY REFUSES HERE, TYPED AND LOCATED, before the host
+                // anchors it: `anchor_source_root` panics on a file, which crossed the boundary as a
+                // process abort rather than an answer the caller can read (DESIGN section 5).
+                let root_defects = crate::coproduct_reflection::pool_root_defects(
+                    &pool_roots.iter().chain(importer_roots.iter()).cloned().collect::<Vec<_>>(),
+                );
+                if !root_defects.is_empty() {
+                    return Err(InterpError::PoolRootContributesNothing {
+                        caller: "dependency_resolution_facts",
+                        declared: pool_roots.len() + importer_roots.len(),
+                        defects: root_defects,
+                    });
+                }
                 // Reference-first exact union through the ONE dedup authority, then the
                 // import_module -> target_module rename. Both halves are the host twin of what
                 // `v2.lens.module_graph` composed in the interpreter; moved because it measured
@@ -21616,6 +21629,45 @@ macro_rules! v1_builtin_arms {
                 let facts = crate::cli_run::dependency_resolution_facts(
                     &pool_roots,
                     &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), str_value(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), str_value(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.dependency_resolution_facts_at" { "dependency_resolution_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts_at")?;
+                let importer_path =
+                    expect_value_str($positional.get(1).copied(), "dependency_resolution_facts_at")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts_at")?;
+                // The pool roots are anchored as directories, so they refuse typed here like the
+                // population read's. The importer is a FILE path by contract and is never anchored:
+                // it is a key into the population's importer grouping, not a root to walk.
+                let root_defects = crate::coproduct_reflection::pool_root_defects(&pool_roots);
+                if !root_defects.is_empty() {
+                    return Err(InterpError::PoolRootContributesNothing {
+                        caller: "dependency_resolution_facts_at",
+                        declared: pool_roots.len(),
+                        defects: root_defects,
+                    });
+                }
+                // Same row shape as the population read, so a `.dag` consumer switching to the keyed
+                // form changes its source of rows and not its fold.
+                let facts = crate::cli_run::dependency_resolution_facts_at(
+                    &pool_roots,
+                    importer_path.as_str(),
                     &exclude_substrings,
                 );
                 let mut items: Vec<Value> = Vec::new();

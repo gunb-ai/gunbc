@@ -32807,6 +32807,40 @@ pub fn dependency_resolution_facts(
     union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
 
+/// THE SAME UNION, KEYED BY IMPORTER. `v2.lens.module_graph` `dependency_closure_live_excluding`
+/// asks which modules ONE entry reaches, so it may demand only the edges of modules it has already
+/// reached. This answers "the edges whose importer is `importer_path`" from the population
+/// `dependency_resolution_facts` produces over the pool as its own importer roots -- the one
+/// reference-first dedup authority, computed once per (pool, exclusions) in this process and
+/// grouped by importer, never a second reader. Any row returned is the row the population read
+/// returns for that path, in the same order. An importer the pool does not carry, or one with no
+/// edges, answers the empty list, exactly as the population read carries no row for it.
+pub fn dependency_resolution_facts_at(
+    pool_roots: &[String],
+    importer_path: &str,
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let key = format!(
+        "{}\u{1f}{}",
+        pool_roots_abs(pool_roots).join("\u{1e}"),
+        exclude_substrings.join("\u{1e}")
+    );
+    let by_importer = DEPENDENCY_FACTS_BY_IMPORTER.with(|c| c.borrow().get(&key).cloned());
+    let by_importer = match by_importer {
+        Some(index) => index,
+        None => {
+            let mut index: HashMap<String, Vec<ImportResolutionFactRaw>> = HashMap::new();
+            for fact in dependency_resolution_facts(pool_roots, pool_roots, exclude_substrings) {
+                index.entry(fact.path.clone()).or_default().push(fact);
+            }
+            let index = Rc::new(index);
+            DEPENDENCY_FACTS_BY_IMPORTER.with(|c| c.borrow_mut().insert(key, index.clone()));
+            index
+        }
+    };
+    by_importer.get(importer_path).cloned().unwrap_or_default()
+}
+
 /// THE UNION, ONCE. Reference-first exact dedup over `{path, import_module, target_declared}`,
 /// keeping first occurrence and therefore a stable order.
 ///
@@ -33553,6 +33587,10 @@ fn longest_declared_module_prefix(
 
 thread_local! {
     static REFERENCE_EDGE_CACHE: RefCell<HashMap<String, Vec<ReferenceEdgeRaw>>> =
+        RefCell::new(HashMap::new());
+    /// `dependency_resolution_facts_at`'s grouping of the one population union by importer path,
+    /// keyed by (pool, exclusions). Released with the other process caches at floor teardown.
+    static DEPENDENCY_FACTS_BY_IMPORTER: RefCell<HashMap<String, Rc<HashMap<String, Vec<ImportResolutionFactRaw>>>>> =
         RefCell::new(HashMap::new());
     /// Import-less files the reference producer could NOT account for. Keyed identically to
     /// `REFERENCE_EDGE_CACHE` and populated in the same pass.
@@ -41357,6 +41395,7 @@ pub fn release_process_caches_at_exit() {
     MODULE_PATH_INDEX_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    DEPENDENCY_FACTS_BY_IMPORTER.with(|c| forget(take(&mut *c.borrow_mut())));
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
