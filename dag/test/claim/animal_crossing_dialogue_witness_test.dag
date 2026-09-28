@@ -3,6 +3,7 @@ module test.claim.animal_crossing_dialogue_witness
 import std.types { Bool, Int, List, String }
 import v2.std.algebra { any }
 import extdeps.games.animal_crossing.message {
+  BufferOctetsRange, BufferOctetsUnbounded, message_buffer_occupancy,
   LineWidthRange, LineUnbounded, TextLine, message_lines,
   MessageAccepted, MessageRefused, message_start, message_table_ends, message_table_octets, message_tokens, message_text,
   steering_tokens, text_message, vanilla_control_codes,
@@ -408,4 +409,29 @@ test fn a_message_that_still_fits_is_rewritten_in_place() -> Bool {
 
 test fn a_shrunk_message_is_rewritten_in_place() -> Bool {
   return applied_rewrite_holds(replacement: MessageReplacement { id: 2, octets: [80] }, archive_moves: false, mram: 64, aram: 32)
+}
+
+fn occupancy_of(text: String, determination_max_octets: Int?) -> List<Int> {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageRefused { reason: _ } => [-1]
+    MessageAccepted { value: o } =>
+      match message_tokens(codes: vanilla_control_codes, message: o) {
+        MessageRefused { reason: _ } => [-1]
+        MessageAccepted { value: t } =>
+          match message_buffer_occupancy(tokens: t, determination_max_octets: determination_max_octets) {
+            BufferOctetsRange { min: lo, max: hi } => [lo, hi]
+            BufferOctetsUnbounded { reason: _ } => [-2]
+          }
+      }
+  }
+}
+
+// "Hi " (3) + MAIL (2) + LAST (2) encodes to 7 octets but can occupy 137 once a 132-octet mail
+// string replaces its code; a bounded DETERMINATION adds its longest select string the same way,
+// and an unbounded one cannot be measured.
+test fn buffer_occupancy_grows_by_each_inserted_string_less_its_code() -> Bool {
+  return occupancy_of(text: "Hi \{PUT_STRING_MAIL}\{LAST}", determination_max_octets: none) == [7, 137]
+    && occupancy_of(text: "\{PUT_STRING_DETERMINATION}\{LAST}", determination_max_octets: Present { value: 19 }) == [4, 21]
+    && occupancy_of(text: "\{PUT_STRING_DETERMINATION}\{LAST}", determination_max_octets: none) == [-2]
+    && occupancy_of(text: "plain\{LAST}", determination_max_octets: none) == [7, 7]
 }

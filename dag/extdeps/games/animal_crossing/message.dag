@@ -504,3 +504,45 @@ fn layout_step(acc: LayoutFold, token: MessageToken) -> LayoutFold {
 fn message_lines(tokens: List<MessageToken>) -> List<TextLine> {
   layout_close(acc: fold(tokens, init: LayoutFold { lines: [], page: 0, line: 0, min: 0, max: 0, unbounded: "", visible: false }, f: (acc, t) => layout_step(acc: acc, token: t))).lines
 }
+
+// ---- the buffer ----
+
+// How many octets a message occupies in the window's buffer once its inserted strings are
+// substituted -- mMsg_MoveDataCut replaces each two-octet PUT_STRING code with the string itself,
+// so a message can grow past its encoded size by each insertion's length less two. At least the
+// encoded size, at most that plus every insertion's longest string; unbounded when an insertion
+// has no bound. DETERMINATION inserts the chosen select string, whose longest length is a fact of
+// the build (extdeps.games.animal_crossing_deluxe.control_codes), so the caller supplies it.
+type BufferOccupancy
+  = BufferOctetsRange { min: Int, max: Int }
+  | BufferOctetsUnbounded { reason: String }
+
+type OccupancyFold {
+  min: Int
+  growth: Int
+  unbounded: String
+}
+
+fn insertion_bound(code: ControlCode, determination_max_octets: Int?) -> Int? {
+  if code.name == "PUT_STRING_DETERMINATION" { determination_max_octets } else { inserted_string_max_octets(code_name: code.name) }
+}
+
+fn occupancy_step(acc: OccupancyFold, token: MessageToken, determination_max_octets: Int?) -> OccupancyFold {
+  let size = count(token_octets(token: token))
+  match token {
+    Glyph { octet: _ } => OccupancyFold { min: acc.min + size, growth: acc.growth, unbounded: acc.unbounded }
+    Control { code: c, arguments: _ } =>
+      if c.name.starts_with(prefix: "PUT_STRING_") == false { OccupancyFold { min: acc.min + size, growth: acc.growth, unbounded: acc.unbounded } }
+      else {
+        match insertion_bound(code: c, determination_max_octets: determination_max_octets) {
+          Present { value: n } => OccupancyFold { min: acc.min + size, growth: acc.growth + (if n > size { n - size } else { 0 }), unbounded: acc.unbounded }
+          Absent => OccupancyFold { min: acc.min + size, growth: acc.growth, unbounded: if acc.unbounded == "" { join([c.name, " inserts a string of unbounded length"], "") } else { acc.unbounded } }
+        }
+      }
+  }
+}
+
+fn message_buffer_occupancy(tokens: List<MessageToken>, determination_max_octets: Int?) -> BufferOccupancy {
+  let r = fold(tokens, init: OccupancyFold { min: 0, growth: 0, unbounded: "" }, f: (acc, t) => occupancy_step(acc: acc, token: t, determination_max_octets: determination_max_octets))
+  if r.unbounded != "" { BufferOctetsUnbounded { reason: r.unbounded } } else { BufferOctetsRange { min: r.min, max: r.min + r.growth } }
+}

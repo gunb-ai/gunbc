@@ -61,3 +61,8 @@ data deluxe_added_control_codes: List<ControlCode> = [
 fn deluxe_control_codes() -> List<ControlCode> {
   concat(vanilla_control_codes, deluxe_added_control_codes)
 }
+
+// The longest select string this build can insert for PUT_STRING_DETERMINATION: read from
+// forest_1st.arc data/select_data_table.bin of the pinned image (663 entries, the longest 19
+// octets, "That's not right...").
+data deluxe_select_string_max_octets: Int = 19
