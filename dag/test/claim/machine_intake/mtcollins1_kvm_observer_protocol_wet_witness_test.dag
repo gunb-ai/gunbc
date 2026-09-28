@@ -62,6 +62,8 @@ fn rig(w: BmcWorld, port: Int) -> Rig {
   let pw_path = concat(dir, "/credential")
   let _script = Filesystem.Write(path: script_path, content: megarac_web_protocol_script(initial: w, username: "admin", password: "pw", extended_privilege: 259))
   let _pw = Filesystem.Write(path: pw_path, content: "pw")
+  let loc = match runner_browser_toolchain_here_wet() { BrowserToolchainReady { location: l, standing: _ } => Present { value: l }  _ => none }
+  let node_binary = match loc { Present { value: l } => l.node_binary as String  Absent => "node-not-provisioned" }
   let _served = gunbc.bmc_megarac_web.transport.ServeScript(
     script: megarac_web_transport_script as NonEmptyStr,
     port: to_string(port) as NonEmptyStr,
@@ -69,9 +71,9 @@ fn rig(w: BmcWorld, port: Int) -> Rig {
     script_path: script_path as NonEmptyStr,
     log_path: log_path as NonEmptyStr,
     pid_path: concat(dir, "/controller.pid") as NonEmptyStr,
+    node_binary: node_binary as NonEmptyStr,
   )
   let obs = concat(dir, "/observer")
-  let loc = match runner_browser_toolchain_here_wet() { BrowserToolchainReady { location: l, standing: _ } => Present { value: l }  _ => none }
   let _made = shell.Mkdir.Parents(path: obs as FilePath)
   let start = match loc { Absent => KvmObserverNotStarted { reason: "the runner browser toolchain is not ready on this host" }  Present { value: loc } => kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", to_string(port)), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet") }
   Rig { dir: dir, start: start, transport_log: log_path }
