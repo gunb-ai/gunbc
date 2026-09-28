@@ -1,6 +1,7 @@
 module gunbc.bmc_dry_realization
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { second }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
@@ -41,7 +42,7 @@ fn exited(stdout: String, world: BmcWorld) -> OperationStep<BmcWorld> {
   OperationObserved {
     observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: stdout, stderr: "" } },
     state: world,
-    elapsed_seconds: 1,
+    elapsed: second(count: 1),
   }
 }
 

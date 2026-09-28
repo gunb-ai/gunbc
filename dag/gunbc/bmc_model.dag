@@ -1,6 +1,7 @@
 module gunbc.bmc_model
 
 import std.types { Bool, Int, List, String }
+import std.measure { Second, second_count }
 import v2.std.optional { Present, Absent }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
@@ -29,7 +30,7 @@ type BmcEvent
   | BmcKvmStreamClosed {}
 
 type BmcScheduledEvent {
-  at_seconds: Int
+  at: Second
   event: BmcEvent
 }
 
@@ -209,9 +210,9 @@ fn bmc_apply_event(world: BmcWorld, event: BmcEvent) -> BmcWorld {
 }
 
 // Every event due at or before `now` fires, in schedule order, and moves from pending to fired.
-fn bmc_advance(world: BmcWorld, now: Int) -> BmcWorld {
+fn bmc_advance(world: BmcWorld, now: Second) -> BmcWorld {
   fold(world.pending, init: BmcWorld { power: world.power, pending: [], fired: world.fired, web: world.web }, f: fn(acc, e) {
-    if e.at_seconds <= now {
+    if second_count(s: e.at) <= second_count(s: now) {
       let applied = bmc_apply_event(world: acc, event: e.event)
       BmcWorld { power: applied.power, pending: acc.pending, fired: list_append(acc.fired, e), web: applied.web }
     } else {

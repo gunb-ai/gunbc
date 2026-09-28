@@ -2,6 +2,7 @@ module test.claim.bmc_model_web_kvm_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
+import std.measure { second }
 import gunbc.bmc_model {
   BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController,
   BmcWebLoginAccepted, BmcWebLoginRefused,
@@ -25,7 +26,7 @@ fn web(other_viewers: Int, canvas_readable: Bool) -> BmcWebWorld {
 fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
   BmcWorld {
     power: BmcPowerOn,
-    pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at_seconds: close_at, event: BmcKvmStreamClosed {} }] },
+    pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at: second(count: close_at), event: BmcKvmStreamClosed {} }] },
     fired: [],
     web: web(other_viewers: other_viewers, canvas_readable: canvas_readable),
   }
@@ -58,8 +59,8 @@ test fn viewer_count_connect_and_logout_move_the_stream() -> Bool {
 test fn a_scheduled_close_ends_the_stream_not_the_session() -> Bool {
   let login = bmc_web_login(world: world(other_viewers: 0, close_at: 30, canvas_readable: true), username: "admin", password: "pw")
   let c = bmc_kvm_connect(world: login.world, csrf_token: "csrf-7")
-  let early = match bmc_advance(world: c.world, now: 29).web.kvm { BmcKvmStreaming { session: k } => k == 7  _ => false }
-  let late = bmc_advance(world: c.world, now: 30)
+  let early = match bmc_advance(world: c.world, now: second(count: 29)).web.kvm { BmcKvmStreaming { session: k } => k == 7  _ => false }
+  let late = bmc_advance(world: c.world, now: second(count: 30))
   let closed = match late.web.kvm { BmcKvmClosedByController { session: k } => k == 7  _ => false }
   early && closed && count(late.web.sessions) == 1
 }
