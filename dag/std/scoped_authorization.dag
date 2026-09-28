@@ -696,24 +696,33 @@ fn parse_intent_scopes(text: String) -> IntentScopes? {
   let lines = split(s: text, delimiter: "\n")
   let schema = field_at(fields: lines, i: 0)
   if schema == "" { none } else {
-    let scan = fold(lines |> skip(n: 1), init: IntentScopeScan { scopes: [] as List<AuthorizationScope>, scanning: true, refused: false }, f: (acc, l) =>
-      if !acc.scanning || acc.refused { acc }
-      else if starts_with(s: l, prefix: intent_scope_line_prefix) {
-        match parse_authorization_scope_wire(wire: substring(s: l, start: length(intent_scope_line_prefix), end: length(l))) {
-          Present { value: sc } => IntentScopeScan { scopes: concat(acc.scopes, [sc]), scanning: true, refused: false }
-          Absent => IntentScopeScan { scopes: acc.scopes, scanning: false, refused: true }
-        }
-      } else { IntentScopeScan { scopes: acc.scopes, scanning: false, refused: false } })
-    if scan.refused || is_empty(scan.scopes) { none }
-    else { Present { value: IntentScopes { schema: schema as NonEmptyStr, scopes: scan.scopes } } }
+    let start: IntentScopeScan = ScanningScopes { scopes: [] as List<AuthorizationScope> }
+    let scan = fold(lines |> skip(n: 1), init: start, f: (acc, l) =>
+      match acc {
+        ScopesEnded { scopes: _ } => acc
+        ScopeLineRefused => acc
+        ScanningScopes { scopes: xs } =>
+          if starts_with(s: l, prefix: intent_scope_line_prefix) {
+            match parse_authorization_scope_wire(wire: substring(s: l, start: length(intent_scope_line_prefix), end: length(l))) {
+              Present { value: sc } => ScanningScopes { scopes: concat(xs, [sc]) }
+              Absent => ScopeLineRefused
+            }
+          } else { ScopesEnded { scopes: xs } }
+      })
+    match scan {
+      ScopeLineRefused => none
+      ScanningScopes { scopes: xs } => if is_empty(xs) { none } else { Present { value: IntentScopes { schema: schema as NonEmptyStr, scopes: xs } } }
+      ScopesEnded { scopes: xs } => if is_empty(xs) { none } else { Present { value: IntentScopes { schema: schema as NonEmptyStr, scopes: xs } } }
+    }
   }
 }
 
-type IntentScopeScan {
-  scopes: List<AuthorizationScope>
-  scanning: Bool
-  refused: Bool
-}
+// The scan's three states, as the closed sum they are (review 72048): still reading scope lines,
+// past the last one, or stopped at a line that claims to be a scope and does not decode.
+type IntentScopeScan
+  = ScanningScopes { scopes: List<AuthorizationScope> }
+  | ScopesEnded { scopes: List<AuthorizationScope> }
+  | ScopeLineRefused
 
 // EVERY FIELD THE SCOPE COMPARISON READS IS RENDERED, and that is the whole rule. scope_covers
 // judges verb, resource and action, so a render omitting any of the three can print two identical
