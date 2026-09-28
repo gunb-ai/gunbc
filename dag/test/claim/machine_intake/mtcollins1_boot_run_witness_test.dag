@@ -32,6 +32,7 @@ import gunbc.machine_intake_host_capture_envelope { host_capture_workload_total_
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
+import gunbc.machine_intake_mtcollins1_boot_phase_timing { mtcollins1_boot_phase_timing_not_taken }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
 import gunbc.fleet_workflow_steps { ci_fleet_key_agent_step }
@@ -739,11 +740,12 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd)
+  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
   let ended = mtcollins1_boot_run_record(
     media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
     stage: ActuationCensusEnded { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproProbed { outcomes: [] } },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
+    timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
   )
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
@@ -752,6 +754,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
       media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
       stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
+      timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { outcomes: _ } => true _ => false })
 }
