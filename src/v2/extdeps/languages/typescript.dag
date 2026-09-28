@@ -455,7 +455,7 @@ fn ts_inhabitant_boolean_node() -> Node {
 }
 
 // The field of an inhabitant record whose target is the type the record declares; every other
-// field states a fact about that type (std.kind roster_member_kind).
+// field states a fact about that type (std.kind roster_kind_index).
 fn ts_declared_inhabitants_subject_field() -> Symbol {
   ^ts_inhabitant_field_atom
 }
