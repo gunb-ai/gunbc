@@ -889,6 +889,84 @@ pub(crate) const WARNING_DENIAL_RUSTFLAGS: &str = "-D warnings";
 /// ambient encoded value win the build while the receipt still said `-D warnings`.
 pub(crate) const WARNING_DENIAL_ENCODED_RUSTFLAGS: &str = "-D\x1fwarnings";
 
+/// Seed mirrors of `gunbc.emitted_build_reproducibility`: the flag, and the fixed spellings the crate
+/// directory, the target directory and the cargo home are remapped to. The `.dag` rows are the
+/// authority the route's admission reconstructs the recorded flags against
+/// (`emitted_build_rustflags_are_the_declared_composition`), so a drift here reds the route by
+/// `emitted_build_paths_not_remapped` rather than passing silently.
+pub(crate) const REMAP_PATH_PREFIX_FLAG: &str = "--remap-path-prefix";
+pub(crate) const REMAPPED_CRATE_DIR: &str = "/gunbc-emitted/crate";
+pub(crate) const REMAPPED_TARGET_DIR: &str = "/gunbc-emitted/target";
+pub(crate) const REMAPPED_CARGO_HOME: &str = "/gunbc-emitted/cargo-home";
+
+/// THE FLAGS A PROBE BUILD RUNS UNDER, in both channels cargo reads: the warning denial, then the
+/// crate directory, the target directory and the cargo home remapped to their fixed spellings, in the
+/// order `gunbc.emitted_build_reproducibility` `emitted_build_rustflags` declares. Measured on the
+/// emitted compiler crate: without the remaps two directories gave two executables, with them the
+/// executables were byte-identical, so the directory a run happened to use cannot reach the bytes a
+/// cross-run key names. A directory whose path is relative or carries whitespace, `=` or the encoded
+/// separator cannot be spelled in this form and refuses rather than being built unremapped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProbeBuildFlags {
+    pub plain: String,
+    pub encoded: String,
+}
+
+fn probe_build_flags(
+    crate_dir: &Path,
+    target_dir: &Path,
+    cargo_home: &Path,
+) -> Result<ProbeBuildFlags, String> {
+    let remaps = [
+        (crate_dir, REMAPPED_CRATE_DIR),
+        (target_dir, REMAPPED_TARGET_DIR),
+        (cargo_home, REMAPPED_CARGO_HOME),
+    ];
+    let mut words: Vec<String> = WARNING_DENIAL_RUSTFLAGS
+        .split(' ')
+        .map(str::to_string)
+        .collect();
+    for (source, remapped) in remaps {
+        let text = source
+            .to_str()
+            .ok_or_else(|| format!("ProbePathNotRemappable: {} is not UTF-8", source.display()))?;
+        if !source.is_absolute()
+            || text
+                .chars()
+                .any(|c| c.is_whitespace() || c == '=' || c == '\x1f')
+        {
+            return Err(format!(
+                "ProbePathNotRemappable: {text} must be absolute and free of whitespace, `=` and \
+                 0x1f to be remapped to {remapped}"
+            ));
+        }
+        words.push(format!("{REMAP_PATH_PREFIX_FLAG}={text}={remapped}"));
+    }
+    Ok(ProbeBuildFlags {
+        plain: words.join(" "),
+        encoded: words.join("\x1f"),
+    })
+}
+
+/// The cargo home a build reads dependency sources from: `CARGO_HOME` in the constructed
+/// environment, else `$HOME/.cargo`, which is cargo's own default. Neither is a refusal: the remap
+/// needs a directory to name.
+fn probe_cargo_home(environment: &ProbeEnvironment) -> Result<PathBuf, String> {
+    let value = |name: &str| {
+        environment
+            .entries
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| PathBuf::from(v))
+    };
+    value("CARGO_HOME")
+        .or_else(|| value("HOME").map(|home| home.join(".cargo")))
+        .ok_or_else(|| {
+            "ProbeCargoHomeUnresolved: neither CARGO_HOME nor HOME is set in the build environment"
+                .to_string()
+        })
+}
+
 /// THE ENVIRONMENT CHANNELS CARGO READS TO CHOOSE FLAGS AND A COMPILER, all of which this
 /// construction OWNS (cargo's environment-variables reference, cited by `extdeps.rust.cargo`
 /// `cargo_environment_variables_authority`): the two flag channels above; `RUSTC`, which wins
@@ -1182,6 +1260,7 @@ fn probe_cargo_command_bound(
     toolchain: &ProbeToolchain,
     environment: &ProbeEnvironment,
     cargo_configuration: &[(PathBuf, String)],
+    flags: &ProbeBuildFlags,
 ) -> (std::process::Command, ProbeCargoInvocation) {
     let cargo = toolchain.cargo.display().to_string();
     let manifest = crate_dir.join("Cargo.toml");
@@ -1211,12 +1290,9 @@ fn probe_cargo_command_bound(
         )
         .env(
             cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
-            WARNING_DENIAL_RUSTFLAGS,
+            &flags.plain,
         )
-        .env(
-            CARGO_ENCODED_RUSTFLAGS_ENV,
-            WARNING_DENIAL_ENCODED_RUSTFLAGS,
-        )
+        .env(CARGO_ENCODED_RUSTFLAGS_ENV, &flags.encoded)
         .env(RUSTC_ENV, &toolchain.rustc)
         .env(RUSTC_WRAPPER_ENV, "")
         .env(RUSTC_WORKSPACE_WRAPPER_ENV, "")
@@ -1225,7 +1301,7 @@ fn probe_cargo_command_bound(
         command,
         ProbeCargoInvocation {
             argv,
-            rustflags: WARNING_DENIAL_RUSTFLAGS.to_string(),
+            rustflags: flags.plain.clone(),
             compiler_path: toolchain.rustc.display().to_string(),
             rustc_identity: toolchain.rustc_identity.clone(),
             cargo_path: cargo,
@@ -1250,12 +1326,14 @@ fn probe_cargo_command(
     let environment = constructed_probe_environment();
     let toolchain = resolve_probe_toolchain(crate_dir, &environment)?;
     let configuration = cargo_configuration_observation(&environment, crate_dir)?;
+    let flags = probe_build_flags(crate_dir, target_dir, &probe_cargo_home(&environment)?)?;
     Ok(probe_cargo_command_bound(
         crate_dir,
         target_dir,
         &toolchain,
         &environment,
         &configuration,
+        &flags,
     ))
 }
 
@@ -2593,6 +2671,73 @@ mod tests {
         }
     }
 
+    /// THE FLAGS ARE THE DECLARED COMPOSITION, SPELLED EXACTLY: the denial, then the crate directory,
+    /// the target directory and the cargo home remapped in that order -- the string
+    /// `gunbc.emitted_build_reproducibility` `emitted_build_rustflags` builds and the route's admission
+    /// reconstructs. The encoded channel carries the same words.
+    #[test]
+    fn the_probe_build_flags_are_the_declared_composition() {
+        let flags = probe_build_flags(
+            Path::new("/tmp/root/crate"),
+            Path::new("/tmp/root/target"),
+            Path::new("/home/ci/.cargo"),
+        )
+        .expect("compose the flags");
+        assert_eq!(
+            flags.plain,
+            "-D warnings --remap-path-prefix=/tmp/root/crate=/gunbc-emitted/crate \
+             --remap-path-prefix=/tmp/root/target=/gunbc-emitted/target \
+             --remap-path-prefix=/home/ci/.cargo=/gunbc-emitted/cargo-home"
+        );
+        assert_eq!(flags.encoded, flags.plain.replace(' ', "\x1f"));
+        assert!(flags.plain.starts_with(WARNING_DENIAL_RUSTFLAGS));
+    }
+
+    /// A DIRECTORY THE FORM CANNOT SPELL REFUSES rather than being built unremapped: relative, or
+    /// carrying whitespace or `=`. The admission's reconstruction would refuse the same flags later;
+    /// the host refuses before paying for a build.
+    #[test]
+    fn a_directory_the_remap_cannot_spell_refuses() {
+        let home = Path::new("/home/ci/.cargo");
+        for (crate_dir, target) in [
+            ("relative/crate", "/tmp/t"),
+            ("/tmp/a crate", "/tmp/t"),
+            ("/tmp/crate", "/tmp/t=x"),
+        ] {
+            let cause = probe_build_flags(Path::new(crate_dir), Path::new(target), home)
+                .expect_err("an unspellable directory must refuse");
+            assert!(cause.starts_with("ProbePathNotRemappable"), "got: {cause}");
+        }
+    }
+
+    /// THE CARGO HOME IS CARGO_HOME, ELSE `$HOME/.cargo`, ELSE A REFUSAL.
+    #[test]
+    fn the_cargo_home_is_the_declared_one_or_cargos_default_or_a_refusal() {
+        let with_home = probe_environment_from(|name| match name {
+            "HOME" => Some("/home/u".into()),
+            _ => None,
+        });
+        assert_eq!(
+            probe_cargo_home(&with_home).expect("default"),
+            PathBuf::from("/home/u/.cargo")
+        );
+        let with_cargo_home = probe_environment_from(|name| match name {
+            "HOME" => Some("/home/u".into()),
+            "CARGO_HOME" => Some("/runner/cargo".into()),
+            _ => None,
+        });
+        assert_eq!(
+            probe_cargo_home(&with_cargo_home).expect("declared"),
+            PathBuf::from("/runner/cargo")
+        );
+        let cause = probe_cargo_home(&probe_environment_from(|_| None))
+            .expect_err("no cargo home must refuse");
+        assert!(
+            cause.starts_with("ProbeCargoHomeUnresolved"),
+            "got: {cause}"
+        );
+    }
+
     fn u1a_scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("m1c-u1a-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -2654,12 +2799,19 @@ mod tests {
     fn the_spawn_runs_the_toolchains_cargo_even_when_cargo_is_planted() {
         std::env::set_var("CARGO", "/planted/cargo");
         let toolchain = fixture_toolchain();
+        let flags = probe_build_flags(
+            Path::new("/tmp/probe-crate"),
+            Path::new("/tmp/target"),
+            Path::new("/home/probe/.cargo"),
+        )
+        .expect("compose the flags");
         let (command, invocation) = probe_cargo_command_bound(
             Path::new("/tmp/probe-crate"),
             Path::new("/tmp/target"),
             &toolchain,
             &probe_environment_from(|_| None),
             &[],
+            &flags,
         );
         std::env::remove_var("CARGO");
         assert_eq!(command.get_program(), toolchain.cargo.as_os_str());
@@ -2830,8 +2982,10 @@ mod tests {
             "HOME" => Some("/home/probe".into()),
             _ => None,
         });
+        let flags = probe_build_flags(crate_dir, workspace, Path::new("/home/probe/.cargo"))
+            .expect("compose the flags");
         let (command, invocation) =
-            probe_cargo_command_bound(crate_dir, workspace, &toolchain, &environment, &[]);
+            probe_cargo_command_bound(crate_dir, workspace, &toolchain, &environment, &[], &flags);
         assert_eq!(
             command.get_program(),
             toolchain.cargo.as_os_str(),
@@ -2855,14 +3009,20 @@ mod tests {
         );
         assert_eq!(
             env_of(&command, "RUSTFLAGS"),
-            Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string())),
+            Some(Some(flags.plain.clone())),
             "RUSTFLAGS is SET on the spawn, not inherited"
         );
         assert_eq!(
             env_of(&command, CARGO_ENCODED_RUSTFLAGS_ENV),
-            Some(Some(WARNING_DENIAL_ENCODED_RUSTFLAGS.to_string())),
-            "the encoded channel cargo reads FIRST carries the same denial"
+            Some(Some(flags.encoded.clone())),
+            "the encoded channel cargo reads FIRST carries the same flags"
         );
+        assert_eq!(
+            flags.encoded.split('\x1f').collect::<Vec<_>>().join(" "),
+            flags.plain,
+            "the two channels spell one set of flags"
+        );
+        assert_eq!(invocation.rustflags, flags.plain);
         assert_eq!(
             WARNING_DENIAL_ENCODED_RUSTFLAGS
                 .split('\x1f')
@@ -2923,12 +3083,19 @@ mod tests {
         }
         let toolchain = fixture_toolchain();
         let compiler = toolchain.rustc.as_path();
+        let flags = probe_build_flags(
+            Path::new("/tmp/probe-crate"),
+            Path::new("/tmp/workspace"),
+            Path::new("/home/probe/.cargo"),
+        )
+        .expect("compose the flags");
         let (command, invocation) = probe_cargo_command_bound(
             Path::new("/tmp/probe-crate"),
             Path::new("/tmp/workspace"),
             &toolchain,
             &probe_environment_from(|_| None),
             &[],
+            &flags,
         );
         let resolved_named = resolve_probe_compiler();
         for (name, _) in planted {
@@ -2936,12 +3103,12 @@ mod tests {
         }
         assert_eq!(
             env_of(&command, CARGO_ENCODED_RUSTFLAGS_ENV),
-            Some(Some(WARNING_DENIAL_ENCODED_RUSTFLAGS.to_string())),
+            Some(Some(flags.encoded.clone())),
             "a planted encoded flag is overridden on the spawn"
         );
         assert_eq!(
             env_of(&command, "RUSTFLAGS"),
-            Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string()))
+            Some(Some(flags.plain.clone()))
         );
         assert_eq!(
             env_of(&command, RUSTC_ENV),
@@ -2956,7 +3123,7 @@ mod tests {
             env_of(&command, RUSTC_WORKSPACE_WRAPPER_ENV),
             Some(Some(String::new()))
         );
-        assert_eq!(invocation.rustflags, WARNING_DENIAL_RUSTFLAGS);
+        assert_eq!(invocation.rustflags, flags.plain);
         // A planted RUSTC that is not a file is a typed refusal from the resolver, never a
         // bare name handed on to cargo.
         let refusal = resolved_named.expect_err("a RUSTC naming no file must refuse");

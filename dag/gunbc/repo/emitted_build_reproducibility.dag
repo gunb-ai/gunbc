@@ -1,0 +1,91 @@
+module gunbc.emitted_build_reproducibility
+
+import std.types { String, List }
+import v2.std.algebra { length, list_find_first, skip }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial, repo_self_warning_denial_rustflags }
+
+// AN EMITTED BUILD'S BYTES ARE A FUNCTION OF ITS DECLARED INPUTS, NOT OF WHERE IT RAN. Measured on
+// 2026-09-28 (M1.c U0, the emitted v2.compiler.compile crate): one crate, one toolchain, one
+// environment, built in two directories, gave two different executables, because rustc wrote the
+// absolute paths of emitted sources into the binary. With every build-local prefix remapped to a
+// fixed spelling the two builds were byte-identical, and one path built twice was identical too. A
+// cross-run compiler key (M1.c NativeCompilerArtifactRequest) cannot name a directory that differs on
+// every run, so the directory must not reach the bytes: the crate directory, the target directory and
+// the cargo home (where dependency sources live, fresh per CI job) are remapped to the spellings
+// below. Cargo's own `trim-paths` profile setting would do this without flags, but it is not stable on
+// the pinned toolchain (cargo 1.93.0 refuses it), so the remap is carried in RUSTFLAGS beside the
+// warning denial, and the route's admission judges the composition.
+//
+// THIS MODULE IS POLICY ONLY, LIKE gunbc.repo_self_warning_policy: the emitted compiler's closure reads
+// it through gunbc.witness_v2_native_route, and a transport dependency here would reach a closure
+// that never invokes cargo (the cost that module records).
+data emitted_build_remap_flag_name: String = "--remap-path-prefix"
+data emitted_build_remapped_crate_dir: String = "/gunbc-emitted/crate"
+data emitted_build_remapped_target_dir: String = "/gunbc-emitted/target"
+data emitted_build_remapped_cargo_home: String = "/gunbc-emitted/cargo-home"
+
+fn emitted_build_remap_flag(source: String, remapped: String) -> String {
+  concat(concat(concat(emitted_build_remap_flag_name, "="), source), concat("=", remapped))
+}
+
+// The RUSTFLAGS an emitted build runs under: the repository's warning denial, then the three remaps,
+// in this order. The host builds exactly this string from the directories of the run it spawns.
+fn emitted_build_rustflags(crate_dir: String, target_dir: String, cargo_home: String) -> String {
+  concat(
+    concat(
+      concat(repo_self_warning_denial_rustflags(), " "),
+      concat(emitted_build_remap_flag(source: crate_dir, remapped: emitted_build_remapped_crate_dir), " ")
+    ),
+    concat(
+      concat(emitted_build_remap_flag(source: target_dir, remapped: emitted_build_remapped_target_dir), " "),
+      emitted_build_remap_flag(source: cargo_home, remapped: emitted_build_remapped_cargo_home)
+    )
+  )
+}
+
+fn emitted_build_nth_word(words: List<String>, n: Int) -> String {
+  match list_find_first(xs: skip(xs: words, n: n), predicate: fn(word) { true }) {
+    Present { value: word } => word
+    Absent => ""
+  }
+}
+
+// The source a remap word names: the text between the flag's first and second `=`. A path carrying
+// `=` or whitespace cannot be spelled in this form, and the host refuses such a directory before it
+// builds, so a word with any other shape yields a source that cannot reconstruct the recorded flags.
+fn emitted_build_remap_source(word: String) -> String {
+  emitted_build_nth_word(words: split(s: word, delimiter: "="), n: 1)
+}
+
+fn emitted_build_recorded_sources_absolute(rustflags: String) -> Bool {
+  let words = split(s: rustflags, delimiter: " ")
+  let base = length(xs: repo_self_warning_denial)
+  starts_with(s: emitted_build_remap_source(word: emitted_build_nth_word(words: words, n: base)), prefix: "/")
+  && starts_with(s: emitted_build_remap_source(word: emitted_build_nth_word(words: words, n: base + 1)), prefix: "/")
+  && starts_with(s: emitted_build_remap_source(word: emitted_build_nth_word(words: words, n: base + 2)), prefix: "/")
+}
+
+// THE RECORDED FLAGS, RECONSTRUCTED. The three sources are read off the recorded words and the
+// declared composition is rebuilt from them; the recorded string must equal it exactly. An extra flag,
+// a missing remap, a remap to any other spelling, a reordering or a relative source all fail the
+// equality -- there is no second parser deciding which differences are harmless.
+fn emitted_build_rustflags_are_the_declared_composition(rustflags: String) -> Bool {
+  let words = split(s: rustflags, delimiter: " ")
+  let base = length(xs: repo_self_warning_denial)
+  emitted_build_recorded_sources_absolute(rustflags: rustflags)
+  && rustflags == emitted_build_rustflags(
+    crate_dir: emitted_build_remap_source(word: emitted_build_nth_word(words: words, n: base)),
+    target_dir: emitted_build_remap_source(word: emitted_build_nth_word(words: words, n: base + 1)),
+    cargo_home: emitted_build_remap_source(word: emitted_build_nth_word(words: words, n: base + 2))
+  )
+}
+
+// The denial holds when the flags are the bare denial or the declared composition; a flag outside
+// both (an inherited empty RUSTFLAGS, the denial beside `-C opt-level=3`) is a different build.
+fn emitted_build_rustflags_deny_warnings(rustflags: String) -> Bool {
+  rustflags == repo_self_warning_denial_rustflags()
+  || emitted_build_rustflags_are_the_declared_composition(rustflags: rustflags)
+}
