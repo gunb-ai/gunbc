@@ -28,7 +28,7 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
@@ -562,7 +562,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     PairServingD0 => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
-    MtCollins1CensusImagePublish => FleetSshKeyNotConsumed
+    MtCollins1CensusImagePublish => FleetSshKeyConsumed
     MtCollins1CensusMemberReadback => FleetSshKeyConsumed
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
@@ -2018,22 +2018,22 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
   }
 }
 
-// THE CENSUS IMAGE IS BUILT WHERE IT IS SERVED (census stage 0B/0C). The mode runs on srv2, reads the
-// stock medium already verified into /srv/bmc, writes the derived image beside it under its digest
-// name, create-only, and uploads the receipt naming that image and digest -- the fact stage 0D binds
-// the boot subject to. No credential prelude: the build touches no controller and reaches no host
-// but the runner's own.
+// THE CENSUS IMAGE IS BUILT WHERE IT IS SERVED (census stage 0B/0C): on srv2, reached over fleet SSH
+// from any runner, since srv2 has no runner slot (gunbc.machine_intake_mtcollins1_census_image_publish).
+// It first rebuilds the pinned derivation into srv2 scratch and requires the pinned digest, then reads
+// the stock medium in /srv/bmc and writes the derived image beside it under its digest name,
+// create-only, and the receipt names the regression, the image and its digest -- the fact the repin
+// binds the boot subject to. The receipt is uploaded whatever the outcome. No credential prelude
+// beyond the fleet key: it reaches no controller.
 data fleet_converge_mtcollins1_census_image_publish_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1CensusImagePublish)
 
 fn fleet_converge_mtcollins1_census_image_publish_step() -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins census image: build the seeded live-server image in /srv/bmc and publish it create-only under its digest name" },
+    name: Present { value: "Mt. Collins census image: over fleet SSH to srv2, reproduce the pinned image in scratch, then build and publish the current derivation create-only in /srv/bmc" },
     id: Present { value: "mtcollins1_census_image_publish" },
     run: gunbc_ci_mtcollins1_census_image_publish_invoke(),
     shell: none,
-    env: Present { value: [
-      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-    ] },
+    env: none,
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_census_image_publish_step_if },
     continue_on_error: none,
@@ -2053,7 +2053,7 @@ fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step 
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
-    if_condition: Present { value: fleet_converge_mtcollins1_census_image_publish_step_if },
+    if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_image_publish_step_if) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }

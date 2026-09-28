@@ -1,0 +1,100 @@
+module test.claim.machine_intake.mtcollins1_census_image_publish_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.optional { Present }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { SeededInstallMediaStageOutcome, SeededInstallMediaStaged, SeededInstallMediaStageRefused }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, CreationUnconfirmed }
+import gunbc.seeded_install_media_publish { SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+import gunbc.machine_intake_mtcollins1_census_image_publish {
+  CensusRegression, RegressionReproduced, RegressionDiverged, RegressionUnbuilt, RegressionNotApplicable,
+  census_regression_of, census_regression_holds,
+  CensusPublishAttempt, CensusPublishStoppedAtRegression, CensusPublishRan,
+  census_publish_attempt_of, census_publish_attempt_holds, render_census_publish_attempt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pinned: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706"
+data other_build: NonEmptyStr = "fb94412100f516681e70ca931f6d1abe87f12bfcd60229128247a3fc1ce0c6bf"
+data pinned_key: NonEmptyStr = "8d357a525f078cb4"
+
+data work_removed: String = "/tmp/gunbc-seeded-media.AAAAAAAA"
+data scratch_removed_dir: String = "/var/tmp/gunbc-mtcollins1-census-regress.BBBBBBBB"
+
+fn staged(digest: NonEmptyStr) -> SeededInstallMediaStageOutcome {
+  SeededInstallMediaStaged { staging_path: "/var/tmp/x/pinned-rebuild.iso", output_digest: digest, work: Removed { dir: work_removed as NonEmptyStr } }
+}
+
+fn reproduced() -> CensusRegression {
+  census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+}
+
+fn census_built() -> UbuntuSeededInstallMediaBuilt? {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: _ } => none
+    Mtcollins1CensusImageDerived { input: i } => Present { value: ubuntu_seeded_install_media_built(input: i, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") }
+  }
+}
+
+// A SENTINEL PUBLICATION: reaching it proves the publication leg was consulted.
+fn published_clean(ok: Bool) -> SeededImagePublication {
+  match census_built() {
+    Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
+    Present { value: b } => SeededImagePublished { built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: none }
+  }
+}
+
+// POSITIVE: the pinned digest reproduced on srv2 with both directories removed holds, and gates the publish open.
+test fn a_reproduced_pinned_digest_holds_and_the_publish_runs() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => published_clean(ok: ok))
+  census_regression_holds(r: reproduced())
+    && census_publish_attempt_holds(a: a)
+    && match a { CensusPublishRan { regression: _, publication: _ } => true _ => false }
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "regression=reproduced")
+}
+
+// RED: a rebuild that gives other bytes (the host-dependence this gate exists for) stops the run and
+// the publication is NEVER consulted.
+test fn a_diverged_rebuild_stops_before_any_publication() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: other_build), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  let a = census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok))
+  !census_regression_holds(r: r)
+    && match r { RegressionDiverged { build_key: _, expected: e, observed: o, build_work: _, scratch: _ } => e == pinned && o == other_build _ => false }
+    && match a { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
+    && !census_publish_attempt_holds(a: a)
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "regression=DIVERGED")
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "publication=not attempted")
+}
+
+// A reproduced digest whose scratch removal was not confirmed does NOT hold: residue on srv2 stops the run.
+test fn a_reproduced_digest_with_unconfirmed_scratch_removal_does_not_hold() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), scratch: RemovalUnconfirmed { dir: scratch_removed_dir as NonEmptyStr, exit_code: 255, stderr: "Connection closed" })
+  !census_regression_holds(r: r)
+    && match census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok)) { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
+}
+
+test fn an_unbuilt_rebuild_stops_the_run() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: SeededInstallMediaStageRefused { reason: "xorriso -osirrox extract: failed exit=5", work: Removed { dir: work_removed as NonEmptyStr } }, scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  !census_regression_holds(r: r)
+    && match r { RegressionUnbuilt { reason: why, build_work: _, scratch: _ } => string_contains(s: why, pattern: "extract") _ => false }
+}
+
+// A PUBLICATION THAT LEAVES RESIDUE DOES NOT HOLD even after a held regression: a staging file left in
+// the export, or a build work directory not removed, is reported and fails the run.
+test fn a_publication_with_staging_residue_does_not_hold() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => match census_built() {
+    Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
+    Present { value: b } => SeededImagePublished { built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: Present { value: "/srv/bmc/x.iso.gunbc-staging: failed exit=1" } }
+  })
+  !census_publish_attempt_holds(a: a) && string_contains(s: render_census_publish_attempt(a: a), pattern: "staging_residue=")
+}
+
+test fn a_refused_publication_does_not_hold() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => SeededImagePublicationRefused { reason: "publication into /srv/bmc not admitted", work: CreationUnconfirmed { exit_code: 255, stdout: "", stderr: "" } })
+  !census_publish_attempt_holds(a: a)
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "publication=refused")
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "CREATION UNCONFIRMED")
+}
