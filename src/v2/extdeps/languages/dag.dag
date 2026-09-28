@@ -3686,7 +3686,8 @@ fn dag_int_type_binding() -> Symbol {
 
 // THE KERNEL TYPE SPELLINGS AND THEIR CANONICAL BINDINGS, declared at the language authority. The
 // table is keyed by spelling, so v2.compiler.resolve asks it only where no declaration answered the
-// name (unbound or ambiguous). Where a declaration answered, resolve reads
+// name (unbound). It also gates the ambiguous case, whose candidates are read through
+// dag_kernel_type_declaration_binding_optional. Where a declaration answered, resolve reads
 // dag_kernel_type_declaration_binding_optional instead
 // (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
 fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
