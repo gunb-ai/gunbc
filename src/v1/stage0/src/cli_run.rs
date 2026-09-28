@@ -1563,6 +1563,12 @@ mod process_cwd_mutation_reachability_gate {
     #[derive(Debug, Clone)]
     struct FnDecl {
         name: String,
+        /// The node this declaration is in the call graph: the bare name when the crate declares
+        /// it once, `name@file` otherwise. Bare-name keying merged one file's local `run` helper
+        /// with `pre_push`'s mutator-reaching `run` (native_lane_runner.rs, #10882), naming 22
+        /// unrelated tests as offenders -- the same merge the unique-callee rule below refuses
+        /// across files, arriving through the local arm.
+        id: String,
         start: usize,
         end: usize,
         is_test: bool,
@@ -1731,6 +1737,31 @@ mod process_cwd_mutation_reachability_gate {
             if name.is_empty() {
                 continue;
             }
+            // A destructor is never called by name -- Rust refuses an explicit `Drop::drop` call
+            // (E0040) -- so a bare `drop(x)` is always the prelude's `mem::drop`, and admitting it
+            // as an edge bridged every `drop(..)` in the file into the closure (#10544's
+            // `RestoreDirectory` in v1_interpreter.rs took the closure to half the crate). The
+            // destructor runs where its type's value goes out of scope, so it is declared under
+            // the TYPE's name: a tuple-struct construction `T(..)` is then the call edge.
+            let name = if name == "drop" {
+                (0..i)
+                    .rev()
+                    .take(4)
+                    .find_map(|j| {
+                        code[j]
+                            .trim_start()
+                            .strip_prefix("impl Drop for ")
+                            .map(|t| {
+                                t.chars()
+                                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                                    .collect::<String>()
+                            })
+                    })
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or(name)
+            } else {
+                name
+            };
             // The body opener may sit on a later line for a wrapped signature.
             let Some(open) = (i..code.len().min(i + 12)).find(|j| code[*j].contains('{')) else {
                 continue;
@@ -1757,6 +1788,7 @@ mod process_cwd_mutation_reachability_gate {
                 k -= 1;
             }
             decls.push(FnDecl {
+                id: name.clone(),
                 name,
                 start: i,
                 end,
@@ -1858,7 +1890,7 @@ mod process_cwd_mutation_reachability_gate {
     fn edges_in_file(
         code: &[String],
         decls: &[FnDecl],
-        local: &BTreeSet<String>,
+        local: &BTreeMap<String, String>,
         unique_crate_wide: &BTreeSet<String>,
         seeds: &mut BTreeSet<String>,
         callers_of: &mut BTreeMap<String, BTreeSet<String>>,
@@ -1867,13 +1899,18 @@ mod process_cwd_mutation_reachability_gate {
         let owner = owner_per_line(code.len(), decls);
         for (i, line) in code.iter().enumerate() {
             let Some(d) = owner[i] else { continue };
-            let caller = decls[d].name.as_str();
+            let caller = decls[d].id.as_str();
             for callee in called_names(line) {
                 if callee == MUTATOR_CALL {
                     seeds.insert(caller.to_string());
-                } else if callee == caller {
+                } else if callee == decls[d].name {
                     continue;
-                } else if local.contains(callee) || unique_crate_wide.contains(callee) {
+                } else if let Some(callee_id) = local.get(callee) {
+                    callers_of
+                        .entry(callee_id.clone())
+                        .or_default()
+                        .insert(caller.to_string());
+                } else if unique_crate_wide.contains(callee) {
                     callers_of
                         .entry(callee.to_string())
                         .or_default()
@@ -1894,13 +1931,17 @@ mod process_cwd_mutation_reachability_gate {
     /// control asserts against.
     fn mutator_reaching(code: &[String], decls: &[FnDecl]) -> BTreeSet<String> {
         let names: BTreeSet<String> = decls.iter().map(|d| d.name.clone()).collect();
+        let local: BTreeMap<String, String> = decls
+            .iter()
+            .map(|d| (d.name.clone(), d.id.clone()))
+            .collect();
         let mut seeds = BTreeSet::new();
         let mut callers_of = BTreeMap::new();
         let mut ambiguous_edges = BTreeMap::new();
         edges_in_file(
             code,
             decls,
-            &names,
+            &local,
             &names,
             &mut seeds,
             &mut callers_of,
@@ -1958,7 +1999,6 @@ mod process_cwd_mutation_reachability_gate {
             root.display()
         );
         let mut projected: Vec<(Vec<String>, Vec<FnDecl>)> = Vec::new();
-        let mut decls: Vec<FnDecl> = Vec::new();
         for file in &files {
             let text = std::fs::read_to_string(file).unwrap_or_else(|e| {
                 panic!("read {} for the cwd-mutation gate: {e}", file.display())
@@ -1967,7 +2007,6 @@ mod process_cwd_mutation_reachability_gate {
             let code = code_projection(&text);
             let depths = depth_at_line_start(&code);
             let file_decls = declarations(&raw, &code, &depths);
-            decls.extend(file_decls.iter().cloned());
             projected.push((code, file_decls));
         }
         let mut declared_in: BTreeMap<String, usize> = BTreeMap::new();
@@ -1995,8 +2034,22 @@ mod process_cwd_mutation_reachability_gate {
         let mut seeds: BTreeSet<String> = BTreeSet::new();
         let mut callers_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut callers_of_ambiguous: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (f, (_, file_decls)) in projected.iter_mut().enumerate() {
+            for d in file_decls.iter_mut() {
+                if !unique_crate_wide.contains(&d.name) {
+                    d.id = format!("{}@{f}", d.name);
+                }
+            }
+        }
+        let decls: Vec<FnDecl> = projected
+            .iter()
+            .flat_map(|(_, ds)| ds.iter().cloned())
+            .collect();
         for (code, file_decls) in &projected {
-            let local: BTreeSet<String> = file_decls.iter().map(|d| d.name.clone()).collect();
+            let local: BTreeMap<String, String> = file_decls
+                .iter()
+                .map(|d| (d.name.clone(), d.id.clone()))
+                .collect();
             edges_in_file(
                 code,
                 file_decls,
@@ -2024,10 +2077,10 @@ mod process_cwd_mutation_reachability_gate {
         // it — a `--lib` unit test does not call a binary entry point, and a new ambiguous name
         // entering this set is the event that would change that. The caller asserts membership,
         // not size, so the contract cannot be satisfied by a coincidence of counts.
-        let undecided: BTreeSet<String> = reaching
+        let undecided: BTreeSet<String> = decls
             .iter()
-            .filter(|n| declared_in.get(*n) == Some(&usize::MAX))
-            .cloned()
+            .filter(|d| d.id != d.name && reaching.contains(&d.id))
+            .map(|d| d.name.clone())
             .collect();
         (decls, reaching, undecided)
     }
@@ -2112,6 +2165,35 @@ mod process_cwd_mutation_reachability_gate {
             "a quote at end-of-line must not close a `##`-delimited raw string: {depths:?}"
         );
 
+        // A DESTRUCTOR THAT RESTORES THE CWD is reached by constructing its type, never by a bare
+        // `drop(..)`: that spelling is `mem::drop`, since Rust refuses an explicit destructor call.
+        // Declared as `drop`, the unrelated caller below joined the closure, and through it every
+        // caller of every `drop(..)` in v1_interpreter.rs did (#10544).
+        let guard = concat!(
+            "fn guarded() {\n",
+            "    struct RestoreDirectory(u8);\n",
+            "    impl Drop for RestoreDirectory {\n",
+            "        fn drop(&mut self) {\n",
+            "            std::env::set_",
+            "current_dir(p);\n",
+            "        }\n",
+            "    }\n",
+            "    let _r = RestoreDirectory(0);\n",
+            "}\n",
+            "fn unrelated(x: u8) {\n",
+            "    drop(x);\n",
+            "}\n"
+        );
+        let code = code_projection(guard);
+        let depths = depth_at_line_start(&code);
+        let decls = declarations(&guard.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let reached = mutator_reaching(&code, &decls);
+        assert!(
+            reached.contains("guarded") && !reached.contains("unrelated"),
+            "a cwd-restoring destructor is reached through its type's construction, not through \
+             `mem::drop`: {reached:?}"
+        );
+
         // And the positive control, so the case above is not passing because the seed is broken:
         // the same call OUTSIDE a raw string must still be found.
         let real = concat!(
@@ -2135,7 +2217,7 @@ mod process_cwd_mutation_reachability_gate {
         let (decls, reaching, undecided) = closure_over_lib_sources();
         let offenders: Vec<&str> = decls
             .iter()
-            .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.name))
+            .filter(|d| d.is_test && !d.is_ignored && reaching.contains(&d.id))
             .map(|d| d.name.as_str())
             .collect();
         assert!(
@@ -2150,7 +2232,24 @@ mod process_cwd_mutation_reachability_gate {
         // what makes the offender list above a verdict rather than a selection: if a gating test
         // could reach the mutator through an ambiguous spelling, it is named here instead of
         // being silently outside the walk.
-        let expected: BTreeSet<String> = ["main", "run"].iter().map(|s| s.to_string()).collect();
+        // Pinned, each with its reason, re-derived 2026-09-27 once the destructor and local-arm
+        // merges stopped the closure from swallowing the crate (which had hidden this set):
+        // `main`, `run` -- process entry points above `pre_push::run_inner`; `handle_serve`,
+        // `invoke_bound_target_producer` -- the CLI dispatch trait's handlers, declared in
+        // main.rs and gunbc_cli_dispatch_generated.rs and called only from that dispatch;
+        // `run_native_claim_program` -- the `gunbc test` producer in target_invocation_host.rs
+        // (#12250), called only from its own TargetProducer match (the other declaration, in
+        // native_lane_runner, is reached by the qualified `cli_run::` spelling).
+        let expected: BTreeSet<String> = [
+            "handle_serve",
+            "invoke_bound_target_producer",
+            "main",
+            "run",
+            "run_native_claim_program",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(
             undecided, expected,
             "the set of mutator-reaching names this scanner cannot resolve to one definition has \
@@ -2178,12 +2277,14 @@ mod process_cwd_mutation_reachability_gate {
             decls.len()
         );
         assert!(
-            reaching.contains("with_workspace_cwd"),
+            decls
+                .iter()
+                .any(|d| d.name == "with_workspace_cwd" && reaching.contains(&d.id)),
             "the direct-write scan lost a known mutator helper"
         );
         let residue: Vec<&str> = decls
             .iter()
-            .filter(|d| d.is_test && d.is_ignored && reaching.contains(&d.name))
+            .filter(|d| d.is_test && d.is_ignored && reaching.contains(&d.id))
             .map(|d| d.name.as_str())
             .collect();
         assert!(
@@ -16863,6 +16964,12 @@ pub struct HeadsReadingDifferential {
     pub narrowed: Vec<String>,
     pub regressed: Vec<String>,
     pub both_refused: Vec<String>,
+    /// Modules both readings accept whose DECLARATION NAMES differ (the population the pool
+    /// name census reads), each with the names only one reading carries. Narrower than
+    /// `divergent`, which compares whole stripped nodes: a reading can differ in a field no
+    /// name census consumes and still agree here, and the converse is the defect this row
+    /// exists to show -- a declaration one reading silently loses.
+    pub declaration_names_divergent: Vec<String>,
     /// Wall spent in the FULL reading, summed over every module, and the same for the
     /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
     /// list, alternating per module — so the ratio compares two READINGS, not two builds,
@@ -16894,6 +17001,7 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         narrowed: Vec::new(),
         regressed: Vec::new(),
         both_refused: Vec::new(),
+        declaration_names_divergent: Vec::new(),
         full_reading_nanos: 0,
         heads_reading_nanos: 0,
     };
@@ -16909,6 +17017,17 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         out.heads_reading_nanos += heads_nanos;
         match (full_read, heads_read) {
             (Ok(full), Ok(heads)) => {
+                let full_names: BTreeSet<String> =
+                    collect_module_decl_names(&full).into_iter().collect();
+                let heads_names: BTreeSet<String> =
+                    collect_module_decl_names(&heads).into_iter().collect();
+                if full_names != heads_names {
+                    let only_full: Vec<&String> = full_names.difference(&heads_names).collect();
+                    let only_heads: Vec<&String> = heads_names.difference(&full_names).collect();
+                    out.declaration_names_divergent.push(format!(
+                        "{path} only_full={only_full:?} only_heads={only_heads:?}"
+                    ));
+                }
                 if full != heads {
                     out.divergent.push(path);
                 }
@@ -41194,76 +41313,43 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
-/// TEARDOWN ATTRIBUTION FOR THE 168 SILENT SECONDS AFTER THE FLOOR REPORTS ITS VERDICT.
+/// THE PROCESS CACHES ARE RELEASED TO THE OPERATING SYSTEM AT EXIT, NOT FREED NODE BY NODE.
 ///
-/// MEASURED, NOT SUPPOSED. On run 35365418267 the `D0-MEASURE: witnesses lane` step printed its
-/// last line -- `required-ci: lane=witnesses phases_run=3 phases_failed=0` -- at 16:40:33 and the
-/// next step did not begin until 16:43:21: 167.8 SECONDS WITH NO OUTPUT. That is not runner
-/// overhead, and the discriminator is in the same log: every other inter-step gap in that job is
-/// between 0.0s and 1.3s, so this one is a hundredfold outlier unique to this step.
+/// WHY THIS EXISTS. `claim_executor`'s `main` returns an `ExitCode`, so after the verdict every
+/// thread-local still alive is dropped -- and the shared resolve index, its store and the
+/// per-subject scope and closure memos are `Rc`/`im` graphs over the whole corpus. Freeing them is
+/// O(nodes) with poor locality: this function's earlier revision timed each drop and measured
+/// 51 s explicit plus ~30 s of residue after `main` returned on merge-queue run 36339106604, and
+/// 23 s in that run's build lane. Nothing reads any of that memory after the verdict, and the
+/// kernel reclaims a process's pages at exit in one step, so walking the graphs to free them is
+/// work no consumer demands (DESIGN section 2).
 ///
-/// WHY THE PROCESS IS STILL RUNNING THERE. `claim_executor`'s `main` returns an `ExitCode` and
-/// calls `process::exit` nowhere, so after the verdict is printed Rust runs destructors over
-/// everything still alive -- and what is still alive is thread-local: the shared resolve index and
-/// its store hold the whole `MultiEntryIndex` (source files, pool parse, typed caches), beside the
-/// per-subject scope and closure memos. Dropping an `Rc`/`im` graph of that size is O(nodes) with
-/// poor locality, which is the right order of magnitude for the gap.
+/// WHAT MADE THIS WAIT, AND WHY IT NO LONGER HOLDS. The earlier revision declined to skip
+/// destructors because `v1_interpreter`'s `InterpContext` had a `Drop` that absorbed recompute
+/// totals into a process global "that a CI gate reads". That global had no reader: its only
+/// drain, `take_process_eval_recompute_totals`, had no call site, so the absorb fed a write-only
+/// value. It is deleted with this change, and the per-context ledger it summarised is untouched.
 ///
-/// THIS FUNCTION DOES NOT MAKE THAT CHEAPER AND IS NOT THE REPAIR. It moves the cost from after
-/// `main` returns to inside it, where it can be TIMED AND ATTRIBUTED per cache, so the next lane
-/// chooses a repair against a measurement instead of against this paragraph. The eventual repair
-/// is a different question -- exiting without running destructors is the obvious candidate and is
-/// NOT safe by inspection, because `v1_interpreter`'s `InterpContext` has a `Drop` that absorbs
-/// recompute totals into a process global that a CI gate reads. On the measured run that receipt
-/// was printed at 16:36:16, four minutes before the gap, so the contexts dropped during it absorb
-/// into a total nothing reads again -- but that is an argument about one run's ordering, not a
-/// property anyone has established, and it is exactly the kind of claim this file has been wrong
-/// about before.
-///
-/// Silent below one millisecond: a roster of zeroes would bury the one line that matters.
-pub fn drop_process_caches_with_attribution() {
-    fn timed<F: FnOnce()>(name: &str, f: F) {
-        let started = std::time::Instant::now();
-        f();
-        let ms = started.elapsed().as_millis();
-        if ms >= 1 {
-            eprintln!("[floor-teardown] cache={name} drop_ms={ms}");
-        }
-    }
+/// ONLY THESE CACHES ARE FORGOTTEN, and each is pure memory: no file, child process, lock or
+/// guard lives in them, which is what makes forgetting them indistinguishable from dropping them
+/// to everything outside this process. Other thread-locals still drop after `main` returns; that
+/// residue is unmeasured here and is not claimed to be zero.
+pub fn release_process_caches_at_exit() {
+    use std::mem::{forget, take};
     let whole = std::time::Instant::now();
-    timed("process_resolve_index", || {
-        entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| *s.borrow_mut() = [None, None]);
-    });
-    timed("process_resolve_store", || {
-        entry_resolve::PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
-    });
-    timed("scope_fragment_caches", || {
-        SCOPE_FRAGMENT_CACHES.with(|c| c.borrow_mut().clear());
-    });
-    timed("reference_closure_indexes", || {
-        REFERENCE_CLOSURE_INDEXES.with(|c| c.borrow_mut().clear());
-    });
-    timed("scope_order_indexes", || {
-        SCOPE_ORDER_INDEXES.with(|c| c.borrow_mut().clear());
-    });
-    timed("module_path_index_cache", || {
-        MODULE_PATH_INDEX_CACHE.with(|c| c.borrow_mut().clear());
-    });
-    timed("module_graph_facts_cache", || {
-        MODULE_GRAPH_FACTS_CACHE.with(|c| c.borrow_mut().clear());
-    });
-    timed("reference_edge_cache", || {
-        REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().clear());
-    });
-    timed("compile_dag_rust_emit_check_memo", || {
-        COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().clear());
-    });
-    timed("compile_dag_diagnostic_census_memo", || {
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().clear());
-    });
+    entry_resolve::PROCESS_RESOLVE_INDEX.with(|s| forget(take(&mut *s.borrow_mut())));
+    entry_resolve::PROCESS_RESOLVE_STORE.with(|s| forget(take(&mut *s.borrow_mut())));
+    SCOPE_FRAGMENT_CACHES.with(|c| forget(take(&mut *c.borrow_mut())));
+    REFERENCE_CLOSURE_INDEXES.with(|c| forget(take(&mut *c.borrow_mut())));
+    SCOPE_ORDER_INDEXES.with(|c| forget(take(&mut *c.borrow_mut())));
+    MODULE_PATH_INDEX_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
-        "[floor-teardown] explicit_total_ms={} (the residue after this line is whatever main's \
-         return still drops)",
+        "[floor-teardown] released process caches without freeing them in {} ms (the residue after \
+         this line is whatever main's return still drops)",
         whole.elapsed().as_millis()
     );
 }

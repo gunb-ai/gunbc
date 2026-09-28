@@ -1,0 +1,77 @@
+module test.claim.machine_intake.sol_hold_stdin_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { second }
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.machine_intake_sol_hold
+
+// THE COLLECTOR'S STDIN, EXECUTED RATHER THAN SPELLED. Each test runs the real
+// gunbc.machine_intake.sol_hold ActivateHeld launch -- its fifo, its fd plumbing, its backgrounding
+// and pid publication -- with the `ipmitool` input pointed at a probe written into a throwaway
+// /tmp/gunbc_solstdin.* directory. The probe reads its stdin for three seconds and reports how many
+// bytes arrived and whether the read ended in EOF, into the capture the launch redirects it to. No
+// BMC, network or credential is touched; the probe exits on its own and the directory is removed.
+//
+// A string check over the argv cannot establish this: a launch that writes one NUL to fd 3 before
+// handing it over keeps every spelling and still types at the host. This probe reads that byte.
+// At the parent revision the launch redirected `< /dev/zero`, and the probe reports millions of
+// bytes; with `< /dev/null` it reports EOF at once.
+data stdin_probe_script: String = "#!/bin/sh\nt=$(mktemp) || exit 1\ntimeout 3 cat > \"$t\"\nrc=$?\nn=$(wc -c < \"$t\" | tr -d ' ')\nrm -f \"$t\"\nif [ \"$rc\" = 124 ]; then eof=no; else eof=yes; fi\necho \"stdin-probe bytes=$n eof=$eof\"\n"
+
+data probe_owner_only_executable: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+type ProbeLaunch {
+  launched: Bool
+  capture: String
+}
+
+fn probe_launch(dir: String, pid_path: String) -> ProbeLaunch {
+  let probe = concat(dir, "/ipmitool-probe")
+  let written = Filesystem.WriteCreateNewWithMode(path: probe, content: stdin_probe_script, mode: file_mode_bits(mode: probe_owner_only_executable))
+  if !written.success {
+    ProbeLaunch { launched: false, capture: concat("probe not written: ", written.error) }
+  } else {
+    let spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
+      bmc_host: "probe.invalid",
+      username: "probe",
+      password_file: concat(dir, "/password") as NonEmptyStr,
+      capture_path: concat(dir, "/capture") as NonEmptyStr,
+      pid_path: pid_path as NonEmptyStr,
+      ipmitool: probe as NonEmptyStr,
+    )
+    let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 5))
+    let capture = Filesystem.Read(path: concat(dir, "/capture"))
+    ProbeLaunch { launched: spawned.success, capture: if capture.success { capture.content } else { "" } }
+  }
+}
+
+fn scratch_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_solstdin.XXXXXX").path as String
+}
+
+// Zero bytes, and the read was still open when the probe's own three-second bound ended it.
+test fn the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, pid_path: concat(dir, "/collector.pid"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && string_contains(s: run.capture, pattern: "stdin-probe bytes=0 eof=no")
+}
+
+// A pid destination that cannot be written (here: a directory) fails the launch, and the child
+// the launch created is stopped before it reports -- no live, unrecorded collector is left behind.
+test fn a_launch_that_cannot_publish_its_pid_stops_the_child_it_created() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, pid_path: dir)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  !run.launched && !string_contains(s: run.capture, pattern: "stdin-probe")
+}
