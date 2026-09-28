@@ -2,7 +2,7 @@ module v2.test.claim.fold_encoding
 
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -125,15 +125,15 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
                                       Absent => Absent
                                       Present { value: h } =>
                                         if (i != c) && (c != h) && (i != h) {
-                                          Present { value: FeSlots { init: i, collection: c, head: h } }
+                                          optional_present(value: FeSlots { init: i, collection: c, head: h })
                                         } else {
-                                          Absent
+                                          optional_absent()
                                         }
                                     }
                                 }
                             }
                           } else {
-                            Absent
+                            optional_absent()
                           }
                       }
                   }
