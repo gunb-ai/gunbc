@@ -6,7 +6,7 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.compilers.lexing { Token, TokenStream, symbol_lexeme, token_stream_new }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -26,7 +26,8 @@ import v2.std.node {
   TypeNode,
   canonicalize_node_strip_provenance,
   match_arm_pattern,
-  node_subtree_nodes
+  node_subtree_nodes,
+  symbol_lexeme,
 }
 import std.constructors { Cardinality, Required, Optional }
 import v2.std.node_query {

@@ -24,11 +24,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   emission_qualifications_list_contains,
   SourceProduced
 }
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_diagnostic_reason_from_symbol,
-  TargetBundleMalformed,
-}
+import v2.compiler.translate { translate_diagnostic_reason_from_symbol }
+import v2.compiler.target_serialize { target_serialize_source_from_model, TargetBundleMalformed }
 import v2.extdeps.languages.rust {
   rust_fixture_emitted_add_fn,
   rust_fn_add_lex,

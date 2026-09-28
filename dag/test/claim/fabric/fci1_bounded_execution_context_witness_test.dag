@@ -10,7 +10,7 @@ import gunbc.fci1_bounded_execution_context {
   Fci1BoundedExecutionContextBuilt,
   fci1_bounded_execution_context,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import v2.std.optional { Present, Absent }
 
 test fn finite_byte_size_refuses_zero() -> Bool {
