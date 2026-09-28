@@ -56,7 +56,7 @@ import gunbc.spark.v41_engram_row_store {
 // escalation msg_4de9efa4-51fb-4dbc-ab71-9ccf45f378e7, which was approved only by the dashboard's
 // 15-minute default and which reviews 70433 and 70470 rightly held was not an operator admission.
 // The debt and its end are gunbc.rung_drop v41_row_store_host_realized_by_sample. It is run as
-// `python3 -c` (the shape of extdeps.tools.sha256sum sha256sum_byte_span_program's `bash -c`), writes
+// `python3 -c` (the shape of gunbc.sha256sum_byte_span sha256sum_byte_span_program's `bash -c`), writes
 // OUT.part and renames only when complete, and prints nothing on success.
 data v41_row_store_encoder_program_lines: List<String> = [
   "import argparse",
