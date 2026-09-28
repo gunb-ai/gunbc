@@ -116,13 +116,15 @@ and [deny policy creation](https://docs.cloud.google.com/iam/docs/reference/rest
 
 ## Current commissioning standing
 
-The 2026-09-28 run completed identity and exact custom-role readback, then GCP
-refused deny-policy creation with HTTP 403, `iam.denypolicies.create` missing.
-Capability bindings, account-context probes, and workflow-trust grants were not
-reached. See `receipts/gcp-iam-bootstrap-2026-09-28/README.md` for that historical
-standing. The new dependency slice can obtain temporary deny authority through
-organization IAM convergence. Its own receipts must establish the grant, use, and
-cleanup before commissioning can be called complete.
+The latest organization-scoped convergence run at `70009ad9d` completed the
+temporary authority grant, project deny-policy installation/readback, and exact
+grant removal with absence readback. It then applied the project create-role
+binding and stopped at the pool policy boundary: Google returned HTTP 200 `{}`
+without an etag. No unconditional policy replacement was attempted. Safe initial
+pool policy publication remains an unmet dependency; privilege probes and
+workflow trust are not complete. See
+`receipts/gcp-iam-bootstrap-authority-2026-09-28/README.md` for the live receipt
+and 12 focused controls. Earlier permission-refusal receipts are historical.
 
 ## Temporary-authority dependency and recovery
 
