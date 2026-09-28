@@ -103,7 +103,7 @@ fn fabric_storage_respond(root: FabricStorageFileRoot, rosters: FabricDoorRoster
       }
     "put" =>
       match admission {
-        FabricDoorWriterRefused { principal: p } => ok(body: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { principal: p } }))
+        FabricDoorWriterRefused { refusal: r } => ok(body: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: r } }))
         FabricDoorWriterAdmitted { principal: _ } =>
       match fabric_object_decode(preimage: body) {
         Absent => malformed(detail: "put body is not one fabric object")
@@ -112,7 +112,7 @@ fn fabric_storage_respond(root: FabricStorageFileRoot, rosters: FabricDoorRoster
       }
     "advance" =>
       match admission {
-        FabricDoorWriterRefused { principal: p } => ok(body: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricWriterRefused { principal: p } }))
+        FabricDoorWriterRefused { refusal: r } => ok(body: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricWriterRefused { refusal: r } }))
         FabricDoorWriterAdmitted { principal: _ } =>
       match head_name(w: word(ws: ws, i: 0)) {
         Absent => malformed(detail: "advance names no head")

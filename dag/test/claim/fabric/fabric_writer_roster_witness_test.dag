@@ -49,7 +49,7 @@ test fn the_served_roster_holds_exactly_the_observed_logins_once() -> Bool {
 }
 
 fn admitted(a: gunbc.fabric_writer_roster.FabricDoorWriterAdmission) -> Bool {
-  match a { FabricDoorWriterAdmitted { principal: _ } => true  FabricDoorWriterRefused { principal: _ } => false }
+  match a { FabricDoorWriterAdmitted { principal: _ } => true  FabricDoorWriterRefused { refusal: _ } => false }
 }
 
 test fn the_admission_admits_a_rostered_login_and_refuses_an_outsider_and_an_absent_login() -> Bool {

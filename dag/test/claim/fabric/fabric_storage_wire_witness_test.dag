@@ -8,9 +8,10 @@ import std.fabric_storage {
   FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricReplyUndecodable,
   FabricHeadObserved, FabricHeadReadRefused, FabricHeadMoved, FabricHeadAdvanced, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureRefused,
+  FabricWriterRefused, WriterLoginAbsent, WriterLoginUnrostered, FabricPutRefused,
 }
 import gunbc.fabric_storage_wire {
-  fabric_storage_wire_head, fabric_storage_wire_advance, fabric_storage_wire_closure,
+  fabric_storage_wire_head, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_put, fabric_storage_unwire_put,
   fabric_storage_unwire_head, fabric_storage_unwire_advance, fabric_storage_unwire_closure,
   fabric_storage_wire_identity, fabric_storage_unwire_identity, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused,
   FabricIdentityLocalPeer, FabricIdentityUnattested, DoorProxied, DoorLocalPeer, DoorUnattested,
@@ -152,4 +153,23 @@ test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() 
   let present_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present writer@example.ts.net\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let trailing_newline = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\n") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   present && absent && local && unattested && local_bare && skew && other && absent_extra && present_extra && absent_continued && present_continued && trailing_newline
+}
+
+// A WRITER REFUSAL CROSSES THE WIRE AS ITS ARM: no login presented stays absent, and an unrostered
+// login stays that login -- the caller tells the two cases apart by the arm, never by parsing prose.
+// A trailing word on either is undecodable.
+test fn a_writer_refusal_crosses_the_wire_as_its_arm() -> Bool {
+  let absent = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterLoginAbsent } })) {
+    FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterLoginAbsent => true  _ => false }  _ => false }
+    _ => false
+  }
+  let unrostered = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterLoginUnrostered { login: "stranger@example.ts.net" as NonEmptyStr } } })) {
+    FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterLoginUnrostered { login: l } => (l as String) == "stranger@example.ts.net"  _ => false }  _ => false }
+    _ => false
+  }
+  let trailing = match fabric_storage_unwire_put(text: "fabric_storage/1 put refused writer-login a b") {
+    FabricPutRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
+    _ => false
+  }
+  absent && unrostered && trailing
 }
