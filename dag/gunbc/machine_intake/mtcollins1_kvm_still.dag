@@ -1,0 +1,363 @@
+module gunbc.machine_intake_mtcollins1_kvm_still
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
+import std.algebra { trim }
+import std.measure { Second, second, second_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.crypto.hash { Digest }
+import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
+import extdeps.automation.playwright { PlaywrightBuild, PlaywrightBrowserBinaryProvenance, PlaywrightManagedChromiumDownload, playwright_1_62_1 }
+import extdeps.bmc.megarac {
+  MegaRacScreenCaptureLookup, ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
+  ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing, megarac_firmware_0_32,
+}
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import v2.std.optional { Present, Absent }
+
+// THE BMC KVM SCREEN AS BOOT EVIDENCE (operator ruling 2026-09-27; route A, eager-owl-205 the same
+// day). On run 36335369059 the SOL collector died about 12 s into Linux and the watch went blind,
+// while the KVM screen showed casper's "Unable to find a medium containing a live file system"
+// prompt. The screen was the only witness, so this module RETAINS it: one JPEG still per capture,
+// bound to the attempt, the phase that asked for it, its instants and an independently taken
+// sha256. It does not READ the image: turning a still into text or a diagnosis is the frontier
+// named at the bottom of this file.
+//
+// WHY A BROWSER. extdeps.bmc.megarac megarac_screen_capture_standing records that firmware 0.32
+// serves no on-demand still: the UI's "Capture Screen" is the H5 viewer painting the AST2100 stream
+// from wss://<bmc>/kvm onto canvas#kvm and calling toDataURL("image/jpeg"). A still therefore exists
+// only where a KVM client runs, and this module runs the vendor's own client headless and takes the
+// same toDataURL the button takes -- never a decoder of our own for a proprietary stream.
+//
+// A CAPTURE IS AN OBSERVATION, NEVER A GATE. Every arm below, including a refusal, is a value the
+// boot records beside its own verdict; nothing here can change an attempt's outcome, and the boot
+// run binds no decision to a still.
+
+// THE DECLARED TOOLCHAIN (condition 4 of the route-A ruling: Chromium on srv1 is a declared
+// dependency, not ambient). The capture resolves `playwright` from the toolchain directory the
+// runner provisions and launches the Chromium that Playwright build downloads; a runner without it
+// answers KvmStillToolchainUnavailable, recorded, and the boot continues.
+type KvmStillToolchain {
+  automation: PlaywrightBuild
+  browser: ChromiumBuild
+  provenance: PlaywrightBrowserBinaryProvenance
+}
+
+data mtcollins1_kvm_still_toolchain: KvmStillToolchain = KvmStillToolchain {
+  automation: playwright_1_62_1,
+  browser: chromium_151_0_7922_34,
+  provenance: PlaywrightManagedChromiumDownload,
+}
+
+// THE FIRMWARE THE CAPTURE IS KEYED TO. mtcollins1's controller served the 0.32 UI whose bundles
+// the route is recovered from (gunbc.machine_intake_megarac_served_ui_catalog_observation, and the
+// 2026-09-27 probe cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute).
+data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
+
+// Where the runner keeps that toolchain: `npm install --prefix <dir> playwright@<version>` puts the
+// package under <dir>/node_modules, which the capture puts on NODE_PATH.
+data mtcollins1_kvm_still_toolchain_dir_env: NonEmptyStr = "GUNBC_KVM_STILL_TOOLCHAIN"
+
+// PROVISIONING THE DECLARED TOOLCHAIN ON THE RUNNER, as the boot step's prelude lines. The version
+// is read off mtcollins1_kvm_still_toolchain, so the pin has one home. It is bounded and it is NOT a
+// gate: a runner that cannot install (no npm, no network, Chromium's system libraries missing) warns
+// in the run log and the stills record the refusal the capture then meets; the boot is untouched.
+data mtcollins1_kvm_still_provision_allowance: Second = second(count: 300)
+
+fn mtcollins1_kvm_still_provision_lines() -> List<String> {
+  let version = mtcollins1_kvm_still_toolchain.automation.version as String
+  [
+    concat("KVM_STILL_DIR=\"$\{RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/gunbc-kvm-still-playwright-", version, "\""),
+    concat("timeout ", coreutils_duration_operand(d: mtcollins1_kvm_still_provision_allowance), " bash -c 'npm install --silent --no-save --prefix \"$1\" \"playwright@$2\" && \"$1/node_modules/.bin/playwright\" install chromium' kvm-still-provision \"$KVM_STILL_DIR\" ", version, " || echo \"::warning title=mtcollins1 KVM still toolchain::playwright ", version, " not provisioned; each still will record why it was not captured\""),
+    concat("export ", mtcollins1_kvm_still_toolchain_dir_env as String, "=\"$KVM_STILL_DIR\""),
+  ]
+}
+
+// DRIVING THE VENDOR'S VIEWER IS REALIZATION, NOT THE MEGARAC INTERFACE. The steps are the UI's own,
+// recovered from the served bundles cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute: POST
+// /api/session and the sessionStorage keys its login handler sets; GET /api/settings/services and
+// the `kvm` row's viewer_count, which the UI's own launch() requires to be 0 before it opens
+// viewer.html (else "only one KVM session is allowed"); then viewer.html in the same tab, and
+// captureScreen()'s canvas#kvm.toDataURL("image/jpeg"). It is JavaScript handed to node as a string
+// because process-hold of a browser is not a Node in the grammar, which is the same standing as
+// gunbc.machine_intake_sol_hold's bash hold, marked the same way.
+//
+// THE SEAT (conditions 1 and 2 of the ruling). A held viewer seat refuses with its count -- an
+// operator's session is never evicted -- and the script's finally block DELETEs the web session and
+// closes the browser on every exit it reaches, success or refusal. The one exit it cannot reach is
+// the coreutils deadline's KILL: that arm is recorded as KvmStillDeadline, which says the release
+// was NOT observed, and the BMC's own session timeout is then what frees the seat.
+data mtcollins1_kvm_still_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.machine_intake_mtcollins1_kvm_still",
+    decl_name: "mtcollins1_kvm_still_script_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data mtcollins1_kvm_still_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_still CaptureStill -- the headless MegaRAC H5 viewer is driven by a node -e script string (login, seat check, viewer.html, canvas toDataURL, session DELETE in finally). DISSOLVES WHEN a typed browser-automation realization (an extdeps.automation.playwright operation shape bound to a transport handler) can express navigate, evaluate-in-page, wait-for-predicate and a guaranteed release step, so the same sequence is rows over that shape rather than a medium-as-string script")
+
+data mtcollins1_kvm_still_script: String = "const fs=require('fs');const [host,user,pwFile,out,frameMs]=process.argv.slice(1);let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{console.log('kvm-still: credential unreadable: '+e.message);process.exit(14)}let chromium;try\{chromium=require('playwright').chromium}catch(e)\{console.log('kvm-still: toolchain unavailable: '+String(e.message).split('\\n')[0]);process.exit(13)}(async()=>\{let browser=null,page=null,code=1,msg='';const base='https://'+host;try\{try\{browser=await chromium.launch(\{headless:true})}catch(e)\{code=13;msg='chromium did not launch: '+String(e&&e.message).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300);return}const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();await page.goto(base+'/',\{waitUntil:'domcontentloaded'});const login=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let j=null;try\{j=await r.json()}catch(e)\{}return\{status:r.status,j:j}},[user,pw]);if(login.status!==200||!login.j||login.j.ok!==0)\{code=11;msg='login refused: http '+login.status;return}await page.evaluate(([j,u])=>\{sessionStorage.setItem('garc',j.CSRFToken);sessionStorage.setItem('privilege_id',String(j.privilege));sessionStorage.setItem('extended_privilege',String(j.extendedpriv));sessionStorage.setItem('session_id',String(j.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[login.j,user]);const seat=await page.evaluate(async()=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':sessionStorage.getItem('garc')}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null});if(seat===null||seat===undefined)\{code=15;msg='the services list names no kvm service';return}if(seat!==0)\{code=10;msg='viewer_count='+seat;return}await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)});const url=await page.evaluate(()=>document.getElementById('kvm').toDataURL('image/jpeg'));const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');fs.writeFileSync(out,b);code=0;msg='captured '+b.length+' bytes'}catch(e)\{if(e&&e.name==='TimeoutError')\{code=12}msg=String(e&&e.message).split('\\n')[0]}finally\{let released='released';try\{if(page)\{await page.evaluate(async()=>\{const t=sessionStorage.getItem('garc');if(t)\{await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}})}})}}catch(e)\{released='release failed: '+String(e&&e.message).split('\\n')[0];if(code===0)\{code=16}}try\{if(browser)\{await browser.close()}}catch(e)\{}console.log('kvm-still: '+msg+'; session '+released);process.exit(code)}})();"
+
+service gunbc.machine_intake.kvm_still {
+  operation CaptureStill {
+    input {
+      bmc_host: NonEmptyStr
+      username: NonEmptyStr
+      password_file: NonEmptyStr
+      out_path: NonEmptyStr
+      frame_wait_ms: NonEmptyStr
+      toolchain_node_path: String
+      deadline: NonEmptyStr
+      kill_after: NonEmptyStr
+      script: NonEmptyStr
+    }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    transport shell {
+      argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "env", "NODE_PATH={toolchain_node_path}", "node", "-e", "{script}", "{bmc_host}", "{username}", "{password_file}", "{out_path}", "{frame_wait_ms}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "kvm still not captured"
+    }
+  }
+}
+
+// THE SCRIPT'S EXIT CODES, one row each side reads.
+data kvm_still_exit_seat_held: Int = 10
+data kvm_still_exit_login_refused: Int = 11
+data kvm_still_exit_no_frame: Int = 12
+data kvm_still_exit_toolchain: Int = 13
+data kvm_still_exit_credential: Int = 14
+data kvm_still_exit_no_kvm_service: Int = 15
+data kvm_still_exit_release_failed: Int = 16
+
+// THE BOUNDS. One capture is at most deadline plus kill_after; the frame wait sits inside it so the
+// script, not the KILL, answers a viewer that never paints.
+data mtcollins1_kvm_still_deadline: Second = second(count: 60)
+data mtcollins1_kvm_still_kill_after: Second = second(count: 5)
+data mtcollins1_kvm_still_frame_wait: Second = second(count: 30)
+
+// WHEN A STILL IS ASKED FOR. The watch's periodic stills are bounded by count, not by the deadline:
+// one every mtcollins1_kvm_still_watch_stride ticks, at most mtcollins1_kvm_still_watch_limit of
+// them. The other three phases take exactly one each.
+type KvmStillPhase
+  = KvmAtPowerOnVerified
+  | KvmDuringWatch { tick: Int }
+  | KvmOnChannelLost
+  | KvmAtTerminalVerdict
+
+data mtcollins1_kvm_still_watch_stride: Int = 8
+data mtcollins1_kvm_still_watch_limit: Int = 6
+
+// Power on, the watch, one loss, the terminal verdict.
+fn mtcollins1_kvm_still_capture_bound() -> Int {
+  1 + mtcollins1_kvm_still_watch_limit + 1 + 1
+}
+
+fn mtcollins1_kvm_still_allowance() -> Second {
+  second(count: mtcollins1_kvm_still_capture_bound() * ((second_count(s: mtcollins1_kvm_still_deadline) as Int) + (second_count(s: mtcollins1_kvm_still_kill_after) as Int)))
+}
+
+// Whether a watch tick takes a periodic still: the tick index since power on, and the count taken.
+fn kvm_still_watch_due(tick: Int, taken: Int) -> Bool {
+  taken < mtcollins1_kvm_still_watch_limit && tick % mtcollins1_kvm_still_watch_stride == 0
+}
+
+fn kvm_still_phase_text(phase: KvmStillPhase) -> String {
+  match phase {
+    KvmAtPowerOnVerified => "at-power-on-verified"
+    KvmDuringWatch { tick: t } => concat("during-watch-tick-", to_string(t))
+    KvmOnChannelLost => "on-observation-channel-lost"
+    KvmAtTerminalVerdict => "at-terminal-verdict"
+  }
+}
+
+// WHY A STILL WAS NOT TAKEN, typed. Each names what the run saw and never a guess past it.
+type KvmStillRefusal
+  = KvmStillFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+  | KvmStillNotConfigured { reason: NonEmptyStr }
+  | KvmStillSeatHeld { detail: String }
+  | KvmStillLoginRefused { detail: String }
+  | KvmStillNoKvmService { detail: String }
+  | KvmStillNoFrame { detail: String }
+  | KvmStillToolchainUnavailable { detail: String }
+  | KvmStillCredentialUnreadable { detail: String }
+  | KvmStillDeadline { detail: String }
+  | KvmStillFailed { exit_code: Int, detail: String }
+  | KvmStillUnhashed { path: NonEmptyStr, reason: String }
+  | KvmStillRouteNotClientSide
+
+// THE ARTIFACT IS HASH-BOUND BY OUR OWN READ: the digest is sha256sum over the file the script
+// wrote, taken after it exited, never a number the script reported about itself.
+type KvmStillOutcome
+  = KvmStillCaptured { path: NonEmptyStr, digest: Digest, format: NonEmptyStr, session_note: String }
+  | KvmStillRefused { refusal: KvmStillRefusal }
+
+type KvmStill {
+  attempt: String
+  sequence: Int
+  phase: KvmStillPhase
+  requested_at: NonEmptyStr
+  completed_at: NonEmptyStr
+  outcome: KvmStillOutcome
+}
+
+// Retained under the boot's artifact prefix so the upload that carries the diagnostics carries the
+// stills (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle mtcollins1_boot_retained_artifact_prefix,
+// whose glob the boot's upload uses).
+fn mtcollins1_kvm_still_path(attempt: String, sequence: Int, phase: KvmStillPhase) -> String {
+  concat("artifacts/mtcollins1-boot-kvm-", attempt, "-", to_string(sequence), "-", kvm_still_phase_text(phase: phase), ".jpg")
+}
+
+fn kvm_still_last_line(s: String) -> String {
+  match filter(map(split(s: s, delimiter: "\n"), l => trim(s: l)), l => l != "").last() {
+    Present { value: l } => l
+    Absent => ""
+  }
+}
+
+// THE SCRIPT'S ANSWER, READ. Pure over what the operation returned, so every arm is exercised by a
+// claim without a BMC.
+fn kvm_still_refusal_of_exit(exit_code: Int, stdout: String, stderr: String) -> KvmStillRefusal {
+  let said = kvm_still_last_line(s: stdout)
+  let detail = if said == "" { kvm_still_last_line(s: stderr) } else { said }
+  if exit_code == kvm_still_exit_seat_held { KvmStillSeatHeld { detail: detail } }
+  else if exit_code == kvm_still_exit_login_refused { KvmStillLoginRefused { detail: detail } }
+  else if exit_code == kvm_still_exit_no_kvm_service { KvmStillNoKvmService { detail: detail } }
+  else if exit_code == kvm_still_exit_no_frame { KvmStillNoFrame { detail: detail } }
+  else if exit_code == kvm_still_exit_toolchain { KvmStillToolchainUnavailable { detail: detail } }
+  else if exit_code == kvm_still_exit_credential { KvmStillCredentialUnreadable { detail: detail } }
+  else if exit_code == coreutils_timeout_expired_exit_code || exit_code == 137 {
+    KvmStillDeadline { detail: concat("no answer within the capture deadline; the script's session release was NOT observed", if detail == "" { "" } else { concat("; ", detail) }) }
+  }
+  else { KvmStillFailed { exit_code: exit_code, detail: detail } }
+}
+
+// The release-failed exit wrote a still and could not DELETE its session: the still is kept, and the
+// unreleased session is carried on it rather than discarding the evidence.
+fn kvm_still_wrote_file(exit_code: Int) -> Bool {
+  exit_code == 0 || exit_code == kvm_still_exit_release_failed
+}
+
+fn kvm_still_outcome_of_run(path: NonEmptyStr, exit_code: Int, stdout: String, stderr: String, digest: Sha256FileDigest) -> KvmStillOutcome {
+  if kvm_still_wrote_file(exit_code: exit_code) {
+    match digest {
+      Sha256FileDigest { digest: d } => KvmStillCaptured { path: path, digest: d, format: "image/jpeg", session_note: kvm_still_last_line(s: stdout) }
+      Sha256FileDigestUnavailable { path: _, reason: r } => KvmStillRefused { refusal: KvmStillUnhashed { path: path, reason: r } }
+    }
+  } else {
+    KvmStillRefused { refusal: kvm_still_refusal_of_exit(exit_code: exit_code, stdout: stdout, stderr: stderr) }
+  }
+}
+
+fn kvm_still_refused(attempt: String, sequence: Int, phase: KvmStillPhase, at: NonEmptyStr, refusal: KvmStillRefusal) -> KvmStill {
+  KvmStill { attempt: attempt, sequence: sequence, phase: phase, requested_at: at, completed_at: at, outcome: KvmStillRefused { refusal: refusal } }
+}
+
+// ONE CAPTURE. The firmware standing is asked first: a firmware whose capture route this repository
+// has not catalogued refuses rather than inheriting 0.32's viewer. Only the client-side route is
+// driven; any other standing is a refusal that names it.
+fn mtcollins1_kvm_still_capture(
+  firmware: BmcFirmwareReleaseIdentity,
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: String,
+  toolchain_dir: String,
+  attempt: String,
+  sequence: Int,
+  phase: KvmStillPhase,
+) -> KvmStill {
+  let requested = clock_now_probed_at_or_unknown()
+  match megarac_screen_capture_standing(firmware: firmware, route: KvmClientCanvasJpeg) {
+    ScreenCaptureFirmwareUncatalogued { firmware: f } => kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillFirmwareUncatalogued { firmware: f })
+    ScreenCaptureFactKnown { firmware: _, standing: standing } =>
+      match standing {
+        ScreenCaptureClientSideOnly =>
+          if password_file == "" {
+            kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillNotConfigured { reason: "no BMC credential path is bound to this capture" })
+          } else if attempt == "" {
+            kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillNotConfigured { reason: "no attempt identity is bound, so the still could not be named for it" })
+          } else {
+            let path = mtcollins1_kvm_still_path(attempt: attempt, sequence: sequence, phase: phase)
+            let r = gunbc.machine_intake.kvm_still.CaptureStill(
+              bmc_host: bmc_host,
+              username: username,
+              password_file: password_file as NonEmptyStr,
+              out_path: path as NonEmptyStr,
+              frame_wait_ms: to_string((second_count(s: mtcollins1_kvm_still_frame_wait) as Int) * 1000) as NonEmptyStr,
+              toolchain_node_path: if toolchain_dir == "" { "" } else { concat(toolchain_dir, "/node_modules") },
+              deadline: coreutils_duration_operand(d: mtcollins1_kvm_still_deadline) as NonEmptyStr,
+              kill_after: coreutils_duration_operand(d: mtcollins1_kvm_still_kill_after) as NonEmptyStr,
+              script: mtcollins1_kvm_still_script as NonEmptyStr,
+            )
+            let digest = if kvm_still_wrote_file(exit_code: r.exit_code) { sha256sum_file_digest_via_shell(path: path as NonEmptyStr) } else { Sha256FileDigestUnavailable { path: path as NonEmptyStr, reason: "no file was written" } }
+            KvmStill {
+              attempt: attempt,
+              sequence: sequence,
+              phase: phase,
+              requested_at: requested,
+              completed_at: clock_now_probed_at_or_unknown(),
+              outcome: kvm_still_outcome_of_run(path: path as NonEmptyStr, exit_code: r.exit_code, stdout: r.stdout, stderr: r.transport_stderr, digest: digest),
+            }
+          }
+        _ => kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillRouteNotClientSide)
+      }
+  }
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────────────────────────────────
+
+fn kvm_still_refusal_text(refusal: KvmStillRefusal) -> String {
+  match refusal {
+    KvmStillFirmwareUncatalogued { firmware: _ } => "firmware not catalogued for screen capture; nothing driven"
+    KvmStillNotConfigured { reason: r } => concat("not configured: ", r as String)
+    KvmStillSeatHeld { detail: d } => concat("KVM viewer seat already held, not evicted (", d, ")")
+    KvmStillLoginRefused { detail: d } => concat("web login refused: ", d)
+    KvmStillNoKvmService { detail: d } => concat("no kvm service listed: ", d)
+    KvmStillNoFrame { detail: d } => concat("the viewer painted no frame within the wait: ", d)
+    KvmStillToolchainUnavailable { detail: d } => concat("capture toolchain unavailable on the runner: ", d)
+    KvmStillCredentialUnreadable { detail: d } => concat("credential unreadable: ", d)
+    KvmStillDeadline { detail: d } => concat("deadline: ", d)
+    KvmStillFailed { exit_code: c, detail: d } => concat("failed (exit ", to_string(c), "): ", d)
+    KvmStillUnhashed { path: p, reason: r } => concat("written to ", p as String, " but NOT hashed, so not retained as evidence: ", r)
+    KvmStillRouteNotClientSide => "the catalogued standing of the viewer route is not client-side; nothing was driven"
+  }
+}
+
+fn kvm_still_text(still: KvmStill) -> String {
+  concat("#", to_string(still.sequence), " ", kvm_still_phase_text(phase: still.phase),
+    " requested=", still.requested_at as String, " completed=", still.completed_at as String, ": ",
+    match still.outcome {
+      KvmStillCaptured { path: p, digest: d, format: f, session_note: n } =>
+        concat(p as String, " ", f as String, " sha256=", d.hex as String, if n == "" { "" } else { concat(" (", n, ")") })
+      KvmStillRefused { refusal: r } => concat("NOT CAPTURED: ", kvm_still_refusal_text(refusal: r))
+    })
+}
+
+fn kvm_stills_text(stills: List<KvmStill>) -> String {
+  if count(stills) == 0 {
+    "no still was requested: the attempt ended before power on was verified"
+  } else {
+    concat("attempt=", match stills.first() { Present { value: s } => s.attempt  Absent => "" }, ", ",
+      to_string(count(filter(stills, s => match s.outcome { KvmStillCaptured { path: _, digest: _, format: _, session_note: _ } => true  _ => false }))), " of ", to_string(count(stills)), " captured\n",
+      join(map(stills, s => kvm_still_text(still: s)), "\n"))
+  }
+}
+
+// DECLARED FRONTIER: READING THE STILL. Interpretation -- a model on the fabric reading a retained
+// still into text and diagnostics, and a watch or bugfix guided by that reading -- is deliberately
+// NOT here (operator ruling 2026-09-27: log now, interpret later). TRIGGER: an inference seat on the
+// fabric admits an image-input request (gunbc.serving) and a typed reading of a still exists whose
+// result names the still's sha256; its first consumer is this bundle's screen section. Until then a
+// still is evidence for a human reader of the artifact and nothing in the boot consumes its pixels.

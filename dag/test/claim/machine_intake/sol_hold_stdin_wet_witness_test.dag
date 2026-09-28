@@ -14,6 +14,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.machine_intake_mtcollins1_kvm_still { KvmOnChannelLost }
 
 // THE COLLECTOR, EXECUTED RATHER THAN SPELLED. Each test runs the real gunbc.machine_intake.sol_hold
 // ActivateHeld launch -- its fifo, fd plumbing, supervisor, pid+starttime publication and
@@ -112,6 +113,9 @@ fn watch(run: ProbeLaunch) -> TerminalWatch {
     password_file: "",
     smpro_census: SmproNotTaken { reason: "wet control" },
     last_live_at: "",
+    attempt: "",
+    tick: 1,
+    stills: [],
   )
 }
 
@@ -177,6 +181,29 @@ test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> 
     && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
     && string_contains(s: incident, pattern: "ObservationChannelLost")
     && string_contains(s: incident, pattern: "the collector exited with status 0")
+}
+
+// THE LOSS TAKES A SCREEN STILL, AND THE STILL NEVER DECIDES (operator ruling 2026-09-27). Through
+// the same real watch and gone collector: the loss arm asks for exactly one KvmOnChannelLost still
+// and records it on the watch, and with no credential bound the still is a typed NotConfigured
+// refusal -- carried, never raised: the outcome is still the loss verdict and the incident is still
+// frozen. Deleting the still request from the loss arm turns this red; so does a still refusal that
+// changes the outcome.
+test fn a_channel_loss_takes_one_screen_still_that_does_not_change_the_verdict() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = settle(seconds: 3)
+  let w = watch(run: run)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  let on_loss = filter(w.stills, s => match s.phase { KvmOnChannelLost => true  _ => false })
+  run.launched
+    && count(w.stills) == 1
+    && count(on_loss) == 1
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
+    && string_contains(s: outcome_reason(w: w), pattern: "screen: #1 on-observation-channel-lost")
+    && string_contains(s: outcome_reason(w: w), pattern: "NOT CAPTURED: not configured")
+    && string_contains(s: incident, pattern: "ObservationChannelLost")
 }
 
 // AN AUTHENTIC CLIENT EXIT: the client's own stderr diagnostic and exit status reach the incident,
