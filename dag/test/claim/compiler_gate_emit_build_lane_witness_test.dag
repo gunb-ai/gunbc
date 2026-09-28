@@ -10,6 +10,7 @@ import gunbc.compiler_gate_workflow {
   CompilerGateLaneRow, LaneBlocks, LaneAnnouncedNotBlocking,
   compiler_gate_aggregate_job,
   compiler_gate_emit_build_job_id,
+  compiler_gate_job_id, compiler_gate_clippy_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id,
   compiler_gate_emit_build_bound_steps,
   compiler_gate_emit_build_capability_closure_holds,
   compiler_gate_lane_result_expression,
@@ -134,11 +135,18 @@ test fn the_emit_build_lane_is_announced_and_does_not_block_yet() -> Bool {
     && (any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id) == false)
 }
 
-// THE THREE LANES THAT DO BLOCK STILL DO. Without this, the claim above would be satisfied by a
-// gate that reads nothing at all.
-test fn the_three_established_lanes_still_block() -> Bool {
-  length(xs: compiler_gate_blocking_job_ids()) == 3
-    && all(compiler_gate_blocking_job_ids(), id => any(compiler_gate_aggregate_job().needs, n => n == id))
+// THE ESTABLISHED LANES STILL BLOCK, NAMED RATHER THAN COUNTED. Without this, the claim above would
+// be satisfied by a gate that reads nothing at all. It joins at identity grain in both directions
+// (DESIGN section 5: completeness is an identity join, not a count equality), so dropping a lane,
+// or adding one that blocks without being named here, reds it -- where the earlier `== 3` would
+// have let a swapped lane through. The generated-artifact lane joined the set by the 2026-09-27
+// ruling that moved it beside the floor.
+test fn the_established_lanes_still_block() -> Bool {
+  let blocking = compiler_gate_blocking_job_ids()
+  let established = [compiler_gate_job_id, compiler_gate_clippy_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id]
+  all(established, id => any(blocking, b => b == id))
+    && all(blocking, b => any(established, id => id == b))
+    && all(blocking, id => any(compiler_gate_aggregate_job().needs, n => n == id))
 }
 
 // A NON-BLOCKING STANDING CARRIES ITS FLIP TRIGGER. A standing with no trigger is an indefinite
