@@ -50,7 +50,7 @@ data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — holding `ipmitool sol activate` as a background collector (redirect, stdin from an unlinked read-write fifo, pid file) is still a bash -c process-hold; paths are positional data (`$1`…`$5`), not interpolated shell syntax. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) or a typed process-hold realization starts a streaming session, redirects its bytes, and records the holder pid without a medium-as-string script")
+data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — holding `ipmitool sol activate` as a background collector (redirect, stdin from an unlinked read-write fifo, pid file) is still a bash -c process-hold; paths are positional data (`$1`…`$5`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) lands, or a typed process-hold realization starts a streaming session, redirects its bytes, and records the holder pid without a medium-as-string script")
 
 service gunbc.machine_intake.sol_hold {
   operation ActivateHeld {

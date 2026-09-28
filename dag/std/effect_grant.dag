@@ -101,9 +101,14 @@ fn position_under(target: NamespacePosition, root: NamespacePosition) -> Bool {
     && path_is_prefix(prefix: root.path, path: target.path)
 }
 
+// ModeledRealization names an operation realization (v2.std.operation_realization) active in the
+// enclosing witness frame: the covered operations are answered by that model's handlers at their
+// transport observation, never by a real transport, a recorded fixture or a published mock. It is
+// the dry arm only, and a frame carrying one is admitted only under Hermetic execution.
 type HandlerBinding
   = RealTransport
   | Replay { fixture_store: String }
+  | ModeledRealization { realization: String }
 
 type LifecycleGrade
   = LifecycleByConstruction

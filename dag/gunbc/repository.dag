@@ -25,9 +25,13 @@ type RepositoryNumericIdentity {
   owner_id: Int
 }
 
+// THE OWNER'S NUMERIC ID, ONCE. Both repositories belong to gunb-ai, so its id is one fact that each
+// repository's identity consumes; the repository ids stay per repository.
+data gunb_ai_owner_numeric_id: Int = 244123794
+
 data gunbc_repository_numeric_identity: RepositoryNumericIdentity = RepositoryNumericIdentity {
   repository_id: 1143718943,
-  owner_id: 244123794,
+  owner_id: gunb_ai_owner_numeric_id,
 }
 
 // THE SECOND REPOSITORY THIS PROJECT COMPOSES WITH, and it lives here for the reason the note above
@@ -48,4 +52,12 @@ data gunbc_private_repository: Repository = Repository {
   full_name: "gunb-ai/gunbc-private",
   private: true,
   default_branch: "main",
+}
+
+// gunbc-private's numeric identity, OBSERVED 2026-09-27 from the repos/gunb-ai/gunbc-private
+// endpoint (id 1318893922; owner.id matched gunb_ai_owner_numeric_id). The private heal publisher's federation pins these
+// for the reason the public row gives: a name can be re-registered, an id cannot.
+data gunbc_private_repository_numeric_identity: RepositoryNumericIdentity = RepositoryNumericIdentity {
+  repository_id: 1318893922,
+  owner_id: gunb_ai_owner_numeric_id,
 }
