@@ -28,7 +28,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the Int-to-Bool cast is refused by coercion's own mismatch before any realization. What the
 // emitted function DOES when built and run is a separate fact with a separate subject: the native
 // build-and-run evidence for this same source is v2.test.execution.emit_host_identity_cast_native,
-// whose execution standing is stated in that module.
+// whose execution standing is stated in that module. This module is a row of
+// v2.workflow.required_floor required_gate_authored_modules, so these rows run on every required run.
 data identity_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Int { x as Int }\n"
 
 data refused_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Bool { x as Bool }\n"

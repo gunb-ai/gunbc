@@ -25,12 +25,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.extdeps.languages.rust_test rust_identity_cast_target_model) only reads the value from argv,
 // calls it and frames the return value.
 //
-// STANDING, STATED SO IT IS NOT READ AS COVERAGE: this claim builds with cargo, so it is WET and the
-// required floor does not execute it. The wet roster has no scheduled executor
-// (v2.compiler.self_host.wet_receipt_enrollment), so this is manually observed native evidence on a
-// reviewed revision, not automatic regression enforcement; the landing PR carries the run. It is not
-// a member of gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population
-// and does not discharge that stall.
+// STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
+// (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every
+// run spawns the host build tool. The required floor therefore executes it ONLY as a changed witness
+// (v2.workflow.floor_changed_witness) -- on a change that touches this module or its closure -- and
+// nothing re-runs it between such changes. It is change-time native evidence, not standing
+// regression enforcement. Its admission partner, v2.test.claim.coercion.identity_cast_emission_route,
+// IS a gate row and runs on every required run. It is not a member of
+// gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population and does
+// not discharge that stall.
 //
 // ONE BUILD, REUSED: every run shares one workspace, so within a claim the second run must report
 // compile_skipped -- the inputs are supplied to one artifact after it is built, and constant

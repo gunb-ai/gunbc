@@ -2732,7 +2732,8 @@ fn rust_logic_family_target_model_meet_zero_staging() -> TargetModel {
   }
 }
 
-// SCAFFOLD, ADMISSION REQUESTED IN THE LANDING PR (DESIGN section 5, docs/plans/scaffold-admission-doctrine.md):
+// SCAFFOLD, ADMITTED BY OPERATOR DEFAULT-APPROVAL on a 15-minute timeout, 2026-09-28 (escalation
+// msg_a5787a77, decision msg_0787e379; DESIGN section 5, docs/plans/scaffold-admission-doctrine.md):
 // the ONE host invocation row the identity-cast native control needs, reusing the family argv
 // dispatcher above rather than minting a second one. The population is exactly
 // rust_identity_cast_member_apply, rust_identity_cast_runtime_row, rust_identity_cast_target_model
