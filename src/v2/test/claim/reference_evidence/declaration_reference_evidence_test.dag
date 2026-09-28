@@ -1,0 +1,173 @@
+module v2.test.claim.reference_evidence.declaration_reference_evidence
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.compiler.infer { infer, inferred_facts_grounding_derived }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, InferredFacts }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { DomainBinderLabels, DomainBinderLabelsUnreadable, Node, NodeFold, arrow_domain_binder_labels, fold_node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
+
+// THE REFERENCE-EVIDENCE BOUNDARY. A reference to a corpus declaration reaches
+// v2.compiler.infer's `infer_node_facts` as a declaration-reference Conj. No arm handles it: it falls
+// to `inferred_facts_not_derived`, so an entry IS admitted for the node carrying GroundingNotDerived.
+// Inference ACCEPTS that tree -- the refusal is eval's, whose `inferred_facts_for_eval` gate reports
+// eval_rejected_grounding_not_derived only when the lookup SUCCEEDS -- so a claim asserting that
+// `infer` accepted is VACUOUS here. An earlier draft of this file did exactly that and passed while
+// the defect stood; the assertions below read the use's own facts instead.
+//
+// TWO PROPERTIES, DELIBERATELY SEPARATE. That a reference grounds AT ALL, and that it grounds to the
+// contract of ITS OWN declaration. The second cannot be credited until the first is repaired -- both
+// currently fail on the same missing prerequisite -- so this file specifies it now and it earns the
+// name "detects declaration-identity collapse" only after the mutation that forces both uses onto one
+// declaration is exercised against a repaired implementation.
+//
+// LOCAL PARAMETER TYPING IS NOT THIS SUBJECT. A parameter use resolves to a canonical Atom at its own
+// occurrence, not to a declaring path, so `infer_parameter_scope_search` answers a different question
+// and is not replaced here. The refinement rows in v2.test.claim.body_cast_node are its standing
+// control and they pass on this base.
+data dre_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^declaration_reference_evidence_artifact,
+  file_path: "src/v2/pilot/declaration_reference_evidence_pilot.dag"
+}
+
+fn dre_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: dre_artifact,
+        compilation_unit: ^declaration_reference_evidence_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// `callee` names its parameter `only_arg`, so the expected contract is independently specified by the
+// fixture text and is not read back out of the implementation under test.
+fn dre_reference_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer(y: Int) -> Int {\n  callee(only_arg: y)\n}\n")
+}
+
+// The leaf is the path's last segment; QualifiedName is a FreeMonoid<Symbol> carrying no
+// last-element reader, so the fold below keeps the final one.
+// EVERY use whose decoded path ends in the wanted leaf, so the claim can require EXACTLY ONE and
+// never silently select an annotation or an unrelated reference a later change introduces.
+fn dre_leaf_of(path: QualifiedName) -> Optional<Symbol> {
+  fold_list(xs: path, empty: optional_absent(), cons: fn(_acc, seg) { optional_present(value: seg) })
+}
+
+fn dre_use_here(n: Node, wanted: Symbol) -> List<Node> {
+  match declaration_reference_path_optional(node: n) {
+    Absent => []
+    Present { value: path } =>
+      match dre_leaf_of(path: path) {
+        Absent => []
+        Present { value: leaf } => if leaf == wanted { [n] } else { [] }
+      }
+  }
+}
+
+fn dre_uses_of(root: Node, wanted: Symbol) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) { dre_use_here(n: n0, wanted: wanted) },
+      step: fn(acc, _e, child) { concat(acc, child) }
+    }
+  )
+}
+
+// The derived type's contract, read through the existing Arrow reader. A grounding tag alone is not
+// the property: DerivedGrounding carrying the WRONG type must fail this control.
+fn dre_grounded_domain_labels(facts: InferredFacts) -> Optional<List<Symbol>> {
+  match facts.grounding {
+    GroundingNotDerived { node: _ } => optional_absent()
+    DerivedGrounding { grounding: g } =>
+      match arrow_domain_binder_labels(children: g.witness.structural.evidence.children) {
+        DomainBinderLabelsUnreadable => optional_absent()
+        DomainBinderLabels { labels: ls } => optional_present(value: ls)
+      }
+  }
+}
+
+fn dre_single_use_domain_labels(o: Outcome<ResolvedTree>, wanted: Symbol) -> Optional<List<Symbol>> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } =>
+          match dre_uses_of(root: inferred.root, wanted: wanted) {
+            Cons { head: use_node, tail: rest } =>
+              match rest {
+                Empty =>
+                  match inferred.facts.lookup(use_node) {
+                    Absent => optional_absent()
+                    Present { value: facts } => dre_grounded_domain_labels(facts: facts)
+                  }
+                Cons { head: _, tail: _ } => optional_absent()
+              }
+            Empty => optional_absent()
+          }
+      }
+  }
+}
+
+// RED ON THIS BASE: the single use of `callee` grounds to a callable contract whose domain binds
+// `only_arg`. Fails if the reference is ungrounded, if more than one use matches, or if the derived
+// type is not that Arrow.
+test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool {
+  match dre_single_use_domain_labels(o: dre_reference_source(), wanted: ^callee) {
+    Absent => false
+    Present { value: labels } =>
+      match labels {
+        Cons { head: first, tail: rest } =>
+          match rest {
+            Empty => first == ^only_arg
+            Cons { head: _, tail: _ } => false
+          }
+        Empty => false
+      }
+  }
+}
+
+// SAME LEAF, DIFFERENT DECLARING PATHS. `shared` is declared twice in this module: as a top-level
+// function (p.shared, whose domain binds `alpha`) and as a field of Wrap (p.Wrap.shared). The use in
+// `consumer` denotes p.shared. A leaf-keyed lookup can answer either; the declaring path answers only
+// one. This control is SPECIFIED but not yet QUALIFIED as an identity-collapse detector: that claim
+// requires the forced-collapse mutation to turn it red, which is exercised separately.
+fn dre_same_leaf_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn shared(alpha: Int) -> Int {\n  alpha\n}\n\ntype Wrap {\n  shared: Int\n}\n\nfn consumer(y: Int) -> Int {\n  shared(alpha: y)\n}\n")
+}
+
+test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> Bool {
+  match dre_single_use_domain_labels(o: dre_same_leaf_source(), wanted: ^shared) {
+    Absent => false
+    Present { value: labels } =>
+      match labels {
+        Cons { head: first, tail: rest } =>
+          match rest {
+            Empty => first == ^alpha
+            Cons { head: _, tail: _ } => false
+          }
+        Empty => false
+      }
+  }
+}
