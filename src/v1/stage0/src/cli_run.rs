@@ -11135,7 +11135,11 @@ impl WitnessRuntimeCause {
             | E::HermeticHostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
-            | E::EvaluationBudgetExceeded { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
+            | E::EvaluationBudgetExceeded { .. }
+            // Raised only inside a witness frame, whose evaluation converts it into a
+            // WitnessRefused / WitnessInterrupted value: reaching this classifier is a leak.
+            | E::ModeledOperationRefused { .. }
+            | E::ModeledWorkerKilled { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
         }
     }
 }

@@ -433,6 +433,47 @@ data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOem
 
 data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
 
+// THE WEB SESSION AND KVM VIEWER WIRE, AS THE 0.32 UI READS IT. Recovered from the bundles served at
+// https://192.168.1.228 on 2026-09-27 (source.min.js, gzip sha256
+// 5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3; viewer.min.js sha256
+// 8bdfbb72c6449eaf64ab232a413abe257c2eec5af5d46fbe960c14534fab3e17):
+// - POST /api/session (form fields username, password) answers JSON; the login handler treats
+//   `ok === 0` as success and reads CSRFToken, privilege, extendedpriv and racsession_id from it, then
+//   sends X-CSRFTOKEN on every later request.
+// - GET /api/settings/services answers a JSON list of service rows; the KVM launcher finds the row
+//   whose service_name is "kvm" and opens viewer.html only when its viewer_count is 0.
+// - DELETE /api/session (X-CSRFTOKEN) ends the session (the viewer's own logout).
+// - The H5 viewer opens a WebSocket at /kvm (subprotocols binary, base64) and paints canvas#kvm.
+// A REFUSED LOGIN'S BODY AND STATUS ON 0.32 HAVE NOT BEEN CAPTURED. What the UI establishes is only
+// that anything without ok === 0 is not a session, so a refusal renders an empty object under a
+// non-2xx status and claims nothing more; a captured refusal replaces both.
+// These are the fields the UI reads, not the whole reply: a reply may carry more, and a renderer of a
+// simulated controller renders exactly these.
+data megarac_kvm_websocket_path: NonEmptyStr = "/kvm"
+
+type MegaRacSessionReply
+  = MegaRacSessionOpened { csrf_token: String, privilege: Int, extended_privilege: Int, racsession_id: Int }
+  | MegaRacSessionRefused {}
+
+fn megarac_session_reply_status(reply: MegaRacSessionReply) -> Int {
+  match reply {
+    MegaRacSessionOpened { csrf_token: _, privilege: _, extended_privilege: _, racsession_id: _ } => 200
+    MegaRacSessionRefused {} => 401
+  }
+}
+
+fn megarac_session_reply_json(reply: MegaRacSessionReply) -> String {
+  match reply {
+    MegaRacSessionOpened { csrf_token: t, privilege: p, extended_privilege: x, racsession_id: r } =>
+      concat("\{\"ok\":0,\"CSRFToken\":\"", t, "\",\"privilege\":", to_string(p), ",\"extendedpriv\":", to_string(x), ",\"racsession_id\":", to_string(r), "}")
+    MegaRacSessionRefused {} => "\{}"
+  }
+}
+
+fn megarac_services_kvm_json(viewer_count: Int) -> String {
+  concat("[\{\"service_name\":\"kvm\",\"viewer_count\":", to_string(viewer_count), "}]")
+}
+
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the
 // MegaRAC media surface — the first attach against a Mt. Collins unit was therefore driven by a
