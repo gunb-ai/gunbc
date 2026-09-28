@@ -9,7 +9,6 @@ import v2.compiler.resolve { resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust_test { rust_classical_not_ingested_target_model_staging }
-import v2.std.collection { PartialFunction }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.node { Arrow, Node, TypeNode }
