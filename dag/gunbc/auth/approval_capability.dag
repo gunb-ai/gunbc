@@ -1,7 +1,7 @@
 module gunbc.auth.approval_capability
 
 import std.types { NonEmptyStr, String, Int, Timestamp, List }
-import v2.std.algebra { skip, length }
+import v2.std.algebra { skip }
 import std.decimal { decimal_digit_char }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }

@@ -377,7 +377,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/assimilate/bmc_bootstrap_provision.dag", name: "gcp.ServiceUsage", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/assimilate/bmc_bootstrap_provision.dag", name: "shell.GCloud", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/auth/approval_broker_demand.dag", name: "length", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/auth/approval_capability.dag", name: "length", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/auth/approval_capability.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/auth/authorization_pattern_selection.dag", name: "any", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/auth/authorization_pattern_selection.dag", name: "filter", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/auth/org_admin_credential.dag", name: "any", standing: ActiveDebt },
