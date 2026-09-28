@@ -7,7 +7,7 @@ import std.algebra { trim, list_append }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import v2.std.orchestration { EnvBinding, EnvSet }
-import extdeps.exec.command { ArgvCommand, env_prefixed_command }
+import extdeps.exec.command { ArgvCommand, env_prefixed_command_in }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.github.actions { SelfHosted }
 import extdeps.automation.playwright {
@@ -140,6 +140,7 @@ type RunnerBrowserToolchainLocation {
   archives: NonEmptyStr
   node_binary: NonEmptyStr
   node_path: NonEmptyStr
+  playwright_module: NonEmptyStr
   browsers_path: NonEmptyStr
   chromium: NonEmptyStr
   headless_shell: NonEmptyStr
@@ -167,31 +168,40 @@ fn runner_browser_toolchain_location(job_user: NonEmptyStr) -> RunnerBrowserTool
     archives: join([root, "/archives"], "") as NonEmptyStr,
     node_binary: join([root, "/node/", node_release_binary_relative as String], "") as NonEmptyStr,
     node_path: join([root, "/node_modules"], "") as NonEmptyStr,
+    playwright_module: join([root, "/node_modules/playwright"], "") as NonEmptyStr,
     browsers_path: browsers as NonEmptyStr,
     chromium: browser_download_executable(browsers_path: browsers, download: playwright_chromium_1234_linux_arm64) as NonEmptyStr,
     headless_shell: browser_download_executable(browsers_path: browsers, download: playwright_chromium_headless_shell_1234_linux_arm64) as NonEmptyStr,
   }
 }
 
-// THE ENVIRONMENT A CONSUMER RUNS NODE UNDER, derived from the location: NODE_PATH resolves
-// `require("playwright")` to the pinned package, and PLAYWRIGHT_BROWSERS_PATH points Playwright's
-// registry at the pinned browsers rather than its default ~/.cache (which, under the floor job's
-// isolated HOME, would be an empty RUNNER_TEMP directory).
+// THE ENVIRONMENT A CONSUMER RUNS NODE UNDER: only PLAYWRIGHT_BROWSERS_PATH, pointing Playwright's
+// registry at the pinned browsers rather than its default ~/.cache (an empty RUNNER_TEMP directory
+// under the floor job's isolated HOME).
+//
+// NODE_PATH IS DELIBERATELY NOT SET, because it cannot pin the package (side-chat review of
+// gunbc#12500): node consults NODE_PATH only AFTER walking node_modules upward from the working
+// directory, so a workspace that carries its own node_modules/playwright shadows the converged one
+// and the readback would certify a package nobody pinned. A consumer requires Playwright by the
+// ABSOLUTE path location.playwright_module, passed as an operand; resolution of playwright-core then
+// walks up from that package's own directory and meets the converged node_modules first.
 fn runner_browser_toolchain_env(location: RunnerBrowserToolchainLocation) -> List<EnvBinding> {
   [
-    EnvSet { name: "NODE_PATH", value: location.node_path as String },
     EnvSet { name: playwright_browsers_path_env as String, value: location.browsers_path as String },
   ]
 }
 
-// `node -e <script> <operands>` under that environment, with the pinned node binary. This is the
-// command a consumer runs; it is not free to pick a node from PATH or a package from elsewhere.
+// `node -e <script> <operands>` under that environment, with the pinned node binary, started in a
+// directory the caller names. This is the command a consumer runs; it is not free to pick a node
+// from PATH, a package from elsewhere, or to inherit a working directory it did not choose.
 fn runner_browser_toolchain_node_command(
   location: RunnerBrowserToolchainLocation,
+  directory: String,
   script: String,
   operands: List<String>,
 ) -> ArgvCommand {
-  env_prefixed_command(
+  env_prefixed_command_in(
+    directory: directory,
     bindings: runner_browser_toolchain_env(location: location),
     command: node_eval_command(node_binary: location.node_binary, script: script, operands: operands),
   )
@@ -479,8 +489,9 @@ type HostLibraryReadback
 // title alone could come back from a browser that parsed but never laid out; a positive width
 // cannot.
 type BrowserLaunchReadback
-  = BrowserLaunchRendered { title: String, rendered_width: String }
+  = BrowserLaunchRendered { title: String, rendered_width: String, resolved_module: String }
   | BrowserLaunchWrongPage { observed: String }
+  | BrowserLaunchWrongModule { resolved: String, expected_under: String }
   | BrowserLaunchRefused { reason: String }
   | BrowserLaunchNotAttempted { reason: String }
 
@@ -545,25 +556,46 @@ fn browser_toolchain_probe_page_path(location: RunnerBrowserToolchainLocation) -
 }
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
-// headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page is a
-// file:// URL passed as an operand, never spliced into the program.
-data browser_toolchain_launch_script: String = "const { chromium } = require('playwright'); (async () => { const b = await chromium.launch({ headless: true }); try { const p = await b.newPage(); await p.goto('file://' + process.argv[1]); const w = await p.evaluate(() => document.getElementById('probe').getBoundingClientRect().width); console.log(JSON.stringify({ title: await p.title(), width: String(w) })); } finally { await b.close(); } })().catch(e => { console.error(String(e && e.stack || e)); process.exit(1); });"
+// headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page and the
+// Playwright module are operands (process.argv[1], process.argv[2]), never spliced into the program,
+// and the script prints three lines: the page title, the laid-out width of the probe element, and
+// the file require() actually resolved for Playwright -- so the readback asserts the ROUTE (the
+// converged package was the one loaded), not only that some browser rendered.
+data browser_toolchain_launch_script: String = "const m = process.argv[2]; const { chromium } = require(m); (async () => { const b = await chromium.launch({ headless: true }); try { const p = await b.newPage(); await p.goto('file://' + process.argv[1]); const w = await p.evaluate(() => document.getElementById('probe').getBoundingClientRect().width); console.log([await p.title(), String(w), require.resolve(m)].join('\\n')); } finally { await b.close(); } })().catch(e => { console.error(String(e && e.stack || e)); process.exit(1); });"
 
 // `require('<dir>/package.json').version`, the directory an operand.
 data browser_toolchain_package_version_script: String = "console.log(require(process.argv[1] + '/package.json').version)"
 
-fn launch_readback_of(output: String) -> BrowserLaunchReadback {
-  let line = trim(s: output)
-  let expected_prefix = join(["{\"title\":\"", browser_toolchain_probe_title, "\",\"width\":\""], "")
-  if starts_with(s: line, prefix: expected_prefix) {
-    let width = trim(s: replace(s: replace(s: line, from: expected_prefix, to: ""), from: "\"}", to: ""))
-    if width == "" || width == "0" {
-      BrowserLaunchWrongPage { observed: line }
-    } else {
-      BrowserLaunchRendered { title: browser_toolchain_probe_title, rendered_width: width }
-    }
+// A DECOY PLAYWRIGHT, PLANTED WHERE A SHADOWING WORKSPACE PACKAGE WOULD SIT. The readback runs node
+// with this directory as its working directory, so a bare require('playwright') would resolve here
+// first. Its entry point throws, and its package.json names a version no pin carries, so if any
+// readback reaches it the launch refuses and the version reads back mismatched. This is the
+// discriminating control for the absolute-path resolution above, executed on every converge.
+data browser_toolchain_decoy_version: String = "0.0.0-gunbc-decoy"
+
+data browser_toolchain_decoy_package_json: String = "{\"name\":\"playwright\",\"version\":\"0.0.0-gunbc-decoy\",\"main\":\"index.js\"}"
+
+data browser_toolchain_decoy_index: String = "throw new Error('gunbc decoy playwright resolved: a workspace package shadowed the converged toolchain');"
+
+fn browser_toolchain_decoy_root(location: RunnerBrowserToolchainLocation) -> String {
+  join([location.root as String, "/probe/decoy-workspace"], "")
+}
+
+fn browser_toolchain_decoy_package_dir(location: RunnerBrowserToolchainLocation) -> String {
+  join([browser_toolchain_decoy_root(location: location), "/node_modules/playwright"], "")
+}
+
+fn launch_readback_of(output: String, expected_module_dir: String) -> BrowserLaunchReadback {
+  let lines = split(trim(s: output), "\n")
+  let title = match get(xs: lines, index: 0) { Present { value: l } => trim(s: l)  Absent => "" }
+  let width = match get(xs: lines, index: 1) { Present { value: l } => trim(s: l)  Absent => "" }
+  let resolved = match get(xs: lines, index: 2) { Present { value: l } => trim(s: l)  Absent => "" }
+  if title != browser_toolchain_probe_title || width == "" || width == "0" {
+    BrowserLaunchWrongPage { observed: trim(s: output) }
+  } else if starts_with(s: resolved, prefix: concat(expected_module_dir, "/")) == false {
+    BrowserLaunchWrongModule { resolved: resolved, expected_under: expected_module_dir }
   } else {
-    BrowserLaunchWrongPage { observed: line }
+    BrowserLaunchRendered { title: title, rendered_width: width, resolved_module: resolved }
   }
 }
 
@@ -595,11 +627,21 @@ fn library_readback_wet(binary: NonEmptyStr) -> HostLibraryReadback {
 }
 
 fn package_version_command(location: RunnerBrowserToolchainLocation, package: String) -> ArgvCommand {
-  node_eval_command(
-    node_binary: location.node_binary,
+  runner_browser_toolchain_node_command(
+    location: location,
+    directory: browser_toolchain_decoy_root(location: location),
     script: browser_toolchain_package_version_script,
     operands: [join([location.node_path as String, "/", package], "")],
   )
+}
+
+// PLANTED BEFORE ANY node INVOCATION OF THE READBACK, so the version reads and the launch all run
+// with the decoy in their working directory. A failure to plant it refuses the readback: without
+// the decoy the resolution control did not run, and that must not read as though it passed.
+fn plant_decoy_wet(location: RunnerBrowserToolchainLocation) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(location: location)), transport: LocalExec))
+    && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(location: location), "/package.json"], ""), content: browser_toolchain_decoy_package_json).success
+    && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(location: location), "/index.js"], ""), content: browser_toolchain_decoy_index).success
 }
 
 fn libraries_resolved(libraries: List<HostLibraryReadback>) -> Bool {
@@ -622,11 +664,14 @@ fn runner_browser_toolchain_readback_wet(host: NonEmptyStr, location: RunnerBrow
     archive: a.file_name,
     verdict: verify_archive_digest(archive: archive_path(location: location, a: a) as NonEmptyStr, pin: a.pin),
   })
-  let versions = [
+  let decoy = plant_decoy_wet(location: location)
+  let versions = if decoy == false {
+    [VersionUnreadable { subject: "playwright-resolution-decoy", reason: join(["the decoy workspace package could not be planted at ", browser_toolchain_decoy_package_dir(location: location), ", so the shadowing control did not run"], "") }]
+  } else { [
     version_readback_wet(subject: "node", expected: runner_browser_toolchain_node.version as String, command: node_version_command(node_binary: location.node_binary), exact: true),
     version_readback_wet(subject: "playwright-core", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, package: "playwright-core"), exact: true),
     version_readback_wet(subject: "playwright", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, package: "playwright"), exact: true),
-  ]
+  ] }
   let libraries = [
     library_readback_wet(binary: location.headless_shell),
     library_readback_wet(binary: location.chromium),
@@ -648,11 +693,12 @@ fn runner_browser_toolchain_readback_wet(host: NonEmptyStr, location: RunnerBrow
       } else {
         match capture_text(command: runner_browser_toolchain_node_command(
           location: location,
+          directory: browser_toolchain_decoy_root(location: location),
           script: browser_toolchain_launch_script,
-          operands: [browser_toolchain_probe_page_path(location: location)],
+          operands: [browser_toolchain_probe_page_path(location: location), location.playwright_module as String],
         )) {
           CaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
-          CapturedText { text: t } => launch_readback_of(output: t)
+          CapturedText { text: t } => launch_readback_of(output: t, expected_module_dir: location.playwright_module as String)
         }
       }
     }
@@ -673,7 +719,7 @@ fn runner_browser_toolchain_ready(s: RunnerBrowserToolchainStanding) -> Bool {
   archives_verified(archives: s.archives)
     && versions_match(versions: s.versions)
     && libraries_resolved(libraries: s.libraries)
-    && match s.launch { BrowserLaunchRendered { title: _, rendered_width: _ } => true  _ => false }
+    && match s.launch { BrowserLaunchRendered { title: _, rendered_width: _, resolved_module: _ } => true  _ => false }
 }
 
 fn archive_readback_text(a: ArchiveReadback) -> String {
@@ -707,7 +753,8 @@ fn library_readback_text(l: HostLibraryReadback) -> String {
 
 fn launch_readback_text(l: BrowserLaunchReadback) -> String {
   match l {
-    BrowserLaunchRendered { title: t, rendered_width: w } => join(["launch=rendered title='", t, "' probe-width=", w], "")
+    BrowserLaunchRendered { title: t, rendered_width: w, resolved_module: m } => join(["launch=rendered title='", t, "' probe-width=", w, " playwright-resolved=", m], "")
+    BrowserLaunchWrongModule { resolved: r, expected_under: e } => join(["launch=WRONG-MODULE playwright resolved to '", r, "', not under ", e], "")
     BrowserLaunchWrongPage { observed: o } => join(["launch=WRONG-PAGE observed '", o, "'"], "")
     BrowserLaunchRefused { reason: r } => join(["launch=refused (", r, ")"], "")
     BrowserLaunchNotAttempted { reason: r } => join(["launch=not-attempted (", r, ")"], "")

@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.orchestration { EnvBinding }
-import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_binary_path, env_ignore_environment_flag }
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_binary_path, env_ignore_environment_flag, env_chdir_flag }
 import gunbc.remote_shell_command {
   RemoteExecCommandInterpretation,
   RemoteExecCommandOutcome,
@@ -71,6 +71,7 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
   admit_callers: [
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_cleared_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
@@ -347,6 +348,14 @@ data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PRO
 // that nothing ambient reaches the command -- so its program is not left to PATH either.
 fn env_cleared_command(command: ArgvCommand) -> ArgvCommand {
   argv_command(program: env_binary_path, arguments: concat([env_ignore_environment_flag as String], argv_words(command: command)))
+}
+
+// THE COMMAND UNDER THESE BINDINGS, STARTED IN A NAMED DIRECTORY (env -C).
+fn env_prefixed_command_in(directory: String, bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_path_resolved_program,
+    arguments: concat([env_chdir_flag as String, directory], env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command))),
+  )
 }
 
 fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
