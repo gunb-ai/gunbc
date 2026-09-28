@@ -5,6 +5,12 @@ based on `e66a6a65ae5821c8c215bdfdc26b73dbbc1276d6`. It includes ports of the
 session-bearing srv2 site's auth and tracker UI alongside the new implementation.
 It is not deployment-ready. The serving checkout was not edited.
 
+## HOLD repair status
+
+Review 5332745744 holds the published snapshot. Source repairs and focused served
+storage/controller checks are recorded in [the HOLD checkpoint](allocation-hold-repair-receipt.md).
+The integrated floor and live acceptance remain outstanding; do not merge or deploy.
+
 ## Review areas
 
 | Area | Main entry points | Evidence / remaining work |
