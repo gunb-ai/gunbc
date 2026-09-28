@@ -26,7 +26,7 @@ type EdgeLabel
 
 `Named { name: Symbol }` does not survive beside these arms (DESIGN §3 replacement migration). Step 2 deletes it first and fixes forward.
 
-### The open decision: who owns the closed set
+### Who owns the closed set (ruled: A)
 
 Candidate structural labels come from two layers:
 
@@ -48,6 +48,7 @@ Open for the cut: whether `Production.edge` can be a row reference rather than a
 
 - **Hand-built type-node literals** (`^magma_field_op` in `v2.std.algebra`, `effects`, `testgen`, `target_model`, and others) model the AUTHORED field names of modeled records but are spelled like markers. **Ruled: `Authored`.** If those nodes are meant to equal what ingest produces, their names are already wrong (`magma_field_op` ≠ `op`). That is a separate finding.
 - **`ReferenceSite.position`** must carry `EdgeLabel` segments, or only Authored segments plus a separate structural context. This is a model change to `v2.compiler.reference_site_collector`, not a rename. **Ruled: it lands in the cut**, because `site_is_import_syntax_mention` is a consumer that needs it.
+- **Pending question (adhoc-db43a2ff-e50):** whether the namespace-spine mark belongs in this coproduct as a `Core` marker. The rule is the same as for the other markers: it joins `CoreEdgeLabel` only if it is language-independent and minted by the substrate, not by a grammar row.
 - **Symbol-keyed query APIs** (`v2.std.node_query` `find_named_child`, `named_child_lookup`, `named_edge_target_lookup`, and `v2.std.node` `name_occurrences`) split into a structural lookup that takes a `StructuralEdgeLabel` and an authored lookup that takes a `Symbol`. A single Symbol-keyed lookup must not survive.
 - **named-args PR-B #12382** (vivid-ram-65): the Named edges for named actuals under Transform are `Authored`. `PositionalPlusOneNamedEdges` for Transform then counts `Structural { Core { CastTarget } }` separately from the authored actuals.
 
@@ -65,7 +66,7 @@ Every declaration below lands in the step-2 cut together with its consumers. Non
 
 ## Census
 
-[census.md](census.md) keeps only the findings that need a ruling: the four readers and the non-EdgeLabel `Named` types that are excluded (`std.algebra` `ContainerSource`, `extdeps.formats.spice`). No counts are transcribed (DESIGN §6). The authoritative consumer population is the step-2 deletion itself (DESIGN §3, "the deletion is the census"): removing `Named` makes every dependent refuse under self-host and neat-boar-16's srv1 per-file native census, and each refusal gets one disposition: Structural/Core, Structural/Production, Authored, or arm-only. The largest dependent populations are the per-language `*_named_edge` helpers and the Symbol-keyed lookups in `v2.std.node_query`. Rust `src/v1/stage0` has no hand-written EdgeLabel sites; the generated reflection regenerates.
+[census.md](census.md) keeps only the findings the ruling was made over: the four readers and the non-EdgeLabel `Named` types that are excluded (`std.algebra` `ContainerSource`, `extdeps.formats.spice`). No counts are transcribed (DESIGN §6). The authoritative consumer population is the step-2 deletion itself (DESIGN §3, "the deletion is the census"): removing `Named` makes every dependent refuse under self-host and neat-boar-16's srv1 per-file native census, and each refusal gets one disposition: Structural/Core, Structural/Production, Authored, or arm-only. The largest dependent populations are the per-language `*_named_edge` helpers and the Symbol-keyed lookups in `v2.std.node_query`. Rust `src/v1/stage0` has no hand-written EdgeLabel sites; the generated reflection regenerates.
 
 ## Identity impact (a deliberate change)
 
