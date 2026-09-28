@@ -12,6 +12,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
+import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
   IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused, identity_cast_route_verdict,
 }
@@ -101,15 +102,39 @@ test fn the_emitted_identity_cast_preserves_zero_and_a_wide_argument_holds() -> 
   }
 }
 
-// THE HOST FAILS RATHER THAN DEFAULTING. A malformed argument must not produce a frame: if the driver
-// defaulted to zero, this row would see [0, 0, 0, 0, 0] and the positive row above would not notice.
-// Build reuse is not this row's subject, so it asserts none: a failed run need not leave a reusable
-// artifact, and on a cold cache the follow-up run legitimately rebuilds.
+// THE HOST FAILS RATHER THAN DEFAULTING. A malformed argument must end the invocation with a non-zero
+// exit and no logical run -- not merely "not a zero frame", which a driver that defaulted to any
+// other value would satisfy (review 5333329244: `.unwrap_or(9)` would frame 9 and pass). The valid
+// run goes FIRST on the same artifact and must succeed, and the malformed run must report
+// compile_skipped: so the failure is the run's, on an artifact that just built and ran, never a
+// build or transport failure standing in for it.
+fn identity_cast_native_run_fails_on_a_reused_build(text: String, value: String) -> Bool {
+  match run_emit_host_cached_with_run_args(
+    workspace_dir: identity_cast_native_workspace,
+    target: rust_identity_cast_target_model(),
+    source: Medium { carried: text, fidelity: Lossless },
+    fixture_inputs: identity_cast_native_inputs(),
+    run_args: rust_identity_cast_run_args(value: value)
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      receipt.compile_skipped
+        && match receipt.exit.outcome {
+          Accepted { value: Violates { diagnostic: _ }, diagnostics: _ } =>
+            match receipt.logical_run {
+              Accepted { value: _, diagnostics: _ } => false
+              Rejected { diagnostics: _ } => true
+            }
+          _ => false
+        }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn a_malformed_runtime_argument_fails_the_invocation_holds() -> Bool {
   match identity_cast_native_emitted() {
     Absent => false
     Present { value: text } =>
-      !identity_cast_native_run_is(text: text, value: "not-an-int", expect_skipped: false, octets: [0, 0, 0, 0, 0])
-        && identity_cast_native_run_is(text: text, value: "3", expect_skipped: false, octets: [0, 3, 0, 0, 0])
+      identity_cast_native_run_is(text: text, value: "3", expect_skipped: false, octets: [0, 3, 0, 0, 0])
+        && identity_cast_native_run_fails_on_a_reused_build(text: text, value: "not-an-int")
   }
 }
