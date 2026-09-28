@@ -235,10 +235,11 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
 ]
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
-// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Eleven identities, each running the real boot
-// entry end to end over the dry operation realization, which is the subject #12423 requires; the two
-// matrix cases whose own subject stops at the unit hold or the SOL acquire measure under the budget
-// and are not members.
+// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Eight identities, each running the real boot
+// entry end to end over the dry operation realization, which is the subject #12423 requires. The
+// matrix cases whose own subject stops before the boot's long loops -- the unit hold, the SOL acquire,
+// the share and listing refusals, the interrupted attempt -- measure under the budget and are not
+// members.
 data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_host_that_never_prints_a_census_refuses_at_the_deadline" as NonEmptyStr,
@@ -257,14 +258,6 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
     measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.the_right_filename_on_the_wrong_share_refuses_before_any_power_action" as NonEmptyStr,
-    measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_listing_that_names_the_image_twice_starts_nothing" as NonEmptyStr,
-    measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_readiness_stops_the_handoff" as NonEmptyStr,
     measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
@@ -278,10 +271,6 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_two_socket_answer_is_a_truthful_topology_refusal" as NonEmptyStr,
-    measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_an_interrupted_attempt_locks_out_the_next_one" as NonEmptyStr,
     measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
 ]

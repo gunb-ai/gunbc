@@ -7858,6 +7858,9 @@ fn current_witness_evaluation_frame() -> Option<Value> {
 struct ModeledRealizationSlot {
     envelope: Value,
     realization: Value,
+    /// The realization's bindings by operation identity (`operation_realization_index`), built
+    /// once at admission so no dispatch rescans the binding list.
+    index: Value,
     identity: String,
     state: Value,
     /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
@@ -8084,9 +8087,16 @@ fn admit_modeled_realization(
     let advance = record_field(ctx, &realization, "advance")
         .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
     let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
+    let index = run_in_context_with_args(
+        ctx,
+        "operation_realization_index",
+        &[(Some("realization".to_string()), realization.clone())],
+        false,
+    )?;
     Ok(Some(ModeledRealizationSlot {
         envelope,
         realization,
+        index,
         identity,
         state,
         now,
@@ -8195,6 +8205,7 @@ fn dispatch_modeled_operation(
                 (
                     s.envelope.clone(),
                     s.realization.clone(),
+                    s.index.clone(),
                     s.identity.clone(),
                     s.state.clone(),
                     s.now.clone(),
@@ -8203,7 +8214,7 @@ fn dispatch_modeled_operation(
             })
         })
     });
-    let Some((envelope, realization, identity, state, now, ordinal)) = snapshot else {
+    let Some((envelope, realization, index, identity, state, now, ordinal)) = snapshot else {
         return Ok(None);
     };
     let key = format!("{service_name}.{op_name}");
@@ -8243,6 +8254,7 @@ fn dispatch_modeled_operation(
         &[
             (Some("env".to_string()), envelope),
             (Some("realization".to_string()), realization.clone()),
+            (Some("index".to_string()), index),
             (Some("invocation".to_string()), invocation.clone()),
             (
                 Some("readonly".to_string()),

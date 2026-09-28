@@ -51,6 +51,9 @@ type BmcSelRecord {
   state: String
 }
 
+// sol_drop_after_boot, when a scenario sets it, schedules the controller dropping its SOL session that
+// long after the host starts booting, so the loss follows the route's own power-on rather than a clock
+// guessed in advance.
 // host_booted_at is the virtual instant the host last started booting (power on, or the restore of a
 // cycle); the host's console is timed from it. booted_via_override records whether that boot consumed
 // the one-shot override.
@@ -64,12 +67,13 @@ type BmcWorld {
   cycle_off_interval: Second
   host_booted_at: Second?
   booted_via_override: Bool
+  sol_drop_after_boot: Second?
 }
 
 fn bmc_world(power: BmcPower) -> BmcWorld {
   BmcWorld {
     power: power, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
-    sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false,
+    sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
   }
 }
 
@@ -94,7 +98,7 @@ fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
   BmcWorld {
     power: power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
-    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
   }
 }
 
@@ -102,7 +106,7 @@ fn bmc_with_override(world: BmcWorld, over: BmcBootOverride) -> BmcWorld {
   BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: over, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
-    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
   }
 }
 
@@ -110,7 +114,7 @@ fn bmc_with_sol_session(world: BmcWorld, open: Bool) -> BmcWorld {
   BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: open, cycle_off_interval: world.cycle_off_interval,
-    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
   }
 }
 
@@ -118,7 +122,7 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
   BmcWorld {
     power: world.power, pending: pending, fired: fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
-    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
   }
 }
 
@@ -126,10 +130,14 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
 // override is consumed by it.
 fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
   let via = match world.boot_override { BootOverrideCdromEfiNextBoot => true BootOverrideNone => false }
+  let pending = match world.sol_drop_after_boot {
+    Absent => world.pending
+    Present { value: after } => list_append(world.pending, BmcScheduledEvent { at: second(count: second_count(s: now) + second_count(s: after)), event: BmcSolSessionDropped })
+  }
   BmcWorld {
-    power: BmcPowerOn, pending: world.pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
+    power: BmcPowerOn, pending: pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
-    host_booted_at: Present { value: now }, booted_via_override: via,
+    host_booted_at: Present { value: now }, booted_via_override: via, sol_drop_after_boot: world.sol_drop_after_boot,
   }
 }
 
@@ -169,4 +177,16 @@ fn bmc_advance(world: BmcWorld, now: Second) -> BmcWorld {
       bmc_with_pending(world: acc, pending: list_append(acc.pending, e), fired: acc.fired)
     }
   })
+}
+
+fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: Present { value: after },
+  }
+}
+
+fn bmc_sol_drop_fired(world: BmcWorld) -> Bool {
+  !all(world.fired, e => match e.event { BmcSolSessionDropped => false _ => true })
 }

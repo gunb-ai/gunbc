@@ -103,60 +103,8 @@ data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmi
   },
 ]
 
-// THE mtcollins1 BOOT ACCEPTANCE MATRIX ROWS (gunbc#12533). Each identity evaluates the real boot entry
-// end to end over the dry operation realization; that is the subject, not ballast. The two matrix
-// cases that stop at the hold or the SOL acquire measure under the per-subject line and are not rows,
-// since a row under the line is stale. Measured by the PR required floor run 36419407813 of gunbc#12533,
-// enrolment-margin lines.
-data mtcollins1_boot_matrix_typed_admissions: List<FloorCostDebtTypedAdmission> = [
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_host_that_never_prints_a_census_refuses_at_the_deadline",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_a_healthy_census_is_refused_at_the_sol_teardown",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_already_presented_image_is_not_attached_again",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.media_that_never_becomes_ready_refuses_before_any_power_action",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.the_right_filename_on_the_wrong_share_refuses_before_any_power_action",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_listing_that_names_the_image_twice_starts_nothing",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_readiness_stops_the_handoff",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_a_presentation_lost_after_the_handoff_is_not_the_reported_cause",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_a_sol_loss_mid_boot_is_reported_only_at_the_deadline",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_two_socket_answer_is_a_truthful_topology_refusal",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.pinned_an_interrupted_attempt_locks_out_the_next_one",
-    reason: "the subject is the real mtcollins1 boot entry (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1) evaluated end to end in the seed interpreter over the dry operation realization, as #12423 requires of the acceptance matrix; a narrower supplied value would drop the route under test; owner: the mtcollins1 boot acceptance matrix lane, discharged by the natively emitted evaluation frame" as NonEmptyStr,
-  },
-]
-
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions)
+  app_attest_interpreted_crypto_typed_admissions
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {

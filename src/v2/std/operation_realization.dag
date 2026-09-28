@@ -1,6 +1,6 @@
 module v2.std.operation_realization
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.effect_grant {
   Envelope, HandlerBinding, CoveredBy, NoCoveringGrant, covering_grant,
   NamespacePosition, ServiceOpTree, Read, Write, Verb,
@@ -111,7 +111,6 @@ type OperationBindingRefusal
   | OperationBoundElsewhere { at: OperationRef, binding: HandlerBinding }
   | OperationRealizationMismatch { at: OperationRef, named: String, active: NonEmptyStr }
   | OperationNotBound { at: OperationRef }
-  | OperationBoundTwice { at: OperationRef, count: Int }
 
 type OperationHandlerSelection<S>
   = OperationHandlerSelected { binding: OperationBinding<S> }
@@ -129,29 +128,13 @@ fn operation_verb(readonly: Bool) -> Verb {
   if readonly { Read } else { Write }
 }
 
-type BindingMatch<S>
-  = BindingMatchNone
-  | BindingMatchOne { binding: OperationBinding<S> }
-  | BindingMatchMany { count: Int }
-
-fn binding_match<S>(bindings: List<OperationBinding<S>>, at: OperationRef) -> BindingMatch<S> {
-  fold(bindings, init: BindingMatchNone, f: fn(acc, b) {
-    if operation_ref_eq(a: b.at, b: at) {
-      match acc {
-        BindingMatchNone => BindingMatchOne { binding: b }
-        BindingMatchOne { binding: _ } => BindingMatchMany { count: 2 }
-        BindingMatchMany { count: n } => BindingMatchMany { count: n + 1 }
-      }
-    } else { acc }
-  })
-}
-
 // THE SINGLE SELECTION DECISION, called by the dispatcher for every operation issued while a modeled
 // realization is active. Grant coverage first (the same covering_grant REST replay uses), then the
-// named realization, then exactly one binding for the resolved identity.
+// named realization, then the one binding the admitted index holds for the resolved identity.
 fn operation_handler_selection<S>(
   env: Envelope,
   realization: OperationRealization<S>,
+  index: Map<String, OperationBinding<S>>,
   invocation: BoundOperationInvocation,
   readonly: Bool,
 ) -> OperationHandlerSelection<S> {
@@ -163,15 +146,22 @@ fn operation_handler_selection<S>(
         if named != (realization.identity as String) {
           OperationHandlerRefused { cause: OperationRealizationMismatch { at: at, named: named, active: realization.identity } }
         } else {
-          match binding_match(bindings: realization.bindings, at: at) {
-            BindingMatchNone => OperationHandlerRefused { cause: OperationNotBound { at: at } }
-            BindingMatchMany { count: n } => OperationHandlerRefused { cause: OperationBoundTwice { at: at, count: n } }
-            BindingMatchOne { binding: b } => OperationHandlerSelected { binding: b }
+          match map_get(index, operation_ref_key(at: at)) {
+            Absent => OperationHandlerRefused { cause: OperationNotBound { at: at } }
+            Present { value: b } => OperationHandlerSelected { binding: b }
           }
         }
       other => OperationHandlerRefused { cause: OperationBoundElsewhere { at: at, binding: other } }
     }
   }
+}
+
+// THE BINDINGS BY IDENTITY, BUILT ONCE WHEN THE FRAME IS ADMITTED. Every dispatch then looks its
+// operation up instead of scanning the binding list: the list is fixed for the frame's extent, so a
+// per-dispatch scan re-derived the same fact on every call (DESIGN section 2). Admission has already
+// refused a realization that binds one identity twice, so each key holds exactly one binding.
+fn operation_realization_index<S>(realization: OperationRealization<S>) -> Map<String, OperationBinding<S>> {
+  fold(realization.bindings, init: empty_map(), f: fn(acc, b) { map_insert(acc, operation_ref_key(at: b.at), b) })
 }
 
 // ADMISSION BEFORE THE SUBJECT RUNS: a realization binding one identity twice is malformed whatever
