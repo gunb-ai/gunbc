@@ -536,24 +536,24 @@ fn tree_manifest_text_of(tree: String, sha_lines: String, exec_lines: String, li
   ], "\n")
 }
 
-fn capture_or_empty(command: ArgvCommand) -> VersionCapture {
+fn capture_or_empty(command: ArgvCommand) -> ToolchainCapture {
   match run_shell_command_capture(command: command, transport: LocalExec) {
-    ProcessOutputPresent { text: t } => CapturedText { text: t }
-    ProcessOutputAbsent => CapturedText { text: "" }
-    ProcessRefused { exit_code: c, stderr: e } => CaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
+    ProcessOutputPresent { text: t } => ToolchainCapturedText { text: t }
+    ProcessOutputAbsent => ToolchainCapturedText { text: "" }
+    ProcessRefused { exit_code: c, stderr: e } => ToolchainCaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
   }
 }
 
 fn tree_sha256_wet(tree: String, manifest_path: String) -> TreeDigestObservation {
   match capture_or_empty(command: find_regular_files_sha256_command(root: tree)) {
-    CaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("hashing the tree's files failed: ", r) }
-    CapturedText { text: shas } =>
+    ToolchainCaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("hashing the tree's files failed: ", r) }
+    ToolchainCapturedText { text: shas } =>
       match capture_or_empty(command: find_owner_executable_files_command(root: tree)) {
-        CaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("listing the tree's executable files failed: ", r) }
-        CapturedText { text: execs } =>
+        ToolchainCaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("listing the tree's executable files failed: ", r) }
+        ToolchainCapturedText { text: execs } =>
           match capture_or_empty(command: find_symlink_targets_command(root: tree)) {
-            CaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("listing the tree's symlinks failed: ", r) }
-            CapturedText { text: links } => {
+            ToolchainCaptureRefused { reason: r } => TreeDigestUnobservable { reason: concat("listing the tree's symlinks failed: ", r) }
+            ToolchainCapturedText { text: links } => {
               let wrote = Filesystem.Write(path: manifest_path, content: tree_manifest_text_of(tree: tree, sha_lines: shas, exec_lines: execs, link_lines: links))
               if wrote.success == false {
                 TreeDigestUnobservable { reason: concat("the tree manifest could not be written at ", manifest_path) }
@@ -869,29 +869,29 @@ fn launch_readback_of(output: String, expected_resolution: String) -> BrowserLau
   }
 }
 
-type VersionCapture
-  = CapturedText { text: String }
-  | CaptureRefused { reason: String }
+type ToolchainCapture
+  = ToolchainCapturedText { text: String }
+  | ToolchainCaptureRefused { reason: String }
 
-fn capture_text(command: ArgvCommand) -> VersionCapture {
+fn capture_text(command: ArgvCommand) -> ToolchainCapture {
   match run_shell_command_capture(command: command, transport: LocalExec) {
-    ProcessOutputPresent { text: t } => CapturedText { text: t }
-    ProcessOutputAbsent => CaptureRefused { reason: "the command exited zero and printed nothing" }
-    ProcessRefused { exit_code: c, stderr: e } => CaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
+    ProcessOutputPresent { text: t } => ToolchainCapturedText { text: t }
+    ProcessOutputAbsent => ToolchainCaptureRefused { reason: "the command exited zero and printed nothing" }
+    ProcessRefused { exit_code: c, stderr: e } => ToolchainCaptureRefused { reason: join(["exited ", to_string(c), ": ", trim(s: e)], "") }
   }
 }
 
 fn version_readback_wet(subject: NonEmptyStr, expected: String, command: ArgvCommand) -> VersionReadback {
   match capture_text(command: command) {
-    CaptureRefused { reason: r } => VersionUnreadable { subject: subject, reason: r }
-    CapturedText { text: t } => exact_version_readback_of(subject: subject, expected: expected, output: t)
+    ToolchainCaptureRefused { reason: r } => VersionUnreadable { subject: subject, reason: r }
+    ToolchainCapturedText { text: t } => exact_version_readback_of(subject: subject, expected: expected, output: t)
   }
 }
 
 fn library_readback_wet(binary: NonEmptyStr, run_as: ArgvCommand) -> HostLibraryReadback {
   match capture_text(command: run_as) {
-    CaptureRefused { reason: r } => HostLibrariesUnreadable { binary: binary, reason: r }
-    CapturedText { text: t } => host_library_readback_of(binary: binary, ldd_output: t)
+    ToolchainCaptureRefused { reason: r } => HostLibrariesUnreadable { binary: binary, reason: r }
+    ToolchainCapturedText { text: t } => host_library_readback_of(binary: binary, ldd_output: t)
   }
 }
 
@@ -979,8 +979,8 @@ fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerB
         script: browser_toolchain_launch_script,
         operands: [browser_toolchain_probe_page_path(scratch: scratch), location.playwright_module as String],
       )) {
-        CaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
-        CapturedText { text: t } => launch_readback_of(output: t, expected_resolution: browser_toolchain_expected_resolution(location: location))
+        ToolchainCaptureRefused { reason: r } => BrowserLaunchRefused { reason: r }
+        ToolchainCapturedText { text: t } => launch_readback_of(output: t, expected_resolution: browser_toolchain_expected_resolution(location: location))
       }
     } else {
       BrowserLaunchNotAttempted { reason: "a version or a host library did not read back, so the launch would not exercise the pinned toolchain" }
