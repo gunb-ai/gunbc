@@ -51,6 +51,8 @@ type MegaRacMediaWorld {
   images: List<MegaRacImage>
   cd: MegaRacCdRow
   ready_after: Second
+  withdraw_at: Second?
+  withdraw_after_ready: Second?
 }
 
 fn megarac_cleared_cd() -> MegaRacCdRow {
@@ -66,11 +68,11 @@ fn megarac_session_by_jar(world: MegaRacMediaWorld, cookie_jar: String) -> Bool 
 }
 
 fn megarac_with_sessions(world: MegaRacMediaWorld, sessions: List<MegaRacSession>, next_session: Int) -> MegaRacMediaWorld {
-  MegaRacMediaWorld { sessions: sessions, next_session: next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after }
+  MegaRacMediaWorld { sessions: sessions, next_session: next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready }
 }
 
 fn megarac_with_cd(world: MegaRacMediaWorld, cd: MegaRacCdRow) -> MegaRacMediaWorld {
-  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: cd, ready_after: world.ready_after }
+  MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: cd, ready_after: world.ready_after, withdraw_at: world.withdraw_at, withdraw_after_ready: world.withdraw_after_ready }
 }
 
 type MegaRacOpened {
@@ -127,12 +129,37 @@ fn megarac_stop_media(world: MegaRacMediaWorld) -> MegaRacMediaWorld {
   megarac_with_cd(world: world, cd: megarac_cleared_cd())
 }
 
+// A PRESENTATION CAN BE LOST AFTER IT WAS READY: withdraw_at, when set, is the instant the controller
+// drops the presented CD on its own (the NFS export going away, the firmware's retry giving up), after
+// which the row reads cleared. The production code re-observes the presentation before the handoff for
+// exactly this.
 fn megarac_media_advance(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaWorld {
+  let readied = megarac_media_ready(world: world, now: now)
+  match readied.withdraw_at {
+    Absent => readied
+    Present { value: at } =>
+      if second_count(s: at) <= second_count(s: now) {
+        MegaRacMediaWorld { sessions: readied.sessions, next_session: readied.next_session, share: readied.share, mount_cd: readied.mount_cd, cd_error_code: readied.cd_error_code, images: readied.images, cd: megarac_cleared_cd(), ready_after: readied.ready_after, withdraw_at: none, withdraw_after_ready: readied.withdraw_after_ready }
+      } else { readied }
+  }
+}
+
+fn megarac_media_ready(world: MegaRacMediaWorld, now: Second) -> MegaRacMediaWorld {
   match world.cd.ready_at {
     Absent => world
     Present { value: at } =>
       if second_count(s: at) <= second_count(s: now) {
-        megarac_with_cd(world: world, cd: MegaRacCdRow { image_name: world.cd.image_name, redirection_status: 1, media_index: world.cd.media_index, session_index: 0, ready_at: none })
+        megarac_withdrawal_armed(world: megarac_with_cd(world: world, cd: MegaRacCdRow { image_name: world.cd.image_name, redirection_status: 1, media_index: world.cd.media_index, session_index: 0, ready_at: none }), ready: at)
       } else { world }
+  }
+}
+
+// A scenario may ask for the presentation to be lost a fixed interval after it became ready; the
+// instant is armed when readiness arrives, so the loss follows the route rather than a guessed clock.
+fn megarac_withdrawal_armed(world: MegaRacMediaWorld, ready: Second) -> MegaRacMediaWorld {
+  match world.withdraw_after_ready {
+    Absent => world
+    Present { value: after } =>
+      MegaRacMediaWorld { sessions: world.sessions, next_session: world.next_session, share: world.share, mount_cd: world.mount_cd, cd_error_code: world.cd_error_code, images: world.images, cd: world.cd, ready_after: world.ready_after, withdraw_at: Present { value: second(count: second_count(s: ready) + second_count(s: after)) }, withdraw_after_ready: none }
   }
 }

@@ -26,11 +26,14 @@ type BmcBootOverride
 // An event the world undergoes on its own, independent of any request. AC loss is grounded in the
 // Mt. Collins SEL (run 36335369059, mtcollins1-boot-diagnostics.txt sha256
 // eda19cde2e60d90d3d04946273e615eb5bf774496b9907e03d3bc15dbedc2c1c: `Power Unit ChassisPwrStatus | AC lost`).
+// A dropped SOL session is the controller ending the serial session on its own, which the 2026-09-27
+// incident (gunbc#12423) recorded as a loss mid-boot while the management interface kept answering.
 // A power restore is the second half of a power cycle: the controller drops power, and after the
 // scenario's off interval brings it back, so a read taken inside the interval sees it off.
 type BmcEvent
   = BmcAcPowerLost
   | BmcPowerRestored
+  | BmcSolSessionDropped
 
 type BmcScheduledEvent {
   at: Second
@@ -152,6 +155,7 @@ fn bmc_apply_event(world: BmcWorld, event: BmcEvent, at: Second) -> BmcWorld {
   match event {
     BmcAcPowerLost => bmc_with_power(world: world, power: BmcPowerOff)
     BmcPowerRestored => bmc_host_boots(world: world, now: at)
+    BmcSolSessionDropped => bmc_with_sol_session(world: world, open: false)
   }
 }
 

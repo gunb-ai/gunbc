@@ -231,8 +231,21 @@ fn concat_text(lines: List<TimedConsoleLine>) -> String {
   join(map(lines, l => concat(l.text, "\n")), "")
 }
 
+// A COLLECTOR LIVES ONLY WHILE ITS SESSION DOES. When the controller's SOL session ends -- on its own
+// or by a deactivate -- the `ipmitool sol activate` client loses its session and exits, so its /proc
+// entry disappears; its pid file stays, since nothing in the realization removes it.
+fn collectors_follow_session(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
+  if w.bmc.sol_session_open { w } else {
+    let fs = fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) {
+      ModeledFilesystem { directories: acc.directories, files: filter(acc.files, f => f.path != proc_cmdline_path(pid: p.pid)) }
+    })
+    with_worker(w: with_fs(w: w, fs: fs), worker: ModeledWorker { next_pid: w.worker.next_pid, processes: map(w.worker.processes, p => ModeledProcess { pid: p.pid, cmdline: p.cmdline, capture_path: p.capture_path, alive: false }), uptime_at_origin: w.worker.uptime_at_origin })
+  }
+}
+
 fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
-  console_advance(w: with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now)), now: now)
+  let stepped = with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now))
+  console_advance(w: collectors_follow_session(w: stepped), now: now)
 }
 
 data sol_hold_activate_held_operation: OperationRef = OperationRef {
