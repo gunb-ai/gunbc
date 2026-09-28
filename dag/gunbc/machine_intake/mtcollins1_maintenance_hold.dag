@@ -16,6 +16,10 @@ import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import gunbc.build_cache_instance { ProcessIdentity, process_identity_eq }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.tools.gnu_coreutils { readlink_command }
 import extdeps.linux.proc_pid_stat {
   proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable,
   proc_pid_stat_pid, PidObserved, PidUnparseable,
@@ -75,28 +79,36 @@ data mtcollins1_unit_hold_store_host: NonEmptyStr = operator_host_srv1 as NonEmp
 // worker killed while holding the unit left a hold nobody could ever show to be dead, and every later
 // attempt refused on it. The boot's owner therefore carries the holding process's identity -- boot id,
 // pid and start time, gunbc.build_cache_instance ProcessIdentity, the triple that survives pid reuse
-// and reboots -- and a successor recovers the slot only after OBSERVING that process gone. An operator
+// and reboots -- and the PID NAMESPACE it was read in (review 72326): a pid means something only in
+// its namespace, and boot_id is shared by every namespace on a host, so a successor in another
+// namespace would find NotFound for a holder that is alive. A successor recovers the slot only after
+// OBSERVING that process gone FROM THE HOLDER'S OWN NAMESPACE; from any other it cannot look. An operator
 // maintenance hold is deliberately not a process (it outlives the session that took it), so it is
 // never recovered; a host reset-return hold names no process yet, so it is never recovered either.
 type UnitHoldOwner
   = OperatorMaintenance { reason: NonEmptyStr }
-  | BootRun { run_id: NonEmptyStr, process: ProcessIdentity }
+  | BootRun { run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: NonEmptyStr }
   | HostResetReturn { attempt: NonEmptyStr }
 
 fn unit_hold_owner_tag(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: _ } => "operator-maintenance:"
-    BootRun { run_id: _, process: _ } => "mtcollins1-boot:"
+    BootRun { run_id: _, process: _, pid_namespace: _ } => "mtcollins1-boot:"
     HostResetReturn { attempt: _ } => "host-reset-return:"
   }
 }
 
 // THE PROCESS PART OF A BOOT OWNER, rendered after the run id and decoded back here and nowhere else:
-// `@boot=<boot_id>,pid=<pid>,start=<starttime ticks>`.
+// `@boot=<boot_id>,pid=<pid>,start=<starttime ticks>,pidns=<namespace link target>`.
 data unit_hold_process_marker: String = "@boot="
 
-fn unit_hold_process_text(p: ProcessIdentity) -> String {
-  join([unit_hold_process_marker, p.boot_id as String, ",pid=", to_string(p.pid), ",start=", p.start_time as String], "")
+fn unit_hold_process_text(p: ProcessIdentity, pid_namespace: NonEmptyStr) -> String {
+  join([unit_hold_process_marker, p.boot_id as String, ",pid=", to_string(p.pid), ",start=", p.start_time as String, ",pidns=", pid_namespace as String], "")
+}
+
+type UnitHoldHolderProcess {
+  process: ProcessIdentity
+  pid_namespace: NonEmptyStr
 }
 
 fn text_at(xs: List<String>, i: Int) -> String {
@@ -106,26 +118,28 @@ fn text_at(xs: List<String>, i: Int) -> String {
   }
 }
 
-fn unit_hold_process_decode(text: String) -> ProcessIdentity? {
+fn unit_hold_process_decode(text: String) -> UnitHoldHolderProcess? {
   let parts = split(s: text, delimiter: ",")
-  if count(parts) != 3 {
+  if count(parts) != 4 {
     none
   } else {
     let b = text_at(xs: parts, i: 0)
     let pid_text = text_at(xs: parts, i: 1)
     let start_text = text_at(xs: parts, i: 2)
-    if !starts_with(s: b, prefix: "boot=") || !starts_with(s: pid_text, prefix: "pid=") || !starts_with(s: start_text, prefix: "start=") {
+    let ns_text = text_at(xs: parts, i: 3)
+    if !starts_with(s: b, prefix: "boot=") || !starts_with(s: pid_text, prefix: "pid=") || !starts_with(s: start_text, prefix: "start=") || !starts_with(s: ns_text, prefix: "pidns=") {
       none
     } else {
       let boot = substring(s: b, start: 5, end: string_length(b))
       let start = substring(s: start_text, start: 6, end: string_length(start_text))
+      let ns = substring(s: ns_text, start: 6, end: string_length(ns_text))
       match parse_int(s: substring(s: pid_text, start: 4, end: string_length(pid_text))) {
         Absent => none
         Present { value: n } =>
           match checked_int_to_nat(n: n) {
             Absent => none
             Present { value: pid } =>
-              if boot == "" || start == "" { none } else { Present { value: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: start as NonEmptyStr } } }
+              if boot == "" || start == "" || ns == "" { none } else { Present { value: UnitHoldHolderProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: start as NonEmptyStr }, pid_namespace: ns as NonEmptyStr } } }
           }
       }
     }
@@ -135,7 +149,7 @@ fn unit_hold_process_decode(text: String) -> ProcessIdentity? {
 fn unit_hold_owner_detail(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: r } => r as String
-    BootRun { run_id: r, process: p } => concat(r as String, unit_hold_process_text(p: p))
+    BootRun { run_id: r, process: p, pid_namespace: n } => concat(r as String, unit_hold_process_text(p: p, pid_namespace: n))
     HostResetReturn { attempt: a } => a as String
   }
 }
@@ -147,7 +161,7 @@ fn unit_hold_owner_ref(o: UnitHoldOwner) -> DurableHoldOwnerRef {
 fn unit_hold_owner_label(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: r } => concat("operator maintenance: ", r as String)
-    BootRun { run_id: r, process: p } => join(["the mtcollins1 boot run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
+    BootRun { run_id: r, process: p, pid_namespace: _ } => join(["the mtcollins1 boot run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
     HostResetReturn { attempt: a } => concat("host reset-return attempt ", a as String)
   }
 }
@@ -166,7 +180,7 @@ fn unit_hold_owner_detail_after(raw: String, tag: String) -> NonEmptyStr? {
 fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
   let raw = owner as String
   let op = unit_hold_owner_tag(o: OperatorMaintenance { reason: "x" as NonEmptyStr })
-  let boot = unit_hold_owner_tag(o: BootRun { run_id: "x" as NonEmptyStr, process: ProcessIdentity { boot_id: "x" as NonEmptyStr, pid: 1, start_time: "x" as NonEmptyStr } })
+  let boot = unit_hold_owner_tag(o: BootRun { run_id: "x" as NonEmptyStr, process: ProcessIdentity { boot_id: "x" as NonEmptyStr, pid: 1, start_time: "x" as NonEmptyStr }, pid_namespace: "x" as NonEmptyStr })
   let reset = unit_hold_owner_tag(o: HostResetReturn { attempt: "x" as NonEmptyStr })
   if starts_with(s: raw, prefix: op) {
     match unit_hold_owner_detail_after(raw: raw, tag: op) { Present { value: d } => UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
@@ -179,7 +193,7 @@ fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
           UnitHoldOwnerUnrecognized { raw: raw }
         } else {
           match unit_hold_process_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
-            Present { value: p } => UnitHoldOwnerDecoded { owner: BootRun { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: p } }
+            Present { value: h } => UnitHoldOwnerDecoded { owner: BootRun { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
             Absent => UnitHoldOwnerUnrecognized { raw: raw }
           }
         }
@@ -203,8 +217,8 @@ fn operator_maintenance_owner(reason: NonEmptyStr) -> DurableHoldOwnerRef {
   unit_hold_owner_ref(o: OperatorMaintenance { reason: reason })
 }
 
-fn boot_run_owner(run_id: NonEmptyStr, process: ProcessIdentity) -> DurableHoldOwnerRef {
-  unit_hold_owner_ref(o: BootRun { run_id: run_id, process: process })
+fn boot_run_owner(run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: NonEmptyStr) -> DurableHoldOwnerRef {
+  unit_hold_owner_ref(o: BootRun { run_id: run_id, process: process, pid_namespace: pid_namespace })
 }
 
 // ── THE PROOF: MINTED ONLY INSIDE THE LIVE ACQUIRE'S FileHoldAcquired ARM ──────────────────────
@@ -260,6 +274,25 @@ data proc_boot_id_path: String = "/proc/sys/kernel/random/boot_id"
 
 data proc_self_stat_path: String = "/proc/self/stat"
 
+// THE READER'S PID NAMESPACE (namespaces(7), pid_namespaces(7)): /proc/self/ns/pid is a symbolic link
+// whose target, `pid:[<inode>]`, identifies the namespace; two processes share a pid namespace exactly
+// when the targets are equal. It is read with readlink(1), because the link is not a readable file.
+data proc_self_pid_namespace_path: String = "/proc/self/ns/pid"
+
+type PidNamespaceReading
+  = PidNamespaceRead { namespace: NonEmptyStr }
+  | PidNamespaceUnread { cause: NonEmptyStr }
+
+fn own_pid_namespace() -> PidNamespaceReading {
+  match run_shell_command_capture(command: readlink_command(path: proc_self_pid_namespace_path), transport: LocalExec) {
+    ProcessOutputPresent { text: t } =>
+      if trim(s: t) == "" { PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr } }
+      else { PidNamespaceRead { namespace: trim(s: t) as NonEmptyStr } }
+    ProcessOutputAbsent => PidNamespaceUnread { cause: "readlink /proc/self/ns/pid printed nothing" as NonEmptyStr }
+    ProcessRefused { exit_code: c, stderr: e } => PidNamespaceUnread { cause: join(["readlink /proc/self/ns/pid exited ", to_string(c), ": ", e], "") as NonEmptyStr }
+  }
+}
+
 fn exact_read_of(path: String) -> FilesystemExactRead {
   let read = Filesystem.Read(path: path)
   filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind)
@@ -286,7 +319,21 @@ fn start_time_text(stat: String) -> String? {
   }
 }
 
-fn holder_process_liveness(p: ProcessIdentity) -> DurableHoldHolderLiveness {
+// THE NAMESPACE GATE COMES FIRST: only a reader in the holder's own pid namespace can conclude
+// anything from a pid, so a reader elsewhere -- or one that cannot name its namespace -- cannot look.
+fn holder_process_liveness(p: ProcessIdentity, pid_namespace: NonEmptyStr) -> DurableHoldHolderLiveness {
+  match own_pid_namespace() {
+    PidNamespaceUnread { cause: c } => HolderLivenessUnobservable { cause: c }
+    PidNamespaceRead { namespace: mine } =>
+      if (mine as String) != (pid_namespace as String) {
+        HolderLivenessUnobservable { cause: join(["the holder's pid namespace is ", pid_namespace as String, " and this reader's is ", mine as String, "; its pid cannot be looked up from here"], "") as NonEmptyStr }
+      } else {
+        holder_process_liveness_in_namespace(p: p)
+      }
+  }
+}
+
+fn holder_process_liveness_in_namespace(p: ProcessIdentity) -> DurableHoldHolderLiveness {
   match exact_text(path: proc_boot_id_path) {
     ExactTextAbsent => HolderLivenessUnobservable { cause: concat(proc_boot_id_path, " is absent on this host") as NonEmptyStr }
     ExactTextUnread { cause: c } => HolderLivenessUnobservable { cause: c }
@@ -321,7 +368,7 @@ fn holder_process_liveness(p: ProcessIdentity) -> DurableHoldHolderLiveness {
 // boot id, and pid and starttime from ONE read of /proc/self/stat. A boot that cannot name itself does
 // not take the unit -- a hold it could never be shown dead in is the lockout this replaces.
 type SelfProcessIdentity
-  = SelfIdentified { process: ProcessIdentity }
+  = SelfIdentified { process: ProcessIdentity, pid_namespace: NonEmptyStr }
   | SelfUnidentified { cause: NonEmptyStr }
 
 fn self_process_identity() -> SelfProcessIdentity {
@@ -344,7 +391,12 @@ fn self_process_identity() -> SelfProcessIdentity {
                     Absent => SelfUnidentified { cause: "/proc/self/stat pid is not a natural number" as NonEmptyStr }
                     Present { value: pid } =>
                       if boot == "" { SelfUnidentified { cause: concat(proc_boot_id_path, " was empty") as NonEmptyStr } }
-                      else { SelfIdentified { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: st as NonEmptyStr } } }
+                      else {
+                        match own_pid_namespace() {
+                          PidNamespaceUnread { cause: c } => SelfUnidentified { cause: c }
+                          PidNamespaceRead { namespace: n } => SelfIdentified { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: st as NonEmptyStr }, pid_namespace: n }
+                        }
+                      }
                   }
               }
           }
@@ -360,7 +412,7 @@ fn self_process_identity() -> SelfProcessIdentity {
 // in between is not the one freed. Age is never an input.
 fn holder_report(holder: DurableHoldOwnerRef, generation: CasGeneration) -> DurableHoldHolderReport {
   let liveness = match decode_unit_hold_owner(owner: holder) {
-    UnitHoldOwnerDecoded { owner: BootRun { run_id: _, process: p } } => holder_process_liveness(p: p)
+    UnitHoldOwnerDecoded { owner: BootRun { run_id: _, process: p, pid_namespace: n } } => holder_process_liveness(p: p, pid_namespace: n)
     UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
       HolderLivenessUnobservable { cause: "an operator maintenance hold is not bound to a process; only the operator releases it" as NonEmptyStr }
     UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: _ } } =>
@@ -460,8 +512,8 @@ fn mtcollins1_boot_acquire_unit_hold(run_id: NonEmptyStr) -> UnitHoldAcquisition
   match self_process_identity() {
     SelfUnidentified { cause: c } =>
       UnitHoldRefused { reason: join(["this boot cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
-    SelfIdentified { process: p } =>
-      unit_hold_acquire(root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: run_id, process: p))
+    SelfIdentified { process: p, pid_namespace: n } =>
+      unit_hold_acquire(root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: run_id, process: p, pid_namespace: n))
   }
 }
 
@@ -535,8 +587,8 @@ fn mtcollins1_maintenance_hold_release() -> ProcessExit {
       match decode_unit_hold_owner(owner: o) {
         UnitHoldOwnerUnrecognized { raw: r } =>
           exit_failure(reason: concat("mtcollins1 maintenance hold: held by an owner this module did not write, so it is not released from here: ", r))
-        UnitHoldOwnerDecoded { owner: BootRun { run_id: r, process: p } } =>
-          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: BootRun { run_id: r, process: p }), ", not by maintenance; that run frees its own hold, and the next boot recovers it if that run is observed dead")))
+        UnitHoldOwnerDecoded { owner: BootRun { run_id: r, process: p, pid_namespace: n } } =>
+          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: BootRun { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next boot recovers it if that run is observed dead")))
         UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: a } } =>
           exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: HostResetReturn { attempt: a }), ", not by maintenance; that run frees its own hold")))
         UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>

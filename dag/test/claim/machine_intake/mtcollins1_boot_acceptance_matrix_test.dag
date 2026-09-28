@@ -123,6 +123,7 @@ fn healthy_media() -> MegaRacMediaWorld {
 
 // The worker host's boot, and the boot worker's own process (pid, start tick) as procfs shows it.
 data worker_boot_id: String = "73c8153e-0e0e-4480-a36c-bc7560c50e8b"
+data worker_pid_namespace: String = "pid:[4026531836]"
 data first_worker_pid: Int = 3100
 data first_worker_start: Int = 5000
 
@@ -133,7 +134,7 @@ fn worker_filesystem() -> ModeledFilesystem {
       files: [ModeledFile { path: credential_path, content: "secret" }],
       refused_reads: [],
     },
-    boot_id: worker_boot_id, pid: first_worker_pid, start_ticks: first_worker_start,
+    boot_id: worker_boot_id, pid_namespace: worker_pid_namespace, pid: first_worker_pid, start_ticks: first_worker_start,
   )
 }
 
@@ -281,7 +282,7 @@ test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool 
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(pid: 2900, start_ticks: 100)))
   let prior = evaluate_in_witness_frame(
     frame: matrix_frame(world: other_running),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr })) }
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {
@@ -500,8 +501,12 @@ fn stopped_after_start_media(realization: OperationRealization<MtCollins1BootWor
 // THE NEXT RUN IS A NEW WORKER PROCESS on the same host: a new run id, and its own pid and start tick
 // in procfs. The first worker's /proc entry is left as the interruption left it.
 fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld {
+  as_another_run_in(w: w, run_id: run_id, pid_namespace: worker_pid_namespace)
+}
+
+fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
   let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
-  let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
+  let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
   MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
 }
 
@@ -512,9 +517,13 @@ fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld
 // The two controls beside it differ only in what procfs says of the holder: still running, and a stat
 // read the host refuses. Neither is ever recovered, and neither writes to the controller.
 fn resumed_after(realization: OperationRealization<MtCollins1BootWorld>, refuse_holder_stat: Bool) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld>? {
+  resumed_in(realization: realization, refuse_holder_stat: refuse_holder_stat, pid_namespace: worker_pid_namespace)
+}
+
+fn resumed_in(realization: OperationRealization<MtCollins1BootWorld>, refuse_holder_stat: Bool, pid_namespace: String) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld>? {
   match evaluate_in_witness_frame(frame: matrix_frame_over(realization: realization), subject: fn(_scope) { mtcollins1_boot_wet_on_srv1() }) {
     WitnessInterrupted { at, state, now: interrupted_clock } => {
-      let another = as_another_run(w: state, run_id: "4243")
+      let another = as_another_run_in(w: state, run_id: "4243", pid_namespace: pid_namespace)
       let next = if refuse_holder_stat { with_fs(w: another, fs: fs_refusing_reads_of(fs: another.fs, path: proc_stat_path(pid: first_worker_pid))) } else { another }
       if at.invocation.at.operation != "StartMedia" { none } else {
         Present { value: evaluate_in_witness_frame(
@@ -553,6 +562,19 @@ test fn an_unobservable_holder_is_refused_not_recovered() -> Bool {
   match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: true) {
     Present { value: WitnessReturned { value, route } } =>
       string_contains(s: outcome_reason(a: value), pattern: "whose liveness could not be observed")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+    _ => false
+  }
+}
+
+// A SUCCESSOR IN ANOTHER PID NAMESPACE CANNOT LOOK (review 72326). The holder is dead and its
+// /proc entry gone, exactly as in the recovery case above; the only difference is that the next run
+// reads a different /proc/self/ns/pid. From there a missing pid proves nothing, so the hold is
+// refused, never recovered, and nothing is written. The red is recovery across namespaces.
+test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() -> Bool {
+  match resumed_in(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false, pid_namespace: "pid:[4026532999]") {
+    Present { value: WitnessReturned { value, route } } =>
+      string_contains(s: outcome_reason(a: value), pattern: "its pid cannot be looked up from here")
         && count(filter(route, r => is_controller_write(r: r))) == 0
     _ => false
   }

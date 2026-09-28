@@ -98,8 +98,8 @@ fn occupied_by(o: gunbc.durable_exclusive_hold_file_store.FileHoldAcquireOutcome
 // is the production fold's reading of what the model's filesystem holds, and the route shows the
 // second contender never wrote.
 test fn two_contenders_for_one_unit_get_one_hold() -> Bool {
-  let first_owner = boot_run_owner(run_id: "run-a" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 10, start_time: "1" as NonEmptyStr })
-  let second_owner = boot_run_owner(run_id: "run-b" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 11, start_time: "2" as NonEmptyStr })
+  let first_owner = boot_run_owner(run_id: "run-a" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 10, start_time: "1" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  let second_owner = boot_run_owner(run_id: "run-b" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 11, start_time: "2" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
   let result = evaluate_in_witness_frame(
     frame: filesystem_frame(initial: empty_hold_store()),
     subject: fn(_scope) {

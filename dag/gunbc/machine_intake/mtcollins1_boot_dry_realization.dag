@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_dry_realization
 
+import extdeps.tools.gnu_coreutils { readlink_command }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
 import v2.std.operation_argv { OperationRef }
@@ -128,7 +129,10 @@ fn proc_cmdline_path(pid: Int) -> String {
 // read from these (gunbc.machine_intake_mtcollins1_maintenance_hold self_process_identity) and a
 // successor observes the holder through them (holder_process_liveness), so a worker that starts writes
 // both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
-// directory. Only the fields a reader uses are meaningful; the others are zeros.
+// directory. Only the fields a reader uses are meaningful; the others are zeros. The worker's pid
+// namespace is the target of the /proc/self/ns/pid link, which the model stores as that path's text
+// and answers to `readlink /proc/self/ns/pid` (readlink_answer); the kernel refuses to read the link
+// itself, and production only ever readlinks it.
 data proc_boot_id_file: String = "/proc/sys/kernel/random/boot_id"
 
 fn proc_stat_path(pid: Int) -> String {
@@ -139,9 +143,21 @@ fn proc_stat_line(pid: Int, start_ticks: Int) -> String {
   join([to_string(pid), " (gunbc) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", to_string(start_ticks), " 0 0\n"], "")
 }
 
-fn worker_process_started(fs: ModeledFilesystem, boot_id: String, pid: Int, start_ticks: Int) -> ModeledFilesystem {
+data proc_self_pid_namespace_link: String = "/proc/self/ns/pid"
+
+fn worker_process_started(fs: ModeledFilesystem, boot_id: String, pid_namespace: String, pid: Int, start_ticks: Int) -> ModeledFilesystem {
   let line = proc_stat_line(pid: pid, start_ticks: start_ticks)
-  fs_with_file(fs: fs_with_file(fs: fs_with_file(fs: fs, path: proc_boot_id_file, content: concat(boot_id, "\n")), path: "/proc/self/stat", content: line), path: proc_stat_path(pid: pid), content: line)
+  let with_ns = fs_with_file(fs: fs, path: proc_self_pid_namespace_link, content: pid_namespace)
+  fs_with_file(fs: fs_with_file(fs: fs_with_file(fs: with_ns, path: proc_boot_id_file, content: concat(boot_id, "\n")), path: "/proc/self/stat", content: line), path: proc_stat_path(pid: pid), content: line)
+}
+
+// readlink(1): the link's target and a newline on stdout, exit 0; for a missing link, a diagnostic
+// on stderr and exit 1.
+fn readlink_answer(w: MtCollins1BootWorld, path: String) -> ShellExchangeObservation {
+  match fs_file(fs: w.fs, path: path) {
+    Present { value: f } => ShellProcessExited { exit_code: 0, stdout: concat(f.content, "\n"), stderr: "" }
+    Absent => ShellProcessExited { exit_code: 1, stdout: "", stderr: "" }
+  }
 }
 
 fn worker_process_killed(fs: ModeledFilesystem, pid: Int) -> ModeledFilesystem {
@@ -302,6 +318,10 @@ fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1Boo
     ModeledInvocation {
       words: local_command_words(command: env_prefixed_command(bindings: [EnvSet { name: "SSH_AUTH_SOCK", value: initial.agent.socket }], command: ssh_add_list_identities_command())),
       answer: fn(w) { agent_listing(agent: w.agent) },
+    },
+    ModeledInvocation {
+      words: local_command_words(command: readlink_command(path: proc_self_pid_namespace_link)),
+      answer: fn(w) { readlink_answer(w: w, path: proc_self_pid_namespace_link) },
     },
   ])
   let spanning = [
