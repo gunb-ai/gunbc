@@ -4,11 +4,8 @@ module tools.generated_artifact_gate
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_gate { gate_receipt_failure_detail }
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  committed_generated_artifacts,
-  artifact_path
-}
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
+import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.generated_artifact_emit {
   ArtifactGenerated,
   ArtifactGenerationRefused,
@@ -213,7 +210,7 @@ fn main_wet_one(path: String) -> ProcessExit {
       reason: concat(
         concat("GeneratedArtifactPathUnrostered: no committed generated artifact is declared at ", path),
         concat(
-          concat(" -- gunbc.generated_artifact committed_generated_artifacts carries ", length(xs: committed_generated_artifacts()) as String),
+          concat(" -- gunbc.generated_artifact_registry committed_generated_artifacts carries ", length(xs: committed_generated_artifacts()) as String),
           " row(s), and this path is not one of them; regenerating nothing and reporting success would report a repair that did not happen"
         )
       )

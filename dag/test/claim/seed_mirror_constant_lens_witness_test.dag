@@ -7,10 +7,8 @@ import gunbc.typed_module_cache_capacity {
   typed_module_cache_entries_floor,
   typed_module_cache_entries_ceiling,
 }
-import gunbc.runner_slot_allocation {
-  gunbc_floor_minimum_viable_armed_budget,
-  gunbc_runner_slot_desired,
-}
+import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.memory_stall_refusal {
   memory_stall_major_fault_rate_threshold,
   memory_stall_verdict_window_minimum_wall,

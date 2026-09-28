@@ -1,10 +1,7 @@
 module test.claim.gitattributes_emit_witness
 
-import gunbc.generated_artifact {
-  GitattributesArtifact,
-  committed_generated_artifact_paths,
-  artifact_path
-}
+import gunbc.generated_artifact { GitattributesArtifact, artifact_path }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.gitattributes_emit {
   GitattributesGenerated,
   GitattributesGenerationRefused,
