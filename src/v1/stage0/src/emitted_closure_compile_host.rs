@@ -863,6 +863,18 @@ pub(crate) struct ProbeCargoInvocation {
     pub rustflags: String,
     pub compiler_path: String,
     pub rustc_identity: String,
+    /// The cargo executable the spawn ran, by absolute path inside the resolved toolchain, and its
+    /// own `-Vv` identity -- never `$CARGO` or a bare `cargo` resolved again at spawn time.
+    pub cargo_path: String,
+    pub cargo_identity: String,
+    /// The names the constructed environment carried, in byte order, and a SHA-256 over the
+    /// length-framed names and values: the spawn saw these and nothing else.
+    pub environment_names: Vec<String>,
+    pub environment_digest: String,
+    /// Every cargo configuration file cargo's discovery would read for this crate, as
+    /// `<path> <sha256>`. Recorded rather than neutralised: cargo has no switch to disable
+    /// discovery, and the probe root sits under directories this host does not own.
+    pub cargo_configuration: Vec<String>,
 }
 
 /// Mirror of `gunbc.repo_self_build` `repo_self_warning_denial_rustflags`: the lint arguments
@@ -892,10 +904,11 @@ const RUSTC_ENV: &str = "RUSTC";
 const RUSTC_WRAPPER_ENV: &str = "RUSTC_WRAPPER";
 const RUSTC_WORKSPACE_WRAPPER_ENV: &str = "RUSTC_WORKSPACE_WRAPPER";
 
-/// The ONE compiler executable the probe build is bound to: `RUSTC` when the caller's
-/// environment names one (cargo's own precedence), else the first `rustc` on PATH — resolved
-/// to an absolute path HERE so the identity probe and the build cannot resolve differently.
-/// No executable is a typed refusal, never a bare `"rustc"` handed to cargo to resolve again.
+/// The ENTRY compiler the probe build's toolchain is selected from: `RUSTC` when the caller's
+/// environment names one (cargo's own precedence), else the first `rustc` on PATH -- resolved to an
+/// absolute path here. It is usually a rustup proxy; `resolve_probe_toolchain` asks it which
+/// toolchain it selects and binds the build to that toolchain's own executables. No executable is a
+/// typed refusal, never a bare `"rustc"` handed to cargo to resolve again.
 fn resolve_probe_compiler() -> Result<PathBuf, String> {
     if let Some(named) = std::env::var_os(RUSTC_ENV) {
         let path = PathBuf::from(&named);
@@ -917,28 +930,112 @@ fn resolve_probe_compiler() -> Result<PathBuf, String> {
     Err("ProbeCompilerUnresolved: no RUSTC in the environment and no rustc on PATH".to_string())
 }
 
-/// rustc's self-reported identity in its keyed `--version --verbose` form
-/// (`extdeps.rust.rustc` `rustc_version_verbose`): the release line plus every `key: value`
-/// line, joined by `; `. Asked of THE BOUND EXECUTABLE, from THE CRATE'S OWN DIRECTORY — a
-/// rustup proxy selects its toolchain per working directory, and cargo runs the compiler from
-/// the package dir, so a probe from elsewhere could name a different toolchain than the build
-/// used. Unreadable is a refusal, not an empty identity.
-fn probe_compiler_identity(compiler: &Path, crate_dir: &Path) -> Result<String, String> {
-    let output = std::process::Command::new(compiler)
-        .arg("--version")
-        .arg("--verbose")
+/// THE ENVIRONMENT NAMES A PROBE BUILD MAY SEE. Seed copy of `v2.extdeps.languages.rust`
+/// `rust_host_build_environment` (`v2.std.host_transport` `host_process_location_names` plus
+/// `CARGO_HOME`, `RUSTUP_HOME`, `RUSTUP_TOOLCHAIN`), the same row the emit-host transport admits by
+/// exact name. Nothing is admitted by prefix, so an ambient `CARGO_PROFILE_*`, `CARGO_BUILD_*`,
+/// `CARGO_INCREMENTAL`, `RUSTC_BOOTSTRAP`, `CC`/`CFLAGS` (read by build scripts through the cc
+/// crate) or any flag channel cannot reach the build and change its bytes under an unchanged key.
+pub(crate) const RUST_HOST_BUILD_ENVIRONMENT_NAMES: [&str; 6] = [
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "CARGO_HOME",
+    "RUSTUP_HOME",
+    "RUSTUP_TOOLCHAIN",
+];
+
+/// The environment a probe build runs under, CONSTRUCTED from the admitted names rather than
+/// inherited: each admitted name that is set, in byte order, with a SHA-256 over the
+/// length-framed names and values so a changed value changes the digest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProbeEnvironment {
+    pub entries: Vec<(String, std::ffi::OsString)>,
+    pub digest: String,
+}
+
+fn probe_environment_from(read: impl Fn(&str) -> Option<std::ffi::OsString>) -> ProbeEnvironment {
+    use sha2::Digest;
+    use std::os::unix::ffi::OsStrExt;
+    let mut names: Vec<&str> = RUST_HOST_BUILD_ENVIRONMENT_NAMES.to_vec();
+    names.sort_unstable();
+    let entries: Vec<(String, std::ffi::OsString)> = names
+        .into_iter()
+        .filter_map(|name| read(name).map(|value| (name.to_string(), value)))
+        .collect();
+    let mut hasher = sha2::Sha256::new();
+    for (name, value) in &entries {
+        hasher.update((name.len() as u64).to_be_bytes());
+        hasher.update(name.as_bytes());
+        hasher.update((value.as_bytes().len() as u64).to_be_bytes());
+        hasher.update(value.as_bytes());
+    }
+    ProbeEnvironment {
+        entries,
+        digest: format!("{:x}", hasher.finalize()),
+    }
+}
+
+fn constructed_probe_environment() -> ProbeEnvironment {
+    probe_environment_from(|name| std::env::var_os(name))
+}
+
+/// A FILE'S BYTES FED INTO A DIGEST THROUGH A FIXED BUFFER, never held whole. One home for the
+/// streamed identity: the native lane runner's executable, seed and closure identities and this
+/// host's configuration digests all read through it.
+pub(crate) fn sha256_feed_file(hasher: &mut sha2::Sha256, path: &Path) -> Result<(), String> {
+    use sha2::Digest;
+    use std::io::Read;
+    const READ_BUFFER_BYTES: usize = 64 * 1024;
+    let unreadable = |e: std::io::Error| {
+        format!(
+            "could not read {} for its content identity: {e}",
+            path.display()
+        )
+    };
+    let mut file = std::fs::File::open(path).map_err(unreadable)?;
+    let mut buffer = vec![0u8; READ_BUFFER_BYTES];
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => return Ok(()),
+            Ok(n) => hasher.update(&buffer[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(unreadable(e)),
+        }
+    }
+}
+
+pub(crate) fn sha256_file_streamed(path: &Path) -> Result<String, String> {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    sha256_feed_file(&mut hasher, path)?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// A tool's self-reported identity: its output lines trimmed, blanks dropped, joined by `; `.
+/// Asked of THE BOUND EXECUTABLE, from THE CRATE'S OWN DIRECTORY, UNDER THE BUILD'S OWN
+/// ENVIRONMENT -- a rustup proxy selects its toolchain per working directory and per
+/// `RUSTUP_TOOLCHAIN`, so an identity probed anywhere else could name a toolchain the build did not
+/// use. Unreadable is a refusal carrying `refusal`, never an empty identity.
+fn probe_tool_identity(
+    tool: &Path,
+    args: &[&str],
+    crate_dir: &Path,
+    environment: &ProbeEnvironment,
+    refusal: &str,
+) -> Result<String, String> {
+    let output = std::process::Command::new(tool)
+        .args(args)
         .current_dir(crate_dir)
+        .env_clear()
+        .envs(environment.entries.iter().map(|(n, v)| (n, v)))
         .output()
-        .map_err(|e| {
-            format!(
-                "RustcIdentityUnreadable: spawning {}: {e}",
-                compiler.display()
-            )
-        })?;
+        .map_err(|e| format!("{refusal}: spawning {}: {e}", tool.display()))?;
     if !output.status.success() {
         return Err(format!(
-            "RustcIdentityUnreadable: {} --version --verbose exited {}",
-            compiler.display(),
+            "{refusal}: {} {} exited {}",
+            tool.display(),
+            args.join(" "),
             output.status
         ));
     }
@@ -951,25 +1048,142 @@ fn probe_compiler_identity(compiler: &Path, crate_dir: &Path) -> Result<String, 
         .join("; ");
     if identity.is_empty() {
         return Err(format!(
-            "RustcIdentityUnreadable: {} --version --verbose printed nothing",
-            compiler.display()
+            "{refusal}: {} {} printed nothing",
+            tool.display(),
+            args.join(" ")
         ));
     }
     Ok(identity)
 }
 
-/// The `Command` and its receipt description, from one construction, with `compiler` and its
-/// `identity` supplied by the caller that resolved them (so the pure env shape is testable
-/// without a toolchain, and the resolving arm is testable separately). Every channel named
-/// above is SET on the spawn — never inherited, never left to config: an ambient value would
-/// make the verdict a fact about the runner rather than the crate.
+/// THE TOOLCHAIN A PROBE BUILD IS BOUND TO: the concrete `rustc` and `cargo` inside the sysroot the
+/// entry compiler selects, and each one's self-reported identity. The build spawns this cargo and
+/// binds `RUSTC` to this rustc, so the receipt's identities are of the executables that ran rather
+/// than of a proxy that chose them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProbeToolchain {
+    pub rustc: PathBuf,
+    pub cargo: PathBuf,
+    pub rustc_identity: String,
+    pub cargo_identity: String,
+}
+
+fn resolve_probe_toolchain(
+    crate_dir: &Path,
+    environment: &ProbeEnvironment,
+) -> Result<ProbeToolchain, String> {
+    let entry = resolve_probe_compiler()?;
+    let sysroot = probe_tool_identity(
+        &entry,
+        &["--print", "sysroot"],
+        crate_dir,
+        environment,
+        "ProbeToolchainUnresolved",
+    )?;
+    let bin = PathBuf::from(&sysroot).join("bin");
+    let rustc = bin.join("rustc");
+    let cargo = bin.join("cargo");
+    for tool in [&rustc, &cargo] {
+        if !tool.is_file() {
+            return Err(format!(
+                "ProbeToolchainUnresolved: {} selected sysroot {sysroot}, which has no {}",
+                entry.display(),
+                tool.display()
+            ));
+        }
+    }
+    let rustc_identity = probe_tool_identity(
+        &rustc,
+        &["--version", "--verbose"],
+        crate_dir,
+        environment,
+        "RustcIdentityUnreadable",
+    )?;
+    let cargo_identity = probe_tool_identity(
+        &cargo,
+        &["-Vv"],
+        crate_dir,
+        environment,
+        "CargoIdentityUnreadable",
+    )?;
+    Ok(ProbeToolchain {
+        rustc,
+        cargo,
+        rustc_identity,
+        cargo_identity,
+    })
+}
+
+/// Every cargo configuration file cargo's discovery reads for `crate_dir`: `.cargo/config` and
+/// `.cargo/config.toml` in the crate directory and each ancestor, then `config` and `config.toml`
+/// in `CARGO_HOME` (else `$HOME/.cargo`), each as its path and streamed SHA-256. An absent file is
+/// not a reading; any other failure refuses, so an unreadable configuration is never skipped.
+fn cargo_configuration_observation(
+    environment: &ProbeEnvironment,
+    crate_dir: &Path,
+) -> Result<Vec<(PathBuf, String)>, String> {
+    let value = |name: &str| {
+        environment
+            .entries
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| PathBuf::from(v))
+    };
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for ancestor in crate_dir.ancestors() {
+        candidates.push(ancestor.join(".cargo").join("config"));
+        candidates.push(ancestor.join(".cargo").join("config.toml"));
+    }
+    if let Some(cargo_home) =
+        value("CARGO_HOME").or_else(|| value("HOME").map(|h| h.join(".cargo")))
+    {
+        candidates.push(cargo_home.join("config"));
+        candidates.push(cargo_home.join("config.toml"));
+    }
+    let mut seen: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    let mut observed = Vec::new();
+    for candidate in candidates {
+        if !seen.insert(candidate.clone()) {
+            continue;
+        }
+        match std::fs::metadata(&candidate) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(format!(
+                    "CargoConfigurationUnreadable: {}: {e}",
+                    candidate.display()
+                ))
+            }
+            Ok(meta) if !meta.is_file() => {
+                return Err(format!(
+                    "CargoConfigurationUnreadable: {} is not a file",
+                    candidate.display()
+                ))
+            }
+            Ok(_) => {
+                let digest = sha256_file_streamed(&candidate)
+                    .map_err(|cause| format!("CargoConfigurationUnreadable: {cause}"))?;
+                observed.push((candidate, digest));
+            }
+        }
+    }
+    Ok(observed)
+}
+
+/// The `Command` and its receipt description, from one construction, with the toolchain, the
+/// constructed environment and the observed configuration supplied by the caller that resolved them
+/// (so the pure shape is testable without a toolchain). THE ENVIRONMENT IS CLEARED AND REBUILT from
+/// the admitted names, then every channel named above is SET on the spawn -- never inherited, never
+/// left to config: an ambient value would make the verdict a fact about the runner rather than the
+/// crate.
 fn probe_cargo_command_bound(
     crate_dir: &Path,
     target_dir: &Path,
-    compiler: &Path,
-    identity: &str,
+    toolchain: &ProbeToolchain,
+    environment: &ProbeEnvironment,
+    cargo_configuration: &[(PathBuf, String)],
 ) -> (std::process::Command, ProbeCargoInvocation) {
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let cargo = toolchain.cargo.display().to_string();
     let manifest = crate_dir.join("Cargo.toml");
     // `--color never` BECAUSE THE ATTRIBUTION READS PLAIN TEXT. attributed_diagnostic keys on a
     // trimmed line that STARTS WITH `error`; a colored header is `ESC[1mESC[91merror[E0308]`, so
@@ -986,9 +1200,11 @@ fn probe_cargo_command_bound(
         "--manifest-path".to_string(),
         manifest.display().to_string(),
     ];
-    let mut command = std::process::Command::new(&cargo);
+    let mut command = std::process::Command::new(&toolchain.cargo);
     command
         .args(&argv[1..])
+        .env_clear()
+        .envs(environment.entries.iter().map(|(n, v)| (n, v)))
         .env(
             cargo_environment_variable_name(CargoEnvironmentVariable::CargoTargetDirEnv),
             target_dir,
@@ -1001,7 +1217,7 @@ fn probe_cargo_command_bound(
             CARGO_ENCODED_RUSTFLAGS_ENV,
             WARNING_DENIAL_ENCODED_RUSTFLAGS,
         )
-        .env(RUSTC_ENV, compiler)
+        .env(RUSTC_ENV, &toolchain.rustc)
         .env(RUSTC_WRAPPER_ENV, "")
         .env(RUSTC_WORKSPACE_WRAPPER_ENV, "")
         .current_dir(crate_dir);
@@ -1010,22 +1226,36 @@ fn probe_cargo_command_bound(
         ProbeCargoInvocation {
             argv,
             rustflags: WARNING_DENIAL_RUSTFLAGS.to_string(),
-            compiler_path: compiler.display().to_string(),
-            rustc_identity: identity.to_string(),
+            compiler_path: toolchain.rustc.display().to_string(),
+            rustc_identity: toolchain.rustc_identity.clone(),
+            cargo_path: cargo,
+            cargo_identity: toolchain.cargo_identity.clone(),
+            environment_names: environment.entries.iter().map(|(n, _)| n.clone()).collect(),
+            environment_digest: environment.digest.clone(),
+            cargo_configuration: cargo_configuration
+                .iter()
+                .map(|(path, digest)| format!("{} {digest}", path.display()))
+                .collect(),
         },
     )
 }
 
-/// Resolve the compiler, take its identity from the crate's directory, and build the bound
-/// spawn. The receipt's compiler is the executable cargo is bound to, by construction.
+/// Construct the environment, resolve the toolchain and observe the configuration from the crate's
+/// directory, then build the bound spawn. The receipt's executables are the ones cargo runs, by
+/// construction.
 fn probe_cargo_command(
     crate_dir: &Path,
     target_dir: &Path,
 ) -> Result<(std::process::Command, ProbeCargoInvocation), String> {
-    let compiler = resolve_probe_compiler()?;
-    let identity = probe_compiler_identity(&compiler, crate_dir)?;
+    let environment = constructed_probe_environment();
+    let toolchain = resolve_probe_toolchain(crate_dir, &environment)?;
+    let configuration = cargo_configuration_observation(&environment, crate_dir)?;
     Ok(probe_cargo_command_bound(
-        crate_dir, target_dir, &compiler, &identity,
+        crate_dir,
+        target_dir,
+        &toolchain,
+        &environment,
+        &configuration,
     ))
 }
 
@@ -2354,6 +2584,215 @@ mod tests {
             .map(|(_, v)| v.map(|v| v.to_string_lossy().to_string()))
     }
 
+    fn fixture_toolchain() -> ProbeToolchain {
+        ProbeToolchain {
+            rustc: PathBuf::from("/toolchain/bin/rustc"),
+            cargo: PathBuf::from("/toolchain/bin/cargo"),
+            rustc_identity: "rustc 1.93.0; host: x".to_string(),
+            cargo_identity: "cargo 1.93.0; release: 1.93.0".to_string(),
+        }
+    }
+
+    fn u1a_scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("m1c-u1a-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create the control's scratch directory");
+        dir
+    }
+
+    /// THE CONSTRUCTED ENVIRONMENT ADMITS THE ROW BY EXACT NAME AND NOTHING ELSE. Asserted on the
+    /// constructed VALUE: `Command::get_envs` never lists inherited variables, so an absence check
+    /// there would pass with or without `env_clear` and prove nothing.
+    #[test]
+    fn the_constructed_environment_admits_the_row_by_exact_name_and_nothing_else() {
+        let ambient = |overrides: &[(&str, &str)]| {
+            let mut map: std::collections::BTreeMap<String, String> = [
+                ("PATH", "/usr/bin"),
+                ("HOME", "/home/probe"),
+                ("CARGO_HOME", "/home/probe/.cargo"),
+                ("CARGO_PROFILE_RELEASE_OPT_LEVEL", "0"),
+                ("CARGO_INCREMENTAL", "1"),
+                ("RUSTC_BOOTSTRAP", "1"),
+                ("CC", "/planted/cc"),
+                ("CARGO_BUILD_TARGET", "x86_64-unknown-linux-gnu"),
+                ("RUSTFLAGS", "-C opt-level=0"),
+                ("CARGO_HOME_EXTRA", "/planted"),
+            ]
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+            for (n, v) in overrides {
+                map.insert(n.to_string(), v.to_string());
+            }
+            map
+        };
+        let construct = |map: &std::collections::BTreeMap<String, String>| {
+            probe_environment_from(|name| map.get(name).map(std::ffi::OsString::from))
+        };
+        let base = construct(&ambient(&[]));
+        let names: Vec<&str> = base.entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["CARGO_HOME", "HOME", "PATH"],
+            "exact names, byte order"
+        );
+        let changed_admitted = construct(&ambient(&[("HOME", "/home/other")]));
+        assert_ne!(
+            base.digest, changed_admitted.digest,
+            "an admitted value changes the digest"
+        );
+        let changed_foreign = construct(&ambient(&[("CARGO_PROFILE_RELEASE_OPT_LEVEL", "1")]));
+        assert_eq!(
+            base, changed_foreign,
+            "a variable outside the row cannot reach the value or its digest"
+        );
+    }
+
+    /// THE SPAWN RUNS THE TOOLCHAIN'S OWN CARGO, even with `CARGO` planted in this process: the
+    /// program is the resolved executable, never `$CARGO` or a PATH lookup at spawn time.
+    #[test]
+    fn the_spawn_runs_the_toolchains_cargo_even_when_cargo_is_planted() {
+        std::env::set_var("CARGO", "/planted/cargo");
+        let toolchain = fixture_toolchain();
+        let (command, invocation) = probe_cargo_command_bound(
+            Path::new("/tmp/probe-crate"),
+            Path::new("/tmp/target"),
+            &toolchain,
+            &probe_environment_from(|_| None),
+            &[],
+        );
+        std::env::remove_var("CARGO");
+        assert_eq!(command.get_program(), toolchain.cargo.as_os_str());
+        assert_eq!(invocation.argv[0], toolchain.cargo.display().to_string());
+    }
+
+    /// CARGO CONFIGURATION IS OBSERVED, NOT SKIPPED: a file in an ancestor's `.cargo` and one in
+    /// `CARGO_HOME` are both recorded with their streamed digests, and an unreadable one refuses.
+    #[test]
+    fn cargo_configuration_is_observed_and_an_unreadable_one_refuses() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = u1a_scratch("config");
+        let crate_dir = root.join("probe").join("crate");
+        std::fs::create_dir_all(&crate_dir).expect("create the crate dir");
+        let ancestor_config = root.join(".cargo").join("config.toml");
+        std::fs::create_dir_all(ancestor_config.parent().expect("parent")).expect("mkdir .cargo");
+        std::fs::write(&ancestor_config, "[profile.release]\nopt-level = 0\n").expect("write");
+        let cargo_home = root.join("cargo-home");
+        std::fs::create_dir_all(&cargo_home).expect("mkdir cargo home");
+        let home_config = cargo_home.join("config.toml");
+        std::fs::write(&home_config, "[net]\noffline = true\n").expect("write");
+        let environment = probe_environment_from(|name| match name {
+            "CARGO_HOME" => Some(cargo_home.clone().into_os_string()),
+            _ => None,
+        });
+        let observed = cargo_configuration_observation(&environment, &crate_dir)
+            .expect("observe the configuration");
+        for path in [&ancestor_config, &home_config] {
+            let digest = sha256_file_streamed(path).expect("digest");
+            assert!(
+                observed.iter().any(|(p, d)| p == path && *d == digest),
+                "{} must be observed with its digest; got {observed:?}",
+                path.display()
+            );
+        }
+        std::fs::set_permissions(&home_config, std::fs::Permissions::from_mode(0o000))
+            .expect("chmod 000");
+        let still_readable = std::fs::read(&home_config).is_ok();
+        let refused = cargo_configuration_observation(&environment, &crate_dir);
+        std::fs::set_permissions(&home_config, std::fs::Permissions::from_mode(0o644))
+            .expect("restore");
+        let _ = std::fs::remove_dir_all(&root);
+        if !still_readable {
+            let cause = refused.expect_err("an unreadable configuration must refuse");
+            assert!(
+                cause.starts_with("CargoConfigurationUnreadable"),
+                "got: {cause}"
+            );
+        }
+    }
+
+    /// A SYSROOT WITHOUT CARGO REFUSES: the entry compiler (here a planted `RUSTC` script) names a
+    /// sysroot whose `bin` has a rustc and no cargo, and the toolchain is never half-resolved.
+    #[test]
+    fn a_sysroot_without_cargo_refuses_rather_than_falling_back() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = u1a_scratch("sysroot");
+        let sysroot = root.join("fake-sysroot");
+        std::fs::create_dir_all(sysroot.join("bin")).expect("mkdir bin");
+        std::fs::write(sysroot.join("bin").join("rustc"), "").expect("write rustc");
+        let entry = root.join("rustc-entry");
+        std::fs::write(&entry, format!("#!/bin/sh\necho {}\n", sysroot.display()))
+            .expect("write the entry script");
+        std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        std::env::set_var(RUSTC_ENV, &entry);
+        let resolved = resolve_probe_toolchain(
+            &root,
+            &probe_environment_from(|name| std::env::var_os(name)),
+        );
+        std::env::remove_var(RUSTC_ENV);
+        let _ = std::fs::remove_dir_all(&root);
+        let cause = resolved.expect_err("a sysroot without cargo must refuse");
+        assert!(
+            cause.starts_with("ProbeToolchainUnresolved"),
+            "got: {cause}"
+        );
+    }
+
+    /// PLANTED BUILD VARIABLES CANNOT CHANGE THE PROBE BUILD'S BYTES (operator receipt; needs a
+    /// toolchain through `RUSTC` or PATH). One tiny crate is built twice at ONE path -- builds at a
+    /// fixed path are deterministic -- once with `CARGO_PROFILE_RELEASE_OPT_LEVEL=0`,
+    /// `CARGO_PROFILE_RELEASE_DEBUG=true` and `CARGO_INCREMENTAL=1` planted in this process and once
+    /// without. The executables must be byte-identical. The red is the inheriting spawn this
+    /// replaced: the planted opt-level reaches cargo and the bytes differ.
+    #[test]
+    #[ignore]
+    fn planted_build_variables_cannot_change_the_probe_build_bytes() {
+        let root = u1a_scratch("wet");
+        let crate_dir = root.join("probe");
+        std::fs::create_dir_all(crate_dir.join("src")).expect("mkdir src");
+        std::fs::write(
+            crate_dir.join("Cargo.toml"),
+            "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n",
+        )
+        .expect("write the manifest");
+        std::fs::write(
+            crate_dir.join("src").join("main.rs"),
+            "fn main() { let v: Vec<u64> = std::env::args().map(|a| a.len() as u64).collect(); \
+             println!(\"{}\", v.iter().sum::<u64>()); }\n",
+        )
+        .expect("write main.rs");
+        let target = root.join("target");
+        let planted = [
+            ("CARGO_PROFILE_RELEASE_OPT_LEVEL", "0"),
+            ("CARGO_PROFILE_RELEASE_DEBUG", "true"),
+            ("CARGO_INCREMENTAL", "1"),
+        ];
+        let build = |plant: bool| -> String {
+            let _ = std::fs::remove_dir_all(&target);
+            if plant {
+                for (n, v) in planted {
+                    std::env::set_var(n, v);
+                }
+            }
+            let (mut command, _) =
+                probe_cargo_command(&crate_dir, &target).expect("bind the probe build");
+            let output = command.output().expect("run cargo");
+            for (n, _) in planted {
+                std::env::remove_var(n);
+            }
+            assert!(
+                output.status.success(),
+                "the probe build must compile: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            sha256_file_streamed(&target.join("release").join("probe")).expect("digest")
+        };
+        let planted_build = build(true);
+        let clean_build = build(false);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(planted_build, clean_build);
+    }
+
     /// A faulted run whose red names no probe must surface its own stderr in the refusal, so the
     /// cause is located and not only classed. The marker stands for whatever cargo said instead.
     #[test]
@@ -2384,9 +2823,29 @@ mod tests {
     fn the_probe_cargo_spawn_binds_flags_compiler_and_wrappers_and_the_receipt_names_that_spawn() {
         let crate_dir = Path::new("/tmp/probe-crate");
         let workspace = Path::new("/tmp/workspace");
-        let compiler = Path::new("/toolchain/bin/rustc");
+        let toolchain = fixture_toolchain();
+        let compiler = toolchain.rustc.as_path();
+        let environment = probe_environment_from(|name| match name {
+            "PATH" => Some("/usr/bin".into()),
+            "HOME" => Some("/home/probe".into()),
+            _ => None,
+        });
         let (command, invocation) =
-            probe_cargo_command_bound(crate_dir, workspace, compiler, "rustc 1.93.0; host: x");
+            probe_cargo_command_bound(crate_dir, workspace, &toolchain, &environment, &[]);
+        assert_eq!(
+            command.get_program(),
+            toolchain.cargo.as_os_str(),
+            "the spawn runs the toolchain's own cargo"
+        );
+        assert_eq!(env_of(&command, "PATH"), Some(Some("/usr/bin".to_string())));
+        assert_eq!(
+            env_of(&command, "HOME"),
+            Some(Some("/home/probe".to_string()))
+        );
+        assert_eq!(invocation.cargo_path, "/toolchain/bin/cargo");
+        assert_eq!(invocation.cargo_identity, "cargo 1.93.0; release: 1.93.0");
+        assert_eq!(invocation.environment_names, vec!["HOME", "PATH"]);
+        assert_eq!(invocation.environment_digest, environment.digest);
         assert!(
             invocation
                 .argv
@@ -2462,12 +2921,14 @@ mod tests {
         for (name, value) in planted {
             std::env::set_var(name, value);
         }
-        let compiler = Path::new("/toolchain/bin/rustc");
+        let toolchain = fixture_toolchain();
+        let compiler = toolchain.rustc.as_path();
         let (command, invocation) = probe_cargo_command_bound(
             Path::new("/tmp/probe-crate"),
             Path::new("/tmp/workspace"),
-            compiler,
-            "rustc 1.93.0",
+            &toolchain,
+            &probe_environment_from(|_| None),
+            &[],
         );
         let resolved_named = resolve_probe_compiler();
         for (name, _) in planted {

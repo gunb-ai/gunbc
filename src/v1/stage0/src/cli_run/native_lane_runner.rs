@@ -225,37 +225,12 @@ struct EmittedBuildObserved {
     warning_count: i64,
 }
 
-/// A FILE'S BYTES FED INTO A DIGEST THROUGH A FIXED BUFFER, never held whole. The route digests
-/// the seed and the emitted executable, tens of MB each, and M1.c will digest a stored artifact
-/// before serving it; a whole-file read makes the memory an identity costs grow with the file.
-/// SHA-256 gives the same value however the input is split, so every caller's value is unchanged.
-fn sha256_feed_file(hasher: &mut sha2::Sha256, path: &Path) -> Result<(), String> {
-    use sha2::Digest;
-    use std::io::Read;
-    const READ_BUFFER_BYTES: usize = 64 * 1024;
-    let unreadable = |e: std::io::Error| {
-        format!(
-            "could not read {} for its content identity: {e}",
-            path.display()
-        )
-    };
-    let mut file = std::fs::File::open(path).map_err(unreadable)?;
-    let mut buffer = vec![0u8; READ_BUFFER_BYTES];
-    loop {
-        match file.read(&mut buffer) {
-            Ok(0) => return Ok(()),
-            Ok(n) => hasher.update(&buffer[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(unreadable(e)),
-        }
-    }
-}
-
+/// The route's content identities read through the host's one streamed digest
+/// (`emitted_closure_compile_host` `sha256_feed_file`): the seed and the emitted executable are tens
+/// of MB and M1.c will digest a stored artifact before serving it, so memory must not grow with the
+/// file. SHA-256 gives the same value however the input is split.
 fn sha256_file(path: &Path) -> Result<String, String> {
-    use sha2::Digest;
-    let mut hasher = sha2::Sha256::new();
-    sha256_feed_file(&mut hasher, path)?;
-    Ok(format!("{:x}", hasher.finalize()))
+    super::emitted_closure_compile_host::sha256_file_streamed(path)
 }
 
 /// The emitted closure's identity: one digest over the crate's emitted sources, path and
@@ -291,7 +266,7 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
                 .unwrap_or_default()
                 .as_bytes(),
         );
-        sha256_feed_file(&mut hasher, path)?;
+        super::emitted_closure_compile_host::sha256_feed_file(&mut hasher, path)?;
     }
     Ok(format!("{:x}", hasher.finalize()))
 }
@@ -384,6 +359,11 @@ fn prepare_emitted_compiler_for_entry(
     )
     .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
     let rustc = invocation.rustc_identity.clone();
+    let invocation_cargo_path = invocation.cargo_path.clone();
+    let invocation_cargo_identity = invocation.cargo_identity.clone();
+    let invocation_environment_names = invocation.environment_names.clone();
+    let invocation_environment_digest = invocation.environment_digest.clone();
+    let invocation_cargo_configuration = invocation.cargo_configuration.clone();
     // THE BASELINE IS ATTRIBUTED TO THE SAME PROBE SYMBOL THE FAULTED ARM WILL CARRY. This
     // argument used to be the literal `"v2_native_lane_carries_no_mutation_probe"`, which was a
     // true statement about this lane and is now a false one: the discriminating red below is
@@ -431,6 +411,19 @@ fn prepare_emitted_compiler_for_entry(
         "v2-native-route: emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
          exit_status={exit_status} warning_count={warning_count} rustc={}",
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
+    );
+    // THE BUILD'S HERMETIC INPUTS, printed until the receipt carries them (the U7 cut: the
+    // host-facts decoder is rendered into the emitted main). They are what M1.c's compiler key will
+    // read, so an operator can see today which toolchain, environment and configuration a build ran
+    // under.
+    eprintln!(
+        "v2-native-route: build inputs — cargo={} cargo_identity={:?} environment_names={:?} \
+         environment_sha256={} cargo_configuration={:?}",
+        invocation_cargo_path,
+        invocation_cargo_identity,
+        invocation_environment_names,
+        invocation_environment_digest,
+        invocation_cargo_configuration
     );
     // Under the run's own target dir (`PrivateProbeRoot` `target_dir`), so the executable hashed
     // below and spawned by every entrypoint walk is one no other run can rebuild (review 70338).

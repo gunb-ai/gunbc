@@ -24,7 +24,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // v2_native_cli_label.
 data native_compiler_reuse_u2_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
-    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "sha256_feed_file", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.resolved_graph_cache", decl_name: "running_image_path", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "m1c_scratch", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner.tests", decl_name: "a_streamed_digest_equals_the_one_shot_digest_at_every_buffer_boundary", field: WholeDeclaration },
@@ -39,5 +38,49 @@ data native_compiler_reuse_u2_seed_growth_justification: SeedGrowthJustification
 
   trigger: "Delete these items when the native route's preparation -- emission, crate assembly, build, identity and the discriminating red -- is performed by a native v2 generation rather than by the seed's native lane runner, so that the seed is no longer the producer whose identities a cross-run key reads. WHAT DOES NOT RETIRE THEM: moving the digest into another seed file; replacing SHA-256 with another family in the same function; or M1.c serving from a store while the seed still prepares every miss. Each leaves the seed as the producer of the identities.",
 
-  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs sha256_feed_file and its tests, and src/v1/stage0/src/resolved_graph_cache.rs running_image_path, called from prepare_emitted_compiler_for_entry behind gunbc test //v2/test/..., //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli"
+  current_boundary: "src/v1/stage0/src/resolved_graph_cache.rs running_image_path and the native_lane_runner tests above (the streamed digest this unit introduced moved to v1_compiler.emitted_closure_compile_host sha256_feed_file with U1a, and is cited by that row), called from prepare_emitted_compiler_for_entry behind gunbc test //v2/test/..., //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli"
 }
+
+// M1.c U1a: THE PROBE BUILD RUNS A CONCRETE, IDENTIFIED TOOLCHAIN UNDER A CONSTRUCTED ENVIRONMENT.
+//
+// MODIFIED, NOT ADDED (ExistingSeedItemModified, nothing netted): v1_compiler.emitted_closure_compile_host
+// ProbeCargoInvocation (cargo path and identity, environment names and digest, configuration),
+// probe_cargo_command_bound (runs the toolchain's own cargo, clears and rebuilds the environment,
+// binds RUSTC to the toolchain's own rustc), probe_cargo_command (constructs, resolves, observes),
+// resolve_probe_compiler (now the ENTRY compiler the toolchain is selected from), and
+// v1_compiler.cli_run.native_lane_runner sha256_file, emitted_closure_identity and
+// prepare_emitted_compiler_for_entry (read the moved digest; print the build inputs). DELETED:
+// v1_compiler.emitted_closure_compile_host probe_compiler_identity (replaced by probe_tool_identity,
+// which runs under the build's own environment) and v1_compiler.cli_run.native_lane_runner
+// sha256_feed_file (moved here, one home for the streamed identity). The .dag authority for the
+// admitted names is v2.extdeps.languages.rust rust_host_build_environment.
+data native_compiler_reuse_u1a_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "RUST_HOST_BUILD_ENVIRONMENT_NAMES", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "ProbeEnvironment", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_environment_from", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "constructed_probe_environment", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "sha256_feed_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "sha256_file_streamed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_tool_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "ProbeToolchain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "resolve_probe_toolchain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_configuration_observation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "fixture_toolchain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "u1a_scratch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_constructed_environment_admits_the_row_by_exact_name_and_nothing_else", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_spawn_runs_the_toolchains_cargo_even_when_cargo_is_planted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "cargo_configuration_is_observed_and_an_unreadable_one_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "a_sysroot_without_cargo_refuses_rather_than_falling_back", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "planted_build_variables_cannot_change_the_probe_build_bytes", field: WholeDeclaration }
+  ],
+
+  reason: "M1.c keys a stored compiler on the inputs that produce its bytes, so every input the build can see must either be in the key or be unable to reach the build. The probe build inherited this process's whole environment and ran whatever `$CARGO` or `cargo` on PATH resolved at spawn time, next to a RUSTC that was usually a rustup proxy: an ambient CARGO_PROFILE_*, CARGO_INCREMENTAL, RUSTC_BOOTSTRAP or CC could change the executable under an unchanged key, and the receipt named a proxy rather than the compiler that ran. Now the environment is cleared and rebuilt from the admitted names of v2.extdeps.languages.rust rust_host_build_environment, with a digest; the entry compiler is asked which sysroot it selects and the build runs that sysroot's own cargo and binds RUSTC to its own rustc, both identified under the build's environment from the crate's directory; and every cargo configuration file discovery would read is recorded with its digest. The facts are printed until U7 carries them in the receipt, and U3 reads them into the key. WHY RUST: the subject is the seed's own cargo spawn in the emit-compile host, which runs no interpreter. PURPOSE ADMISSION under gunbc.v1_maintenance_standing v1_seed_standing: it serves the v2 self-host program's native route; it is a bounded operational fix that adds refusals (ProbeToolchainUnresolved, CargoConfigurationUnreadable) and admits nothing that refused before -- not NewEscapeHatchOrAdmissionRow, not PublicSurfaceGrowth (no verb, flag or public item), not SeedFeatureCompletion. A STATED DIVERGENCE, NOT A SILENT FORK: v1_compiler.v1_interpreter emit_host_constructed_build_environment, emit_host_cargo_configuration_digest and observe_tool_identity answer the same questions for the emit-host transport with a 64-bit non-cryptographic hash and whole-file reads; this host needs SHA-256 over streamed bytes for a cross-run key. TRIGGER FOR UNIFYING THEM: extdeps.realization.emit_on_demand_host ResolvedBuildContext moving to a std.content_hash cryptographic family, after which both hosts read one construction. The admitted-name list is a seed copy of the .dag row; its executing drift control is the U7 admission clause that compares the recorded names to the row inside the emitted binary, and until then it is review diligence.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these items when the probe build is a modeled transport that reads its admitted environment, toolchain selection and configuration observation from extdeps.realization.emit_on_demand_host ResolvedBuildContext and v2.std.host_transport HostBuildEnvironment, performed by a native v2 generation rather than the seed's emit-compile host. WHAT DOES NOT RETIRE THEM: moving the list into another seed file, widening the admitted names by prefix, or recording the environment without clearing it.",
+
+  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs probe_cargo_command -> constructed_probe_environment, resolve_probe_toolchain, cargo_configuration_observation, probe_cargo_command_bound; reached by every probe build: the required emit-compile phase, //gunbc/instruments:self-host, :v2-native-cli, :emitted-crate-workspace and gunbc test //v2/test/..."
+}
+
