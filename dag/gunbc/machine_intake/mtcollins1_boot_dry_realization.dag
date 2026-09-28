@@ -11,7 +11,7 @@ import v2.std.operation_realization {
 import gunbc.bmc_model { BmcWorld, bmc_advance, bmc_with_sol_session, bmc_power_is_on }
 import gunbc.bmc_dry_realization { bmc_bindings, megarac_bindings, bmc_ipmi_operation, sleep_delay_seconds_operation }
 import gunbc.megarac_media_model { MegaRacMediaWorld, megarac_media_advance }
-import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings, fs_with_file, fs_file, fs_write }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings, fs_with_file, fs_file, fs_write, fs_without_file }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.host_command_model { ModeledInvocation, exact_invocation_binding, local_command_words, shell_exec_run_argv_operation }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
@@ -122,6 +122,32 @@ fn proc_cmdline_path(pid: Int) -> String {
   join(["/proc/", to_string(pid), "/cmdline"], "")
 }
 
+// THE WORKER'S OWN PROCESS, as procfs shows it (proc(5), proc_pid_stat(5)): the host's boot id, and
+// one stat line per process -- pid, a parenthesized comm, then fields 3.. with starttime at field 22 --
+// under /proc/<pid>/stat and, for the reader itself, /proc/self/stat. The boot's unit-hold owner is
+// read from these (gunbc.machine_intake_mtcollins1_maintenance_hold self_process_identity) and a
+// successor observes the holder through them (holder_process_liveness), so a worker that starts writes
+// both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
+// directory. Only the fields a reader uses are meaningful; the others are zeros.
+data proc_boot_id_file: String = "/proc/sys/kernel/random/boot_id"
+
+fn proc_stat_path(pid: Int) -> String {
+  join(["/proc/", to_string(pid), "/stat"], "")
+}
+
+fn proc_stat_line(pid: Int, start_ticks: Int) -> String {
+  join([to_string(pid), " (gunbc) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", to_string(start_ticks), " 0 0\n"], "")
+}
+
+fn worker_process_started(fs: ModeledFilesystem, boot_id: String, pid: Int, start_ticks: Int) -> ModeledFilesystem {
+  let line = proc_stat_line(pid: pid, start_ticks: start_ticks)
+  fs_with_file(fs: fs_with_file(fs: fs_with_file(fs: fs, path: proc_boot_id_file, content: concat(boot_id, "\n")), path: "/proc/self/stat", content: line), path: proc_stat_path(pid: pid), content: line)
+}
+
+fn worker_process_killed(fs: ModeledFilesystem, pid: Int) -> ModeledFilesystem {
+  fs_without_file(fs: fs_without_file(fs: fs, path: proc_stat_path(pid: pid)), path: "/proc/self/stat")
+}
+
 fn live_collectors(w: MtCollins1BootWorld) -> List<ModeledProcess> {
   filter(w.worker.processes, p => p.alive)
 }
@@ -174,7 +200,7 @@ fn sol_activate_held_handler(w: MtCollins1BootWorld, call: OperationCall) -> Ope
 // removes it -- which is exactly what the production teardown observes afterwards.
 fn sol_deactivate_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
   let fs = fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) {
-    ModeledFilesystem { directories: acc.directories, files: filter(acc.files, f => f.path != proc_cmdline_path(pid: p.pid)) }
+    fs_without_file(fs: acc, path: proc_cmdline_path(pid: p.pid))
   })
   let worker = ModeledWorker { next_pid: w.worker.next_pid, processes: map(w.worker.processes, p => ModeledProcess { pid: p.pid, cmdline: p.cmdline, capture_path: p.capture_path, alive: false }), uptime_at_origin: w.worker.uptime_at_origin }
   exited_step(state: with_bmc(w: with_worker(w: with_fs(w: w, fs: fs), worker: worker), bmc: bmc_with_sol_session(world: w.bmc, open: false)), stdout: "", exit_code: 0)
@@ -243,7 +269,7 @@ fn concat_text(lines: List<TimedConsoleLine>) -> String {
 fn collectors_follow_session(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
   if w.bmc.sol_session_open || count(live_collectors(w: w)) == 0 { w } else {
     let fs = fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) {
-      ModeledFilesystem { directories: acc.directories, files: filter(acc.files, f => f.path != proc_cmdline_path(pid: p.pid)) }
+      fs_without_file(fs: acc, path: proc_cmdline_path(pid: p.pid))
     })
     with_worker(w: with_fs(w: w, fs: fs), worker: ModeledWorker { next_pid: w.worker.next_pid, processes: map(w.worker.processes, p => ModeledProcess { pid: p.pid, cmdline: p.cmdline, capture_path: p.capture_path, alive: false }), uptime_at_origin: w.worker.uptime_at_origin })
   }

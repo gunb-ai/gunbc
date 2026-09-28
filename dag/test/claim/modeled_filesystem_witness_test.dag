@@ -70,7 +70,7 @@ fn filesystem_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<Modele
 }
 
 fn empty_hold_store() -> ModeledFilesystem {
-  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", hold_root as String], files: [] }
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", hold_root as String], files: [], refused_reads: [] }
 }
 
 fn route_operations(route: List<DispatchRecord>) -> List<String> {
@@ -126,7 +126,7 @@ fn store_holds_one_slot(fs: ModeledFilesystem) -> Bool {
 // admit_filesystem_failure_kind, decodes it to FilesystemAlreadyExists -- the same projection a host
 // io::Error reaches.
 test fn a_create_exclusive_write_over_an_existing_file_is_already_exists() -> Bool {
-  let seeded = ModeledFilesystem { directories: ["/", "/tmp"], files: [ModeledFile { path: "/tmp/slot", content: "held" }] }
+  let seeded = ModeledFilesystem { directories: ["/", "/tmp"], files: [ModeledFile { path: "/tmp/slot", content: "held" }], refused_reads: [] }
   match evaluate_in_witness_frame(
     frame: filesystem_frame(initial: seeded),
     subject: fn(_scope) {
@@ -152,6 +152,7 @@ test fn a_listing_is_sorted_immediate_children() -> Bool {
   let fs = ModeledFilesystem {
     directories: ["/", "/d", "/d/sub", "/d/sub/deeper"],
     files: [ModeledFile { path: "/d/b", content: "" }, ModeledFile { path: "/d/a", content: "" }, ModeledFile { path: "/d/sub/c", content: "" }],
+    refused_reads: [],
   }
   match evaluate_in_witness_frame(
     frame: filesystem_frame(initial: fs),
