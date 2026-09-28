@@ -1,0 +1,46 @@
+module test.claim.auth.approval_broker_closure_witness
+
+import std.algebra { FreeMonoid }
+import v2.std.algebra { any, contains }
+import v2.std.text { String, string_eq }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.lens.module_graph { import_closure_live }
+import gunbc.ci_layer_roots { witness_layer_roots }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE APPROVAL BROKER COMPILES NO PIPELINE STAGE. gunbc.auth.approval_broker_serve once closed over
+// 931 modules, the v2 compiler among them, because tool shapes, the generated-artifact vocabulary
+// and the runner-slot row each sat in a module that also rendered or resolved through the compiler
+// (gunbc#12480, #12481, #12483, #12484, #12449). The broker boots by compiling its closure, so every
+// compiler module in it is boot time the broker never uses. This wall reads the closure the corpus's
+// own edge authority derives (v2.lens.module_graph import_closure_live) and refuses any module under
+// the compiler's directory.
+data broker_entry: String = "dag/gunbc/auth/approval_broker_serve.dag"
+
+// THE RED IS A REAL ENTRY, NOT A PLANTED PATH: gunbc.commit_workflow imports v2.compiler.source_authority,
+// so its closure must contain a compiler module. If this control stops finding one, the predicate or
+// the closure has gone blind, and the broker's green below would be vacuous.
+data compiler_reaching_entry: String = "dag/gunbc/commit_workflow.dag"
+
+data compiler_directory_prefix: String = "src/v2/compiler/"
+
+// A LEAF THE BROKER DOES REACH, so an empty or truncated closure cannot pass the wall by vacancy:
+// the dashboard's dispatch ceiling reads the per-slot runner row.
+data broker_reached_leaf: String = "dag/gunbc/runner/runner_slot_desired.dag"
+
+fn closure_reaches_compiler(closure: FreeMonoid<String>) -> Bool {
+  any(xs: closure, predicate: fn(p) { starts_with(s: p, prefix: compiler_directory_prefix) })
+}
+
+test fn the_approval_broker_closure_contains_no_compiler_module() -> Bool {
+  let closure = import_closure_live(entry_path: broker_entry, pool_roots: witness_layer_roots)
+  contains(xs: closure, item: broker_reached_leaf, eq: string_eq)
+    && !closure_reaches_compiler(closure: closure)
+}
+
+test fn a_closure_that_reaches_the_compiler_is_seen_to() -> Bool {
+  closure_reaches_compiler(
+    closure: import_closure_live(entry_path: compiler_reaching_entry, pool_roots: witness_layer_roots)
+  )
+}
