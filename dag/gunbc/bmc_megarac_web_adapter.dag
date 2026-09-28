@@ -6,9 +6,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
 import extdeps.bmc.megarac {
-  MegaRacSessionReply, MegaRacSessionOpened, MegaRacSessionRefused,
-  megarac_session_reply_status, megarac_session_reply_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
+  MegaRacLoginReply, MegaRacLoginAccepted, MegaRacLoginRefused,
+  megarac_login_reply_status, megarac_login_reply_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
 }
 import gunbc.bmc_model {
   BmcWorld, BmcKvmStreamClosed, BmcKvmClosedByController, BmcWebLoginAccepted, BmcWebLoginRefused,
@@ -33,8 +34,8 @@ fn megarac_web_protocol_script(initial: BmcWorld, username: String, password: St
     BmcWebLoginRefused {} => none
   }
   let reply = match opened {
-    Present { value: s } => MegaRacSessionOpened { csrf_token: s.csrf_token, privilege: s.privilege, extended_privilege: extended_privilege, racsession_id: s.id }
-    Absent => MegaRacSessionRefused {}
+    Present { value: s } => MegaRacLoginAccepted { csrf_token: s.csrf_token, privilege: s.privilege, extended_privilege: extended_privilege, racsession_id: s.id }
+    Absent => MegaRacLoginRefused {}
   }
   let token = match opened { Present { value: s } => s.csrf_token  Absent => "" }
   let connect = bmc_kvm_connect(world: login.world, csrf_token: token)
@@ -48,8 +49,8 @@ fn megarac_web_protocol_script(initial: BmcWorld, username: String, password: St
   }
   let logout = bmc_web_logout(world: connect.world, csrf_token: token)
   join([
-    concat("login_status=", to_string(megarac_session_reply_status(reply: reply))),
-    concat("login_body=", megarac_session_reply_json(reply: reply)),
+    concat("login_status=", to_string(megarac_login_reply_status(reply: reply))),
+    concat("login_body=", megarac_login_reply_json(reply: reply)),
     concat("services_body=", megarac_services_kvm_json(viewer_count: bmc_kvm_viewer_count(world: login.world))),
     concat("kvm_path=", megarac_kvm_websocket_path as String),
     concat("kvm_accept=", if connect.accepted { "1" } else { "0" }),
@@ -80,7 +81,7 @@ data megarac_web_transport_script: String = "const http=require('http');const cr
 // ports (the second only serves the cross-origin image an unreadable canvas is drawn from), with the
 // transport's own request log and its pid beside them.
 service gunbc.bmc_megarac_web.transport {
-  operation Start {
+  operation ServeScript {
     input { script: NonEmptyStr, port: NonEmptyStr, image_port: NonEmptyStr, script_path: NonEmptyStr, log_path: NonEmptyStr, pid_path: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -92,7 +93,7 @@ service gunbc.bmc_megarac_web.transport {
     }
   }
 
-  operation Stop {
+  operation StopServing {
     input { pid_path: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell {
