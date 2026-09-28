@@ -80,6 +80,8 @@ use crate::std_syntax::BinOp::{
 };
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_target_representation::VariantParentIdentity;
+use crate::std_target_representation::VariantParentIdentity::*;
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
     kernel_type_set,
@@ -265,7 +267,10 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
 pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
-    VariantValueBinding { parent_enum: String },
+    VariantValueBinding {
+        parent_enum: String,
+        parent_identity: Rc<VariantParentIdentity>,
+    },
     MatchBoundBinding,
     ServiceValueBinding,
 }
@@ -279,6 +284,18 @@ impl VarBindingKind {
             } => __val.clone(),
             VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::ServiceValueBinding => panic!("no parent_enum on unit variant"),
+        }
+    }
+    pub fn parent_identity(&self) -> Rc<VariantParentIdentity> {
+        match self {
+            VarBindingKind::LocalValueBinding => panic!("no parent_identity on unit variant"),
+            VarBindingKind::FunctionValueBinding => panic!("no parent_identity on unit variant"),
+            VarBindingKind::VariantValueBinding {
+                parent_identity: __val,
+                ..
+            } => __val.clone(),
+            VarBindingKind::MatchBoundBinding => panic!("no parent_identity on unit variant"),
+            VarBindingKind::ServiceValueBinding => panic!("no parent_identity on unit variant"),
         }
     }
 }
@@ -475,6 +492,7 @@ pub enum MatchPattern {
         name: String,
         parent_enum: Option<String>,
         field_bindings: Rc<Vec<Rc<Node>>>,
+        parent_identity: Rc<VariantParentIdentity>,
     },
     Wildcard,
 }

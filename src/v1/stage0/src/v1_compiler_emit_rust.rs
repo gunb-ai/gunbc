@@ -115,9 +115,17 @@ use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_target_representation::ExactBindingResolution;
+pub use crate::std_target_representation::variant_value_realization_refusal_message;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
+};
+use crate::std_target_representation::VariantParentIdentity::VariantParentUnrecovered;
+use crate::std_target_representation::VariantValueRealization::{
+    VariantParentIdentityUnavailable, VariantRealizesAsTargetValue, VariantRealizesStructurally,
+    VariantTargetValueAmbiguous, VariantTargetValueUnbound,
+};
+pub use crate::std_target_representation::{
+    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
@@ -131,7 +139,8 @@ pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_te
 pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
     provenance_declares_structurally, realization_host_numeric_spelling,
-    realization_is_host_numeric, realized_checkpoint, rust_lookup_exact_binding, target_callable,
+    realization_is_host_numeric, realized_checkpoint, rust_lookup_exact_binding,
+    rust_variant_arm_is_bound_somewhere, rust_variant_value_realization, target_callable,
     type_realization_decision, type_reference_realization,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
@@ -20925,17 +20934,24 @@ pub fn emit_pattern(
             name: n,
             parent_enum,
             field_bindings: fbs,
+            parent_identity: identity,
             ..
-        } => emit_variant_pattern(
-            n.clone(),
-            parent_enum.clone(),
-            fbs.clone(),
-            path_prefix.clone(),
-            shared_types.clone(),
-            scrut_type.clone(),
-            source_indices.clone(),
-            emit_info.clone(),
-        ),
+        } => match rust_native_variant_spelling(
+            identity.clone(),
+            crate::v1_std_core::qualified_last_segment(n.clone()),
+        ) {
+            Some(native) => native.clone(),
+            std::option::Option::None => emit_variant_pattern(
+                n.clone(),
+                parent_enum.clone(),
+                fbs.clone(),
+                path_prefix.clone(),
+                shared_types.clone(),
+                scrut_type.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ),
+        },
         MatchPattern::Wildcard => "_".to_string(),
     }
 }
@@ -21738,18 +21754,25 @@ pub fn emit_pattern_rc_aware(
             name: n,
             parent_enum,
             field_bindings: fbs,
+            parent_identity: identity,
             ..
-        } => emit_variant_pattern_rc_aware(
-            n.clone(),
-            parent_enum.clone(),
-            fbs.clone(),
-            path_prefix.clone(),
-            rc_analysis.clone(),
-            shared_types.clone(),
-            scrut_type.clone(),
-            source_indices.clone(),
-            emit_info.clone(),
-        ),
+        } => match rust_native_variant_spelling(
+            identity.clone(),
+            crate::v1_std_core::qualified_last_segment(n.clone()),
+        ) {
+            Some(native) => native.clone(),
+            std::option::Option::None => emit_variant_pattern_rc_aware(
+                n.clone(),
+                parent_enum.clone(),
+                fbs.clone(),
+                path_prefix.clone(),
+                rc_analysis.clone(),
+                shared_types.clone(),
+                scrut_type.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ),
+        },
         MatchPattern::Wildcard => "_".to_string(),
     }
 }
@@ -22443,14 +22466,70 @@ pub fn is_simple_type_node(
     is_rust_value_type(n.clone(), source_indices.clone())
 }
 
+pub fn rust_native_variant_spelling(
+    parent: Rc<VariantParentIdentity>,
+    leaf_name: String,
+) -> Option<String> {
+    {
+        let r = crate::v1_compiler_coercion::rust_variant_value_realization(
+            parent.clone(),
+            leaf_name.clone(),
+        );
+        match (*r.clone()).clone() {
+            VariantValueRealization::VariantRealizesAsTargetValue {
+                value_spelling: s, ..
+            } => Some(s.clone()),
+            VariantValueRealization::VariantRealizesStructurally => std::option::Option::None,
+            VariantValueRealization::VariantParentIdentityUnavailable { cause: _, .. } => {
+                if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(
+                    leaf_name.clone(),
+                ) {
+                    match crate::std_target_representation::variant_value_realization_refusal_message(r.clone()) {
+    Some(m) => Some(emit_rust_compile_error_expr(m.clone())),
+    std::option::Option::None => std::option::Option::None,
+}
+                } else {
+                    std::option::Option::None
+                }
+            }
+            VariantValueRealization::VariantTargetValueUnbound { .. } => {
+                match crate::std_target_representation::variant_value_realization_refusal_message(
+                    r.clone(),
+                ) {
+                    Some(m) => Some(emit_rust_compile_error_expr(m.clone())),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+            VariantValueRealization::VariantTargetValueAmbiguous { .. } => {
+                match crate::std_target_representation::variant_value_realization_refusal_message(
+                    r.clone(),
+                ) {
+                    Some(m) => Some(emit_rust_compile_error_expr(m.clone())),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        }
+    }
+}
+
+pub fn rust_native_variant_spelling_of_binding(
+    binding_kind: Option<Rc<VarBindingKind>>,
+    leaf_name: String,
+) -> Option<String> {
+    match binding_kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::VariantValueBinding {
+            parent_identity: identity,
+            ..
+        }) => rust_native_variant_spelling(identity.clone(), leaf_name.clone()),
+        _ => std::option::Option::None,
+    }
+}
+
 pub fn variant_parent_from_binding_kind(
     binding_kind: Option<Rc<VarBindingKind>>,
 ) -> Option<String> {
     match binding_kind.clone().as_deref().cloned() {
-        Some(VarBindingKind::VariantValueBinding {
-            parent_enum: parent_enum,
-            ..
-        }) => Some(parent_enum.clone()),
+        Some(VarBindingKind::VariantValueBinding { parent_enum, .. }) => Some(parent_enum.clone()),
         _ => std::option::Option::None,
     }
 }
@@ -22707,112 +22786,128 @@ pub fn emit_var_ref(
             {
                 crate::v1_compiler_emit::emit_keyword(leaf_name.clone(), RenderTarget::Rust)
             } else {
+                if (rust_native_variant_spelling_of_binding(
+                    binding_kind.clone(),
+                    leaf_name.clone(),
+                ) != std::option::Option::None)
                 {
-                    let moves_by_value =
-                        v1_rt::set_contains(&emit_info.movable.clone(), resolved_name.clone());
-                    let sharing =
-                        crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
-                            .sharing
-                            .clone();
-                    let ref_str = match variant_parent.clone() {
-                        Some(enum_name) => {
-                            let body = if freemonoid_empty_from_variant_parent(
-                                leaf_name.clone(),
-                                enum_name.clone(),
-                            ) {
-                                emit_freemonoid_empty_variant_body()
-                            } else {
-                                if (is_optional_variant_name(leaf_name.clone())
-                                    && is_optional_like_parent_name(enum_name.clone()))
-                                {
-                                    rust_optional_variant_spelling(leaf_name.clone())
+                    match rust_native_variant_spelling_of_binding(
+                        binding_kind.clone(),
+                        leaf_name.clone(),
+                    ) {
+                        Some(s) => s.clone(),
+                        std::option::Option::None => "".to_string(),
+                    }
+                } else {
+                    {
+                        let moves_by_value =
+                            v1_rt::set_contains(&emit_info.movable.clone(), resolved_name.clone());
+                        let sharing =
+                            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
+                                .sharing
+                                .clone();
+                        let ref_str = match variant_parent.clone() {
+                            Some(enum_name) => {
+                                let body = if freemonoid_empty_from_variant_parent(
+                                    leaf_name.clone(),
+                                    enum_name.clone(),
+                                ) {
+                                    emit_freemonoid_empty_variant_body()
                                 } else {
-                                    rust_variant_path(enum_name.clone(), leaf_name.clone())
-                                }
-                            };
-                            if variant_ref_self_wraps(
-                                leaf_name.clone(),
-                                enum_name.clone(),
-                                shared_types.clone(),
-                            ) {
-                                rust_shared_wrap_ctor(body.clone())
-                            } else {
-                                body.clone()
-                            }
-                        }
-                        std::option::Option::None => match (*lookup_item_for_value_ref(
-                            resolved_name.clone(),
-                            module_name.clone(),
-                            registry.clone(),
-                            emit_info.clone(),
-                        ))
-                        .clone()
-                        {
-                            ItemLookup::ItemLeafAmbiguous {
-                                leaf: ambiguous_leaf,
-                                ..
-                            } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
-                            ItemLookup::ItemFound { info: info, .. } => {
-                                let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                if is_data.clone() {
-                                    v1_rt::concat(
-                                        emit_value_ref_ident(
-                                            name.clone(),
-                                            module_name.clone(),
-                                            registry.clone(),
-                                            emit_info.clone(),
-                                        ),
-                                        "()".to_string(),
-                                    )
-                                } else {
+                                    if (is_optional_variant_name(leaf_name.clone())
+                                        && is_optional_like_parent_name(enum_name.clone()))
                                     {
-                                        let is_function_value =
-                                            match binding_kind.clone().as_deref().cloned() {
-                                                Some(VarBindingKind::FunctionValueBinding) => true,
-                                                _ => false,
-                                            };
-                                        let ident = emit_value_ref_ident(
-                                            resolved_name.clone(),
-                                            module_name.clone(),
-                                            registry.clone(),
-                                            emit_info.clone(),
-                                        );
-                                        let ident_str = if is_function_value.clone() {
-                                            ident.clone()
-                                        } else {
-                                            if moves_by_value.clone() {
+                                        rust_optional_variant_spelling(leaf_name.clone())
+                                    } else {
+                                        rust_variant_path(enum_name.clone(), leaf_name.clone())
+                                    }
+                                };
+                                if variant_ref_self_wraps(
+                                    leaf_name.clone(),
+                                    enum_name.clone(),
+                                    shared_types.clone(),
+                                ) {
+                                    rust_shared_wrap_ctor(body.clone())
+                                } else {
+                                    body.clone()
+                                }
+                            }
+                            std::option::Option::None => match (*lookup_item_for_value_ref(
+                                resolved_name.clone(),
+                                module_name.clone(),
+                                registry.clone(),
+                                emit_info.clone(),
+                            ))
+                            .clone()
+                            {
+                                ItemLookup::ItemLeafAmbiguous {
+                                    leaf: ambiguous_leaf,
+                                    ..
+                                } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                                ItemLookup::ItemFound { info: info, .. } => {
+                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                    if is_data.clone() {
+                                        v1_rt::concat(
+                                            emit_value_ref_ident(
+                                                name.clone(),
+                                                module_name.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            ),
+                                            "()".to_string(),
+                                        )
+                                    } else {
+                                        {
+                                            let is_function_value =
+                                                match binding_kind.clone().as_deref().cloned() {
+                                                    Some(VarBindingKind::FunctionValueBinding) => {
+                                                        true
+                                                    }
+                                                    _ => false,
+                                                };
+                                            let ident = emit_value_ref_ident(
+                                                resolved_name.clone(),
+                                                module_name.clone(),
+                                                registry.clone(),
+                                                emit_info.clone(),
+                                            );
+                                            let ident_str = if is_function_value.clone() {
                                                 ident.clone()
                                             } else {
-                                                match resolved_type.clone() {
+                                                if moves_by_value.clone() {
+                                                    ident.clone()
+                                                } else {
+                                                    match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                            }
-                                        };
-                                        ident_str.clone()
+                                                }
+                                            };
+                                            ident_str.clone()
+                                        }
                                     }
                                 }
-                            }
-                            ItemLookup::ItemNotFound => {
-                                let ident = emit_value_ref_ident(
-                                    resolved_name.clone(),
-                                    module_name.clone(),
-                                    registry.clone(),
-                                    emit_info.clone(),
-                                );
-                                let ident_str = if moves_by_value.clone() {
-                                    ident.clone()
-                                } else {
-                                    match resolved_type.clone() {
+                                ItemLookup::ItemNotFound => {
+                                    let ident = emit_value_ref_ident(
+                                        resolved_name.clone(),
+                                        module_name.clone(),
+                                        registry.clone(),
+                                        emit_info.clone(),
+                                    );
+                                    let ident_str = if moves_by_value.clone() {
+                                        ident.clone()
+                                    } else {
+                                        match resolved_type.clone() {
     Some(_) => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), ident.clone()),
     _ => ident.clone(),
 }
-                                };
-                                ident_str.clone()
-                            }
-                        },
-                    };
-                    ref_str
+                                    };
+                                    ident_str.clone()
+                                }
+                            },
+                        };
+                        ref_str
+                    }
                 }
             }
         }
@@ -22854,80 +22949,91 @@ pub fn emit_typed_expr_base(
                     {
                         crate::v1_compiler_emit::emit_keyword(leaf_name.clone(), RenderTarget::Rust)
                     } else {
-                        match variant_parent.clone() {
-                            Some(enum_name) => {
-                                if freemonoid_empty_from_variant_parent(
-                                    leaf_name.clone(),
-                                    enum_name.clone(),
-                                ) {
-                                    emit_freemonoid_empty_rc_value()
-                                } else {
-                                    {
-                                        let qualified =
-                                            if (is_optional_variant_name(leaf_name.clone())
-                                                && is_optional_like_parent_name(enum_name.clone()))
+                        match rust_native_variant_spelling_of_binding(
+                            binding_kind.clone(),
+                            leaf_name.clone(),
+                        ) {
+                            Some(native) => native.clone(),
+                            std::option::Option::None => match variant_parent.clone() {
+                                Some(enum_name) => {
+                                    if freemonoid_empty_from_variant_parent(
+                                        leaf_name.clone(),
+                                        enum_name.clone(),
+                                    ) {
+                                        emit_freemonoid_empty_rc_value()
+                                    } else {
+                                        {
+                                            let qualified =
+                                                if (is_optional_variant_name(leaf_name.clone())
+                                                    && is_optional_like_parent_name(
+                                                        enum_name.clone(),
+                                                    ))
+                                                {
+                                                    rust_optional_variant_spelling(
+                                                        leaf_name.clone(),
+                                                    )
+                                                } else {
+                                                    rust_variant_path(
+                                                        enum_name.clone(),
+                                                        leaf_name.clone(),
+                                                    )
+                                                };
+                                            if v1_rt::set_contains(&shared_types, enum_name.clone())
                                             {
-                                                rust_optional_variant_spelling(leaf_name.clone())
+                                                rust_shared_wrap_ctor(qualified.clone())
                                             } else {
-                                                rust_variant_path(
-                                                    enum_name.clone(),
-                                                    leaf_name.clone(),
-                                                )
-                                            };
-                                        if v1_rt::set_contains(&shared_types, enum_name.clone()) {
-                                            rust_shared_wrap_ctor(qualified.clone())
-                                        } else {
-                                            qualified.clone()
+                                                qualified.clone()
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            std::option::Option::None => {
-                                let resolved_name = value_ref_normalize_self_module(
-                                    n.clone(),
-                                    scope.module_name.clone(),
-                                );
-                                match (*lookup_item_for_value_ref(
-                                    resolved_name.clone(),
-                                    scope.module_name.clone(),
-                                    registry.clone(),
-                                    emit_info.clone(),
-                                ))
-                                .clone()
-                                {
-                                    ItemLookup::ItemLeafAmbiguous {
-                                        leaf: ambiguous_leaf,
-                                        ..
-                                    } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
-                                    ItemLookup::ItemFound { info: info, .. } => {
-                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                        if is_data.clone() {
-                                            v1_rt::concat(
-                                                emit_value_ref_ident(
-                                                    n.clone(),
-                                                    scope.module_name.clone(),
-                                                    registry.clone(),
-                                                    emit_info.clone(),
-                                                ),
-                                                "()".to_string(),
-                                            )
-                                        } else {
-                                            emit_value_ref_ident(
-                                                resolved_name.clone(),
-                                                scope.module_name.clone(),
-                                                registry.clone(),
-                                                emit_info.clone(),
-                                            )
-                                        }
-                                    }
-                                    ItemLookup::ItemNotFound => emit_value_ref_ident(
+                                std::option::Option::None => {
+                                    let resolved_name = value_ref_normalize_self_module(
+                                        n.clone(),
+                                        scope.module_name.clone(),
+                                    );
+                                    match (*lookup_item_for_value_ref(
                                         resolved_name.clone(),
                                         scope.module_name.clone(),
                                         registry.clone(),
                                         emit_info.clone(),
-                                    ),
+                                    ))
+                                    .clone()
+                                    {
+                                        ItemLookup::ItemLeafAmbiguous {
+                                            leaf: ambiguous_leaf,
+                                            ..
+                                        } => ambiguous_leaf_refusal(ambiguous_leaf.clone()),
+                                        ItemLookup::ItemFound { info: info, .. } => {
+                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                            if is_data.clone() {
+                                                v1_rt::concat(
+                                                    emit_value_ref_ident(
+                                                        n.clone(),
+                                                        scope.module_name.clone(),
+                                                        registry.clone(),
+                                                        emit_info.clone(),
+                                                    ),
+                                                    "()".to_string(),
+                                                )
+                                            } else {
+                                                emit_value_ref_ident(
+                                                    resolved_name.clone(),
+                                                    scope.module_name.clone(),
+                                                    registry.clone(),
+                                                    emit_info.clone(),
+                                                )
+                                            }
+                                        }
+                                        ItemLookup::ItemNotFound => emit_value_ref_ident(
+                                            resolved_name.clone(),
+                                            scope.module_name.clone(),
+                                            registry.clone(),
+                                            emit_info.clone(),
+                                        ),
+                                    }
                                 }
-                            }
+                            },
                         }
                     }
                 }
