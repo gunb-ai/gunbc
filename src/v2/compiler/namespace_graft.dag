@@ -46,6 +46,8 @@ import v2.extdeps.languages.dag {
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
+  namespace_graft_node_is_module_body,
+  namespace_graft_spine_segment_edge_optional,
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
@@ -777,4 +779,40 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
 
 fn namespace_graft_strip_provenance_marker(root: Node) -> Node {
   namespace_graft_unwrap_module_working_root(root: root)
+}
+
+// WHERE A GRAFTED MODULE'S BODY IS, read from the producer's own marks rather than from names. The
+// graft builds a spine of single-Named Conj wrappers and stamps the body Conj
+// (v2.extdeps.languages.dag namespace_graft_node_is_module_body). The spine is descended until a
+// step is not a spine segment, and descent never restarts. The admission reader
+// (v2.compiler.name_resolve admit_named_exports) takes wherever descent stops. The typed selection
+// (namespace_graft_module_body_optional) answers only when that stop IS the marked body, so a record
+// declaration that happens to share a path segment's name is never read as a module body. A header
+// or flat representation has no grafted body: Absent.
+fn namespace_graft_module_body_root(root: Node) -> Node {
+  if namespace_graft_already_grafted(root: root) {
+    namespace_graft_descend_spine(node: namespace_graft_strip_provenance_marker(root: root))
+  } else {
+    root
+  }
+}
+
+fn namespace_graft_descend_spine(node: Node) -> Node {
+  match namespace_graft_spine_segment_edge_optional(node: node) {
+    Present { value: edge } => namespace_graft_descend_spine(node: edge.target)
+    Absent => node
+  }
+}
+
+fn namespace_graft_module_body_optional(root: Node) -> Node? {
+  if namespace_graft_already_grafted(root: root) {
+    let stop = namespace_graft_descend_spine(node: namespace_graft_strip_provenance_marker(root: root))
+    if namespace_graft_node_is_module_body(node: stop) {
+      optional_present(value: stop)
+    } else {
+      optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
 }

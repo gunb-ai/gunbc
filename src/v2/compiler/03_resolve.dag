@@ -2,6 +2,7 @@ module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
   ReachesTestMarkedDeclaration,
@@ -286,13 +287,21 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   let declared_in = namespace_tree_module_qn(tree: tree)
-  let bindings = harvest_conj_named_bindings(
-    root: namespace_tree_module_body(root: tree.root, module_qn: declared_in),
-    acc: namespace_bindings_augment_from_module_atoms(
-      root: tree.root,
-      bindings: empty_map()
-    )
+  let root_bindings = namespace_bindings_augment_from_module_atoms(
+    root: tree.root,
+    bindings: empty_map()
   )
+  // THE MODULE'S OWN DECLARATIONS BIND AT THE ROOT OF A SINGLE-TREE NAMESPACE. A grafted module
+  // keeps them in its marked body under the containment spine, not as the root's named edges, so
+  // harvesting the root alone left every module-level declaration unbound on this route: a module's
+  // own `type Int` fell through to the kernel spelling and was silently bound to the kernel Int
+  // (review 5342739525 on #12540). The body is selected by the graft's own mark
+  // (v2.compiler.namespace_graft namespace_graft_module_body_optional), never by walking names, so
+  // a missing or ambiguous step stops and a record that shares a segment's name is not a body.
+  let bindings = match namespace_graft_module_body_optional(root: tree.root) {
+    Present { value: body } => harvest_conj_named_bindings(root: body, acc: root_bindings)
+    Absent => root_bindings
+  }
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
@@ -306,26 +315,6 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     declared_in: declared_in,
     imported_origins: empty_map()
   }
-}
-
-// THE MODULE'S OWN DECLARATIONS BIND AT THE ROOT OF A SINGLE-TREE NAMESPACE. A normalized module
-// carries its declarations in the body under its captured projection and module path
-// (captured -> m -> t), not as the root's named edges, so harvesting the root alone left every
-// module-level declaration unbound on this route: `type Myint` refused as unbound, and a module's
-// own `type Int` fell through to the kernel spelling and was silently bound to the kernel Int
-// (review 5342739525 on #12540). The body is found by the path the namespace records as its owner
-// (declared_in), and an absent step yields the root, which harvests nothing new.
-fn namespace_tree_module_body(root: Node, module_qn: QualifiedName) -> Node {
-  let start = match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
-    Accepted { value: captured, diagnostics: _ } => captured
-    Rejected { diagnostics: _ } => root
-  }
-  fold_list(xs: module_qn, empty: start, cons: fn(acc, seg) {
-    match find_named_child(root: acc, name: seg) {
-      Accepted { value: child, diagnostics: _ } => child
-      Rejected { diagnostics: _ } => root
-    }
-  })
 }
 
 // A single-tree namespace has no module path of its own (module_qn stays Empty, as before), but its
