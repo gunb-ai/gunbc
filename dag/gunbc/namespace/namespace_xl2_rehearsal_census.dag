@@ -140,9 +140,33 @@ data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
 // because the census's resolved arm (v2.compiler.compile NativeCensusModuleResolved) keeps no
 // resolved tree to count from; counting it needs the census to carry ResolvedToKernelSymbol
 // occurrences, which is the trigger for adding a count here.
-type Xl2ExcludedPopulation = | Xl2KernelCanonicalReferencesUncounted
+//
+// HEADER SEGMENTS ARE NOT REFUSAL SITES. A module header's segments name the module itself; the
+// graft consumes them and resolve never looks one up, so stripping imports cannot make resolve
+// refuse at one. Measured on this composition (xl2_rehearse_stripped over supplied sources): a
+// module whose header names a path that no module declares yields residual rows only at its body
+// references, none at a header segment. Counted where the census has the atoms:
+// v2.compiler.reference_conservation header_channel.
+//
+// NESTING-SCOPED REFERENCES SURVIVE THE STRIP, UNCOUNTED. Measured on the same composition: a
+// module declared as v2.xl2_control_provider.shadow resolves the provider's function with its
+// import stripped, because nesting under a namespace grants that namespace's scope. Such a
+// reference is invisible to this census exactly as a kernel canonical one is -- no residual row
+// is not evidence the cut covers it. It is carried UNCOUNTED for the same reason: the resolved arm
+// keeps no resolved tree to count from, so counting it needs the census to carry which scope
+// resolved each reference, which is the trigger for adding a count here. OPEN QUESTION, not
+// answered by this row: whether the root-authority cut (XL-6) is meant to keep nesting-granted
+// scope; if it is not, these references become residual and this arm dissolves.
+type Xl2ExcludedPopulation
+  = Xl2KernelCanonicalReferencesUncounted
+  | HeaderSegmentsNotRefusalSites
+  | NestingScopedReferencesUncounted
 
-data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [Xl2KernelCanonicalReferencesUncounted]
+data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [
+  Xl2KernelCanonicalReferencesUncounted,
+  HeaderSegmentsNotRefusalSites,
+  NestingScopedReferencesUncounted
+]
 
 type Xl2RehearsalRun
   = Xl2RehearsalBaseUnobserved { cause: Step0SubjectPinRefusal }
