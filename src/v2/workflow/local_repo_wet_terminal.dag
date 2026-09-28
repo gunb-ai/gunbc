@@ -1035,6 +1035,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_authorization_witness", function: "a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction" },
+      entry: "dag/test/claim/spark/pair_serving_d0_authorization_witness_test.dag",
+      function: "a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_production_route_settles_and_the_lease_governs_launch_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "the_production_route_settles_and_the_lease_governs_launch_by_real_execution",
@@ -1056,6 +1080,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet" },
       entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
       function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_judges_exactly_what_the_runners_log_read_returned" },
+      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
+      function: "the_live_entry_judges_exactly_what_the_runners_log_read_returned",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer" },
+      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
+      function: "the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
