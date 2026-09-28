@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
+import gunbc.machine_intake_megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
@@ -29,9 +30,10 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
 }
-import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
+import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_media_gate, mtcollins1_observe_presentation }
+import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult, handoff_not_issued }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1BootPhaseTiming, BootStartUnobserved, mtcollins1_boot_phase_timing_not_taken,
   MtCollins1PhaseRunResult, PhaseVerified, PhaseRefused, MtCollins1PhaseStep, PhaseStepRan, PhaseStepSkipped, MtCollins1BootRoute,
@@ -77,7 +79,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
-  SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
+  SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
   PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOffWithoutCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
 }
 import std.dissolution { dissolution_description }
@@ -112,6 +114,9 @@ data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 fn mtcollins1_boot_step_timeout_minutes() -> Minute {
   let secs = second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
+    + second_count(s: megarac_convergence_allowance())
+    + 3 * second_count(s: megarac_presentation_look_allowance())
+    + second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)
     + second_count(s: oob_power_readback_allowance())
     + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
@@ -989,6 +994,9 @@ type MtCollins1BootActuationStage
 // release, and the unit-hold forged probe enrolls each outside call as a refusal.
 type MtCollins1BootActuation {
   outcome: ProcessExit
+  media: MtCollins1MediaAttachRecord
+  handoff_media: MtCollins1HandoffMedia
+  end_media: MtCollins1EndMedia
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
@@ -999,6 +1007,9 @@ type MtCollins1BootActuation {
 fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtCollins1BootActuation {
   MtCollins1BootActuation {
     outcome: outcome,
+    media: MediaAttachNotAttempted { reason: reason },
+    handoff_media: HandoffMediaNotReached { reason: reason },
+    end_media: EndMediaNotTaken { reason: reason },
     stage: ActuationNotPoweredOn { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
@@ -1120,6 +1131,64 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
   }
 }
 
+// THE BOOT-DEVICE AND POWER HANDOFF IS BEHIND THE MEDIA GATE, AND THIS IS THE ONLY ROUTE TO IT.
+// mtcollins1_drive_handoff admits exactly this caller (gunbc.machine_intake_mtcollins1_actuate), so
+// an actuation that called the handoff without passing the gate is a located admission refusal at
+// compile time, not a reviewer's catch. While the presentation is pending, timed out or refused,
+// nothing here writes the override or the power state; once ready, the existing handoff runs under
+// the same UnitHoldProof. No power-off is added on the withheld arm: returning a refused attempt to
+// off is eager-owl-205's declared frontier, not this gate's.
+type MediaGatedHandoff {
+  result: MtCollins1HandoffResult
+  media: MtCollins1HandoffMedia
+}
+
+fn mtcollins1_boot_handoff_when_media_ready(
+  proof: UnitHoldProof,
+  media: MtCollins1MediaAttachRecord,
+  image_name: NonEmptyStr,
+  password_file: String,
+  attempt: String,
+  selection: IpmiBootSelection,
+) -> MediaGatedHandoff
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  match mtcollins1_media_gate(record: media) {
+    MediaGateWithheld { reason: why } =>
+      MediaGatedHandoff { result: handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why } }
+    MediaGateReady { evidence: _ } => {
+      let before = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "before-handoff")
+      match presentation_still_served(result: before) {
+        PresentationStillReady => {
+          let handed = mtcollins1_drive_handoff(
+            proof: proof,
+            label: "mtcollins1 cdrom handoff",
+            password_file_raw: password_file,
+            capability_row: mtcollins1_capability_row,
+            selection: selection,
+          )
+          let after = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "after-handoff")
+          MediaGatedHandoff {
+            result: handed,
+            media: HandoffMediaAttempted {
+              before: before,
+              handoff: match handed.outcome { ExitSuccess => HandoffConfirmed  ExitFailure { code: _, reason: r } => HandoffAttemptedUnconfirmed { reason: r } },
+              after: after,
+            },
+          }
+        }
+        _ =>
+          MediaGatedHandoff {
+            result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
+            media: HandoffMediaWithheldAtRecheck { before: before },
+          }
+      }
+    }
+  }
+}
+
 // EVERY BMC ACTUATION HAPPENS UNDER THE UNIT HOLD, AND THE SOL ACQUIRE IS THE FIRST OF THEM. The
 // SOL deactivate/activate is a BMC write too, so it sits after the hold like the attach, the boot
 // device and the power cycle -- which is what dissolves the pre-approval SOL mutation: there is no
@@ -1146,6 +1215,9 @@ fn mtcollins1_boot_actuate(
       let refused = actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
       MtCollins1BootActuation {
         outcome: refused.outcome,
+        media: refused.media,
+        handoff_media: refused.handoff_media,
+        end_media: refused.end_media,
         stage: refused.stage,
         override_before: refused.override_before,
         override_after: refused.override_after,
@@ -1161,26 +1233,27 @@ fn mtcollins1_boot_actuate(
       let sol_held = proc_uptime_read()
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_before_read = proc_uptime_read()
-      let attached = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
-        Present { value: why } => exit_failure(reason: why)
+      let media = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+        Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
         Absent => mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt)
       }
+      let attached = match mtcollins1_media_gate(record: media) {
+        MediaGateReady { evidence: _ } => ExitSuccess
+        MediaGateWithheld { reason: why } => exit_failure(reason: why as String)
+      }
       let attach_verified = proc_uptime_read()
-      let handoff = match attached {
-        ExitSuccess => {
-          let issued = mtcollins1_drive_handoff(
-            proof: proof,
-            label: "mtcollins1 cdrom handoff",
-            password_file_raw: password_file,
-            capability_row: mtcollins1_capability_row,
-            selection: subject.selection,
-          )
-          HandoffRun { result: issued, step: PhaseStepRan { result: exit_phase_result(outcome: issued.outcome), end: proc_uptime_read() } }
-        }
-        other => HandoffRun {
-          result: MtCollins1HandoffResult { outcome: other, start: BootStartUnobserved { reason: "the attach refused, so no handoff was issued" } },
-          step: PhaseStepSkipped { reason: "the media attach did not verify" },
-        }
+      let gated = mtcollins1_boot_handoff_when_media_ready(
+        proof: proof,
+        media: media,
+        image_name: subject.image_name,
+        password_file: password_file,
+        attempt: attempt,
+        selection: subject.selection,
+      )
+      let handoff = match gated.media {
+        HandoffMediaAttempted { before: _, handoff: _, after: _ } =>
+          HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() } }
+        _ => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the media gate or its pre-handoff recheck withheld the handoff" } }
       }
       let observed = match handoff.result.outcome {
         ExitSuccess => {
@@ -1212,6 +1285,11 @@ fn mtcollins1_boot_actuate(
           terminal_step: PhaseStepSkipped { reason: "power on was never verified" },
         }
       }
+      let end_media = if end_media_is_owed(media: media) {
+        EndMediaObserved { look: mtcollins1_observe_presentation(proof: proof, image_name: subject.image_name, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+      } else {
+        EndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
+      }
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_after_read = proc_uptime_read()
       let power_after = mtcollins1_boot_power_after_poll(
@@ -1223,6 +1301,9 @@ fn mtcollins1_boot_actuate(
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
       let released = proc_uptime_read()
       MtCollins1BootActuation {
+        media: media,
+        handoff_media: gated.media,
+        end_media: end_media,
         override_before: p5_before,
         override_after: p5_after,
         power_after: power_after,
@@ -1284,7 +1365,7 @@ fn mtcollins1_boot_under_live_unit_hold(
         sol_pid_path: sol_pid_path,
         sol_capture_path: sol_capture_path,
       )
-      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing }
+      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), media: act.media, handoff_media: act.handoff_media, end_media: act.end_media, stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing }
     }
   }
 }
@@ -1306,6 +1387,9 @@ type MtCollins1BootBmcAccess
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
+  media: MtCollins1MediaAttachRecord
+  handoff_media: MtCollins1HandoffMedia
+  end_media: MtCollins1EndMedia
   bmc: MtCollins1BootBmcAccess
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
@@ -1324,6 +1408,9 @@ fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
 fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: outcome,
+    media: MediaAttachNotAttempted { reason: "the attempt ended before the unit hold" },
+    handoff_media: HandoffMediaNotReached { reason: "the attempt ended before the unit hold" },
+    end_media: EndMediaNotTaken { reason: "the attempt ended before the unit hold" },
     bmc: BmcAccessNotReached { reason: concat("the attempt ended before the BMC credential was read (", mtcollins1_boot_exit_reason(outcome: outcome), ")") as NonEmptyStr },
     stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
     override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
@@ -1365,16 +1452,19 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
-        run: mtcollins1_boot_run_record(stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing),
+        run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing),
       }
     }
   }
 }
 
-fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt, timing: MtCollins1BootPhaseTiming) -> MtCollins1BootRunRecord {
+fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media: MtCollins1HandoffMedia, end_media: MtCollins1EndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt, timing: MtCollins1BootPhaseTiming) -> MtCollins1BootRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MtCollins1BootRunRecord {
+        media: media,
+        handoff_media: handoff_media,
+        end_media: end_media,
         smpro_power_on: SmproNotTaken { reason: why },
         smpro_census: SmproNotTaken { reason: why },
         override_before: before,
@@ -1385,6 +1475,9 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
+        media: media,
+        handoff_media: handoff_media,
+        end_media: end_media,
         smpro_power_on: on,
         smpro_census: census,
         override_before: before,
@@ -1395,6 +1488,9 @@ fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootP
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
+        media: media,
+        handoff_media: handoff_media,
+        end_media: end_media,
         smpro_power_on: on,
         smpro_census: census,
         override_before: before,
@@ -1504,6 +1600,9 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
       let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path)
       MtCollins1BootAttempt {
         outcome: act.outcome,
+        media: act.media,
+        handoff_media: act.handoff_media,
+        end_media: act.end_media,
         bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
         stage: act.stage,
         override_before: act.override_before,
@@ -1518,6 +1617,9 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
       let act = mtcollins1_boot_under_live_unit_hold(run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path)
       MtCollins1BootAttempt {
         outcome: act.outcome,
+        media: act.media,
+        handoff_media: act.handoff_media,
+        end_media: act.end_media,
         bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
         stage: act.stage,
         override_before: act.override_before,

@@ -5,7 +5,7 @@ import std.decimal { decimal_digit_char }
 import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.generated_artifact { committed_generated_artifact_paths }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.stage0_rust_host_observation {
   EmitPopulationConfirmed,
   EmitPopulationEvidence,

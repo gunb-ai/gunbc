@@ -10,9 +10,8 @@ import gunbc.workspace_repository_materialisation {
   WorkspaceMaterialisation, workspace_materialisations, untracked_materialisations,
   materialisation_ignore_reason
 }
-import gunbc.generated_artifact {
-  GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
-}
+import gunbc.generated_artifact { GeneratedArtifact, artifact_is_committed, artifact_path }
+import gunbc.generated_artifact_registry { generated_artifact_registry }
 import std.languages { gitignore_format }
 import std.layout {
   Doc, DocEmpty, DocConcat,

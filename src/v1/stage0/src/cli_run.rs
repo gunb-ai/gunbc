@@ -221,7 +221,7 @@ pub mod floor_memory_supervisor;
 pub mod target_invocation_host;
 
 #[path = "generated_artifact_boundary_host.rs"]
-mod generated_artifact_boundary_host;
+pub(crate) mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
 
@@ -2324,7 +2324,7 @@ mod process_cwd_mutation_reachability_gate {
 // ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
 // Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
-// pool-root anchoring from `.dag` (same exit as bash-emit #5828 for floor shell scaffolds).
+// pool-root anchoring from `.dag` (the same exit the floor shell scaffolds take).
 // DELETE WHEN dissolved: `process_workspace_root`, `resolve_process_workspace_root`,
 // `anchor_source_root`, `repo_relative_path`, `repo_relative_path_normalized`, and call-site
 // migration in `build_module_*` / `pool_roots_*` / `workspace_relative_repo_path` (~130 LOC).
@@ -11236,7 +11236,11 @@ impl WitnessRuntimeCause {
             | E::HermeticHostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
-            | E::EvaluationBudgetExceeded { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
+            | E::EvaluationBudgetExceeded { .. }
+            // Raised only inside a witness frame, whose evaluation converts it into a
+            // WitnessRefused / WitnessInterrupted value: reaching this classifier is a leak.
+            | E::ModeledOperationRefused { .. }
+            | E::ModeledWorkerKilled { .. } => WitnessRuntimeCause::MappedOutcomeEscaped,
         }
     }
 }
@@ -16964,6 +16968,12 @@ pub struct HeadsReadingDifferential {
     pub narrowed: Vec<String>,
     pub regressed: Vec<String>,
     pub both_refused: Vec<String>,
+    /// Modules both readings accept whose DECLARATION NAMES differ (the population the pool
+    /// name census reads), each with the names only one reading carries. Narrower than
+    /// `divergent`, which compares whole stripped nodes: a reading can differ in a field no
+    /// name census consumes and still agree here, and the converse is the defect this row
+    /// exists to show -- a declaration one reading silently loses.
+    pub declaration_names_divergent: Vec<String>,
     /// Wall spent in the FULL reading, summed over every module, and the same for the
     /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
     /// list, alternating per module — so the ratio compares two READINGS, not two builds,
@@ -16995,6 +17005,7 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         narrowed: Vec::new(),
         regressed: Vec::new(),
         both_refused: Vec::new(),
+        declaration_names_divergent: Vec::new(),
         full_reading_nanos: 0,
         heads_reading_nanos: 0,
     };
@@ -17010,6 +17021,17 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         out.heads_reading_nanos += heads_nanos;
         match (full_read, heads_read) {
             (Ok(full), Ok(heads)) => {
+                let full_names: BTreeSet<String> =
+                    collect_module_decl_names(&full).into_iter().collect();
+                let heads_names: BTreeSet<String> =
+                    collect_module_decl_names(&heads).into_iter().collect();
+                if full_names != heads_names {
+                    let only_full: Vec<&String> = full_names.difference(&heads_names).collect();
+                    let only_heads: Vec<&String> = heads_names.difference(&full_names).collect();
+                    out.declaration_names_divergent.push(format!(
+                        "{path} only_full={only_full:?} only_heads={only_heads:?}"
+                    ));
+                }
                 if full != heads {
                     out.divergent.push(path);
                 }
@@ -26113,6 +26135,14 @@ pub(crate) struct FloorDiffEdits {
     /// so `check_match_exhaustiveness` and every other infer diagnostic actually run on the
     /// live subject. Also the live `entry_file_touched` filter for skip-before-resolve.
     touched_entry_files: HashSet<String>,
+    /// `(file, declaration)` for every non-test-fn declaration -- fn, type or data -- whose
+    /// lines the diff edited. An import-region edit seeds nothing here: which reads it rebinds
+    /// is an index question (`namespace_baseline` `import_rebound_declarations`), and seeding
+    /// every declaration of the file planned ~684 seeds for an 11-file diff (gunbc#12353).
+    /// The seeds of `namespace_baseline` `body_reach_from_changed_declarations`: the
+    /// declaration grain `touched_entry_files` collapses to a file. A test fn is not a seed,
+    /// because nothing reads one; an edited test fn is a changed witness in its own right.
+    touched_declarations: HashSet<(String, String)>,
 }
 
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
@@ -41560,11 +41590,35 @@ pub fn assemble_prepared_subject_from_corpus(
                 .map(|(_, sf)| sf.path.replace('\\', "/"))
                 .collect();
             let seeds = seed_paths.len();
+            // A CORPUS KEY IS NOT A CWD PATH. `sf.path` is the index's workspace-relative key,
+            // and the entry loader opens its argument as a filesystem path, so a bare key names
+            // a file only while the process cwd happens to be the workspace root. That coincidence
+            // made every unit test of this arm enter the root with a process-wide
+            // `set_current_dir` under the parallel runner. The key is anchored at the root the
+            // index was keyed against instead, so the read no longer depends on ambient state.
+            let entry_at = |key: &str| -> String {
+                let p = Path::new(key);
+                if p.is_absolute() {
+                    key.to_string()
+                } else {
+                    process_workspace_root()
+                        .join(p)
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            };
             let mut keep: HashSet<String> = HashSet::new();
             for path in &seed_paths {
-                collect_both_closure_module_names_for_entry(entry_index, path, &mut keep).map_err(
-                    |e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"),
-                )?;
+                collect_both_closure_module_names_for_entry(
+                    entry_index,
+                    &entry_at(path),
+                    &mut keep,
+                )
+                .map_err(|e| {
+                    format!(
+                        "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"
+                    )
+                })?;
             }
             // TWO MORE EDGE KINDS, TO A JOINT FIXPOINT, because the loader's both-closure is
             // narrower than the claim scope the fold will build over this subject:
@@ -41607,7 +41661,7 @@ pub fn assemble_prepared_subject_from_corpus(
                 ancestors.dedup();
                 for name in ancestors {
                     let path = full_index[&name].path.replace('\\', "/");
-                    collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
+                    collect_both_closure_module_names_for_entry(entry_index, &entry_at(&path), &mut keep)
                         .map_err(|e| {
                             format!(
                                 "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"
@@ -41646,13 +41700,17 @@ pub fn assemble_prepared_subject_from_corpus(
                         }
                         bare_pulled_modules += 1;
                         let path = full_index[target].path.replace('\\', "/");
-                        collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
-                            .map_err(|e| {
-                                format!(
-                                    "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
+                        collect_both_closure_module_names_for_entry(
+                            entry_index,
+                            &entry_at(&path),
+                            &mut keep,
+                        )
+                        .map_err(|e| {
+                            format!(
+                                "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable \
                                      entry={path} — {e}"
-                                )
-                            })?;
+                            )
+                        })?;
                         keep.insert(target.clone());
                     }
                 }

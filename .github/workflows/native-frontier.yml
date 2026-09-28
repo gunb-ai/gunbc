@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Assert the runner user's systemd manager is reachable (the memory bound needs it)
         run: |-
-          # dissolve-on: native_frontier_preflight_step -- orch-emitted foreign-executor step probing the runner user's systemd manager (systemctl --user show-environment) and refusing with UserManagerUnreachable; the if/echo/exit strings remain until a typed host-manager-reachability probe lands on host_effect_apply (#5828 / shell-to-intent Phase 2), whose refusal arm this step's cause becomes
+          # dissolve-on: native_frontier_preflight_step -- orch-emitted foreign-executor step probing the runner user's systemd manager (systemctl --user show-environment) and refusing with UserManagerUnreachable; the if/echo/exit strings remain until a typed host-manager-reachability probe lands on host_effect_apply, whose refusal arm this step's cause becomes
           if ! 'systemctl' '--user' 'show-environment' >/dev/null; then
           echo "::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict."
           exit 1

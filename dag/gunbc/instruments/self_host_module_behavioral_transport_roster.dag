@@ -2,9 +2,12 @@ module tools.self_host_module_behavioral_transport_roster
 
 import tools.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedClaimRun,
+  CsslReceiptOutcome,
+  CsslBehaviorHeld,
+  CsslBehaviorDiverged,
+  CsslSetupRefused,
   cssl_seed_linked_behavioral_receipt
 }
-import tools.host_prelude { WitnessBinRefusal }
 import v2.std.algebra { fold_list }
 import v2.std.collection {
   List
@@ -19,8 +22,8 @@ import v2.std.optional {
 import v2.std.logic { Bool }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,
-  EvidenceSubjectCompleted,
   EvidenceSubjectUnreached,
+  EvidenceSubjectCompleted,
   SubjectEvidence,
   subject_evidence_establishes
 }
@@ -211,23 +214,22 @@ fn module_behavioral_transport_config_for(module_path: String) -> Optional<Modul
 // long as it did: refusing to fabricate a PASS is necessary and says nothing about whether the false
 // it returns instead is readable. Fail-closed and unaliased are different properties.
 //
-// WHAT THIS DOES NOT REPAIR, stated because the variant name would otherwise imply it. Inside the
-// Completed arm the outcome is still derived from cssl_seed_linked_behavioral_receipt's own Bool, and
-// that Bool has its own aliasing -- notably a planted-fault arm established by an exit status. That
-// repair belongs to the lane already holding it and is deliberately not duplicated here; this change
-// closes the arm ABOVE it without touching its signature.
+// THE COMPLETED ARM NO LONGER ALIASES A SETUP FAILURE AS A DIVERGENCE. cssl_seed_linked_behavioral_receipt
+// answers a typed CsslReceiptOutcome: a step that did not produce what the drive needs (a missing or
+// unbuilt witness artifact, a failed emit or cargo build) is EvidenceSubjectUnreached with the located
+// step, never BehavioralReceiptRefuted -- which is reserved for a drive that RAN and did not hold.
 type CompilerModuleReceiptNoVerdict
   = BehavioralTransportConfigAbsent { module_path: String }
-  | BehavioralWitnessBinRefused { module_path: String, refusal: WitnessBinRefusal }
+  | BehavioralReceiptSetupRefused { module_path: String, step: String }
 
 type CompilerModuleReceiptOutcome
   = BehavioralReceiptHeld
-  | BehavioralReceiptRefuted
+  | BehavioralReceiptRefuted { observed: String }
 
 fn compiler_module_receipt_outcome_licenses(outcome: CompilerModuleReceiptOutcome) -> Bool {
   match outcome {
     BehavioralReceiptHeld => true
-    BehavioralReceiptRefuted => false
+    BehavioralReceiptRefuted { observed: _ } => false
   }
 }
 
@@ -235,23 +237,18 @@ fn compiler_module_behavioral_receipt_evidence(
   module_path: String
 ) -> SubjectEvidence<CompilerModuleReceiptNoVerdict, CompilerModuleReceiptOutcome> {
   match module_behavioral_transport_config_for(module_path: module_path) {
-    Present { value: cfg } =>
-      match cssl_seed_linked_behavioral_receipt(
-        source_rel: cfg.module_path,
-        driver_rel: cfg.driver_rel,
-        pass_marker: cfg.pass_marker,
-        claim_runs: cfg.claim_runs
-      ) {
-        EvidenceInstrumentRefused { cause: refusal } => EvidenceInstrumentRefused {
-          cause: BehavioralWitnessBinRefused { module_path: module_path, refusal: refusal }
-        }
-        EvidenceSubjectUnreached { cause: refusal } => EvidenceSubjectUnreached {
-          cause: BehavioralWitnessBinRefused { module_path: module_path, refusal: refusal }
-        }
-        EvidenceSubjectCompleted { outcome: held } => EvidenceSubjectCompleted {
-          outcome: if held { BehavioralReceiptHeld } else { BehavioralReceiptRefuted }
-        }
+    Present { value: cfg } => match cssl_seed_linked_behavioral_receipt(
+      source_rel: cfg.module_path,
+      driver_rel: cfg.driver_rel,
+      pass_marker: cfg.pass_marker,
+      claim_runs: cfg.claim_runs
+    ) {
+      CsslBehaviorHeld => EvidenceSubjectCompleted { outcome: BehavioralReceiptHeld }
+      CsslBehaviorDiverged { observed } => EvidenceSubjectCompleted { outcome: BehavioralReceiptRefuted { observed: observed } }
+      CsslSetupRefused { step: refused_step } => EvidenceSubjectUnreached {
+        cause: BehavioralReceiptSetupRefused { module_path: cfg.module_path, step: refused_step }
       }
+    }
     Absent => EvidenceInstrumentRefused {
       cause: BehavioralTransportConfigAbsent { module_path: module_path }
     }

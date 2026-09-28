@@ -46,6 +46,7 @@ import gunbc.target_binding {
   HeadsReadingDifferentialRefusalCause,
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
+  SelfHostBehavioralEquivalenceProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -322,6 +323,16 @@ fn bare_reference_channel_outcome_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "bare-reference-channel-outcome" } }
 }
 
+// SELF-HOST BEHAVIORAL EQUIVALENCE, TAKEN ON PURPOSE (operator ruling 2026-09-27): runs every
+// tools.self_host_module_behavioral_transport_roster row for real and prints one receipt of
+// gunbc.self_host_behavioral_equivalence_receipt to persist; the interlock milestone
+// SelfHostBehavioralEquivalenceReestablished derives from the latest persisted receipt. Deliberately
+// not nightly and not per pull request, so this label is on no lane.
+// `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`.
+fn self_host_behavioral_equivalence_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -396,6 +407,10 @@ fn primitive_egress_census_seed_target() -> BuildTarget {
 
 fn required_lane_resolution_census_target() -> BuildTarget {
   instrument_test_target(label: required_lane_resolution_census_label())
+}
+
+fn self_host_behavioral_equivalence_binding() -> TargetBinding {
+  TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -545,6 +560,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
+    self_host_behavioral_equivalence_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label()
   ]
@@ -559,6 +575,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
+    self_host_behavioral_equivalence_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding()
   ]
