@@ -20,7 +20,6 @@ import extdeps.communication.medium { Lossless, Medium }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -34,7 +33,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   textual_whole_file_locus
 }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 
 // THE FILESYSTEM READ-THROUGH, SEGREGATED FROM THE SOURCE VOCABULARY IT READS INTO.

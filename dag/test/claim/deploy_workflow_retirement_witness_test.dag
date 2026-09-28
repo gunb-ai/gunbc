@@ -1,7 +1,7 @@
 module test.claim.deploy_workflow_retirement_witness
 
 import std.types { Bool, String }
-import gunbc.generated_artifact { committed_generated_artifact_paths }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

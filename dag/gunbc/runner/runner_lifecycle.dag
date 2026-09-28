@@ -15,18 +15,8 @@ import extdeps.github.actions_runner {
 }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  RunnerSlotPurpose,
-  SlotServesGitHubActions,
-  SlotServesFabricExecution,
-  RunnerSlotMembership,
-  CommittedSlotMember,
-  SlotOutsideCommittedPopulation,
-  runner_slot_membership,
-  SlotMembershipWidthUnresolved,
-  runner_width_unresolved_cause_text,
-}
+import gunbc.runner_slot_allocation { RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, SlotMembershipWidthUnresolved, runner_width_unresolved_cause_text }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host_disk_observation {
   HostDiskObservation,
   DiskUnobserved,

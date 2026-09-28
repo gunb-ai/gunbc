@@ -14,7 +14,7 @@ import gunbc.floor_cold_build_receipt {
 }
 import gunbc.floor_demand { gunbc_floor_job_wall_receipt_2026_09_19 }
 import gunbc.witness_floor_workflow { witness_floor_lane_timeout }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 fn cold_subject() -> ColdBuildSubject {
   ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: true, sccache_reachable: false }

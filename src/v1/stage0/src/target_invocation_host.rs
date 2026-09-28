@@ -264,6 +264,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
+    SelfHostBehavioralEquivalence,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -379,6 +380,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("bare-reference-channel-outcome"),
             TargetProducer::BareReferenceChannelOutcome,
+        ),
+        (
+            instrument_label("self-host-behavioral-equivalence"),
+            TargetProducer::SelfHostBehavioralEquivalence,
         ),
     ]
 }
@@ -782,6 +787,11 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
+            "self-host-behavioral-equivalence",
+            "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
+            "take_self_host_behavioral_equivalence_receipt",
+        ),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
             "dag/gunbc/required_lane_resolution_census_live.dag",

@@ -5,10 +5,7 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.parse { parse }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate {
-  grammar_inverse_source_validated,
-  target_serialize_source_from_model
-}
+import v2.compiler.target_serialize { grammar_inverse_source_validated, target_serialize_source_from_model }
 import v2.extdeps.languages.english {
   english_add_fn_emitted_node,
   english_add_fn_paragraph_grammar,
