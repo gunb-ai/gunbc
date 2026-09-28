@@ -1834,7 +1834,11 @@ fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.superseded_trees_are_reported_and_retained_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_contested_tree_is_refused_not_replaced_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

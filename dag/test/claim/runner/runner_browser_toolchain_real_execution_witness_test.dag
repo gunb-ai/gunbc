@@ -25,7 +25,7 @@ import gunbc.runner_browser_toolchain {
   RunnerBrowserToolchainLocation, runner_browser_toolchain_location_at, runner_browser_toolchain_readback_at_wet,
   tree_sha256_wet, TreeDigestObserved, TreeDigestUnobservable, TreeAdmitted, TreeContentMismatch,
   place_toolchain_wet, ToolchainAlreadyAdmitted, ToolchainPlacementRefused,
-  observe_superseded_trees_wet, SupersededTreesObserved, runner_browser_toolchain_system_path,
+  observe_superseded_trees_wet, SupersededTreesObserved, runner_browser_toolchain_system_path, runner_browser_toolchain_ready,
 }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
@@ -167,11 +167,17 @@ fn fixture_marker(dir: String) -> String {
 }
 
 fn plant_fixture_tree(dir: String) -> Bool {
+  plant_fixture_tree_with(dir: dir, candidate_body: "")
+}
+
+// The inert candidate records its environment OUTSIDE the tree; a candidate_body line may add a write
+// INSIDE it, which is the runtime-writer shape run 36469030109 found (Playwright's marker file).
+fn plant_fixture_tree_with(dir: String, candidate_body: String) -> Bool {
   let loc = fixture_location(dir: dir)
   let bin = concat(loc.root as String, "/node/bin")
   process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: bin), transport: LocalExec))
     && process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: concat(loc.root as String, "/node_modules/playwright")), transport: LocalExec))
-    && Filesystem.Write(path: loc.node_binary as String, content: join(["#!/bin/sh\n{ /usr/bin/env; echo '--- end of invocation'; } >> '", fixture_marker(dir: dir), "'\necho v24.21.0\n"], "")).success
+    && Filesystem.Write(path: loc.node_binary as String, content: join(["#!/bin/sh\n{ /usr/bin/env; echo '--- end of invocation'; } >> '", fixture_marker(dir: dir), "'\n", candidate_body, "echo v24.21.0\n"], "")).success
     && Filesystem.Write(path: concat(loc.playwright_module as String, "/index.js"), content: "module.exports = {};\n").success
     && process_outcome_admitted(outcome: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0755", path: loc.node_binary as String), transport: LocalExec))
 }
@@ -266,6 +272,7 @@ fn env_record_is_declared(record: String) -> Bool {
   fold(lines, init: false, f: (acc, l) => acc || trim(s: l) == concat("PATH=", runner_browser_toolchain_system_path))
     && string_contains(s: record, pattern: "PLAYWRIGHT_BROWSERS_PATH=")
     && string_contains(s: record, pattern: "HOME=")
+    && fold(lines, init: false, f: (acc, l) => acc || trim(s: l) == "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1")
     && list_length(lines) <= 6
 }
 
@@ -327,5 +334,37 @@ test fn a_contested_tree_is_refused_not_replaced_by_real_execution() -> Bool {
 
 fn run_ok_local(command: ArgvCommand) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+}
+
+// A CANDIDATE THAT WRITES INSIDE THE TREE IS CAUGHT ON THE RUN THAT WROTE (eager-owl-205, after run
+// 36469030109): the fixture's candidate also creates a file inside the admitted tree, the shape of
+// Playwright's DEPENDENCIES_VALIDATED marker. The tree is admitted before execution, and the
+// post-execution admission reads TreeContentMismatch, so the standing is not ready. The positive
+// control is the same readback over a candidate that writes only outside the tree: the tree is
+// admitted before AND after.
+test fn a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree_with(dir: d, candidate_body: join([": > '", loc.root as String, "/node/DEPENDENCIES_VALIDATED'\n"], ""))
+  let pin = fixture_digest(dir: d)
+  let st = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let before_ok = match st.tree { TreeAdmitted => true  _ => false }
+  let after_refused = match st.after { TreeContentMismatch { tree: _, expected: _, observed: _ } => true  _ => false }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && before_ok && after_refused && runner_browser_toolchain_ready(s: st) == false
+}
+
+test fn a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let st = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let executed = exists(path: fixture_marker(dir: d))
+  let both = (match st.tree { TreeAdmitted => true  _ => false }) && (match st.after { TreeAdmitted => true  _ => false })
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && executed && both
 }
 

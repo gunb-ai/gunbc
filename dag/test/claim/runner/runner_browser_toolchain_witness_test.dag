@@ -324,6 +324,7 @@ test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() ->
     concat("PLAYWRIGHT_BROWSERS_PATH=", loc.browsers_path as String),
     "HOME=/scratch/decoy",
     "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+    "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1",
     loc.node_binary as String,
     "-e 0 a",
   ], " ")

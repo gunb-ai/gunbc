@@ -759,6 +759,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",
