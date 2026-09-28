@@ -14,7 +14,7 @@ import gunbc.fleet_release_bins_key {
   release_bins_key_statements, release_bins_pack_statements, release_bins_outcome_statements,
   release_bins_consumer_statements, release_bins_main_lookup_ref, lookup_decode_statements,
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
-  release_bins_preimage_name,
+  release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
 }
 import gunbc.ci_spec { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
@@ -78,30 +78,45 @@ fn fixture() -> List<Node> {
       cmdl(ls: ["git", "add", "src.txt"]),
       cmdl(ls: ["git", "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture", "commit", "-qm", "fixture"]),
     ],
-    seq(parts: map(ci_floor_required_artifact_names(), m => [
-      write_file(path: fx(t: join(["target/release/", m], "")), lines: ["#!/bin/sh", join(["# fixture member ", m], ""), "exit 0"]),
-      cmd(ws: [fx(t: "chmod"), fx(t: "+x"), fx(t: join(["target/release/", m], ""))]),
-    ])),
   ])
 }
 
-fn export_key() -> Node {
-  bash_build_and_then(
-    left: bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key")),
-    right: cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RELEASE_BINS_KEY="), bash_build_word_cmdsubst_file(path: in_t(path: "/key"))])]),
-  )
+// Fake pack members, only for the claims whose subject is a pack.
+fn fixture_members() -> List<Node> {
+  seq(parts: map(ci_floor_required_artifact_names(), m => [
+    write_file(path: fx(t: join(["target/release/", m], "")), lines: ["#!/bin/sh", join(["# fixture member ", m], ""), "exit 0"]),
+    cmd(ws: [fx(t: "chmod"), fx(t: "+x"), fx(t: join(["target/release/", m], ""))]),
+  ]))
 }
 
-fn bash_build_word_cmdsubst_file(path: Node) -> Node {
-  bash_build_word_cmdsubst(body: cmd(ws: [fx(t: "cat"), path]))
+// THE KEY IS SUPPLIED, NOT RE-DERIVED, for claims whose subject is downstream of it (DESIGN section 3,
+// a witness discriminates at one interface): a preimage naming this checkout's source closure is
+// written where the key runner would write it, and the key is its digest, so the pack, restore,
+// consumer and lookup runners see exactly the inputs the key runner hands them. The key runner's own
+// behaviour is the subject of the key claims below, which execute it for real.
+fn supplied_key() -> List<Node> {
+  seq(parts: [
+    [assign_sub(name: "ROOT", body: cmdl(ls: ["git", "rev-parse", "--show-toplevel"]))],
+    source_closure_statements(),
+    [
+      bash_build_assign(name: "EXPECTED", value: words(ws: [var(n: "RUNNER_TEMP"), fx(t: join(["/", release_bins_preimage_name, ".expected"], ""))])),
+      bash_build_with_redir_to_file(
+        inner: cmd(ws: [fx(t: "printf"), fx(t: "kind=fixture\nsource_closure=%s\n"), var(n: "SOURCE_CLOSURE")]),
+        path: var(n: "EXPECTED"),
+      ),
+      bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sha256sum"), var(n: "EXPECTED")]), path: in_t(path: "/preimage.sum")),
+      assign_sub(name: "SUPPLIED_DIGEST", body: cmd(ws: [fx(t: "cut"), fx(t: "-c"), fx(t: "1-64"), in_t(path: "/preimage.sum")])),
+      cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RELEASE_BINS_KEY=release-bins-"), var(n: "SUPPLIED_DIGEST")])]),
+    ],
+  ])
 }
 
 // Produce: key, then pack the fixture members, then keep the entry as the store.
 fn produced_store() -> List<Node> {
   seq(parts: [
     fixture(),
-    release_bins_key_statements(),
-    [export_key()],
+    fixture_members(),
+    supplied_key(),
     release_bins_pack_statements(),
     [cmd(ws: [fx(t: "cp"), fx(t: "-r"), fx(t: release_bins_staging_dir), in_t(path: "/store")])],
   ])
@@ -161,16 +176,22 @@ data part_consume_prep: Outcome<String> = e(statements: [
   cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), fx(t: ".")]),
 ])
 data part_consumer: Outcome<String> = e(statements: release_bins_consumer_statements())
+data part_supplied_key: Outcome<String> = e(statements: supplied_key())
 data part_decode: Outcome<String> = e(statements: concat(
-  concat([export_key(), cmdl(ls: ["export", "STANDING=absent", "ENTRY=none"])], lookup_decode_statements(r: release_bins_main_lookup_ref())),
+  concat([cmdl(ls: ["export", "STANDING=absent", "ENTRY=none"])], lookup_decode_statements(r: release_bins_main_lookup_ref())),
   [cmd(ws: [fx(t: "echo"), words(ws: [fx(t: "decoded standing="), var(n: "STANDING")])])],
 ))
+// THE ENVIRONMENT CLAIMS' SUBJECT IS THE ENVIRONMENT READ: the preimage carries its digest verbatim
+// (environment=sha256:<digest>), so two environments key apart exactly when their digests differ.
+data part_environment: Outcome<String> = e(statements: concat(
+  [assign_sub(name: "ROOT", body: cmdl(ls: ["git", "rev-parse", "--show-toplevel"]))],
+  release_bins_environment_statements(),
+))
 data part_first_key: Outcome<String> = e(statements: [
-  bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key1")),
-  cmd(ws: [fx(t: "cp"), fx(t: "/dev/null"), var(n: "GITHUB_OUTPUT")]),
+  bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "echo"), var(n: "AXIS_ENVIRONMENT_DIGEST")]), path: in_t(path: "/key1")),
 ])
 data part_second_key_compare: Outcome<String> = e(statements: [
-  bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sed"), fx(t: "-n"), fx(t: "s/^key=//p"), var(n: "GITHUB_OUTPUT")]), path: in_t(path: "/key2")),
+  bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "echo"), var(n: "AXIS_ENVIRONMENT_DIGEST")]), path: in_t(path: "/key2")),
   bash_build_if_else(
     cond: cmd(ws: [fx(t: "cmp"), fx(t: "-s"), in_t(path: "/key1"), in_t(path: "/key2")]),
     then_body: bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: ["echo", "keys equal"])]),
@@ -187,11 +208,11 @@ fn consume_after(mutation: Outcome<String>) -> List<Outcome<String>> {
 }
 
 fn key_twice(first: Outcome<String>, second: Outcome<String>) -> List<Outcome<String>> {
-  [part_fixture, first, part_key, part_first_key, second, part_key, part_second_key_compare]
+  [part_fixture, first, part_environment, part_first_key, second, part_environment, part_second_key_compare]
 }
 
 fn decode_answer(body: Outcome<String>) -> List<Outcome<String>> {
-  [part_fixture, part_key, body, part_decode]
+  [part_fixture, part_supplied_key, body, part_decode]
 }
 
 fn answer_body(body: String) -> Outcome<String> {

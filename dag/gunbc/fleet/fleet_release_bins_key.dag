@@ -229,8 +229,8 @@ type ReleaseBinsRefusal
   | ManifestRosterMismatch { site: ReleaseBinsVerifySite }
   | ManifestMalformed { site: ReleaseBinsVerifySite }
   | PackListingNotRoster { site: ReleaseBinsVerifySite }
-  | MemberNotRegularFile { site: ReleaseBinsVerifySite, member: String }
-  | MemberNotExecutable { site: ReleaseBinsVerifySite, member: String }
+  | MemberNotRegularFile { site: ReleaseBinsVerifySite }
+  | MemberNotExecutable { site: ReleaseBinsVerifySite }
   | MemberDigestMismatch { site: ReleaseBinsVerifySite }
   | BuildOverrideNotAdmitted
   | CredentialInBuildEnvironment
@@ -257,8 +257,8 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
     ManifestRosterMismatch { site: _ } => "ManifestRosterMismatch"
     ManifestMalformed { site: _ } => "ManifestMalformed"
     PackListingNotRoster { site: _ } => "PackListingNotRoster"
-    MemberNotRegularFile { site: _, member: _ } => "MemberNotRegularFile"
-    MemberNotExecutable { site: _, member: _ } => "MemberNotExecutable"
+    MemberNotRegularFile { site: _ } => "MemberNotRegularFile"
+    MemberNotExecutable { site: _ } => "MemberNotExecutable"
     MemberDigestMismatch { site: _ } => "MemberDigestMismatch"
     BuildOverrideNotAdmitted => "BuildOverrideNotAdmitted"
     CredentialInBuildEnvironment => "CredentialInBuildEnvironment"
@@ -287,8 +287,8 @@ fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
     ManifestRosterMismatch { site: w } => join([release_bins_site_noun(site: w), " manifest does not name exactly the gunbc.ci_release_bins roster in order"], "")
     ManifestMalformed { site: w } => join([release_bins_site_noun(site: w), " manifest has a line that is not one well-formed sha256 record for a roster member"], "")
     PackListingNotRoster { site: w } => join([release_bins_site_noun(site: w), " pack's archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)"], "")
-    MemberNotRegularFile { site: w, member: m } => join([release_bins_site_noun(site: w), " member ", m, " is not a self-contained regular file (a link, special file or hard-link dependency)"], "")
-    MemberNotExecutable { site: w, member: m } => join([release_bins_site_noun(site: w), " member ", m, " is not executable"], "")
+    MemberNotRegularFile { site: w } => join([release_bins_site_noun(site: w), " pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)"], "")
+    MemberNotExecutable { site: w } => join([release_bins_site_noun(site: w), " pack has a member that is not executable (listed above)"], "")
     MemberDigestMismatch { site: w } => join([release_bins_site_noun(site: w), " member bytes do not match the manifest under strict checking; refusing before any member is promoted or run"], "")
     CredentialInBuildEnvironment => "a registry or toolchain credential is present in the build environment; credentials are not build inputs and must not reach a key or a published preimage, so the build is refused"
     BuildOverrideNotAdmitted => "the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly"
@@ -602,8 +602,13 @@ data release_bins_unkeyed_environment_pattern: String = "/^(CARGO_HOME|RUSTUP_HO
 fn release_bins_ancestor_level(level: Int) -> List<Node> {
   [
     assign_sub(name: join(["ANCESTOR_", to_string(level)], ""), body: cmd(ws: [lit(t: "dirname"), var(n: join(["ANCESTOR_", to_string(level - 1)], ""))])),
-    or_refuse(check: test_words(ws: [lit(t: "!"), lit(t: "-e"), words(ws: [var(n: join(["ANCESTOR_", to_string(level)], "")), lit(t: "/.cargo/config.toml")])]), r: AncestorCargoConfigPresent),
-    or_refuse(check: test_words(ws: [lit(t: "!"), lit(t: "-e"), words(ws: [var(n: join(["ANCESTOR_", to_string(level)], "")), lit(t: "/.cargo/config")])]), r: AncestorCargoConfigPresent),
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: test_words(ws: [lit(t: "!"), lit(t: "-e"), words(ws: [var(n: join(["ANCESTOR_", to_string(level)], "")), lit(t: "/.cargo/config.toml")])]),
+        right: test_words(ws: [lit(t: "!"), lit(t: "-e"), words(ws: [var(n: join(["ANCESTOR_", to_string(level)], "")), lit(t: "/.cargo/config")])]),
+      ),
+      right: bash_build_assign(name: "ANCESTOR_CONFIG", value: var(n: join(["ANCESTOR_", to_string(level)], ""))),
+    ),
   ]
 }
 
@@ -626,11 +631,27 @@ fn release_bins_environment_statements() -> List<Node> {
       produce_to(file: "env-sorted.nul", command: cmd(ws: [lit(t: "sort"), lit(t: "-z"), temp(file: "env-kept.nul")])),
     ],
     digest_of(name: "AXIS_ENVIRONMENT_DIGEST", path: temp(file: "env-sorted.nul")),
+  ])
+}
+
+// ANCESTOR CARGO CONFIG. Each level records a hit; one refusal after the scan names the directory.
+fn release_bins_ancestor_statements() -> List<Node> {
+  seq(parts: [
     [
       bash_build_assign(name: "ANCESTOR_0", value: var(n: "ROOT")),
+      bash_build_assign(name: "ANCESTOR_CONFIG", value: lit(t: "")),
     ],
     seq(parts: map(release_bins_ancestor_levels, l => release_bins_ancestor_level(level: l))),
-    [or_refuse(check: test_words(ws: [var(n: join(["ANCESTOR_", to_string(list_length(release_bins_ancestor_levels))], "")), lit(t: "="), lit(t: "/")]), r: CheckoutPathTooDeep)],
+    [
+      bash_build_if(
+        cond: test_words(ws: [lit(t: "-n"), var(n: "ANCESTOR_CONFIG")]),
+        body: bash_build_stmt_list_from_nodes(stmts: [
+          cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins: Cargo config found above the checkout in "), var(n: "ANCESTOR_CONFIG")])]),
+          refuse(r: AncestorCargoConfigPresent),
+        ]),
+      ),
+      or_refuse(check: test_words(ws: [var(n: join(["ANCESTOR_", to_string(list_length(release_bins_ancestor_levels))], "")), lit(t: "="), lit(t: "/")]), r: CheckoutPathTooDeep),
+    ],
   ])
 }
 
@@ -663,19 +684,46 @@ fn roster_file_statement() -> Node {
 // second, unchecked time.
 data release_bins_manifest_record_pattern: String = "^[0-9a-f]{64}  [A-Za-z0-9_]+$"
 
-fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, member: String) -> List<Node> {
+fn release_bins_member_types_expected() -> String {
+  fold(ci_floor_required_artifact_names(), init: "", f: (acc, name) => join([acc, name, ":regular file:1\n"], ""))
+}
+
+fn in_dir(dir: Node, command: Node) -> Node {
+  bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: cmd(ws: [lit(t: "cd"), dir]), right: command)])
+}
+
+fn release_bins_roster_words() -> List<Node> {
+  map(ci_floor_required_artifact_names(), n => lit(t: n))
+}
+
+// EVERY MEMBER IN ONE PASS: stat reports each roster member's type and link count, and the whole
+// report must equal the expected one (every member `regular file:1`); find lists any regular file
+// without the owner-execute bit, and the list must be empty. Promotion is one rm and one cp of the
+// roster names from the verified directory.
+fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node) -> List<Node> {
   [
-    produce_to(file: join(["stat-", member, ".out"], ""), command: cmd(ws: [lit(t: "stat"), lit(t: "-c"), lit(t: "%F:%h"), words(ws: [dir, lit(t: join(["/", member], ""))])])),
-    read_back(name: "MEMBER_TYPE", file: join(["stat-", member, ".out"], ""), reader: ["head", "-n", "1"]),
-    or_refuse(check: test_words(ws: [var(n: "MEMBER_TYPE"), lit(t: "="), lit(t: "regular file:1")]), r: MemberNotRegularFile { site: site, member: member }),
-    or_refuse(check: test_words(ws: [lit(t: "-x"), words(ws: [dir, lit(t: join(["/", member], ""))])]), r: MemberNotExecutable { site: site, member: member }),
+    bash_build_with_redir_to_file(inner: cmdl(ls: ["printf", "%s", release_bins_member_types_expected()]), path: temp(file: "member-types.expected")),
+    produce_to(file: "member-types.out", command: in_dir(dir: dir, command: cmd(ws: concat([lit(t: "stat"), lit(t: "-c"), lit(t: "%n:%F:%h")], release_bins_roster_words())))),
+    bash_build_or_else(
+      left: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), temp(file: "member-types.out"), temp(file: "member-types.expected")]),
+      right: bash_build_subshell_from_stmts(stmts: [
+        bash_build_or_else(left: cmd(ws: [lit(t: "diff"), temp(file: "member-types.expected"), temp(file: "member-types.out")]), right: cmdl(ls: [":", "no-op"])),
+        refuse(r: MemberNotRegularFile { site: site }),
+      ]),
+    ),
+    produce_to(file: "member-nonexec.out", command: in_dir(dir: dir, command: cmdl(ls: ["find", ".", "-mindepth", "1", "-maxdepth", "1", "!", "-perm", "-u+x"]))),
+    bash_build_or_else(
+      left: test_words(ws: [lit(t: "!"), lit(t: "-s"), temp(file: "member-nonexec.out")]),
+      right: bash_build_subshell_from_stmts(stmts: [cmd(ws: [lit(t: "cat"), temp(file: "member-nonexec.out")]), refuse(r: MemberNotExecutable { site: site })]),
+    ),
   ]
 }
 
-fn release_bins_promote(dir: Node, member: String) -> List<Node> {
+fn release_bins_promote_all(dir: Node) -> List<Node> {
   [
-    cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: join(["target/release/", member], ""))]),
-    cmd(ws: [lit(t: "cp"), lit(t: "-p"), words(ws: [dir, lit(t: join(["/", member], ""))]), rooted(file: join(["target/release/", member], ""))]),
+    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
+    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words()))),
+    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words()), [rooted(file: "target/release/")]))),
   ]
 }
 
@@ -695,7 +743,7 @@ fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir]),
       cmd(ws: [lit(t: "tar"), lit(t: "-xzf"), archive, lit(t: "-C"), dir, lit(t: "--no-same-owner")]),
     ],
-    seq(parts: map(ci_floor_required_artifact_names(), m => release_bins_member_checks(site: site, dir: dir, member: m))),
+    release_bins_member_checks(site: site, dir: dir),
     [
       or_refuse(
         check: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
@@ -704,9 +752,8 @@ fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest
         )]),
         r: MemberDigestMismatch { site: site },
       ),
-      cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
     ],
-    seq(parts: map(ci_floor_required_artifact_names(), m => release_bins_promote(dir: dir, member: m))),
+    release_bins_promote_all(dir: dir),
     [cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir])],
   ])
 }
@@ -726,7 +773,7 @@ fn release_bins_key_statements() -> List<Node> {
         root_statement(),
         assign_sub(name: "DIRTY", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "status"), lit(t: "--porcelain"), lit(t: "--untracked-files=no")])),
         or_refuse(check: test_words(ws: [lit(t: "-z"), var(n: "DIRTY")]), r: SourceTreeDirty),
-      ], concat(release_bins_environment_statements(), source_closure_statements())),
+      ], concat(concat(release_bins_environment_statements(), release_bins_ancestor_statements()), source_closure_statements())),
       concat(
         concat([bash_build_assign(name: "EXPECTED", value: temp(file: join([release_bins_preimage_name, ".expected"], "")))], preimage_statements()),
         concat(digest_of(name: "PREIMAGE_DIGEST", path: var(n: "EXPECTED")), [
