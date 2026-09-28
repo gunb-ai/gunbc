@@ -1,6 +1,7 @@
 module gunbc.verified_archive_install
 
-import std.types { String, NonEmptyStr, List, FilePath, Bool }
+import std.types { NonEmptyStr, List, FilePath, Bool }
+import std.string_type { String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }

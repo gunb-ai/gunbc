@@ -1,6 +1,7 @@
 module gunbc.runner_browser_toolchain
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, list_length }
+import std.string_type { String }
 import extdeps.posix.test_utility { test_exists_command }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim, list_append }
