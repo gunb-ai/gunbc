@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.runner_browser_toolchain { RunnerBrowserToolchainLocation, runner_browser_toolchain_here_wet, BrowserToolchainReady }
 import gunbc.bmc_model { BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle }
-import gunbc.bmc_megarac_web_adapter { MegaRacWebLogin, megarac_web_transition_table }
+import gunbc.bmc_megarac_web_adapter { MegaRacWebLogin, megarac_web_transition_table, megarac_web_exploration_depth }
 import gunbc.bmc_megarac_web_transport {
   MegaRacWebTransportStart, TransportServing, TransportNotServing,
   TransportPidUnpublished, TransportExitedBeforeReady, TransportReadinessForeign,
@@ -43,7 +43,7 @@ fn world(other_viewers: Int, close_at: Nat?, canvas_readable: Bool) -> BmcWorld 
     pending: match close_at { Absent => []  Present { value: t } => [BmcScheduledEvent { at: second(count: t), event: BmcKvmStreamClosed {} }] },
     fired: [],
     web: BmcWebWorld {
-      account: BmcWebAccount { username: "admin", password: "pw", privilege: 4 },
+      account: Present { value: BmcWebAccount { username: "admin", password: "pw", privilege: 4 } },
       sessions: [],
       next_session_id: 7,
       other_kvm_viewers: other_viewers,
@@ -89,7 +89,7 @@ fn rig(w: BmcWorld) -> Rig {
   let dir = scratch_dir()
   let pw_path = concat(dir, "/credential")
   let _pw = Filesystem.Write(path: pw_path, content: "pw")
-  let table = megarac_web_transition_table(initial: w, credentials: [MegaRacWebLogin { username: "admin", password: "pw" }], extended_privilege: 259)
+  let table = megarac_web_transition_table(initial: w, credentials: [MegaRacWebLogin { username: "admin", password: "pw" }], extended_privilege: 259, depth: megarac_web_exploration_depth)
   match toolchain() {
     Absent => Rig { dir: dir, serving: TransportNotServing { cause: TransportPidUnpublished }, start: KvmObserverNotStarted { reason: "the runner browser toolchain is not ready on this host" } }
     Present { value: loc } => {

@@ -1425,7 +1425,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: mtcollins1-boot
-    timeout-minutes: 106
+    timeout-minutes: 121
     if: github.event.inputs.mode == 'mtcollins1_boot'
     permissions:
       contents: read
@@ -1512,7 +1512,7 @@ jobs:
           SOL_PID_FILE="$RUNNER_TEMP/mtcollins1-sol.pid"
           SOL_OUT="$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture"
           SOL_RELEASE='f="$1"; owned() { st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=${st##*) }; set -f; set -- $st; [ "$1" != Z ] && [ "${20}" = "$s" ]; }; [ -f "$f" ] || exit 0; read -r p s < "$f"; [ -n "$p" ] && [ -n "$s" ] || exit 0; owned || exit 0; kill "$p"; for i in 1 2 3 4 5 6 7 8 9 10; do owned || exit 0; sleep 0.2; done; owned && kill -9 "$p"; for i in 1 2 3 4 5; do owned || exit 0; sleep 0.2; done; exit 1'
-          trap 'if [ -n "${SOL_WORKFLOW:-}" ]; then echo "gunbc-workflow: collector release requested by the step exit trap at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SOL_WORKFLOW" || true; fi; bash -c "$SOL_RELEASE" sol-release "$SOL_PID_FILE" || echo "::error::mtcollins1 SOL collector survived KILL at step exit"; for kf in "$GITHUB_WORKSPACE"/artifacts/mtcollins1-boot-kvm-*/observer.pid; do [ -f "$kf" ] || continue; bash -c "$SOL_RELEASE" kvm-release "$kf" || echo "::error::mtcollins1 KVM observer survived KILL at step exit"; done; if [ -n "${SOL_NOTICE_WATCH:-}" ]; then : > "$SOL_OUT.notice.stop" || true; for i in $(seq 1 40); do kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null || break; sleep 0.2; done; if kill "$SOL_NOTICE_WATCH" 2>/dev/null; then echo "::error::mtcollins1 SOL notice watcher had not finished 8 s after the stop request; see $SOL_DELIVERY"; fi; fi; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"' EXIT
+          trap 'rc=$?; if [ -n "${SOL_WORKFLOW:-}" ]; then echo "gunbc-workflow: collector release requested by the step exit trap at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SOL_WORKFLOW" || true; fi; bash -c "$SOL_RELEASE" sol-release "$SOL_PID_FILE" || echo "::error::mtcollins1 SOL collector survived KILL at step exit"; for kf in "$GITHUB_WORKSPACE"/artifacts/mtcollins1-boot-kvm-*/observer.pid; do [ -f "$kf" ] || continue; bash -c "$SOL_RELEASE" kvm-release "$kf" || echo "::error::mtcollins1 KVM observer survived KILL at step exit"; done; obs=unstarted; if [ -n "${SOL_NOTICE_WATCH:-}" ]; then : > "$SOL_OUT.notice.stop" || true; for i in $(seq 1 50); do kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null || break; sleep 0.2; done; if kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null; then kill "$SOL_NOTICE_WATCH" 2>/dev/null || true; obs=unfinished; else wait "$SOL_NOTICE_WATCH" && obs=0 || obs=$?; fi; fi; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"; if [ "$obs" != 0 ] && [ "$obs" != unstarted ]; then echo "::error::mtcollins1 SOL notice watcher result: $obs (the boot command exited $rc); delivery ledger: ${SOL_DELIVERY:-unset}"; if [ "$rc" = 0 ]; then rc=1; fi; fi; exit $rc' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
           curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$DEST_FILE"
@@ -1523,16 +1523,18 @@ jobs:
           export GUNBC_MTCOLLINS1_SOL_PID_FILE="$SOL_PID_FILE"
           SOL_LOSS="$SOL_OUT.loss"; SOL_CLIENT="$SOL_OUT.client"; SOL_WORKFLOW="$SOL_OUT.workflow"; SOL_DELIVERY="$SOL_OUT.delivery"
           : > "$SOL_LOSS"; : > "$SOL_CLIENT"; : > "$SOL_WORKFLOW"; : > "$SOL_DELIVERY"; rm -f "$SOL_OUT.notice."*
+          SOL_NOTICE_TOKEN=$(od -An -N8 -tx8 /dev/urandom | tr -d ' \n'); [ -n "$SOL_NOTICE_TOKEN" ]; export GUNBC_MTCOLLINS1_SOL_NOTICE_TOKEN="$SOL_NOTICE_TOKEN"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_sol_notice.dag --function mtcollins1_sol_notice_wet & SOL_NOTICE_WATCH=$!
-          for i in $(seq 1 900); do [ -e "$SOL_OUT.notice.ready" ] && break; kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null || break; sleep 1; done; if [ ! -e "$SOL_OUT.notice.ready" ]; then echo "::error::mtcollins1 SOL notice watcher is not ready; refusing the boot before any BMC contact"; exit 1; fi
+          if ! ( st=$(cat /proc/$SOL_NOTICE_WATCH/stat) && st=${st##*) } && set -f && set -- $st && printf '%s %s\n' "$SOL_NOTICE_WATCH" "${20}" > "$SOL_OUT.notice.watcher.tmp" && mv -T "$SOL_OUT.notice.watcher.tmp" "$SOL_OUT.notice.watcher" ); then echo "::error::mtcollins1 SOL notice watcher could not be recorded; refusing the boot before any BMC contact"; exit 1; fi
+          for i in $(seq 1 900); do [ "$(cat "$SOL_OUT.notice.ready" 2>/dev/null)" = "$SOL_NOTICE_TOKEN" ] && break; kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null || break; sleep 1; done; if [ "$(cat "$SOL_OUT.notice.ready" 2>/dev/null)" != "$SOL_NOTICE_TOKEN" ] || ! kill -0 "$SOL_NOTICE_WATCH" 2>/dev/null; then echo "::error::mtcollins1 SOL notice watcher is not ready (no readiness under this step's token, or the watcher exited); refusing the boot before any BMC contact"; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'mtcollins1_boot'
-        timeout-minutes: 56
+        timeout-minutes: 71
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
         id: mtcollins1_boot_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
