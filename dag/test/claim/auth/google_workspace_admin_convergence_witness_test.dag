@@ -1,0 +1,67 @@
+module test.claim.auth.google_workspace_admin_convergence_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import std.goal_assessment { GoalSatisfied, GoalAssessmentRefused, GoalDiverged, GoalObservationRefused }
+import gunbc.principal_projection { PrincipalRef }
+import extdeps.google.workspace {
+  ClientAccess, AppSpecificGoogleData,
+  WorkspacePhotoEditing, PhotoEditing, ExternalDirectorySharing, OAuthClientRegistration,
+  workspace_admin_read_surface, workspace_admin_write_surface, PolicyApiReadSupported, ConsoleReadbackRequired,
+  ManualConsoleAdministration, WorkspaceDirectorySharing, DirectorySharing, RequesterBasicProfileOnly,
+}
+import gunbc.auth.google_workspace_admin_convergence {
+  workspace_admin_values_equal,
+  WorkspaceIdentityBinding, workspace_identity_admin_obligations, BasicSignInOnly,
+  WorkspaceAdminObligation, WorkspaceAdminReadback, AdminConsoleReadback, WorkspacePolicyApiReadback,
+  EffectiveAtDeclaredScope, EffectiveWithUnresolvedOverrides, workspace_admin_assess, workspace_admin_inspect, WorkspaceAdminNotObserved,
+}
+
+fn fixture_admin() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "fixture-subject" } }
+fn fixture_photo_goal() -> WorkspaceAdminObligation {
+  WorkspaceAdminObligation { subject: WorkspacePhotoEditing { customer: "customer-A", org_unit: "/" }, desired: PhotoEditing { allowed: true }, desired_revision: "policy-r1", rationale: "fixture" }
+}
+fn fixture_photo_read(allowed: Bool = true, other_tenant: Bool = false) -> WorkspaceAdminReadback {
+  WorkspaceAdminReadback { subject: WorkspacePhotoEditing { customer: if other_tenant { "customer-B" } else { "customer-A" }, org_unit: "/" }, observed: PhotoEditing { allowed: allowed },
+    source: AdminConsoleReadback { administrator: fixture_admin(), evidence: "receipt://fixture" }, observed_at_epoch: 100, valid_until_epoch: 200, coverage: EffectiveAtDeclaredScope }
+}
+
+test fn matching_readback_is_not_login_success_or_an_unobserved_setting() -> Bool {
+  match workspace_admin_assess(goal: fixture_photo_goal(), receipt: fixture_photo_read(), admitted_admins: [fixture_admin()], now_epoch: 150) { GoalSatisfied { evidence } => evidence.desired_revision == "policy-r1" _ => false }
+    && match workspace_admin_inspect(goal: fixture_photo_goal(), observation: WorkspaceAdminNotObserved { reason: "no readback" }, admitted_admins: [fixture_admin()], now_epoch: 150) { GoalObservationRefused { subject: _, goal: _, request: _, cause: _ } => true _ => false }
+    && match workspace_admin_assess(goal: fixture_photo_goal(), receipt: fixture_photo_read(allowed: false), admitted_admins: [fixture_admin()], now_epoch: 150) { GoalDiverged { deviations: _ } => true _ => false }
+}
+
+test fn wrong_tenant_expiry_and_unapproved_reader_refuse() -> Bool {
+  match workspace_admin_assess(goal: fixture_photo_goal(), receipt: fixture_photo_read(other_tenant: true), admitted_admins: [fixture_admin()], now_epoch: 150) { GoalAssessmentRefused { cause: _ } => true _ => false }
+    && match workspace_admin_assess(goal: fixture_photo_goal(), receipt: fixture_photo_read(), admitted_admins: [fixture_admin()], now_epoch: 200) { GoalAssessmentRefused { cause: _ } => true _ => false }
+    && match workspace_admin_assess(goal: fixture_photo_goal(), receipt: fixture_photo_read(), admitted_admins: [], now_epoch: 150) { GoalAssessmentRefused { cause: _ } => true _ => false }
+    && match workspace_admin_assess(goal: fixture_photo_goal(), receipt: fixture_photo_read(), admitted_admins: [fixture_admin()], now_epoch: 99) { GoalAssessmentRefused { cause: _ } => true _ => false }
+}
+
+test fn supported_policy_read_is_distinct_from_manual_mutation() -> Bool {
+  let binding = WorkspaceIdentityBinding { customer: "customer-A", project: "project-A", client: "client-A", top_org_unit: "/", redirect_uri: "https://fixture.invalid/callback", desired_revision: "r1" }
+  count(workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly)) == 5
+    && match workspace_admin_read_surface(control: ExternalDirectorySharing) { PolicyApiReadSupported { setting_type, documentation: _ } => setting_type == "directory.external_directory_sharing" _ => false }
+    && match workspace_admin_write_surface(control: ExternalDirectorySharing) { ManualConsoleAdministration { documentation: _ } => true }
+    && match workspace_admin_read_surface(control: OAuthClientRegistration) { ConsoleReadbackRequired { documentation: _ } => true _ => false }
+}
+
+fn fixture_directory_goal() -> WorkspaceAdminObligation {
+  WorkspaceAdminObligation { subject: WorkspaceDirectorySharing { customer: "customer-A" }, desired: DirectorySharing { policy: RequesterBasicProfileOnly }, desired_revision: "r1", rationale: "basic sign-in" }
+}
+fn fixture_directory_read(setting: String = "directory.external_directory_sharing", unresolved: Bool = false) -> WorkspaceAdminReadback {
+  WorkspaceAdminReadback { subject: WorkspaceDirectorySharing { customer: "customer-A" }, observed: DirectorySharing { policy: RequesterBasicProfileOnly },
+    source: WorkspacePolicyApiReadback { policy_resource: "policies/fixture", setting_type: setting as NonEmptyStr, evidence: "receipt://fixture-policy" },
+    observed_at_epoch: 100, valid_until_epoch: 200, coverage: if unresolved { EffectiveWithUnresolvedOverrides { reason: "child OU unread" } } else { EffectiveAtDeclaredScope } }
+}
+
+test fn policy_readback_requires_matching_setting_and_resolved_effective_coverage() -> Bool {
+  match workspace_admin_assess(goal: fixture_directory_goal(), receipt: fixture_directory_read(), admitted_admins: [], now_epoch: 150) { GoalSatisfied { evidence: _ } => true _ => false }
+    && match workspace_admin_assess(goal: fixture_directory_goal(), receipt: fixture_directory_read(setting: "unrelated.setting"), admitted_admins: [], now_epoch: 150) { GoalAssessmentRefused { cause: _ } => true _ => false }
+    && match workspace_admin_assess(goal: fixture_directory_goal(), receipt: fixture_directory_read(unresolved: true), admitted_admins: [], now_epoch: 150) { GoalAssessmentRefused { cause: _ } => true _ => false }
+}
+
+test fn scope_order_is_not_policy_drift_but_extra_privilege_is() -> Bool {
+  workspace_admin_values_equal(a: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile"] } }, b: ClientAccess { access: AppSpecificGoogleData { scopes: ["profile", "openid", "email"] } })
+    && !workspace_admin_values_equal(a: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile"] } }, b: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile", "drive"] } })
+}

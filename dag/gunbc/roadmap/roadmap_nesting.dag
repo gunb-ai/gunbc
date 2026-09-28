@@ -1,0 +1,25 @@
+module gunbc.roadmap_nesting
+
+import std.types { String, List }
+
+// Nesting is independently authored. A blocking edge never assigns project ownership.
+// Both ends name the same recursive kind of work item; no Epic/Task type hierarchy exists.
+type RoadmapMembership { member: String, project: String }
+
+// First authored migration: shell → DAG batch 1, selected by the operator on 2026-09-28.
+// The batch contract above declared_roadmap_nodes names these ten children of the typed
+// invocation work item. This is a nesting declaration, not an inverse-dependency projection.
+fn declared_roadmap_memberships() -> List<RoadmapMembership> {
+  [
+    RoadmapMembership { member: "shell-dag-cron-entry-line-builder", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-floor-peak-calibration-rows", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-ci-fmt-gate-line", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-ci-deploy-invoke-prelude", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-ci-heal-regen-invoke", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-compile-pool-slice-install", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-slot-population-census-read", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-codex-app-server-trip-script", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-live-deploy-install-owned", project: "shell-typed-invocation" },
+    RoadmapMembership { member: "shell-dag-live-deploy-restart-tailscale", project: "shell-typed-invocation" }
+  ]
+}

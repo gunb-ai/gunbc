@@ -89,7 +89,6 @@ import gunbc.principal_projection {
 import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
-import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_lines_accepted_count }
 import gunbc.roadmap_model { RoadmapNodeId }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 
@@ -568,22 +567,14 @@ test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
 // than absent because it gets cited as coverage. So the defect was closed by CONSTRUCTION instead
 // (gunbc.roadmap_page: the ambient-reading fold is deleted, and every caller supplies its accepted
 // set), and this block says plainly what it still earns: that both arms render, that a refused plan
-// carries the CALLER's detail rather than an empty public roadmap, and that the v1-exit progress
-// count is the one the supplied plan implies. The count is cited from v1_finish_lines_accepted_count
-// and v1_exit_finish_lines rather than transcribed.
+// carries the CALLER's detail rather than an empty public roadmap, and that the workspace readiness
+// strip renders in both. The v1-exit finish-line count text is retired from the strip (owner ruling
+// 2026-09-28), so neither the text nor its helper survives here.
 //
 // The negative used on the route witnesses above would be decoration here for a second reason: the
 // daily page renders work rows and bands, never the roadmap's section headings, so its absence is
 // true of a clean render too.
 
-fn v1_exit_progress_count_text(accepted_ids: List<RoadmapNodeId>) -> String {
-  join([
-    to_string(v1_finish_lines_accepted_count(accepted: accepted_ids)),
-    " of ",
-    to_string(count(v1_exit_finish_lines())),
-    " finish lines complete",
-  ], "")
-}
 
 fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
   match try_serialize_html_source(node: roadmap_daily_workspace_page_for_projection_observed(
@@ -604,9 +595,10 @@ test fn witness_daily_page_answers_from_the_supplied_plan() -> Bool {
   let refused = daily_page_html_over_plan(
     plan: RoadmapAuthorityProjectionRefused { detail: "the caller's plan carrier could not be read" },
   )
-  string_contains(s: projected, pattern: v1_exit_progress_count_text(accepted_ids: []))
+  string_contains(s: projected, pattern: " ready now")
+    && string_contains(s: projected, pattern: "workspace")
     && string_contains(s: refused, pattern: "the caller's plan carrier could not be read")
-    && string_contains(s: refused, pattern: v1_exit_progress_count_text(accepted_ids: []))
+    && string_contains(s: refused, pattern: " ready now")
 }
 
 // ── The route the plan parameter CANNOT reach refuses instead of answering ───────────────────────
@@ -658,17 +650,13 @@ test fn witness_issue_detail_route_selects() -> Bool {
 // THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
 // name=value line, absent reads as empty; no percent-encoding exists to undo, and a value never
 // bleeds across lines.
-test fn witness_assign_form_field_reads_the_text_plain_body() -> Bool {
-  let body = "expected_revision=abc123\nreturn_to=\nassignee=briansrls@gunb.ai"
+test fn witness_assign_form_field_reads_urlencoded_body() -> Bool {
+  let body = "expected_revision=abc123&return_to=&assignee=briansrls%40gunb.ai"
   issue_form_field(body: body, name: "assignee") == "briansrls@gunb.ai"
     && issue_form_field(body: body, name: "expected_revision") == "abc123"
     && issue_form_field(body: body, name: "return_to") == ""
     && issue_form_field(body: body, name: "missing") == ""
     && issue_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
-    && issue_form_field(body: "csrf=tok-1\r\nexpected_revision=R\r\n", name: "csrf") == "tok-1"
-    && issue_form_field(body: "csrf=tok-1\r\nexpected_revision=R\r\n", name: "expected_revision") == "R"
-    && issue_form_field(body: "expected_revision=abc123\r\nreturn_to=\r\nassignee=briansrls@gunb.ai\r\n", name: "assignee") == "briansrls@gunb.ai"
-    && issue_form_field(body: "assignee=a@b.c\r", name: "assignee") == "a@b.c"
 }
 
 // THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404,
@@ -803,10 +791,10 @@ test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
 // parse cuts at the FIRST body= opener and keeps everything after it verbatim, including a
 // literal "body=" inside the text or trailing newlines; a wire with no body field reads "".
 test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_verbatim() -> Bool {
-  let with_key = "key=abc-123\nexpected_revision=\nbody=first line\nsecond line\nbody= not a field"
+  let with_key = "key=abc-123&expected_revision=&body=first+line%0Asecond+line%0Abody%3D+not+a+field"
   let keyless = "body=just the body"
-  let trailing_newlines = "key=k\nbody=line\n\n"
-  let no_body = "key=k\nexpected_revision=x"
+  let trailing_newlines = "key=k&body=line%0A%0A"
+  let no_body = "key=k&expected_revision=x"
   issue_comment_body_of(wire: with_key) == "first line\nsecond line\nbody= not a field"
     && issue_comment_body_of(wire: keyless) == "just the body"
     && issue_comment_body_of(wire: trailing_newlines) == "line\n\n"
@@ -846,7 +834,7 @@ test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
     path: "/issue/restore-group-b-serving/comment",
-    body: "key=k\nbody=",
+    body: "key=k&body=",
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )

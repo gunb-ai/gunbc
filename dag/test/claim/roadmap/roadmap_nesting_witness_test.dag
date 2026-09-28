@@ -1,0 +1,25 @@
+module test.claim.roadmap_nesting_witness
+
+import std.types { Bool }
+import gunbc.roadmap_nesting { RoadmapMembership }
+import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, project_root_for_node, MembershipStandalone, MembershipMember, MembershipAmbiguous }
+
+// The prerequisite is shared by two projects but belongs to neither by implication.
+test fn shared_prerequisite_does_not_assign_ownership() -> Bool {
+  let nesting = [RoadmapMembership { member: "task", project: "project-A" }]
+  match node_project_membership(node_id: "shared-prerequisite", memberships: nesting) { MembershipStandalone => true _ => false }
+    && project_member_ids(arc: "project-A", memberships: nesting) == ["task"]
+    && project_member_ids(arc: "project-B", memberships: nesting) == []
+}
+
+test fn nesting_is_recursive_without_type_labels() -> Bool {
+  let nesting = [RoadmapMembership { member: "task", project: "subproject" }, RoadmapMembership { member: "subproject", project: "root" }]
+  project_root_for_node(node_id: "task", memberships: nesting) == Present { value: "root" }
+    && project_root_for_node(node_id: "subproject", memberships: nesting) == Present { value: "root" }
+    && project_root_for_node(node_id: "root", memberships: nesting) == Present { value: "root" }
+}
+
+test fn cycles_and_multiple_parents_have_no_focus_root() -> Bool {
+  project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b" }, RoadmapMembership { member: "b", project: "a" }]) == none
+    && project_root_for_node(node_id: "a", memberships: [RoadmapMembership { member: "a", project: "b" }, RoadmapMembership { member: "a", project: "c" }]) == none
+}

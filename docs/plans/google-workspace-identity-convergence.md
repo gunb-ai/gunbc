@@ -26,11 +26,11 @@ boundaries; this plan is its convergence-shaped reduction.
 
 | # | Google-side fact | Read API | Write API | Class |
 |---|---|---|---|---|
-| 1 | OAuth client registration (client id/secret) for the tracker | none supported for Auth Platform clients (VERIFY at implementation) | none | MANUAL obligation (owner's initial clicks); the secret rides Secret Manager via the existing gcp_secret_access path; the deployment config is already modeled (oidc_deployment_config) |
-| 2 | Auth Platform audience = Internal (project inside the gunb.ai org) | VERIFY (likely console-only) | console-only | MANUAL obligation + readback receipt |
-| 3 | API controls: THIS client's app access — Specific Google data (openid/email/profile scopes), top OU | console-only (VERIFY) | console-only | MANUAL obligation + readback receipt |
-| 4 | Directory sharing: authenticated-user basic profile fields (minimum); org-data sharing ONLY if assignee directory discovery requires it — the reason is recorded either way | console-only (VERIFY) | console-only | MANUAL obligation + readback receipt |
-| 5 | Profile-editing policy (photo) org-wide | console-only (VERIFY) | console-only | MANUAL obligation (already set 2026-09-27) + readback receipt |
+| 1 | OAuth client registration (client id/secret) for the tracker | no supported read found in the reviewed Auth Platform documentation (2026-09-28) | none | MANUAL obligation (owner's initial clicks); the secret rides Secret Manager via the existing gcp_secret_access path; the deployment config is already modeled (oidc_deployment_config) |
+| 2 | Auth Platform audience = Internal (project inside the gunb.ai org) | console readback (documentation reviewed 2026-09-28) | console-only | MANUAL obligation + readback receipt |
+| 3 | API controls: THIS client's app access — Specific Google data (openid/email/profile scopes), top OU | console readback (documentation reviewed 2026-09-28) | console-only | MANUAL obligation + readback receipt |
+| 4 | Directory sharing: authenticated-user basic profile fields (minimum); org-data sharing ONLY if assignee directory discovery requires it — the reason is recorded either way | Cloud Identity Policy API: `directory.external_directory_sharing` | no supported mutation | MANUAL change obligation + effective Policy API readback |
+| 5 | Profile-editing policy (photo) org-wide | console readback (documentation reviewed 2026-09-28) | console-only | MANUAL obligation (already set 2026-09-27) + readback receipt |
 | 6 | Managed user photos (assignee avatars, header) | Admin SDK users.photos.get (read-only scope admin.directory.user.readonly) | n/a (read-only source) | OBSERVED: periodic observation → profile projection refresh |
 | 7 | Directory people discovery (assignee picker population) | People API people.listDirectoryPeople (directory.readonly) | n/a | OBSERVED: same projection, pagination + deletion semantics preserved (incremental sync lags writes; a completed sync is not a post-change readback) |
 
@@ -90,3 +90,19 @@ standing), plus the positive end-to-end control.
   header prefers the display name and paints the photo with the initials fallback.
 - The direct evidence discipline held the diagnosis: three consecutive receipts established
   provider-side omission before any account-level claim was made.
+
+## C4.1 API qualification and receipt boundary (2026-09-28)
+
+The source and limits of this classification are recorded in
+[the C4.1 research receipt](receipts/google-workspace-admin-api-2026-09-28.md).
+`extdeps.google.workspace` owns the external subjects, values and API standing.
+`gunbc.auth.google_workspace_admin_convergence` declares the five obligations and feeds
+subject-bound, time-bounded readback into `std.goal_assessment`. It does not mutate Google
+configuration or alter login. Rows 6–7 remain separate integrations.
+
+The receipt producer must authenticate its source and persist the referenced evidence before
+calling the assessor. These types and tests establish the assessment contract, not a deployed
+observer or proof that the live organization matches it. No live admin receipt is supplied by
+this change. Missing observations, unread overrides, wrong tenant/client/OU and expired
+receipts refuse assessment. The photo obligation is scoped to the declared OU: an organization-wide
+claim additionally needs resolved child-OU/group coverage; a top-OU receipt alone is insufficient.

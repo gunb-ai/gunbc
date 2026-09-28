@@ -53,11 +53,13 @@ fn inline_assignment_option(session: AuthenticatedSession, p: EventPrincipal, pr
   ])
 }
 
-// THE PICKER CONTEXT BODY: csrf + expected_revision + the choices. profiles is the read-once auth
-// profile roster the serve caller passes (the picker's chip_html and labels project real identity;
-// an empty roster renders every fallback exactly as before — the never-blocks law).
-fn inline_assignment_context_body(session: AuthenticatedSession, events: List<RoadmapEventEnvelope>, recents: List<EventPrincipal>, profiles: List<PrincipalProfile>) -> String {
+// THE PICKER CONTEXT BODY: csrf + expected_revision + the choices + the operation identity. The
+// profiles roster is the read-once auth profile projection the serve caller passes (the picker's
+// chip_html and labels project real identity; an empty roster renders every fallback exactly as
+// before — the never-blocks law), and the operation parameter rides Cut 1's retry idempotency.
+fn inline_assignment_context_body(session: AuthenticatedSession, events: List<RoadmapEventEnvelope>, recents: List<EventPrincipal>, profiles: List<PrincipalProfile>, operation: String = "") -> String {
   serialize_json(v: json_object(members: [
+    json_kv(key: "key", value: json_string(s: operation)),
     json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
     json_kv(key: "expected_revision", value: json_string(s: issue_chain_head_id(envs: events))),
     json_kv(key: "options", value: json_array(elements: map(inline_assignment_choices(session: session, recents: recents), p => inline_assignment_option(session: session, p: p, profiles: profiles)))),
