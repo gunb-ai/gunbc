@@ -1,8 +1,31 @@
 module gunbc.runner_microvm_slot_reserve
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { money_amount_micro, MoneyPerSecond }
+import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decl_ref { decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import v2.std.optional { Present, Absent }
+import product.fabric.provider_route {
+  ProviderRouteFacts, ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
+  DownstreamProvidersEnumerated,
+}
+import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.candidate_field { FieldRequest, assemble_candidate_field }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
+import product.fabric.route_readiness { ExerciseOfRoute }
+import product.fabric.selection {
+  DispatchInputs, AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
+  OperatingCostMeasured, NoFeasibleAlternativeUse,
+}
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner_fleet_ci_posture {
+  fleet_ci_posture, fleet_ci_posture_ref, fleet_ci_github_terms_ref, fleet_ci_customer_profile_ref,
+  fleet_ci_data_handling_profile_ref, fleet_ci_prohibited_use_disposition, fleet_ci_sanctions_disposition,
+  fleet_ci_export_disposition,
+}
+import gunbc.runner_microvm_slot_controller { environment_value, systemd_invocation_id_env_name }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.currency.currency { Usd }
@@ -15,17 +38,18 @@ import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, BudgetRefused,
   ReservationLost, PermitNamesAnotherUseForCell, StoreUnavailable, AttemptRefused,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
-  bind_fabric_cell_candidate, broker_reserve_for_demand, fabric_cell_allocation_key,
+  bind_fabric_cell_candidate, broker_reserve_for_demand, fabric_control_plane_store_root, fabric_cell_allocation_key,
   fabric_hold_owner, fabric_money_reservation_ref,
   permit_standing_wire, money_refusal_wire, cas_store_failure_wire, offer_candidacy_wire,
 }
 import gunbc.runner_microvm_shakedown {
   microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account,
-  microvm_shakedown_maximum_buy_order,
+  microvm_shakedown_maximum_buy_order, microvm_shakedown_route, microvm_shakedown_work,
+  microvm_shakedown_demand_id,
 }
 import gunbc.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_receipt_prefix, microvm_slot_reserve_wait_bound,
-  microvm_slot_reserve_receipt_path,
+  microvm_slot_reserve_receipt_path, microvm_unit_receipt_path,
 }
 import gunbc.runner_microvm_slot_start {
   MicrovmUnitStartSubject, MicrovmSlotStartRun, microvm_unit_start_run, microvm_slot_start_text,
@@ -84,9 +108,8 @@ type ShakedownBrokerOutcome
   = ShakedownBrokerDecided { reservation: CellReservation }
   | ShakedownBrokerRosterRefused { binding: ShakedownRosterBinding }
 
-// THE BROKER'S DECISION FOR ONE SLOT OVER A CANDIDATE FIELD. The field is the one input this function
-// does not derive, because its producer -- the fleet CI cell's first-party provider-use posture, which
-// mints the permit every candidate carries -- is an operator assertion that lands with its own row.
+// THE BROKER'S DECISION FOR ONE SLOT OVER A CANDIDATE FIELD. The field is a parameter so a witness can
+// supply one; production passes microvm_shakedown_candidate_field, the only field this broker ranks.
 // The money terms are the demand's: its maximum buy order bounds the selection and the account is
 // appropriated at the same figure; the delay valuation is zero because the shakedown has no deadline
 // (microvm_shakedown_demand deadline: none), so waiting costs it nothing.
@@ -110,6 +133,149 @@ fn microvm_shakedown_broker_decide(
           delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
         ),
       }
+  }
+}
+
+// ── the candidate field: the shakedown offer, admitted under the fleet CI posture ──────────────────
+
+// THE ROUTE'S PATHS, EACH ANSWERING FOR ITSELF. The job runs, stores and is administered on the
+// operator's host, so those paths are located at the posture's own assertion (the operator's hosts).
+// Logs, artifacts and runner control traffic LEAVE the host for GitHub, so those paths are located at
+// GitHub under our organization's terms -- the one counterparty the posture names -- and GitHub is the
+// enumerated downstream provider. No path is claimed absent: nobody has read that the cell never
+// spills or is never backed up, so those paths take the host location, which is where they would be.
+fn fleet_ci_on_host_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "fabric_execution_slot_identities"),
+    jurisdiction: fleet_ci_posture_ref(),
+    evidence: fleet_ci_posture_ref(),
+  }
+}
+
+fn fleet_ci_github_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.github.github", decl_name: "extdeps_external_authority_anchor"),
+    jurisdiction: fleet_ci_github_terms_ref(),
+    evidence: fleet_ci_posture_ref(),
+  }
+}
+
+fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: microvm_shakedown_route(),
+    contract_terms: fleet_ci_github_terms_ref(),
+    data_paths: ProviderDataPathClosure {
+      execution: fleet_ci_on_host_path(),
+      durable_storage: fleet_ci_github_path(),
+      backups: fleet_ci_on_host_path(),
+      logs: fleet_ci_github_path(),
+      telemetry: fleet_ci_github_path(),
+      control_plane: fleet_ci_github_path(),
+      support_access: fleet_ci_on_host_path(),
+      administrative_access: fleet_ci_on_host_path(),
+      spill: fleet_ci_on_host_path(),
+    },
+    downstream: DownstreamProvidersEnumerated {
+      first: decl_ref(module_path: "extdeps.github.github", decl_name: "extdeps_external_authority_anchor"),
+      further: [],
+      coverage: fleet_ci_github_terms_ref(),
+    },
+    observed_at: "2026-09-28T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.microvm-shakedown.route-facts.2026-09-28" as NonEmptyStr)),
+  }
+}
+
+// ONE SANCTION ROW, AND ONE IS THE POINT: any other customer or data class on this route refuses.
+fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
+  [
+    RouteScopeSanction {
+      route: microvm_shakedown_route(),
+      posture: fleet_ci_posture,
+      customer_profile: fleet_ci_customer_profile_ref(),
+      data_handling_profile: fleet_ci_data_handling_profile_ref(),
+      requires_agreement: fleet_ci_github_terms_ref(),
+    },
+  ]
+}
+
+fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: microvm_shakedown_demand_id(slot: slot),
+    work: microvm_shakedown_work().id,
+    customer_profile: fleet_ci_customer_profile_ref(),
+    data_handling_profile: fleet_ci_data_handling_profile_ref(),
+    agreement: fleet_ci_github_terms_ref(),
+    prohibited_use_disposition: fleet_ci_prohibited_use_disposition(),
+    sanctions_disposition: fleet_ci_sanctions_disposition(),
+    export_disposition: fleet_ci_export_disposition(),
+  }
+}
+
+// THE DISPATCH COSTS ARE THE OFFER'S OWN PRICING, NOT NEW OBSERVATIONS. The fleet prices its own cells
+// at nothing (gunbc.runner_microvm_shakedown microvm_shakedown_offer quotes zero), so every cost
+// component is zero and cites the same slot observation the offer does. THE SHAKEDOWN IS THE FIRST
+// EXERCISE OF ITS ROUTE (product.fabric.route_readiness ExerciseOfRoute): a route that could only be
+// used once already exercised could never be exercised, so readiness admits it for this one work, and
+// the decision instant is unread on that arm, which is why it is zero rather than a clock reading.
+fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField<NonEmptyStr> {
+  let offer = microvm_shakedown_offer(slot: slot)
+  let work = microvm_shakedown_work()
+  let receipt = "gunbc.observation.microvm-shakedown-slot" as NonEmptyStr
+  assemble_candidate_field(
+    routes: [OfferRouteRow { offer: offer.id, facts: microvm_shakedown_route_facts() }],
+    sanctions: microvm_shakedown_sanctions(),
+    active: fleet_ci_posture,
+    scope: microvm_shakedown_scope(slot: slot),
+    decision_receipt: decl_ref(module_path: "gunbc.runner_microvm_slot_unit", decl_name: "microvm_slot_reserve_receipt_prefix"),
+    exercises: [],
+    readiness: ExerciseOfRoute { route: microvm_shakedown_route(), work: work.id },
+    at: 0,
+    requirements: work.requirements,
+    requests: [
+      FieldRequest {
+        offer: offer,
+        dispatch: DispatchInputs {
+          offer: offer.id,
+          availability: AvailableIndefinitely { delay: second(count: 0), receipt: receipt },
+          commitment: PayAsYouGo,
+          start: StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt },
+          transition: NoTransitionRequired,
+          operating: OperatingCostMeasured { rate: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt },
+          opportunity: NoFeasibleAlternativeUse { receipt: receipt },
+        },
+        delivery: OfferDoesNotClaimNodeDelivery,
+      },
+    ],
+  )
+}
+
+// ── the broker's root entry ─────────────────────────────────────────────────────────────────────
+
+// THE UNIT'S ENTRY TAKES NOTHING FROM ITS STARTER. The slot is the shakedown slot row, the store root
+// is the control plane's, the field is derived above; only the InvocationID systemd minted for this
+// start is read, to key the receipt. Exit is zero only for a committed reservation whose receipt was
+// written.
+fn microvm_slot_reserve_main() -> ProcessExit {
+  match environment_value(name: systemd_invocation_id_env_name) {
+    Absent => exit_failure(reason: join(["microvm_slot_reserve: ", systemd_invocation_id_env_name, " is not set; the broker runs only as its systemd unit"], ""))
+    Present { value: invocation } => {
+      let slot = srv1_microvm_shakedown_slot()
+      let outcome = microvm_shakedown_broker_decide(
+        root: fabric_control_plane_store_root(),
+        slot: slot,
+        field: microvm_shakedown_candidate_field(slot: slot),
+      )
+      let text = shakedown_broker_outcome_text(slot: slot, outcome: outcome)
+      let path = microvm_unit_receipt_path(prefix: microvm_slot_reserve_receipt_prefix(), invocation_id: invocation as NonEmptyStr)
+      let w = Filesystem.Write(path: path, content: concat(text, "\n"))
+      if !w.success {
+        exit_failure(reason: join(["microvm_slot_reserve: receipt write refused at ", path, ": ", w.error, " -- outcome was: ", text], ""))
+      } else if !shakedown_broker_reserved(outcome: outcome) {
+        exit_failure(reason: join(["microvm_slot_reserve: ", text], ""))
+      } else {
+        ExitSuccess
+      }
+    }
   }
 }
 

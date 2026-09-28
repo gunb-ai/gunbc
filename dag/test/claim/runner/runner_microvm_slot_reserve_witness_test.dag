@@ -40,7 +40,17 @@ import gunbc.runner_microvm_slot_start {
 import gunbc.runner_microvm_slot_reserve {
   ShakedownRosterBound, ShakedownOfferIsNotTheCell, bind_shakedown_roster,
   microvm_slot_reserve_admitted, cell_reservation_text, shakedown_broker_subject_text,
+  microvm_shakedown_candidate_field, microvm_shakedown_route_facts, microvm_shakedown_sanctions,
+  microvm_shakedown_scope,
 }
+import std.decl_ref { declaration_ref_eq }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.provider_route { CompliancePostureRevision, PermittedJurisdictionsEnumerated }
+import product.fabric.provider_admission {
+  ProviderUseAdmitted, ProviderUseDenied, PostureRevisionStale, TransferOrLocationUnresolved,
+  admit_provider_use,
+}
+import gunbc.runner_fleet_ci_posture { fleet_ci_posture, fleet_ci_posture_ref, fleet_ci_github_terms_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -227,4 +237,63 @@ test fn the_broker_start_grant_is_exact_and_on_the_shakedown_host_only() -> Bool
     && on_srv3.length() == 0
     && (executor_privileged_operation_sudoers_command(op: SystemdStartUnit { unit: microvm_slot_reserve_unit_name }) as String)
       == "/usr/bin/systemctl start gunbc-microvm-slot-reserve.service"
+}
+
+// ── the production field: the one inhabitance claim for the supplied candidates above ──────────
+
+// THE REAL FIELD ADMITS THE SHAKEDOWN OFFER, AND THE ROSTER BINDS IT TO THE CELL. This is the route the
+// broker's entry runs -- the fleet CI posture, the route facts, the sanction, capacity admission and
+// field assembly -- executed rather than supplied, so deleting any of it makes this claim fail. It
+// asserts the route, not only the answer: exactly one admitted candidate, no exclusions, and that
+// candidate is the shakedown offer bound to srv1-13.
+test fn the_production_field_admits_exactly_the_shakedown_offer() -> Bool {
+  let field = microvm_shakedown_candidate_field(slot: slot())
+  count(field.admitted) == 1
+    && count(field.excluded) == 0
+    && match bind_shakedown_roster(slot: slot(), admitted: field.admitted) {
+      ShakedownRosterBound { roster: r } => count(r) == 1
+      ShakedownOfferIsNotTheCell { slot_key: _, executor: _ } => false
+    }
+}
+
+// THE POSTURE'S GITHUB EGRESS IS WHAT ADMITS THE LOGS PATH. The RED is the same posture without GitHub
+// under our organization's terms among its permitted locations: the logs, artifacts and control paths
+// that leave the host then refuse as TransferOrLocationUnresolved naming those terms. The control is the
+// posture as approved, which admits. If the route facts stopped locating those paths at GitHub, or the
+// posture stopped naming it, one side of this claim goes false.
+test fn github_egress_is_admitted_only_because_the_posture_names_it() -> Bool {
+  let facts = microvm_shakedown_route_facts()
+  let offer = microvm_shakedown_offer(slot: slot()).id
+  let receipt = fleet_ci_posture_ref()
+  let host_only = CompliancePostureRevision {
+    authority: fleet_ci_posture.authority,
+    revision: fleet_ci_posture.revision,
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated { first: fleet_ci_posture_ref(), further: [] },
+    jurisdiction_drop_enrollments: [],
+  }
+  let approved = match admit_provider_use(roster: microvm_shakedown_sanctions(), facts: facts, active: fleet_ci_posture, scope: microvm_shakedown_scope(slot: slot()), offer: offer, decision_receipt: receipt) {
+    ProviderUseAdmitted { permit: _ } => true
+    ProviderUseDenied { decision: _, cause: _ } => false
+  }
+  let narrowed = match admit_provider_use(roster: microvm_shakedown_sanctions(), facts: facts, active: host_only, scope: microvm_shakedown_scope(slot: slot()), offer: offer, decision_receipt: receipt) {
+    ProviderUseDenied { decision: _, cause: TransferOrLocationUnresolved { route: _, jurisdiction: j } } => declaration_ref_eq(a: j, b: fleet_ci_github_terms_ref())
+    _ => false
+  }
+  approved && narrowed
+}
+
+// A LATER POSTURE REVISION MAKES THIS SANCTION STALE. The sanction is bound to the 2026-09-28 default
+// approval's revision; an operator statement that differs is a new revision, and the broker must then
+// refuse rather than carry the old sanction over to it.
+test fn a_superseding_posture_revision_leaves_the_shakedown_sanction_stale() -> Bool {
+  let superseding = CompliancePostureRevision {
+    authority: fleet_ci_posture.authority,
+    revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.fleet-ci.first-party-self-use.superseding" as NonEmptyStr)),
+    permitted_jurisdictions: fleet_ci_posture.permitted_jurisdictions,
+    jurisdiction_drop_enrollments: [],
+  }
+  match admit_provider_use(roster: microvm_shakedown_sanctions(), facts: microvm_shakedown_route_facts(), active: superseding, scope: microvm_shakedown_scope(slot: slot()), offer: microvm_shakedown_offer(slot: slot()).id, decision_receipt: fleet_ci_posture_ref()) {
+    ProviderUseDenied { decision: _, cause: PostureRevisionStale { evaluated: _, active: _ } } => true
+    _ => false
+  }
 }
