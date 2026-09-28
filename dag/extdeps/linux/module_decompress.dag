@@ -33,6 +33,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // pr_err("ZSTD-decompression failed with status %d\n", retval), retval = zstd_get_error_code(ret).
 data linux_module_zstd_decompress_failed_prefix: NonEmptyStr = "ZSTD-decompression failed with status "
 
+// The stem of that line without its status clause: a line carrying the stem but no parseable status
+// is still a record of this printk, truncated or garbled, never an unrelated line.
+data linux_module_zstd_decompress_failed_stem: NonEmptyStr = "ZSTD-decompression failed"
+
 // zstd_errors.h ZSTD_ErrorCode: the status values a decoder can return are the library's own enum.
 // Only the rows this corpus has observed are carried; any other status is kept as its integer.
 type ZstdErrorCode

@@ -32,6 +32,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data libkmod_insert_failed_prefix: NonEmptyStr = "Failed to insert module '"
 
+// The stem without the opening quote: a line carrying it but not a complete quoted path and errno is
+// a truncated record of this INFO line.
+data libkmod_insert_failed_stem: NonEmptyStr = "Failed to insert module"
+
 // The separator after the quoted path, before strerror(-err).
 data libkmod_insert_failed_path_end: NonEmptyStr = "': "
 

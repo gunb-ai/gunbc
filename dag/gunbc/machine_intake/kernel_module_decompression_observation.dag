@@ -4,60 +4,74 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import v2.std.algebra { filter }
 import v2.std.optional { Present }
-import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_prefix, ZstdErrorCode, zstd_error_code_of, zstd_error_code_name }
-import extdeps.kmod.libkmod { libkmod_insert_failed_prefix, libkmod_insert_failed_path_end }
+import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_prefix, linux_module_zstd_decompress_failed_stem, ZstdErrorCode, zstd_error_code_of, zstd_error_code_name }
+import extdeps.kmod.libkmod { libkmod_insert_failed_prefix, libkmod_insert_failed_stem, libkmod_insert_failed_path_end }
 
 // WHAT A RETAINED CONSOLE CAPTURE SAYS ABOUT IN-KERNEL MODULE DECOMPRESSION, AT ITS REAL STRENGTH.
 //
-// Three facts, kept apart because they have different producers:
-//   1. the kernel REFUSED to decompress some module (extdeps.linux.module_decompress), with the
-//      decoder status it printed -- a decoder result, not a memory report, and no module name;
-//   2. WHICH FILE was refused, known only when the loader's own record reached the capture
-//      (extdeps.kmod.libkmod, under the module-identity instrument's KMOD_LOG / kmsg settings);
-//   3. whether that driver LATER printed anything in the capture.
-// Refusal without a loader record is IDENTITY UNREAD, never a guessed module: adjacent kernel lines
-// are not evidence of which finit_module call failed. The requesting device / modalias is not on the
-// serial console at the instrument's chosen levels (it stays in the kmsg ring), so it is reported
-// as unread on SOL and never inferred.
+// Two populations, observed independently and kept apart:
+//   1. the kernel's decompression REFUSALS (extdeps.linux.module_decompress): a decoder status and
+//      nothing else -- the printk names no module;
+//   2. the loader's named INSERT FAILURES (extdeps.kmod.libkmod, reaching the capture under the
+//      module-identity instrument's KMOD_LOG / kmsg settings): a path and the errno the insertion
+//      returned.
+// NOTHING IN THE CAPTURE LINKS ONE INVOCATION TO THE OTHER. A zstd refusal returns -EINVAL, but EINVAL
+// does not establish a decompression failure -- the v6.8 loader returns it for other conditions too
+// (symbol-version and namespace checks, invalid flags), and libkmod reports the insertion's errno,
+// not the kernel's failing stage. So an EINVAL insert failure is a CANDIDATE for a refusal's
+// identity, never its known identity, and no nearest-line or time-window rule promotes it. A known
+// identity needs an invocation-level link this capture does not carry (the declared next rung).
+//
+// A RECOGNISED RECORD THAT CANNOT BE PARSED IS KEPT, never dropped: a truncated refusal line is not
+// evidence that no refusal occurred, and an incomplete loader record is not evidence that no module
+// failed. Each is retained with its line and the field that could not be read, and a refusal count
+// is never stated as complete while an unparsed refusal record stands beside it.
 //
 // This observation says nothing about device availability, live-root acceptance, SOL health or the
-// hardware: those are other readings of the same capture with other producers. In particular the
-// xhci renesas_usb_fw.mem "fallback to ROM" warning is not read here at all -- it appears in the
-// census-reaching boot too, so it is not a refusal of anything.
+// hardware. The xhci renesas_usb_fw.mem "fallback to ROM" warning is not read here at all -- it
+// appears in the census-reaching boot too, so it is not a refusal of anything.
 
 type ModuleDecompressionRefusal {
   at: String
   status: ZstdErrorCode
 }
 
-type ModuleInsertFailure {
-  at: String
-  loader: String
-  path: NonEmptyStr
-  error: String
+type UnparsedRecord {
+  line: String
+  field: String
 }
 
 type LaterDriverReading
   = DriverPrintedLater { at: String, line: String }
   | DriverNotSeenInCapture
 
-type FailedModuleIdentity {
-  failure: ModuleInsertFailure
+type ModuleInsertFailure {
+  at: String
+  loader: String
+  path: NonEmptyStr
+  error: String
   module_name: String
   later: LaterDriverReading
 }
 
-type ModuleIdentityReading
-  = ModuleIdentityKnown { failures: List<FailedModuleIdentity> }
-  | ModuleIdentityUnread
+// The candidates are the named insert failures whose errno is the one a refusal returns. Their
+// relationship to any particular refusal stays unresolved.
+type RefusalIdentityReading
+  = RefusalIdentityUnread
+  | RefusalIdentityCandidates { candidates: List<ModuleInsertFailure> }
 
 type KernelModuleDecompressionObservation
-  = ModuleDecompressionNotRefused
-  | ModuleDecompressionRefused { refusals: List<ModuleDecompressionRefusal>, identity: ModuleIdentityReading }
+  = NoRefusalRecorded { insert_failures: List<ModuleInsertFailure>, unparsed_insert_records: List<UnparsedRecord> }
+  | RefusalRecorded {
+      refusals: List<ModuleDecompressionRefusal>,
+      unparsed_refusal_records: List<UnparsedRecord>,
+      insert_failures: List<ModuleInsertFailure>,
+      unparsed_insert_records: List<UnparsedRecord>,
+      identity: RefusalIdentityReading,
+    }
 
 // The errno a decompression refusal returns to finit_module (decompress.c: retval = -EINVAL), as
-// strerror renders it. An insert failure with another errno is a different failure and is not
-// attributed to the refusal.
+// strerror renders it -- necessary for a candidate, not sufficient for an identity.
 data refused_decompression_strerror: String = "Invalid argument"
 
 data request_identity_on_sol_text: String = "requesting device/modalias: unread on SOL (kmsg ring only)"
@@ -93,30 +107,45 @@ fn stamped(raw: String) -> StampedLine {
   }
 }
 
-fn decompression_refusal(l: StampedLine) -> ModuleDecompressionRefusal? {
-  let prefix = linux_module_zstd_decompress_failed_prefix as String
-  if !string_contains(s: l.rest, pattern: prefix) { none } else {
-    match parse_int(s: trim(join(split(s: l.rest, delimiter: prefix).skip(n: 1), prefix))) {
-      Absent => none
-      Present { value: code } => Present { value: ModuleDecompressionRefusal { at: l.at, status: zstd_error_code_of(code: code) } }
+type RefusalLineReading
+  = NotARefusalLine
+  | RefusalLineParsed { refusal: ModuleDecompressionRefusal }
+  | RefusalLineUnparsed { record: UnparsedRecord }
+
+fn refusal_line_reading(l: StampedLine) -> RefusalLineReading {
+  if !string_contains(s: l.rest, pattern: linux_module_zstd_decompress_failed_stem as String) { NotARefusalLine } else {
+    let prefix = linux_module_zstd_decompress_failed_prefix as String
+    let status_text = trim(join(split(s: l.rest, delimiter: prefix).skip(n: 1), prefix))
+    if !string_contains(s: l.rest, pattern: prefix) || status_text == "" {
+      RefusalLineUnparsed { record: UnparsedRecord { line: l.rest, field: "status" } }
+    } else {
+      match parse_int(s: status_text) {
+        Absent => RefusalLineUnparsed { record: UnparsedRecord { line: l.rest, field: "status" } }
+        Present { value: code } => RefusalLineParsed { refusal: ModuleDecompressionRefusal { at: l.at, status: zstd_error_code_of(code: code) } }
+      }
     }
   }
 }
 
-fn insert_failure(l: StampedLine) -> ModuleInsertFailure? {
-  let prefix = libkmod_insert_failed_prefix as String
-  let parts = split(s: l.rest, delimiter: prefix)
-  if count(parts) < 2 { none } else {
-    let tail = join(parts.skip(n: 1), prefix)
-    let path_and_error = split(s: tail, delimiter: libkmod_insert_failed_path_end as String)
+type InsertLineReading
+  = NotAnInsertLine
+  | InsertLineParsed { at: String, loader: String, path: NonEmptyStr, error: String }
+  | InsertLineUnparsed { record: UnparsedRecord }
+
+fn insert_line_reading(l: StampedLine) -> InsertLineReading {
+  if !string_contains(s: l.rest, pattern: libkmod_insert_failed_stem as String) { NotAnInsertLine } else {
+    let prefix = libkmod_insert_failed_prefix as String
+    let end = libkmod_insert_failed_path_end as String
+    let parts = split(s: l.rest, delimiter: prefix)
+    let path_and_error = split(s: join(parts.skip(n: 1), prefix), delimiter: end)
     let path = first_or_empty(xs: path_and_error)
-    if count(path_and_error) < 2 || path == "" { none } else {
-      Present { value: ModuleInsertFailure {
-        at: l.at,
-        loader: trim(join(split(s: trim(first_or_empty(xs: parts)), delimiter: ":"), "")),
-        path: path as NonEmptyStr,
-        error: trim(join(path_and_error.skip(n: 1), libkmod_insert_failed_path_end as String)),
-      } }
+    let error = trim(join(path_and_error.skip(n: 1), end))
+    if count(parts) < 2 || count(path_and_error) < 2 || path == "" {
+      InsertLineUnparsed { record: UnparsedRecord { line: l.rest, field: "path" } }
+    } else if error == "" {
+      InsertLineUnparsed { record: UnparsedRecord { line: l.rest, field: "errno" } }
+    } else {
+      InsertLineParsed { at: l.at, loader: trim(join(split(s: trim(first_or_empty(xs: parts)), delimiter: ":"), "")), path: path as NonEmptyStr, error: error }
     }
   }
 }
@@ -138,28 +167,40 @@ fn later_driver(lines: List<StampedLine>, after_index: Int, module_name: String)
 
 fn kernel_module_decompression_observation(lines: List<String>) -> KernelModuleDecompressionObservation {
   let stamped_lines = map(lines, raw => stamped(raw: raw))
-  let refusals = flat_map(stamped_lines, l => match decompression_refusal(l: l) { Absent => [] Present { value: r } => [r] })
-  if count(refusals) == 0 { ModuleDecompressionNotRefused } else {
-    let failures = flat_map(enumerate(stamped_lines), il => match insert_failure(l: il.second) {
-      Absent => []
-      Present { value: f } =>
-        if f.error == refused_decompression_strerror {
-          [FailedModuleIdentity {
-            failure: f,
-            module_name: module_name_of_path(path: f.path as String),
-            later: later_driver(lines: stamped_lines, after_index: il.first, module_name: module_name_of_path(path: f.path as String)),
-          }]
-        } else { [] }
-    })
-    ModuleDecompressionRefused {
+  let refusal_readings = map(stamped_lines, l => refusal_line_reading(l: l))
+  let refusals = flat_map(refusal_readings, r => match r { RefusalLineParsed { refusal: x } => [x] _ => [] })
+  let unparsed_refusals = flat_map(refusal_readings, r => match r { RefusalLineUnparsed { record: x } => [x] _ => [] })
+  let insert_readings = map(stamped_lines, l => insert_line_reading(l: l))
+  let insert_failures = flat_map(enumerate(insert_readings), ir => match ir.second {
+    InsertLineParsed { at: a, loader: w, path: p, error: e } =>
+      [ModuleInsertFailure {
+        at: a, loader: w, path: p, error: e,
+        module_name: module_name_of_path(path: p as String),
+        later: later_driver(lines: stamped_lines, after_index: ir.first, module_name: module_name_of_path(path: p as String)),
+      }]
+    _ => []
+  })
+  let unparsed_inserts = flat_map(insert_readings, r => match r { InsertLineUnparsed { record: x } => [x] _ => [] })
+  if count(refusals) == 0 && count(unparsed_refusals) == 0 {
+    NoRefusalRecorded { insert_failures: insert_failures, unparsed_insert_records: unparsed_inserts }
+  } else {
+    let candidates: List<ModuleInsertFailure> = filter(insert_failures, f => f.error == refused_decompression_strerror)
+    RefusalRecorded {
       refusals: refusals,
-      identity: if count(failures) == 0 { ModuleIdentityUnread } else { ModuleIdentityKnown { failures: failures } },
+      unparsed_refusal_records: unparsed_refusals,
+      insert_failures: insert_failures,
+      unparsed_insert_records: unparsed_inserts,
+      identity: if count(candidates) == 0 { RefusalIdentityUnread } else { RefusalIdentityCandidates { candidates: candidates } },
     }
   }
 }
 
 fn refusal_text(r: ModuleDecompressionRefusal) -> String {
   concat("[", r.at, "] status ", zstd_error_code_name(code: r.status))
+}
+
+fn unparsed_text(u: UnparsedRecord) -> String {
+  concat(u.field, " unread in \"", u.line, "\"")
 }
 
 fn later_text(l: LaterDriverReading) -> String {
@@ -169,20 +210,40 @@ fn later_text(l: LaterDriverReading) -> String {
   }
 }
 
-fn failed_module_text(f: FailedModuleIdentity) -> String {
-  concat("[", f.failure.at, "] ", f.failure.loader, " ", f.failure.path as String, ": ", f.failure.error, "; ", f.module_name, " ", later_text(l: f.later))
+fn insert_failure_text(f: ModuleInsertFailure) -> String {
+  concat("[", f.at, "] ", f.loader, " ", f.path as String, ": ", f.error, "; ", f.module_name, " ", later_text(l: f.later))
+}
+
+fn insert_population_text(failures: List<ModuleInsertFailure>, unparsed: List<UnparsedRecord>) -> String {
+  concat(
+    "named insert failures: ", if count(failures) == 0 { "none" } else { join(map(failures, f => insert_failure_text(f: f)), "; ") },
+    if count(unparsed) == 0 { "" } else { concat("; UNPARSED insert records: ", join(map(unparsed, u => unparsed_text(u: u)), "; ")) },
+  )
+}
+
+fn refusal_count_text(refusals: List<ModuleDecompressionRefusal>, unparsed: List<UnparsedRecord>) -> String {
+  if count(unparsed) == 0 {
+    concat(to_string(count(refusals)), " time(s)")
+  } else {
+    concat(to_string(count(refusals)), " parsed record(s) plus ", to_string(count(unparsed)), " UNPARSED; the total is not stated")
+  }
 }
 
 fn kernel_module_decompression_text(o: KernelModuleDecompressionObservation) -> String {
   match o {
-    ModuleDecompressionNotRefused => "module decompression: no refusal in this capture"
-    ModuleDecompressionRefused { refusals: rs, identity: id } =>
+    NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: us } =>
+      concat("module decompression: no refusal record in this capture; ", insert_population_text(failures: fs, unparsed: us))
+    RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: fs, unparsed_insert_records: us, identity: id } =>
       concat(
-        "module decompression REFUSED ", to_string(count(rs)), " time(s): ", join(map(rs, r => refusal_text(r: r)), ", "), "; ",
+        "module decompression REFUSED ", refusal_count_text(refusals: rs, unparsed: urs), ": ", join(map(rs, r => refusal_text(r: r)), ", "),
+        if count(urs) == 0 { "" } else { concat("; UNPARSED refusal records: ", join(map(urs, u => unparsed_text(u: u)), "; ")) },
+        "; ",
         match id {
-          ModuleIdentityUnread => "module identity UNREAD (no loader record reached this capture)"
-          ModuleIdentityKnown { failures: fs } => concat("module identity: ", join(map(fs, f => failed_module_text(f: f)), "; "))
+          RefusalIdentityUnread => "refused module identity UNREAD (no named insert failure with the refusal's errno)"
+          RefusalIdentityCandidates { candidates: cs } =>
+            concat("refused module identity UNRESOLVED; EINVAL candidates, not established by this capture: ", join(map(cs, f => concat(f.path as String, " [", f.at, "]")), ", "))
         },
+        "; ", insert_population_text(failures: fs, unparsed: us),
         "; ", request_identity_on_sol_text,
       )
   }
@@ -190,7 +251,7 @@ fn kernel_module_decompression_text(o: KernelModuleDecompressionObservation) -> 
 
 fn kernel_module_decompression_findings(o: KernelModuleDecompressionObservation) -> List<String> {
   match o {
-    ModuleDecompressionNotRefused => []
-    ModuleDecompressionRefused { refusals: _, identity: _ } => [kernel_module_decompression_text(o: o)]
+    NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => []
+    RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } => [kernel_module_decompression_text(o: o)]
   }
 }
