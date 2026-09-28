@@ -1,7 +1,8 @@
 module v2.test.claim.infer_list_introduction
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.infer { infer, infer_branch_int_binding_type_node, inferred_facts_resolved_type }
+import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.std.integer { integer_int_type_node }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
@@ -141,18 +142,18 @@ fn ilt_freemonoid_of(element: Node) -> Node {
 // THE ARGUMENT IS ASSERTED, NOT ONLY THE HEAD: FreeMonoid<Bool> or FreeMonoid<anything else> reds it,
 // and the Bool control below is the wrong-type twin that must NOT satisfy the Int claim.
 test fn a_list_of_ints_infers_to_freemonoid_of_int() -> Bool {
-  ilt_is_freemonoid_of(tree: ilt_ints, expected: infer_branch_int_binding_type_node())
+  ilt_is_freemonoid_of(tree: ilt_ints, expected: integer_int_type_node())
 }
 
 test fn a_list_of_bools_infers_to_freemonoid_of_bool_and_not_of_int() -> Bool {
   ilt_is_freemonoid_of(tree: ilt_bools, expected: bool_node())
-    && !ilt_is_freemonoid_of(tree: ilt_bools, expected: infer_branch_int_binding_type_node())
+    && !ilt_is_freemonoid_of(tree: ilt_bools, expected: integer_int_type_node())
 }
 
 // STRUCTURAL ELEMENT TYPES: two FreeMonoid<Int> elements minted at different occurrences are one T,
 // so the list of lists is FreeMonoid<FreeMonoid<Int>>; an atom-only comparison would refuse it.
 test fn a_list_of_equal_lists_infers_to_a_nested_freemonoid() -> Bool {
-  ilt_is_freemonoid_of(tree: ilt_nested_ints, expected: ilt_freemonoid_of(element: infer_branch_int_binding_type_node()))
+  ilt_is_freemonoid_of(tree: ilt_nested_ints, expected: ilt_freemonoid_of(element: integer_int_type_node()))
 }
 
 // A STRUCTURAL MISMATCH refuses located AT the differing element: the second inner list (a
