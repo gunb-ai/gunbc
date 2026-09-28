@@ -84,3 +84,33 @@ data native_compiler_reuse_u1a_seed_growth_justification: SeedGrowthJustificatio
   current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs probe_cargo_command -> constructed_probe_environment, resolve_probe_toolchain, cargo_configuration_observation, probe_cargo_command_bound; reached by every probe build: the required emit-compile phase, //gunbc/instruments:self-host, :v2-native-cli, :emitted-crate-workspace and gunbc test //v2/test/..."
 }
 
+// M1.c U1c: A BUILD'S DIRECTORIES DO NOT REACH ITS BYTES.
+//
+// MODIFIED, NOT ADDED (ExistingSeedItemModified, nothing netted): v1_compiler.emitted_closure_compile_host
+// probe_cargo_command_bound (sets the composed flags on both channels and records them) and
+// probe_cargo_command (composes them from the run's directories). The .dag authority is
+// gunbc.emitted_build_reproducibility emitted_build_rustflags, which the route's admission reconstructs
+// (gunbc.witness_v2_native_route native_route_emitted_build_paths_remapped).
+data native_compiler_reuse_u1c_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "REMAP_PATH_PREFIX_FLAG", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "REMAPPED_CRATE_DIR", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "REMAPPED_TARGET_DIR", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "REMAPPED_CARGO_HOME", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "ProbeBuildFlags", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_build_flags", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_cargo_home", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_probe_build_flags_are_the_declared_composition", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "a_directory_the_remap_cannot_spell_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host.tests", decl_name: "the_cargo_home_is_the_declared_one_or_cargos_default_or_a_refusal", field: WholeDeclaration }
+  ],
+
+  reason: "Measured (M1.c U0, 2026-09-28): the emitted v2.compiler.compile crate built in two directories gave two different executables, because rustc wrote absolute source paths into the binary; with the crate directory, the target directory and the cargo home remapped, the two were byte-identical, and one path built twice was identical too. A cross-run key cannot name a directory that differs on every run (and CI's cargo home is fresh per job), so each probe build now sets the warning denial followed by three remaps to fixed spellings, on both RUSTFLAGS channels, and records the composed flags. Cargo's own trim-paths profile setting would do this without flags but is not stable on the pinned toolchain (cargo 1.93.0 refuses it). The spellings mirror gunbc.emitted_build_reproducibility, whose composition the route's admission reconstructs from the recorded flags and refuses on any difference (emitted_build_paths_not_remapped), so a drift between this copy and the row reds the route. A directory the form cannot spell (relative, whitespace, `=`) refuses before the build (ProbePathNotRemappable), as does a build with no cargo home (ProbeCargoHomeUnresolved). WHY RUST: the subject is the seed's cargo spawn in the emit-compile host, which runs no interpreter. PURPOSE ADMISSION under gunbc.v1_maintenance_standing v1_seed_standing: it serves the v2 self-host program's native route; a bounded operational fix whose only admission-side change adds a refusal; not PublicSurfaceGrowth, not NewEscapeHatchOrAdmissionRow, not SeedFeatureCompletion.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these items when the probe build is a modeled transport that reads its flags from gunbc.emitted_build_reproducibility rather than a seed copy, performed by a native v2 generation; OR when the pinned toolchain's cargo stabilizes profile trim-paths and the probe manifest carries it instead of flags, at which point the admission clause is restated over the manifest. WHAT DOES NOT RETIRE THEM: pinning every build to one fixed directory (it serializes concurrent runs and still leaks the cargo home), or remapping only the crate directory.",
+
+  current_boundary: "src/v1/stage0/src/emitted_closure_compile_host.rs probe_cargo_command -> probe_build_flags(crate_dir, target_dir, probe_cargo_home) -> probe_cargo_command_bound; reached by every probe build: the required emit-compile phase, //gunbc/instruments:self-host, :v2-native-cli, :emitted-crate-workspace and gunbc test //v2/test/..."
+}
+

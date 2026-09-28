@@ -23,7 +23,7 @@ import v2.workflow.compile_door_cause_ownership {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+import gunbc.emitted_build_reproducibility { emitted_build_rustflags_are_the_declared_composition, emitted_build_rustflags_deny_warnings }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -659,6 +659,7 @@ type NativeRouteAdmissionRefusalCause
   | EmittedBuildRustcUnrecorded
   | EmittedBuildCompilerUnbound
   | EmittedBuildWarningsNotDenied
+  | EmittedBuildPathsNotRemapped
   | EmittedBuildNotClean
 
 type NativeRouteAdmission
@@ -1113,7 +1114,16 @@ fn native_route_emitted_build_compiler_bound(receipt: NativeRouteReceipt) -> Boo
 }
 
 fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {
-  receipt.emitted_build.rustflags == repo_self_warning_denial_rustflags()
+  emitted_build_rustflags_deny_warnings(rustflags: receipt.emitted_build.rustflags)
+}
+
+// THE BUILD'S DIRECTORIES DID NOT REACH ITS BYTES: the recorded flags are exactly the declared
+// composition (gunbc.emitted_build_reproducibility emitted_build_rustflags), the warning denial and
+// then the crate directory, the target directory and the cargo home remapped to their fixed
+// spellings. A build under the bare denial compiled the run's directory names into the executable,
+// so two runs of one closure produced two executables and no cross-run key could name either.
+fn native_route_emitted_build_paths_remapped(receipt: NativeRouteReceipt) -> Bool {
+  emitted_build_rustflags_are_the_declared_composition(rustflags: receipt.emitted_build.rustflags)
 }
 
 fn native_route_emitted_build_clean(receipt: NativeRouteReceipt) -> Bool {
@@ -1159,6 +1169,7 @@ fn native_route_admission_with(receipt: NativeRouteReceipt, live_pair: NativeRou
     NativeRouteClauseCheck { holds: native_route_emitted_build_rustc_recorded(receipt: receipt), cause: EmittedBuildRustcUnrecorded },
     NativeRouteClauseCheck { holds: native_route_emitted_build_compiler_bound(receipt: receipt), cause: EmittedBuildCompilerUnbound },
     NativeRouteClauseCheck { holds: native_route_emitted_build_warnings_denied(receipt: receipt), cause: EmittedBuildWarningsNotDenied },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_paths_remapped(receipt: receipt), cause: EmittedBuildPathsNotRemapped },
     NativeRouteClauseCheck { holds: native_route_emitted_build_clean(receipt: receipt), cause: EmittedBuildNotClean }
   ]
   let causes = fold_list(
@@ -1207,6 +1218,7 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     EmittedBuildRustcUnrecorded => "emitted_build_rustc_unrecorded"
     EmittedBuildCompilerUnbound => "emitted_build_compiler_unbound"
     EmittedBuildWarningsNotDenied => "emitted_build_warnings_not_denied"
+    EmittedBuildPathsNotRemapped => "emitted_build_paths_not_remapped"
     EmittedBuildNotClean => "emitted_build_not_clean"
   }
 }
