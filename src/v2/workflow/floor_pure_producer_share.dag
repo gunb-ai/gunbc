@@ -1134,7 +1134,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // the admission criterion above rather than defended by the family aggregate.
 data floor_cross_claim_pure_producers_claim_forced: List<String> = [
   "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
-  "v2.compiler.translate.grammar_relation_row_for_emitted",
+  "v2.compiler.target_serialize.grammar_relation_row_for_emitted",
   "v2.std.grammar.formal_productions_from_catalog_node",
   "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness",
   "v2.std.compilers.target_model.target_project_arrow_body_to_value_expression"
@@ -1323,7 +1323,7 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 // it neither cost nor saved anything over those modules. Refusing a different admitted producer
 // for touching one of them would charge it with a harm measured to be zero, which is a fabricated
 // subject, and this is not hypothetical -- run 33696651737 refused
-// v2.compiler.translate.grammar_relation_row_for_emitted on exactly that overlap, and the same
+// v2.compiler.target_serialize.grammar_relation_row_for_emitted on exactly that overlap, and the same
 // overlap is present in the main-vintage run 33671317370, so it is a standing property of the
 // corpus rather than one run's accident.
 //
@@ -1333,7 +1333,7 @@ fn refused_share_producers(refused: List<RefusedShareCandidate>) -> List<String>
 //
 // WHAT IS NOT CLAIMED BY THIS PREDICATE, stated because the same run that motivated it could be
 // misread as clearing the producer it refused. Nothing here says
-// v2.compiler.translate.grammar_relation_row_for_emitted earns its enrolment. The core_edges
+// v2.compiler.target_serialize.grammar_relation_row_for_emitted earns its enrolment. The core_edges
 // measurement measures a DIFFERENT producer and says nothing about that key's own serving cost
 // over v2.test.manual.rust_add_emit_translate; what it establishes is only that the overlap is
 // not EVIDENCE of a cost, because the row overlapped measured none. Whether that key beats
