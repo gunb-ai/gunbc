@@ -144,7 +144,7 @@ test fn a_malformed_refusal_record_alone_is_still_a_refusal_with_its_line_kept()
   ]) {
     RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
       count(rs) == 0 && count(urs) == 2
-        && match first(urs) { Absent => false Present { value: u } => u.field == "status" && string_contains(s: u.line, pattern: "failed with status") }
+        && match first(urs) { Absent => false Present { value: u } => u.field == "status" && u.at == "10.374590" && string_contains(s: u.line, pattern: "failed with status") }
     _ => false
   }
 }

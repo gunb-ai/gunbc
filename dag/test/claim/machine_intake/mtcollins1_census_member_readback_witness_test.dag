@@ -9,12 +9,15 @@ import gunbc.machine_intake_mtcollins1_census_member_readback {
   CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, BootChainControlDidNotDiscriminate,
   BootChainIsoNotPinned, BootChainUnread, BootChainMediumNotCensus,
   CasperKernel, CasperInitrd, GrubConfig, StockSide, CensusSide,
-  census_pin_gate, PinsAdmitted, PinsRefused,
-  member_workspace_of, WorkspaceAcquired, WorkspaceRefused,
-  workspace_cleanup_of, WorkspaceRemoved, WorkspaceNotRemoved, WorkspaceNeverCreated,
+  census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
+  RemoteLeg, remote_leg_of, census_member_attempt_of,
+  WorkspaceOutcome, CreationNotRequested, CreationNotDispatched, CreationFailed, CreationUnconfirmed,
+  Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
   CensusMemberReadbackAttempt, census_member_attempt_holds, render_census_member_attempt,
-  member_reading_after_extract, member_reading_of_measure, member_scratch_path, BootChainWorkspaceUnavailable,
+  member_reading_after_extract, member_reading_of_measure, BootChainWorkspaceUnavailable,
 }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { RemoteAnswer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,7 +68,7 @@ test fn a_differing_kernel_is_named_before_a_differing_initrd() -> Bool {
   }
 }
 
-// RED: an equal grub.cfg means the census image was not read; identical kernel and initrd do not rescue it.
+// RED: an equal grub.cfg means the difference control failed (cause not chosen); identical kernel and initrd do not rescue it.
 test fn an_equal_grub_config_refuses_as_a_control_that_did_not_discriminate() -> Bool {
   match over(stock_grub: read(d: "g0"), census_grub: read(d: "g0"), census_kernel: read(d: "k0"), census_initrd: read(d: "i0")) {
     BootChainControlDidNotDiscriminate { grub_digest: _ } => true
@@ -126,19 +129,6 @@ test fn an_off_pin_iso_is_refused_by_the_gate_that_precedes_extraction() -> Bool
     }
 }
 
-// THE WORKSPACE IS OWNED OR ABSENT: mktemp's printed path under the template prefix is admitted;
-// a failed mktemp, or a path anywhere else, is a refusal -- and no extraction path is derived from it.
-test fn a_workspace_is_admitted_only_from_a_successful_mktemp_under_the_prefix() -> Bool {
-  match member_workspace_of(answer: answer(code: 0, stdout: "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34\n", stderr: "")) {
-    WorkspaceAcquired { dir: d } => (d as String) == "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34"
-      && (member_scratch_path(dir: d, side: CensusSide, member: CasperInitrd) as String) == "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34/census-initrd"
-    _ => false
-  }
-    && match member_workspace_of(answer: answer(code: 1, stdout: "", stderr: "mktemp: failed to create directory")) { WorkspaceRefused { reason: _ } => true _ => false }
-    && match member_workspace_of(answer: answer(code: 0, stdout: "/srv/bmc/x", stderr: "")) { WorkspaceRefused { reason: _ } => true _ => false }
-    && match member_workspace_of(answer: answer(code: 0, stdout: "/tmp/gunbc-mtcollins1-census-member.X/../../srv/bmc", stderr: "")) { WorkspaceRefused { reason: _ } => true _ => false }
-}
-
 // A FAILED EXTRACTION IS NEVER HASHED: its reading is decided from the extract leg alone.
 test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
   match member_reading_after_extract(extract: answer(code: 1, stdout: "", stderr: "xorriso : FAILURE")) {
@@ -152,25 +142,113 @@ test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
     }
 }
 
-// THE ATTEMPT HOLDS ONLY WITH ITS WORKSPACE REMOVED, and a cleanup failure is reported BESIDE the
-// readback, never in place of it: both the verdict and the cleanup outcome survive in the receipt.
-test fn a_cleanup_failure_is_retained_beside_the_verdict_and_blocks_holding() -> Bool {
-  let identical = over(stock_grub: read(d: "g0"), census_grub: read(d: "g1"), census_kernel: read(d: "k0"), census_initrd: read(d: "i0"))
-  let removed = CensusMemberReadbackAttempt { readback: identical, cleanup: workspace_cleanup_of(dir: "/tmp/gunbc-mtcollins1-census-member.A", answer: answer(code: 0, stdout: "", stderr: "")) }
-  let stuck = CensusMemberReadbackAttempt { readback: identical, cleanup: workspace_cleanup_of(dir: "/tmp/gunbc-mtcollins1-census-member.A", answer: answer(code: 1, stdout: "", stderr: "Device or resource busy")) }
-  let text = render_census_member_attempt(attempt: stuck)
-  census_member_attempt_holds(attempt: removed)
-    && census_member_attempt_holds(attempt: stuck) == false
-    && string_contains(s: text, pattern: "verdict=boot_chain_identical_to_stock")
-    && string_contains(s: text, pattern: "NOT REMOVED")
+// ---- the attempt consumer: every workspace outcome, composed as the producer composes it ----
+
+fn ran(code: Int, stdout: String, stderr: String) -> RemoteLeg {
+  remote_leg_of(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr } })
 }
 
-// AN INITIATING FAILURE AND ITS CLEANUP ARE BOTH KEPT: an unread member with a removed workspace
-// renders the unread verdict and the removal; no workspace means "never created", not "removed".
-test fn an_initiating_failure_keeps_its_verdict_and_its_cleanup_outcome() -> Bool {
-  let unread = over(stock_grub: read(d: "g0"), census_grub: read(d: "g1"), census_kernel: read(d: "k0"), census_initrd: MemberUnread { reason: "xorriso extract exit=1" })
-  let text = render_census_member_attempt(attempt: CensusMemberReadbackAttempt { readback: unread, cleanup: WorkspaceRemoved { dir: "/tmp/gunbc-mtcollins1-census-member.B" } })
-  let never = render_census_member_attempt(attempt: CensusMemberReadbackAttempt { readback: BootChainWorkspaceUnavailable { reason: "mktemp exit=1" }, cleanup: WorkspaceNeverCreated })
-  string_contains(s: text, pattern: "verdict=unread") && string_contains(s: text, pattern: "removed")
-    && string_contains(s: never, pattern: "workspace_unavailable (nothing extracted)") && string_contains(s: never, pattern: "never created")
+fn not_dispatched(reason: String) -> RemoteLeg { remote_leg_of(outcome: TypedArgvExecRefused { reason: reason }) }
+
+data admitted: CensusPinGate = PinsAdmitted { stock_iso: stock_iso, census_iso: census_iso }
+
+data workspace_dir: String = "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34"
+
+// Supplied member readings for an acquired workspace: an identical chain, so a non-holding attempt is
+// attributable to its workspace outcome alone.
+fn identical_readings(dir: NonEmptyStr) -> CensusMemberReadings {
+  CensusMemberReadings {
+    stock_grub: read(d: "g0"), census_grub: read(d: "g1"),
+    stock_kernel: read(d: "k0"), census_kernel: read(d: "k0"),
+    stock_initrd: read(d: "i0"), census_initrd: read(d: "i0"),
+  }
+}
+
+fn attempt(gate: CensusPinGate, creation: RemoteLeg, cleanup: RemoteLeg) -> CensusMemberReadbackAttempt {
+  census_member_attempt_of(gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+}
+
+fn says(a: CensusMemberReadbackAttempt, pattern: String) -> Bool { string_contains(s: render_census_member_attempt(attempt: a), pattern: pattern) }
+
+// POSITIVE: an admitted path, an identical chain, a confirmed removal -- the only holding attempt.
+test fn an_acquired_workspace_that_is_removed_holds() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 0, stdout: concat(workspace_dir, "\n"), stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  census_member_attempt_holds(attempt: a)
+    && says(a: a, pattern: "verdict=boot_chain_identical_to_stock")
+    && says(a: a, pattern: concat("workspace=", concat(workspace_dir, " removed")))
+}
+
+// A PIN REFUSAL ISSUES NO CREATION: the creation leg is never consulted, and "never created" is
+// justified because it was never requested.
+test fn a_pin_refusal_requests_no_creation() -> Bool {
+  let refused = census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso })
+  let a = attempt(gate: refused, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: a)
+    && match a.workspace { CreationNotRequested => true _ => false }
+    && says(a: a, pattern: "creation was not requested")
+}
+
+// ssh 255 WITH NO PATH: mktemp was sent and its result is unknown -- residue outstanding, never
+// "never created", and nothing extracted.
+test fn an_unacknowledged_creation_without_a_path_is_unconfirmed_not_never_created() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 255, stdout: "", stderr: "Connection reset by peer"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: a)
+    && match a.workspace { CreationUnconfirmed { exit_code: c, stdout: _, stderr: _ } => c == 255 _ => false }
+    && match a.readback { BootChainWorkspaceUnavailable { reason: _ } => true _ => false }
+    && says(a: a, pattern: "CREATION UNCONFIRMED") && says(a: a, pattern: "MAY REMAIN")
+    && !says(a: a, pattern: "never created")
+}
+
+// ssh 255 WITH A PARTIAL PATH: the returned text is retained as evidence and is NOT admitted as a
+// workspace -- nothing is extracted under it and nothing deletes it.
+test fn an_unacknowledged_creation_with_a_partial_path_keeps_the_text_and_admits_nothing() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 255, stdout: "/tmp/gunbc-mtcollins1-census-mem", stderr: "client_loop: send disconnect"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: a)
+    && match a.workspace { CreationUnconfirmed { exit_code: _, stdout: o, stderr: _ } => o == "/tmp/gunbc-mtcollins1-census-mem" _ => false }
+    && says(a: a, pattern: "returned stdout=\"/tmp/gunbc-mtcollins1-census-mem\"")
+    && says(a: a, pattern: "not removed, nothing extracted")
+    && !says(a: a, pattern: "workspace=/tmp")
+}
+
+// EXIT 0 WITH UNUSABLE OUTPUT: two paths, or a path outside the prefix, establish no owned
+// workspace and no non-creation either.
+test fn a_zero_exit_with_unusable_output_is_unconfirmed() -> Bool {
+  let two = attempt(gate: admitted, creation: ran(code: 0, stdout: concat(workspace_dir, concat("\n", workspace_dir)), stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  let elsewhere = attempt(gate: admitted, creation: ran(code: 0, stdout: "/srv/bmc/x", stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: two) && !census_member_attempt_holds(attempt: elsewhere)
+    && match two.workspace { CreationUnconfirmed { exit_code: c, stdout: _, stderr: _ } => c == 0 _ => false }
+    && match elsewhere.workspace { CreationUnconfirmed { exit_code: _, stdout: _, stderr: _ } => true _ => false }
+}
+
+// A LEGITIMATE mktemp FAILURE (its own non-255 status) established that nothing was created; a leg
+// the transport refused before dispatch is kept as that, not as a lost reply.
+test fn a_reported_mktemp_failure_and_an_undispatched_creation_are_never_created() -> Bool {
+  let failed = attempt(gate: admitted, creation: ran(code: 1, stdout: "", stderr: "mktemp: failed to create directory via template"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  let undispatched = attempt(gate: admitted, creation: not_dispatched(reason: "remote words are not portable"), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  !census_member_attempt_holds(attempt: failed) && !census_member_attempt_holds(attempt: undispatched)
+    && match failed.workspace { CreationFailed { exit_code: c, stderr: _ } => c == 1 _ => false }
+    && says(a: failed, pattern: "never created: mktemp reported failure")
+    && match undispatched.workspace { CreationNotDispatched { reason: _ } => true _ => false }
+    && says(a: undispatched, pattern: "mktemp was not dispatched")
+}
+
+// CLEANUP REPLY LOSS BESIDE A RETAINED COMPARISON: the identical-chain verdict survives, the removal
+// is UNCONFIRMED (not "remains"), and the attempt does not hold.
+test fn a_lost_cleanup_reply_is_unconfirmed_beside_the_retained_verdict() -> Bool {
+  let a = attempt(gate: admitted, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 255, stdout: "", stderr: "Connection closed"))
+  !census_member_attempt_holds(attempt: a)
+    && census_member_readback_holds(readback: a.readback)
+    && says(a: a, pattern: "verdict=boot_chain_identical_to_stock")
+    && says(a: a, pattern: "REMOVAL UNCONFIRMED") && says(a: a, pattern: "may or may not remain")
+}
+
+// rm's OWN failure and an undispatched rm are distinct from a lost reply.
+test fn a_reported_rm_failure_and_an_undispatched_rm_are_distinct_from_a_lost_reply() -> Bool {
+  let failed = attempt(gate: admitted, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 1, stdout: "", stderr: "Device or resource busy"))
+  let undispatched = attempt(gate: admitted, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: not_dispatched(reason: "no transport"))
+  !census_member_attempt_holds(attempt: failed) && !census_member_attempt_holds(attempt: undispatched)
+    && match failed.workspace { RemovalFailed { dir: _, exit_code: c, stderr: _ } => c == 1 _ => false }
+    && says(a: failed, pattern: "REMOVAL FAILED")
+    && match undispatched.workspace { RemovalNotDispatched { dir: _, reason: _ } => true _ => false }
+    && says(a: undispatched, pattern: "rm was not dispatched")
 }

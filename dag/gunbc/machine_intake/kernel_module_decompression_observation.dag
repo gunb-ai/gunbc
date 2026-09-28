@@ -36,7 +36,10 @@ type ModuleDecompressionRefusal {
   status: ZstdErrorCode
 }
 
+// `line` is the record's message text after the timestamp and CR/NUL are stripped; `at` is that
+// timestamp ("" when the line had none). The retained console capture stays the verbatim reference.
 type UnparsedRecord {
+  at: String
   line: String
   field: String
 }
@@ -117,10 +120,10 @@ fn refusal_line_reading(l: StampedLine) -> RefusalLineReading {
     let prefix = linux_module_zstd_decompress_failed_prefix as String
     let status_text = trim(join(split(s: l.rest, delimiter: prefix).skip(n: 1), prefix))
     if !string_contains(s: l.rest, pattern: prefix) || status_text == "" {
-      RefusalLineUnparsed { record: UnparsedRecord { line: l.rest, field: "status" } }
+      RefusalLineUnparsed { record: UnparsedRecord { at: l.at, line: l.rest, field: "status" } }
     } else {
       match parse_int(s: status_text) {
-        Absent => RefusalLineUnparsed { record: UnparsedRecord { line: l.rest, field: "status" } }
+        Absent => RefusalLineUnparsed { record: UnparsedRecord { at: l.at, line: l.rest, field: "status" } }
         Present { value: code } => RefusalLineParsed { refusal: ModuleDecompressionRefusal { at: l.at, status: zstd_error_code_of(code: code) } }
       }
     }
@@ -141,9 +144,9 @@ fn insert_line_reading(l: StampedLine) -> InsertLineReading {
     let path = first_or_empty(xs: path_and_error)
     let error = trim(join(path_and_error.skip(n: 1), end))
     if count(parts) < 2 || count(path_and_error) < 2 || path == "" {
-      InsertLineUnparsed { record: UnparsedRecord { line: l.rest, field: "path" } }
+      InsertLineUnparsed { record: UnparsedRecord { at: l.at, line: l.rest, field: "path" } }
     } else if error == "" {
-      InsertLineUnparsed { record: UnparsedRecord { line: l.rest, field: "errno" } }
+      InsertLineUnparsed { record: UnparsedRecord { at: l.at, line: l.rest, field: "errno" } }
     } else {
       InsertLineParsed { at: l.at, loader: trim(join(split(s: trim(first_or_empty(xs: parts)), delimiter: ":"), "")), path: path as NonEmptyStr, error: error }
     }
@@ -200,7 +203,7 @@ fn refusal_text(r: ModuleDecompressionRefusal) -> String {
 }
 
 fn unparsed_text(u: UnparsedRecord) -> String {
-  concat(u.field, " unread in \"", u.line, "\"")
+  concat(u.field, " unread in [", u.at, "] \"", u.line, "\"")
 }
 
 fn later_text(l: LaterDriverReading) -> String {
