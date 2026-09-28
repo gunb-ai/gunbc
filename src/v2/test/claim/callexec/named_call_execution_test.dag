@@ -1,0 +1,41 @@
+module v2.test.callexec.named_call_execution
+
+import std.types { Bool, Int }
+
+// NATIVE EXECUTION OF A NAMED CALL. Grounding at infer is not execution: this runs through the real
+// route, so the call must be typed AND evaluated. Bool-returning on purpose -- an Int result compared
+// with `==` would couple the first execution proof to the equality operation, which has its own typing.
+//
+// THE FALSE CONTROL IS THE DISCRIMINATOR. A call that refuses and a call that returns false are
+// different outcomes that a single positive row cannot separate: if the route reported both as "not
+// holding", a refusal would read as a false answer. So one row must HOLD and the other must RETURN
+// FALSE, and the pair together establishes that the body ran.
+fn truth(only_arg: Int) -> Bool {
+  true
+}
+
+fn falsity(only_arg: Int) -> Bool {
+  false
+}
+
+// MEASURED: NOT YET EXECUTING, AND NOT FOR A TYPING REASON. Both rows refuse at EVAL with
+// eval_rejected_grounding_not_derived at a SYNTHETIC node -- no authored locus. Under infer the same
+// call grounds (v2.test.claim.reference_evidence.declaration_reference_evidence's named-call rows pass
+// on this tree), so reference typing, application typing and the return derivation are all doing their
+// jobs and something eval consumes is still ungrounded.
+//
+// THE FALSE CONTROL DID NOT DISCRIMINATE, WHICH IS THE POINT OF HAVING IT: both rows refused
+// identically, so neither body ran and nothing distinguishes a refusal from a false answer here. A
+// single positive row would have looked like the same failure.
+//
+// THE SAME SIGNATURE APPEARS ELSEWHERE, unrepaired by this lane: a plain-binder match over a
+// coproduct and a trivial `fn f(b: Box) -> Int { 7 }` both refuse at eval on this cause at a synthetic
+// node. So the boundary is not named-call typing; it is whatever synthetic node eval's facts gate is
+// asked about. Enrolled executed rather than deleted so the next session inherits the measurement.
+fn nc_a_named_bool_call_executes_expected_red() -> Bool {
+  truth(only_arg: 1)
+}
+
+fn nc_the_false_returning_call_is_the_deliberate_false_control_expected_red() -> Bool {
+  falsity(only_arg: 1)
+}
