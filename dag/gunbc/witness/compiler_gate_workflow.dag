@@ -25,6 +25,7 @@ module gunbc.compiler_gate_workflow
 // reused across runs, or preparation scoped to a diff's closure) and its runtime fits the fleet;
 // then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
 
+import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
@@ -215,7 +216,9 @@ data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
 // Sized with margin over the complete wall of the clippy job in witnesses run 36355834138 (the
 // timing is that run's job record, re-read there rather than copied here). It is re-derived when the step turns required or the live-tree tests are reshaped.
-data compiler_gate_clippy_timeout_minutes: Int = 60
+fn compiler_gate_clippy_timeout() -> Minute {
+  minute(count: 60)
+}
 
 fn compiler_gate_unit_test_command() -> String {
   join(
@@ -304,7 +307,7 @@ fn compiler_gate_clippy_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: compiler_gate_clippy_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(compiler_gate_clippy_timeout()) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: compiler_gate_permissions }
