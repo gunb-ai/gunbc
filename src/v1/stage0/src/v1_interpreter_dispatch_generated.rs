@@ -591,24 +591,24 @@ macro_rules! eval_algebra_method_inner_arm {
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum EvalCallBridgeStdCompilersLexingArm {
+pub enum EvalCallBridgeStdNodeArm {
     V4BridgeSymbolInternLexeme,
     V4BridgeSymbolLexeme,
 }
 
 #[rustfmt::skip]
-pub fn lookup_eval_call_bridge_std_compilers_lexing(spelling: &str) -> Option<EvalCallBridgeStdCompilersLexingArm> {
+pub fn lookup_eval_call_bridge_std_node(spelling: &str) -> Option<EvalCallBridgeStdNodeArm> {
     match spelling {
-        "symbol_intern_lexeme" => Some(EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme),
-        "symbol_lexeme" => Some(EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme),
+        "symbol_intern_lexeme" => Some(EvalCallBridgeStdNodeArm::V4BridgeSymbolInternLexeme),
+        "symbol_lexeme" => Some(EvalCallBridgeStdNodeArm::V4BridgeSymbolLexeme),
         _ => None,
     }
 }
 
 #[rustfmt::skip]
-macro_rules! eval_call_bridge__v2_std_compilers_lexing_arm {
-    ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolInternLexeme };
-    ("v4_bridge.symbol_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme };
+macro_rules! eval_call_bridge__v2_std_node_arm {
+    ("v4_bridge.symbol_intern_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeArm::V4BridgeSymbolInternLexeme };
+    ("v4_bridge.symbol_lexeme") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdNodeArm::V4BridgeSymbolLexeme };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

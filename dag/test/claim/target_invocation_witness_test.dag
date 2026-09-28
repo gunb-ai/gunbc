@@ -33,6 +33,7 @@ import gunbc.target_binding {
   HeadsReadingDifferentialObservation,
   DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
   BareReferenceChannelOutcomeProducer,
+  SelfHostBehavioralEquivalenceProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -75,6 +76,7 @@ import gunbc.instrument_targets {
   primitive_egress_census_label,
   primitive_egress_census_v2_label,
   required_lane_resolution_census_label,
+  self_host_behavioral_equivalence_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -872,6 +874,18 @@ test fn the_required_lane_resolution_census_operand_routes_to_its_own_producer()
       label_eq(a: b.target, b: required_lane_resolution_census_label())
         && (b.producer == RequiredLaneResolutionCensusProducer {})
         && !(b.producer == PrimitiveEgressCensusV2Producer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The self-host behavioral-equivalence receipt taker is a label bound to its own producer: a
+// receipt is taken by name, never by a flag on another instrument.
+test fn the_self_host_behavioral_equivalence_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:self-host-behavioral-equivalence") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: self_host_behavioral_equivalence_label())
+        && (b.producer == SelfHostBehavioralEquivalenceProducer {})
+        && !(b.producer == RequiredLaneResolutionCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
