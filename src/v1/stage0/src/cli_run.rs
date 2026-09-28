@@ -9597,28 +9597,54 @@ pub(crate) fn unimported_bare_providers(
     Ok(out.into_iter().collect())
 }
 
-/// Pool admission consumes the same resolution predicate as edge production, but never
-/// expands an import closure or retains an edge. Memoize the verdict for this immutable
-/// index, including refusals; the heads census is its only shared lookup input.
-fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
-    if let Some(verdict) = index.bare_reference_admission.borrow().as_ref() {
+/// ONE FILE'S BARE-REFERENCE ADMISSION: the judgment both demands fold.
+///
+/// An import-less file's bare references are resolved against the COMPLETE heads-derived name
+/// census (`closure_name_census`), so a declaration anywhere in the pool can still make a
+/// reference ambiguous; an import-bearing file owes nothing here. The verdict, refusals included,
+/// is memoized PER FILE on this immutable index. It is bound to the file's bytes and to the
+/// index's name environment, both fixed for the index's life, so a success is evidence about
+/// THAT file and nothing else: a clean entry's closure never certifies another file or the pool.
+fn admit_bare_references_of_file(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(), String> {
+    let file = workspace_relative_repo_path(&source.path);
+    if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
     }
-    let admission_started = std::time::Instant::now();
-    let mut sources: Vec<_> = index.source_files.values().collect();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    let verdict = sources.into_iter().try_for_each(|source| {
-        if source_declares_import_lines(&source.content) {
-            return Ok(());
-        }
+    let verdict = if source_declares_import_lines(&source.content) {
+        Ok(())
+    } else {
         visit_bare_reference_providers(
             source,
             index,
             |root| closure_name_census(index, root),
             |_, _, _| Ok(()),
         )
-    });
-    *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
+    };
+    index
+        .bare_reference_admission
+        .borrow_mut()
+        .insert(file, verdict.clone());
+    verdict
+}
+
+/// THE WHOLE-POOL DEMAND: the per-file judgment folded over every file of the pool, in path
+/// order, stopping at the first refusal. It holds no pool-wide verdict of its own -- the pool is
+/// admitted exactly when every file's judgment is -- so it cannot answer from an earlier, narrower
+/// demand. Its required consumer is the floor preparation (`warm_bare_reference_edge_index`
+/// through `whole_pool_closure_edge_index`), which runs on every pull_request and merge_group.
+/// An ENTRY no longer demands this: it judges the files its closure reaches (see
+/// `build_both_closure_edge_index`), which is the scoping approved on #12419 (decision comment
+/// 5857893764).
+fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
+    let admission_started = std::time::Instant::now();
+    let mut sources: Vec<_> = index.source_files.values().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let verdict = sources
+        .into_iter()
+        .try_for_each(|source| admit_bare_references_of_file(index, source));
     pre_entry_phase::record(
         "pool_bare_reference_admission",
         pre_entry_phase::PhaseScale::Tree,
@@ -9950,7 +9976,10 @@ fn build_both_closure_edge_index(
     index: &MultiEntryIndex,
     source: &Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<Rc<BothClosureEdgeIndex>, String> {
-    admit_pool_bare_references(index)?;
+    // THE DEMANDED FILE IS JUDGED, NOT THE POOL. Every file a closure reaches -- by import, by a
+    // reference-derived edge, or by a bare provider -- has its row produced here, so every reached
+    // file is admitted before its edges are followed and before the entry is evaluated.
+    admit_bare_references_of_file(index, source)?;
     let file = workspace_relative_repo_path(&source.path);
     if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
         if hit.ref_out.contains_key(&file) {
@@ -10133,8 +10162,12 @@ mod closure_edge_demand_tests {
         Ok(providers)
     }
 
+    /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
+    /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
+    /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
+    /// -- still refuses with the same located cause the entry used to report.
     #[test]
-    fn nonclosure_ambiguity_refuses_without_materializing_edges() {
+    fn nonclosure_ambiguity_is_entry_local_and_still_refused_by_the_whole_pool_demand() {
         let fixture = Fixture::new(&[
             (
                 "entry.dag",
@@ -10153,17 +10186,97 @@ mod closure_edge_demand_tests {
         let index = fixture.index();
         let old =
             providers(&index, &index.source_files["frontier.child.consumer"], true).unwrap_err();
-        let refused = load_sources_for_entry_with_pool(
+        let sources = load_sources_for_entry_with_pool(
             &index,
             &fixture.0.join("entry.dag").to_string_lossy(),
         )
-        .unwrap_err();
+        .unwrap();
+        assert_eq!(sources.len(), 1, "the entry reaches only itself");
+        let refused = admit_pool_bare_references(&index).unwrap_err();
         assert_eq!(refused, old);
         assert!(refused.contains("AMBIGUOUS"), "{refused}");
         assert!(refused.contains("frontier, frontier.child"), "{refused}");
         assert!(refused.contains("c.dag"), "{refused}");
-        assert!(index.both_closure_edges.borrow().is_none());
-        assert_eq!(admit_pool_bare_references(&index), Err(old));
+        assert!(whole_pool_closure_edge_index(&index).is_err());
+    }
+
+    /// NO SCOPED SUCCESS CERTIFIES ANOTHER SUBJECT. On ONE index, in both orders: a clean entry is
+    /// admitted; an entry that reaches the ambiguous file -- through a BARE provider, not an
+    /// import -- refuses before evaluation; the whole-pool demand refuses. A clean entry's earlier
+    /// success fills only its own files' verdicts, so neither later demand can read it as theirs.
+    #[test]
+    fn scoped_admission_never_certifies_a_poisoned_entry_or_the_pool() {
+        let files: &[(&str, &str)] = &[
+            ("clean.dag", "module clean_entry\nfn main() -> Int { 1 }\n"),
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "b.dag",
+                "module frontier.child\nfn duplicated() -> Int { 2 }\n",
+            ),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+            (
+                "poisoned.dag",
+                "module poisoned_entry\nfn main() -> Int { read() }\n",
+            ),
+        ];
+        for clean_first in [true, false] {
+            let fixture = Fixture::new(files);
+            let index = fixture.index();
+            let entry = |name: &str| {
+                load_sources_for_entry_with_pool(&index, &fixture.0.join(name).to_string_lossy())
+            };
+            if clean_first {
+                assert!(entry("clean.dag").is_ok());
+                let poisoned = entry("poisoned.dag").unwrap_err();
+                assert!(poisoned.contains("AMBIGUOUS"), "{poisoned}");
+                assert!(admit_pool_bare_references(&index).is_err());
+            } else {
+                assert!(admit_pool_bare_references(&index).is_err());
+                let poisoned = entry("poisoned.dag").unwrap_err();
+                assert!(poisoned.contains("AMBIGUOUS"), "{poisoned}");
+                assert!(entry("clean.dag").is_ok());
+                assert!(admit_pool_bare_references(&index).is_err());
+            }
+        }
+    }
+
+    /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
+    /// the whole pool, and the entry still reaches its bare provider.
+    #[test]
+    fn valid_twin_is_admitted_by_entry_and_pool() {
+        let fixture = Fixture::new(&[
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+            (
+                "entry.dag",
+                "module twin_entry\nfn main() -> Int { read() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            modules,
+            BTreeSet::from([
+                "twin_entry".into(),
+                "frontier.child.consumer".into(),
+                "frontier".into()
+            ])
+        );
+        admit_pool_bare_references(&index).unwrap();
     }
 
     #[test]
@@ -10266,12 +10379,12 @@ mod closure_edge_demand_tests {
         assert!(owners.iter().all(|owner| owner.upgrade().is_some()));
         assert!(drop_private_term_for_test(&index, "closure_name_censuses"));
         assert!(owners.iter().all(|owner| owner.upgrade().is_none()));
-        assert!(index.bare_reference_admission.borrow().is_some());
+        assert!(!index.bare_reference_admission.borrow().is_empty());
         assert!(drop_private_term_for_test(
             &index,
             "bare_reference_admission"
         ));
-        assert!(index.bare_reference_admission.borrow().is_none());
+        assert!(index.bare_reference_admission.borrow().is_empty());
         let counts = private_term_entry_counts_for_test(&index);
         assert!(counts.contains(&("closure_name_censuses", 0)));
         assert!(counts.contains(&("bare_reference_admission", 0)));
@@ -10501,7 +10614,6 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    admit_pool_bare_references(index)?;
     let lookup_started = std::time::Instant::now();
     let lookup = path_to_source_lookup(&index.source_files);
     resolve_stage_slot_add(|s| {
@@ -12834,7 +12946,9 @@ pub struct MultiEntryIndex {
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
-    bare_reference_admission: RefCell<Option<Result<(), String>>>,
+    /// Per-file bare-reference admission verdicts, refusals included, keyed by workspace-relative
+    /// path. Never a pool-wide bit: see `admit_bare_references_of_file`.
+    bare_reference_admission: RefCell<HashMap<String, Result<(), String>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -13079,7 +13193,7 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
         ),
         (
             "bare_reference_admission",
-            usize::from(index.bare_reference_admission.borrow().is_some()),
+            index.bare_reference_admission.borrow().len(),
         ),
         (
             "entry_closure_sources",
@@ -13121,7 +13235,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
         "closure_name_censuses" => index.closure_name_censuses.borrow_mut().clear(),
-        "bare_reference_admission" => *index.bare_reference_admission.borrow_mut() = None,
+        "bare_reference_admission" => index.bare_reference_admission.borrow_mut().clear(),
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
         "resolved_graph_memo" => {

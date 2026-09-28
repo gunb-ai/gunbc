@@ -898,7 +898,7 @@ pub(crate) fn new_multi_entry_index_shell(
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
-        bare_reference_admission: RefCell::new(None),
+        bare_reference_admission: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
 }
