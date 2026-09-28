@@ -5849,6 +5849,26 @@ fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node>
   }
 }
 
+// THE VALUE IS WHAT PRECEDES `in`, READ OFF THE GRAMMAR'S POSITIONS. `let NAME = value in body`: what
+// follows `=` is sequence(value, sequence(`in`, body)), so the value is the left element when the
+// right one opens with `in`. The reader used to hand back the whole of what follows `=` -- value AND
+// continuation -- and relied on a deep first-atom search to pull the value out of it, which a value
+// reader that refuses what is not one atom rightly does not do.
+fn body_lower_let_in_value_before_in(after_eq: Node) -> Node {
+  match sugar_sequence_pair_optional(node: after_eq) {
+    Present { value: pair } =>
+      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+        Present { value: tail } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: tail.left)) {
+            Present { value: id } => if id == ^dag_token_kw_in { pair.left } else { after_eq }
+            Absent => after_eq
+          }
+        Absent => after_eq
+      }
+    Absent => after_eq
+  }
+}
+
 fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
   match body_lower_let_in_prefix_before_in_optional(captured: captured) {
     Absent => Absent
@@ -5861,7 +5881,7 @@ fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
               match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
                 Present { value: id } =>
                   if id == ^dag_token_eq {
-                    optional_present(value: right)
+                    optional_present(value: body_lower_let_in_value_before_in(after_eq: right))
                   } else {
                     body_lower_let_in_value_capture_optional(captured: right)
                   }
