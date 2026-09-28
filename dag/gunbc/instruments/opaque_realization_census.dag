@@ -12,7 +12,6 @@ import tools.host_prelude {
   witness_bin,
   witness_bin_ensure_built_typed,
   witness_bin_refusal_cause,
-  witness_bin_release_path,
   WitnessBinReady,
   WitnessBinRefused,
   WitnessBinRefusalReason
@@ -928,10 +927,10 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
     match witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
       WitnessBinRefused { bin_name: b, path: p, reason: r } =>
         census_compiler_binary_unestablished(provenance: provenance, bin_name: b, path: p, reason: r)
-      WitnessBinReady { path: _ } => {
+      WitnessBinReady { path: gunbc_bin } => {
         let emit = gunbc.WitnessBin.Run(
           workdir: root.path,
-          bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
+          bin_path: gunbc_bin,
           args: [
             "compile",
             "--source-root", "dag",
