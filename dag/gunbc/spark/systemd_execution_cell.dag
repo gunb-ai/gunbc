@@ -698,7 +698,11 @@ fn systemd_workload_cache_reuse_script(member: SystemdExecutionMember, serve_por
 // 911K, while sequential ~1MB seat bodies always worked, and the server logged nothing. The
 // engine-side admission limit for concurrent large uploads is UNROOTED (a live-engine repro
 // leg is the named follow-up); until it lands, request bodies over this threshold ride one
-// flock so the closing run exercises the full band the seats already proved sequentially.
+// flock so the closing run exercises the full band the seats already proved sequentially. A
+// churn transport failure now also records the endpoint's IMMEDIATE liveness probe (GET
+// /v1/models) and a timestamp: the q2 rerun failed churn request 2 with rc=7 (connection
+// refused, 0 ms) while the engine's own metrics kept serving — the probe distinguishes a
+// listener that is gone from a request-level refusal on the next occurrence.
 data systemd_workload_churn_large_request_bytes: Nat = 512000
 
 fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmptyStr, state_dir: String, body: String, clients: Nat, low_tokens: Nat, high_tokens: Nat, requests_per_client: Nat, window_seconds: Nat, request_timeout_seconds: Nat) -> String {
@@ -735,8 +739,8 @@ fn systemd_workload_churn_driver_script(serve_port: Port, served_alias: NonEmpty
     "        if curl -sS -m ", to_string(request_timeout_seconds), " -D \"$last_hdr\" -o \"$last_resp\" -H 'Content-Type: application/json' -d @\"$state/churn_\"$client\"_\"$n\".json\" \"$base/v1/completions\"; then churn_rc=0; else churn_rc=$?; fi\n",
     "      fi\n",
     "      churn_http=$(head -1 \"$last_hdr\" 2>/dev/null | cut -d' ' -f2)\n",
-    "      if [ \"$churn_rc\" != \"0\" ]; then echo \"churn-request-failed client=$client request=$n transport rc=$churn_rc body=$(tr -d '\\n' < \"$last_resp\")\"; exit 31; fi\n",
-    "      if [ \"$churn_http\" != \"200\" ]; then echo \"churn-request-failed client=$client request=$n http=$churn_http body=$(tr -d '\\n' < \"$last_resp\")\"; exit 31; fi\n",
+    "      if [ \"$churn_rc\" != \"0\" ]; then probe_rc=none; probe_http=$(curl -sS -m 5 -o /dev/null -w '%\{http_code}' \"$base/v1/models\" 2>/dev/null && echo ok || echo refused); echo \"churn-request-failed client=$client request=$n transport rc=$churn_rc at=$(date +%s) endpoint_probe=$probe_http body=$(tr -d '\\n' < \"$last_resp\" 2>/dev/null)\"; exit 31; fi\n",
+    "      if [ \"$churn_http\" != \"200\" ]; then echo \"churn-request-failed client=$client request=$n http=$churn_http at=$(date +%s) body=$(tr -d '\\n' < \"$last_resp\" 2>/dev/null)\"; exit 31; fi\n",
     "    done\n",
     "  ) &\n",
     "  client_pids=\"$client_pids $!\"\n",
