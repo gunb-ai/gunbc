@@ -32,8 +32,6 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_timer_unit_file,
   live_deploy_serve_unit_file,
   live_deploy_slice_unit_file,
-  ReleaseRevisionBinding,
-  RevisionBoundAtEmission,
   user_manager_environment_directives,
   belt_tick_cadence,
   eval_budget_flag_text,
@@ -43,6 +41,10 @@ import gunbc.live_deploy.emit {
   repository_convergence_slice_unit_file,
   emit_repository_convergence_slice_unit_doc,
   live_deploy_approval_broker_unit_file,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,

@@ -114,11 +114,9 @@ import gunbc.live_deploy.emit {
   approval_broker_tree_copy_steps,
   ensure_managed_directory_command,
   managed_directory_entry_repair_commands,
-  approval_broker_tree_receipt_path_for,
-  approval_broker_release_dir,
-  approval_broker_release_binary_path,
   approval_broker_dark_install_script,
-  apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
+  apply_approval_broker_unit_write_steps,
+  approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
   emit_release_member_effects,
@@ -127,7 +125,6 @@ import gunbc.live_deploy.emit {
   deploy_receipt_command,
   install_d_shared_mode,
   path_parent_dir,
-  RevisionBoundAtEmission,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
@@ -139,6 +136,12 @@ import gunbc.live_deploy.emit {
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_tree_receipt_path_for,
+  approval_broker_release_dir,
+  approval_broker_release_binary_path,
+  RevisionBoundAtEmission,
 }
 import gunbc.ci_deploy_access {
   DeployAccessJobPrincipalRefusal,
