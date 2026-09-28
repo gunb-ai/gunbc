@@ -42756,6 +42756,14 @@ fn claim_scope_for_with_memos(
             };
             let site_file = module.module.span.file.as_str();
             for name in refs.iter() {
+                // A kernel or container spelling binds the substrate, never a declaring module
+                // (`is_substrate_vocabulary`, the one rule every bare-name producer reads), so two
+                // corpus modules declaring `String` do not make a bare `String` contested. This
+                // held by accident while some import in each scope named one of the declarers;
+                // gunbc.rung_drop text_boundary_identity_wall deleted 71 such imports.
+                if is_substrate_vocabulary(name) {
+                    continue;
+                }
                 let Some(claimants) = ambiguous.get(name) else {
                     continue;
                 };
