@@ -1,6 +1,7 @@
 module std.kernel_type_denotation
 
-import std.types { Bool, List, String, is_kernel_type }
+import std.types { Bool, List, String }
+import std.kernel_type_name { KernelTypeName, KernelTypeNameAdmission, KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name }
 import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
 
 // WHAT A KERNEL TYPE NAME MEANS, INDEPENDENT OF ANY TARGET. The kernel names are rostered in
@@ -19,29 +20,6 @@ import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
 
 type KernelTypeMeaning
   = BinaryInterchangeFormatMeaning { format: BinaryInterchangeFormat }
-
-// A KERNEL TYPE NAME, admitted only through std.types is_kernel_type (kernel_type_set is read, not
-// restated). This is the ONE carrier for "a name the kernel rosters": every consumer that needs one
-// -- this module's denotation rows, std.target_representation's kernel-parent variants -- takes a
-// KernelTypeName rather than a String with its own membership check. RUNG: mechanically
-// preventable -- the record constructor stays public (the language has no module-private
-// constructor); kernel_type_name is the admitting route, and a String that is not a kernel name
-// yields NotAKernelTypeName, never a KernelTypeName.
-type KernelTypeName {
-  name: String
-}
-
-type KernelTypeNameAdmission
-  = KernelTypeNameAdmitted { kernel_name: KernelTypeName }
-  | NotAKernelTypeName { name: String }
-
-fn kernel_type_name(name: String) -> KernelTypeNameAdmission {
-  if is_kernel_type(name: name) {
-    KernelTypeNameAdmitted { kernel_name: KernelTypeName { name: name } }
-  } else {
-    NotAKernelTypeName { name: name }
-  }
-}
 
 type KernelTypeDenotation {
   kernel_name: KernelTypeName

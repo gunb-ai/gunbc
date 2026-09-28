@@ -10,9 +10,9 @@ import extdeps.standards.ieee_754_2019 {
   binary_interchange_encoding, class, compare_quiet, Ordered, Unordered,
   QuietNaN, SignalingNaN, PositiveSubnormal, NegativeZero, PositiveNormal, PositiveInfinity
 }
+import std.kernel_type_name { KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name }
 import std.kernel_type_denotation {
   KernelTypeDenotationAdmission, KernelTypeDenotationAdmitted, KernelTypeDenotationRefused,
-  KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name,
   KernelTypeDenotation, BinaryInterchangeFormatMeaning,
   kernel_type_denotation_row, kernel_type_denotation_rows, kernel_type_denotation_rows_admitted
 }

@@ -406,9 +406,10 @@ fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, s
 // declaring module denotes the kernel post-#9813, which the host-carrier arm ahead of this one
 // answers. SCOPE: keyed to
 // the String spelling because String is the kernel-named STRUCTURAL text carrier with a measured
-// error population; std.integer Int and std.float Float realize NATIVELY via
-// numeric_realization_declaring_modules, so peeling them would render the algebra structure
-// against i64 values -- their field-position rendering is a separate class with its own evidence.
+// error population; std.integer Int realizes NATIVELY via numeric_realization_declaring_modules
+// and kernel Float (no .dag declaration since the Float de-fork) via its kernel checkpoint row, so
+// peeling them would render algebra structure against i64/f64 values -- their field-position
+// rendering is a separate class with its own evidence.
 fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   n.connective == NoConnective
