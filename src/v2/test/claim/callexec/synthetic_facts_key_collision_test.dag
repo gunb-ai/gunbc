@@ -5,6 +5,7 @@ import v2.test.claim.callexec.declaration_reference_eval {
   cref_eval_of,
   cref_first_call_optional,
   cref_inferred_of,
+  cref_bool_pair_source,
   cref_source
 }
 import v2.compiler.infer { inferred_facts_grounding_derived }
@@ -111,6 +112,26 @@ test fn sfk_a_structurally_equal_node_occurs_in_the_program_holds() -> Bool {
         Absent => false
         Present { value: call } =>
           sfk_member(xs: sfk_nodes(n: call), wanted: runtime_value_conj_node(children: Empty))
+      }
+  }
+}
+
+// THE BOOL-RETURNING RED SHARES THIS CAUSE, measured rather than assumed from a matching reason
+// string. Its callee body is a constant, so it differs from an EXECUTING control only in return type,
+// and it refuses at the same runtime-built node. Two of this lane's remaining reds therefore have one
+// cause; that is a claim about these two subjects and is not extended to any other refusal reporting
+// the same reason, which a reason string alone cannot establish.
+test fn sfk_the_bool_returning_red_refuses_at_the_same_node_holds() -> Bool {
+  match cref_eval_of(o: cref_bool_pair_source()) {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ds } =>
+          match cref_diagnostic_node_optional(d: ds.head) {
+            Absent => false
+            Present { value: anchor } => anchor == runtime_value_conj_node(children: Empty)
+          }
       }
   }
 }
