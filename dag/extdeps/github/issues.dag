@@ -1,5 +1,6 @@
 module extdeps.github.issues
 
+import extdeps.ietf.http_semantics { GET, PATCH, POST }
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { NonEmptyStr, Timestamp, Secret }
