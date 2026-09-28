@@ -5,8 +5,8 @@ import std.types { Bool, NonEmptyStr, String }
 import v2.std.optional { Present }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { SeededInstallMediaStageOutcome, SeededInstallMediaStaged, SeededInstallMediaStageRefused }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
-import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, CreationUnconfirmed }
-import gunbc.seeded_install_media_publish { SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, CreationUnconfirmed, HostFileWriteNotConverged, HostFileWriteRefused }
+import gunbc.seeded_install_media_publish { SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten, seeded_image_publication_after_record }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
 import gunbc.machine_intake_mtcollins1_census_image_publish {
   CensusRegression, RegressionReproduced, RegressionDiverged, RegressionUnbuilt, RegressionNotApplicable,
@@ -97,4 +97,41 @@ test fn a_refused_publication_does_not_hold() -> Bool {
   !census_publish_attempt_holds(a: a)
     && string_contains(s: render_census_publish_attempt(a: a), pattern: "publication=refused")
     && string_contains(s: render_census_publish_attempt(a: a), pattern: "CREATION UNCONFIRMED")
+}
+
+// BOTH FAILURES SURVIVE (review 5341204067): the image is published and verified, the export staging
+// file's removal was not confirmed, and then the derivation record's write did not converge. Built
+// through the production composition (seeded_image_publication_after_record), the receipt keeps the
+// staging obligation AND says the record's state is unknown -- never that it "was not written".
+test fn a_staging_residue_survives_a_later_record_write_failure() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => match census_built() {
+    Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
+    Present { value: b } =>
+      seeded_image_publication_after_record(
+        built: b,
+        path: "/srv/bmc/x.iso",
+        work: Removed { dir: work_removed as NonEmptyStr },
+        staging_residue: Present { value: "/srv/bmc/x.iso.gunbc-staging: UNCONFIRMED (reply lost) exit=255" },
+        record: HostFileWriteNotConverged { reason: "rename: exit=255" },
+      )
+  })
+  let text = render_census_publish_attempt(a: a)
+  !census_publish_attempt_holds(a: a)
+    && match a { CensusPublishRan { regression: _, publication: SeededImagePublishedRecordNotWritten { built: _, path: _, work: _, staging_residue: Present { value: _ }, record: _ } } => true _ => false }
+    && string_contains(s: text, pattern: "staging_residue=/srv/bmc/x.iso.gunbc-staging")
+    && string_contains(s: text, pattern: "derivation_record=NOT CONVERGED (destination state unknown)")
+    && string_contains(s: text, pattern: "output_digest=")
+    && !string_contains(s: text, pattern: "not written")
+}
+
+// A record write refused before anything was sent is reported as refused, beside the same obligations.
+test fn a_refused_record_write_is_reported_as_refused_with_the_residue_kept() -> Bool {
+  match census_built() {
+    Absent => false
+    Present { value: b } => {
+      let p = seeded_image_publication_after_record(built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: Present { value: "staging left" }, record: HostFileWriteRefused { reason: "path outside scope" })
+      let text = render_census_publish_attempt(a: CensusPublishRan { regression: reproduced(), publication: p })
+      string_contains(s: text, pattern: "derivation_record=refused: path outside scope") && string_contains(s: text, pattern: "staging_residue=staging left")
+    }
+  }
 }

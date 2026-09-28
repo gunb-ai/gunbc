@@ -8,7 +8,7 @@ import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import gunbc.host_command_binding {
   CommandHost, HostEffectDone, HostEffectFailed, host_effect, host_effect_text,
-  HostFileWritten, host_write_file, host_file_write_text,
+  HostFileWrite, HostFileWritten, host_write_file,
   ScratchOutcome, CreationNotRequested,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
@@ -74,6 +74,7 @@ type SeededImagePublication
   = SeededImagePublished { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String? }
   | SeededImageAlreadyPublished { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr }
   | SeededImagePublicationRefused { reason: String, work: ScratchOutcome }
+  | SeededImagePublishedRecordNotWritten { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?, record: HostFileWrite }
 
 fn seeded_image_publication_refused(reason: String) -> SeededImagePublication {
   SeededImagePublicationRefused { reason: reason, work: CreationNotRequested }
@@ -148,13 +149,27 @@ fn publish_staged_seeded_image(host: CommandHost, boundary: SeededImageWriteBoun
 }
 
 // The record is written only after the image reads back at its published name, so a record never
-// names bytes that are not there. If the write fails the image stays published and the refusal says
-// so: a consumer will find no record and report the image as not built, which is the safe reading.
-fn record_published_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?) -> SeededImagePublication {
-  match host_write_file(host: host, path: ubuntu_seeded_install_media_record_path(dir: dir, input: input), content: concat(built.output_digest as String, "\n"), scope_root: dir) {
+// names bytes that are not there. If the write does not land the image stays published and the arm
+// says so: a consumer will find no record and report the image as not built, which is the safe
+// reading. EVERY EARLIER OBLIGATION RIDES THE RECORD-FAILURE ARM TOO -- the build work directory's end
+// and a staging file left in the export -- so a later failure never erases the evidence of an earlier
+// one; and the record write's own outcome says whether it was refused (nothing sent) or not confirmed
+// (the remote destination may already have changed), never "not written" for both.
+fn seeded_image_publication_after_record(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?, record: HostFileWrite) -> SeededImagePublication {
+  match record {
     HostFileWritten => SeededImagePublished { built: built, path: path, work: work, staging_residue: staging_residue }
-    other => SeededImagePublicationRefused { reason: concat("image published at ", path as String, " but its derivation record was not written: ", host_file_write_text(w: other)), work: work }
+    other => SeededImagePublishedRecordNotWritten { built: built, path: path, work: work, staging_residue: staging_residue, record: other }
   }
+}
+
+fn record_published_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?) -> SeededImagePublication {
+  seeded_image_publication_after_record(
+    built: built,
+    path: path,
+    work: work,
+    staging_residue: staging_residue,
+    record: host_write_file(host: host, path: ubuntu_seeded_install_media_record_path(dir: dir, input: input), content: concat(built.output_digest as String, "\n"), scope_root: dir),
+  )
 }
 
 fn publish_built_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, boundary: SeededImageWriteBoundary, staged: SeededInstallMediaStageOutcome) -> SeededImagePublication {

@@ -8,6 +8,7 @@ import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_forc
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { SeededInstallMediaStageOutcome, SeededInstallMediaStaged, SeededInstallMediaStageRefused, seeded_install_media_stage }
 import gunbc.host_command_binding {
+  host_file_write_text,
   CommandHost, FleetSshCommandHost, HostTransportKind, host_run, host_transport_kind,
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, CreationNotRequested,
   scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
@@ -20,7 +21,7 @@ import gunbc.machine_intake_mtcollins1_census_image {
   Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused, mtcollins1_census_image_stock_path,
 }
 import gunbc.seeded_install_media_publish {
-  BmcExportBoundary, SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused,
+  BmcExportBoundary, SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten,
   SeededImageResolution, SeededImageUnobservable, publish_seeded_image, resolve_seeded_image,
 }
 
@@ -138,6 +139,7 @@ fn census_publish_attempt_holds(a: CensusPublishAttempt) -> Bool {
         SeededImagePublished { built: _, path: _, work: w, staging_residue: residue } =>
           scratch_removed(o: w) && match residue { Absent => true Present { value: _ } => false }
         SeededImagePublicationRefused { reason: _, work: _ } => false
+        SeededImagePublishedRecordNotWritten { built: _, path: _, work: _, staging_residue: _, record: _ } => false
       }
   }
 }
@@ -184,6 +186,9 @@ fn render_census_publication(p: SeededImagePublication) -> String {
         match residue { Absent => "" Present { value: r } => concat("staging_residue=", r, "\n") })
     SeededImageAlreadyPublished { built: b, path: path } => concat("already_published=true\n", render_built(built: b, path: path))
     SeededImagePublicationRefused { reason: r, work: w } => concat("publication=refused\npublication_reason=", r, "\n", render_scratch_outcome(label: "build_work", prefix: "", o: w))
+    SeededImagePublishedRecordNotWritten { built: b, path: path, work: w, staging_residue: residue, record: rec } =>
+      concat(render_built(built: b, path: path), "derivation_record=", host_file_write_text(w: rec), "\n", render_scratch_outcome(label: "build_work", prefix: "", o: w),
+        match residue { Absent => "" Present { value: r } => concat("staging_residue=", r, "\n") })
   }
 }
 
