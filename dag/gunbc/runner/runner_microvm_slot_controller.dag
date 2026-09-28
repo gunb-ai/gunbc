@@ -1,5 +1,10 @@
 module gunbc.runner_microvm_slot_controller
 
+import gunbc.fabric_executor_class { fleet_cell_sanction }
+import gunbc.runner_microvm_ci_admission {
+  microvm_ci_admission, MicrovmCiLaunchAdmitted, MicrovmCiRecoveryRequired, MicrovmCiAdmissionRefused,
+}
+
 import gunbc.workspace_allocation_lease { workspace_record_expiry }
 
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
@@ -164,6 +169,7 @@ type SlotControllerRefusal
   | ReservationNotObserved { observation: RequiredBuildCellObservation }
   | CellNotBound { cause: String }
   | ShapeRefused { detail: String }
+  | WorkloadAdmissionRefused { detail: String }
   | NetworkReceiptUnreadable { path: String, detail: String }
   | NetworkReceiptMalformed { path: String, cause: NonEmptyStr }
   | SanitationSubjectNotAdmitted { refusal: SanitationSubjectRefusal }
@@ -412,21 +418,11 @@ fn slot_controller_on_host(slot: RunnerSlotIdentity, spec: RunnerHostSpec, relea
 {
   let bins = locus_binaries(release_dir: release_dir)
   let image = guest_image_sources(spec: spec)
-  if !path_is_executable(path: bins.firecracker) {
-    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
-  } else if !path_is_executable(path: bins.jailer) {
-    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
-  } else if !path_exists(path: image.kernel) {
-    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
-  } else if !path_exists(path: image.rootfs) {
-    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
-  } else {
     match observe_reservation(slot: slot) {
       RequiredBuildCellObserved { snapshot: snapshot } =>
         slot_controller_on_reservation(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
       not_observed => SlotControllerRefused { refusal: ReservationNotObserved { observation: not_observed } }
     }
-  }
 }
 
 fn slot_controller_on_reservation(
@@ -438,6 +434,36 @@ fn slot_controller_on_reservation(
 ) -> SlotControllerOutcome
   uses net: Network, fs: Filesystem
 {
+  match microvm_ci_admission(executor: runner_slot_instance_name(slot: slot) as NonEmptyStr,
+    sanction: fleet_cell_sanction(slot: slot),
+    readiness: cell_incarnation_admission(store: read_cell_readiness_store(), cell: snapshot.cell,
+      allocation_generation: snapshot.generation)) {
+    MicrovmCiAdmissionRefused { reason } => SlotControllerRefused { refusal: WorkloadAdmissionRefused { detail: reason } }
+    MicrovmCiRecoveryRequired { bound } => match resolve_network_subject(slot: slot) {
+      NetworkSubjectRefused { refusal } => SlotControllerRefused { refusal: refusal }
+      NetworkSubjectResolved { subject } => SlotControllerRan { outcome: ControllerRecovered {
+        teardown: run_teardown(bound: bound, subject: subject, trigger: ControllerLost),
+      } }
+    }
+    MicrovmCiLaunchAdmitted => slot_controller_launch_admitted(slot: slot, snapshot: snapshot,
+      bins: bins, image: image, invocation_id: invocation_id)
+  }
+}
+
+// Both the broker and direct controller must admit the current purpose before any JIT mint.
+fn slot_controller_launch_admitted(slot: RunnerSlotIdentity, snapshot: RequiredBuildCellSnapshot,
+  bins: LocusBinaries, image: GuestImageSources, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  if !path_is_executable(path: bins.firecracker) {
+    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
+  } else if !path_is_executable(path: bins.jailer) {
+    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
+  } else if !path_exists(path: image.kernel) {
+    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
+  } else if !path_exists(path: image.rootfs) {
+    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
+  } else {
   let binding = bind_microvm_to_cell(snapshot: snapshot)
   match binding {
     VmUnboundCellNotOwned { cause: c } => SlotControllerRefused { refusal: CellNotBound { cause: c } }
@@ -458,6 +484,7 @@ fn slot_controller_on_reservation(
               }
           }
       }
+  }
   }
 }
 
@@ -565,6 +592,7 @@ fn refusal_text(r: SlotControllerRefusal) -> String {
     GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")
     ReservationNotObserved { observation: o } => join(["ReservationNotObserved ", reservation_observation_text(o: o)], "")
     CellNotBound { cause: c } => join(["CellNotBound ", c], "")
+    WorkloadAdmissionRefused { detail: d } => join(["WorkloadAdmissionRefused ", d], "")
     ShapeRefused { detail: d } => join(["ShapeRefused ", d], "")
     NetworkReceiptUnreadable { path: p, detail: d } => join(["NetworkReceiptUnreadable ", p, ": ", d], "")
     NetworkReceiptMalformed { path: p, cause: c } => join(["NetworkReceiptMalformed ", p, ": ", c as String], "")
