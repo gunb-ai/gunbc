@@ -15,7 +15,7 @@ import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAb
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, auth_session_response, roadmap_serve_request_security }
 
 
-import extdeps.tailscale.identity { tailnet_identity_of }
+import extdeps.tailscale.identity { tailnet_identity_of, TailnetIdentity, TailnetIdentityAbsent }
 import std.types { String, Int, Bool, List, CommitSha, HttpStatus, NonEmptyStr }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
@@ -30,7 +30,7 @@ import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
-  ServeHttpRequest,
+  ServeHttpRequest, RequestSecurityContext, AccessPathTailnetProxy,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
   ServedRoute, StaticRoute, DynamicRoute,
@@ -786,7 +786,22 @@ fn roadmap_serve_invoke_over(
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
     ApprovalBrokerCutoverHandler { route: r } =>
-      approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
+      approval_broker_invoke(handler: r, params: params, request: roadmap_approval_transport_request(request: request), process: RoadmapProcess)
+  }
+}
+
+// The mounted legacy broker consumes transport evidence under its own capability/trust gates.
+// A Google session is never converted to that evidence; non-tailnet paths carry absence.
+fn roadmap_approval_transport_request(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpRequest<TailnetIdentity> {
+  ServeHttpRequest {
+    method: request.method, path: request.path, body: request.body,
+    security: RequestSecurityContext {
+      access_path: request.security.access_path,
+      authentication: match request.security.access_path {
+        AccessPathTailnetProxy { transport_observation: observed, route_readback: _ } => observed
+        _ => TailnetIdentityAbsent
+      },
+    },
   }
 }
 
@@ -1047,7 +1062,7 @@ fn roadmap_serve_respond_over(
             daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
             cookie_header: cookie_header,
-            request: ServeHttpRequest<RequestAuthenticationEvidence> {
+            request: ServeHttpRequest {
               method: m,
               path: path,
               body: body,
