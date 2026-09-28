@@ -10,7 +10,7 @@ import gunbc.spark.pair_serving_apply { spark_pair_apply_plans, spark_pair_apply
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthorityRead, CurrentAuthorityUnread,
-  current_pair_serving_authorities, current_authority_group, current_authority_wire,
+  current_pair_serving_authorities, current_authority_group, current_authority_wire, current_authority_unread_marker,
 }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 
@@ -60,7 +60,7 @@ test fn the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answe
               CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
                 any(refusals, r => r == join([spark_pair_apply_unread_refusal_prefix, current_authority_wire(c: c)], ""))
               CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
-                !any(refusals, r => string_contains(s: r, pattern: join([fabric_group_wire(g: current_authority_group(c: c)) as String, " authority unread at "], "")))
+                !any(refusals, r => string_contains(s: r, pattern: join([fabric_group_wire(g: current_authority_group(c: c)) as String, current_authority_unread_marker], "")))
             })
         }
       }
