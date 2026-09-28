@@ -3442,10 +3442,8 @@ fn body_lower_operand_ref_acceptable_read(node: Node) -> OperandRefRead {
 
 // A REFUSED OPERAND IS THIS READER'S REFUSAL. Reaching a deep first-match search for an operand the
 // operator reader refused answered the operand's first atom: `b && (u)` lowered to `b`. The last
-// arm is a LEAF read, not a search: a capture that is not itself one atom is not an atom, so it
-// answers Absent and the caller refuses (unsupported_form). As a deep search it answered a map
-// literal `{ "k": v }` with its `{` token and a qualified constructor `a.b.T { f: v }` with `a`
-// (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
+// arm is body_lower_value_sole_atom_optional, not a search: a capture that is not itself one atom
+// answers Absent and the caller refuses (unsupported_form).
 fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
   match body_lower_operand_ref_acceptable_read(node: captured) {
     OperandRefAbsent =>
@@ -3455,7 +3453,7 @@ fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
           match body_lower_literal_int_atom_optional(node: captured) {
             Present { value: lit } => OperandRefLowered { lowered: lit }
             Absent =>
-              match body_lower_pattern_leaf_atom_optional(node: captured) {
+              match body_lower_value_sole_atom_optional(node: captured) {
                 Present { value: leaf } =>
                   if body_lower_atom_is_keyword_token(node: leaf) { OperandRefAbsent } else { OperandRefLowered { lowered: leaf } }
                 Absent => OperandRefAbsent
@@ -4827,20 +4825,42 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
 // The same ordering as body_lower_operand_ref_optional: an int literal is read whole before the
 // branded-atom arm, which would rebuild it without its magnitude (the postfix reduce reaches
 // this reader for every literal operand).
-// A LEAF READ, NOT A SEARCH. The node is its atom only if, through optional elements and production
-// shells, it IS one atom. It used to fall through to a search of its children when it was not, so a
-// primary answered `{ "k": v }` with its `{` token and `a.b.T { f: v }` with `a`
-// (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
-// A caller that means the first atom anywhere beneath the node says so with
-// body_lower_pattern_first_atom_optional, which does its own child search.
-fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
+// ONE ATOM, CLASSIFIED ONCE. A node that IS a single atom (after optional elements) is read here: an
+// int literal with its magnitude, a branded binding, `true`/`false`, or a reference. Both readers
+// below call it, so the classification has one home.
+fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
   match dag_node_is_int_literal_atom(node: stripped) {
     true => body_lower_int_literal_with_magnitude_optional(node: stripped)
     false =>
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
       optional_present(value: body_lower_param_ref_atom(source: stripped, identity: binding))
+    Absent =>
+      match node_atom_identity_optional(node: stripped) {
+        Present { value: id } =>
+          if dag_lex_token_symbol(sym: id) {
+            if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+              optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
+            } else {
+              body_lower_int_literal_with_magnitude_optional(node: stripped)
+            }
+          } else {
+            optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
+          }
+        Absent => optional_absent()
+      }
+  }
+  }
+}
+
+// THE PATTERN READER: an atom, or the first atom a pattern capture's children yield. A pattern
+// capture such as `A { x: v }` is a sequence whose first atom IS its tag, so the child search is this
+// reader's contract (the pattern claims of v2.test.claim.body_lowering.single_arm_match and
+// v2.test.manual.body_lowering_match go red without it).
+fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_atom_node_lowered_optional(stripped: stripped) {
+    Present { value: atom } => optional_present(value: atom)
     Absent =>
       match parse_production_emitted_identity_optional(node: stripped) {
         Present { value: emitted } =>
@@ -4859,21 +4879,30 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
               }
           }
         Absent =>
-          match node_atom_identity_optional(node: stripped) {
-            Present { value: id } =>
-              if dag_lex_token_symbol(sym: id) {
-                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                  optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
-                } else {
-                  body_lower_int_literal_with_magnitude_optional(node: stripped)
-                }
-              } else {
-                optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
-              }
-            Absent => optional_absent()
-          }
+          fold(stripped.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
+            }
+          })
       }
   }
+}
+
+// THE VALUE READER'S ATOM: the node is its atom only if, through optional elements and production
+// shells, it IS one atom; anything with more structure is Absent, so the caller refuses. The primary,
+// postfix and operand fall-backs used the pattern reader's child search here, and answered a map
+// literal `{ "k": v }` with its `{` token and a qualified constructor `a.b.T { f: v }` with `a`
+// (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
+fn body_lower_value_sole_atom_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_atom_node_lowered_optional(stripped: stripped) {
+    Present { value: atom } => optional_present(value: atom)
+    Absent =>
+      match parse_production_captured_child_optional(node: stripped) {
+        Present { value: captured } => body_lower_value_sole_atom_optional(node: captured)
+        Absent => optional_absent()
+      }
   }
 }
 
@@ -7120,7 +7149,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: Present { value: spine }, diagnostics: _ } => outcome_accepted(value: spine)
         Accepted { value: Absent, diagnostics: _ } =>
-      match body_lower_pattern_leaf_atom_optional(node: captured) {
+      match body_lower_value_sole_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
@@ -7456,7 +7485,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             d: body_lower_diagnostic(reason: ^body_lowering_reason_caret_symbol_not_lowered, n: caret)
           )
         Absent =>
-      match body_lower_pattern_leaf_atom_optional(node: captured) {
+      match body_lower_value_sole_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
