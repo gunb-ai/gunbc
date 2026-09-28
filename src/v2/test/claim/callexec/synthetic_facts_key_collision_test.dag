@@ -1,0 +1,116 @@
+module v2.test.claim.callexec.synthetic_facts_key_collision
+
+import v2.test.claim.callexec.declaration_reference_eval {
+  cref_diagnostic_node_optional,
+  cref_eval_of,
+  cref_first_call_optional,
+  cref_inferred_of,
+  cref_source
+}
+import v2.compiler.infer { inferred_facts_grounding_derived }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, NodeFold, TypeNode, fold_node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.runtime { runtime_value_conj_node }
+
+// A NODE-KEYED FACTS MAP ANSWERS FOR A NODE NO SOURCE OCCURRENCE PRODUCED, and that is what the
+// remaining named-call refusal actually is.
+//
+// v2.compiler.inferred_tree InferredTree keys its facts by Node, and Node equality is STRUCTURAL --
+// kind, children and occurrence identity. std.occurrence_identity NodeOccurrenceIdentity spells "no
+// authored occurrence" as the NULLARY constructor OccurrenceSynthetic, so it is one VALUE rather than
+// one value per synthetic node. Two synthetic nodes with the same kind and the same children are
+// therefore THE SAME KEY, whoever built them and whenever.
+//
+// The consequence measured here: the evaluator constructs an empty synthetic Conj at runtime (through
+// v2.std.runtime runtime_value_conj_node, for a value's type), asks the facts map about it, and the
+// map ANSWERS -- with the facts of an unrelated node that merely shares that shape. Those facts carry
+// GroundingNotDerived, so eval refuses with eval_rejected_grounding_not_derived located at a node that
+// exists in no source position. The refusal is not about the call, the callee, the reference or the
+// declaration: it is a key collision.
+//
+// WHY THIS IS WORTH A CLAIM RATHER THAN A NOTE. The collision is silent in both directions. A lookup
+// that should MISS instead hits, so a fail-closed miss (infer_facts_lookup_miss) is converted into a
+// judgment about grounding that no producer intended; and were the colliding entry DERIVED instead of
+// underived, the same collision would hand the runtime a grounding it never established, which is a
+// fabricated-plausible-output failure rather than a refusal (DESIGN section 5). This corpus currently
+// observes only the refusing direction, and nothing makes the other direction unreachable.
+//
+// WHAT THIS CORRECTS. An earlier reading of this refusal attributed the anchor to the callee's encoded
+// declaring path, on the evidence that the anchor was a member of that path's node set. That evidence
+// does not discriminate: the anchor is an empty synthetic Conj, and an empty synthetic Conj is a
+// member of almost any node set one tests it against, including the spine's terminator. The
+// classifier/walker repair that landed beside this file stands on different evidence -- it is
+// established by source and by named calls now EXECUTING to their callee's value -- and not on this
+// anchor comparison, which establishes nothing about location.
+fn sfk_anchor() -> Optional<Node> {
+  match cref_eval_of(o: cref_source()) {
+    Absent => optional_absent()
+    Present { value: outcome } =>
+      match outcome {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: ds } => cref_diagnostic_node_optional(d: ds.head)
+      }
+  }
+}
+
+fn sfk_nodes(n: Node) -> List<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { Cons { head: n0, tail: Empty } },
+      step: fn(acc, _e, child) {
+        fold_list(xs: acc, empty: child, cons: fn(rest, item) { Cons { head: item, tail: rest } })
+      }
+    }
+  )
+}
+
+fn sfk_member(xs: List<Node>, wanted: Node) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(rest, item) { if item == wanted { true } else { rest } })
+}
+
+// THE REFUSING NODE IS ONE THE RUNTIME BUILT, not one the source contains: it is equal to the empty
+// synthetic Conj that v2.std.runtime constructs. This is the claim that makes the anchor's provenance
+// a measured fact rather than a reading of a rendered log, which prints it only as a synthetic
+// occurrence and so cannot distinguish it from any other synthetic node.
+test fn sfk_the_refusing_node_is_a_runtime_built_empty_conj_holds() -> Bool {
+  match sfk_anchor() {
+    Absent => false
+    Present { value: anchor } => anchor == runtime_value_conj_node(children: Empty)
+  }
+}
+
+// AND THE MAP ANSWERS FOR IT. A node built by the evaluator has no entry any producer recorded for
+// it, so the honest answer is Absent and the honest refusal is a lookup miss. The lookup HITS, which
+// is the collision itself, and the entry it hits carries underived grounding -- so the refusal reports
+// a grounding judgment about a node nothing ever inferred.
+test fn sfk_the_facts_map_answers_for_a_runtime_built_node_holds() -> Bool {
+  match cref_inferred_of(o: cref_source()) {
+    Absent => false
+    Present { value: inferred } =>
+      match inferred.facts.lookup(runtime_value_conj_node(children: Empty)) {
+        Absent => false
+        Present { value: facts } => !inferred_facts_grounding_derived(facts: facts)
+      }
+  }
+}
+
+// THE ENTRY IT COLLIDES WITH IS REACHABLE FROM THE PROGRAM, which is what makes this a collision
+// rather than a stray key: the call's own subtree contains a structurally equal node, so the two are
+// indistinguishable to a Node-keyed map.
+test fn sfk_a_structurally_equal_node_occurs_in_the_program_holds() -> Bool {
+  match cref_inferred_of(o: cref_source()) {
+    Absent => false
+    Present { value: inferred } =>
+      match cref_first_call_optional(root: inferred.root) {
+        Absent => false
+        Present { value: call } =>
+          sfk_member(xs: sfk_nodes(n: call), wanted: runtime_value_conj_node(children: Empty))
+      }
+  }
+}
