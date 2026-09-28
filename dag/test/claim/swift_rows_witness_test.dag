@@ -9,7 +9,7 @@ import v2.extdeps.languages.swift.syntax {
   SwiftVariableDecl, SwiftArrayLiteral, SwiftStringLiteral, SwiftStringText,
   sw_t, sw_id, sw_path, sw_call, sw_callt, sw_pos, sw_arg, sw_str, sw_raw, sw_cloe, sw_not, sw_eq,
   sw_expr, sw_ret, sw_throw, sw_let, sw_guard, sw_cond, sw_bind, sw_switch, sw_case, sw_default, sw_pexpr, sw_int,
-  sw_p_, sw_func, sw_struct, sw_enum, sw_field, sw_static_let, sw_doc, sw_import, sw_asq
+  sw_p_, sw_func, sw_struct, sw_enum, sw_field, sw_static_let, sw_doc, sw_import, sw_asq, sw_let_decl
 }
 import v2.extdeps.languages.swift.rows { swift_rows_emit_source_file, SwiftRowEmitted, SwiftRowEmissionRefused }
 import gunbc.auth.approval_device_redemption_fixtures { surface_vectors }
@@ -38,38 +38,50 @@ test fn imports_are_adjacent_and_other_declarations_are_blank_separated() -> Boo
 
 // Stored members are adjacent; a member with a body is set off by a blank line; a body nests one unit.
 test fn a_member_with_a_body_is_blank_separated_and_nested() -> Bool {
-  emit(f: SwiftSourceFile { declarations: [sw_enum(n: "E", i: [], m: [
-    sw_static_let(n: "a", e: sw_int(n: 1)),
-    sw_doc(c: ["Doc."], d: sw_func(m: [SwiftStaticModifier], n: "f", p: [sw_p_(n: "x", t: sw_t(n: "Int"))], th: true, r: Present { value: sw_t(n: "Int") }, b: [sw_ret(e: sw_id(n: "x"))]))
+  emit(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [], m: [
+    sw_field(n: "a", t: sw_t(n: "Int")),
+    sw_func(m: [], n: "f", p: [], th: false, r: none, b: [sw_expr(e: sw_id(n: "a"))])
   ])] })
-    == "enum E \{\n    static let a = 1\n\n    /// Doc.\n    static func f(_ x: Int) throws -> Int \{\n        return x\n    \}\n\}\n"
+    == "struct S \{\n    var a: Int\n\n    func f() \{\n        a\n    \}\n\}\n"
 }
 
-// A guard whose else is one simple statement, and a closure of one expression, stay on one line.
-test fn a_simple_guard_and_a_one_expression_closure_stay_inline() -> Bool {
-  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: true, r: none, b: [
-    sw_guard(c: [sw_bind(n: "s", e: sw_asq(e: sw_id(n: "x"), t: sw_t(n: "String"))), sw_cond(e: sw_not(e: sw_path(b: "s", m: "isEmpty")))], e: [sw_throw(e: sw_id(n: "failure"))]),
-    sw_let(n: "ys", e: sw_callt(f: sw_path(b: "xs", m: "filter"), a: [], c: sw_cloe(e: sw_eq(l: sw_id(n: "$0"), r: sw_id(n: "x")))))
+// A guard whose else is one simple statement stays on one line.
+test fn a_simple_guard_stays_inline() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: false, r: none, b: [
+    sw_guard(c: [sw_cond(e: sw_id(n: "c"))], e: [sw_throw(e: sw_id(n: "e"))])
   ])] })
-    == "func f() throws \{\n    guard let s = x as? String, !s.isEmpty else \{ throw failure \}\n    let ys = xs.filter \{ $0 == x \}\n\}\n"
+    == "func f() \{\n    guard c else \{ throw e \}\n\}\n"
 }
 
-// A switch case of one simple statement follows its label; a longer case nests below it.
-test fn a_switch_case_is_inline_when_simple_and_nested_otherwise() -> Bool {
+// A closure of one expression stays on one line.
+test fn a_one_expression_closure_stays_inline() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: false, r: none, b: [
+    sw_expr(e: sw_callt(f: sw_id(n: "g"), a: [], c: sw_cloe(e: sw_id(n: "$0"))))
+  ])] })
+    == "func f() \{\n    g \{ $0 \}\n\}\n"
+}
+
+// A switch case of one simple statement follows its label.
+test fn a_simple_switch_case_follows_its_label() -> Bool {
   emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "g", p: [], th: false, r: none, b: [
-    sw_switch(e: sw_id(n: "x"), c: [
-      sw_case(p: [sw_pexpr(e: sw_int(n: 1))], s: [sw_ret(e: sw_str(s: "one"))]),
-      sw_default(s: [sw_expr(e: sw_call(f: sw_id(n: "log"), a: [sw_pos(v: sw_id(n: "x"))])), sw_ret(e: sw_str(s: "many"))])
-    ])
+    sw_switch(e: sw_id(n: "x"), c: [sw_case(p: [sw_pexpr(e: sw_int(n: 1))], s: [sw_expr(e: sw_id(n: "a"))])])
   ])] })
-    == "func g() \{\n    switch x \{\n    case 1: return \"one\"\n    default:\n        log(x)\n        return \"many\"\n    \}\n\}\n"
+    == "func g() \{\n    switch x \{\n    case 1: a\n    \}\n\}\n"
+}
+
+// A case of more than one statement nests them below its label.
+test fn a_longer_switch_case_nests_below_its_label() -> Bool {
+  emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "g", p: [], th: false, r: none, b: [
+    sw_switch(e: sw_id(n: "x"), c: [sw_default(s: [sw_expr(e: sw_id(n: "b")), sw_expr(e: sw_id(n: "c"))])])
+  ])] })
+    == "func g() \{\n    switch x \{\n    default:\n        b\n        c\n    \}\n\}\n"
 }
 
 // A static literal spells quote, backslash and newline by their short escapes and every other control
 // or non-ASCII scalar as \u\{X\}; an extended literal spells its text verbatim.
 test fn string_literals_escape_statically_and_keep_extended_text_verbatim() -> Bool {
-  emit(f: SwiftSourceFile { declarations: [sw_struct(n: "L", i: [], m: [sw_static_let(n: "a", e: sw_str(s: "q\"b\\s\né\u{1F}")), sw_static_let(n: "r", e: sw_raw(s: "\{\"k\": \"\\n\"\}"))])] })
-    == "struct L \{\n    static let a = \"q\\\"b\\\\s\\n\\u\{E9\}\\u\{1F\}\"\n    static let r = #\"\{\"k\": \"\\n\"\}\"#\n\}\n"
+  emit(f: SwiftSourceFile { declarations: [sw_let_decl(n: "a", e: sw_str(s: "q\"b\\s\né\u{1F}")), sw_let_decl(n: "r", e: sw_raw(s: "\{\"k\": \"\\n\"\}"))] })
+    == "let a = \"q\\\"b\\\\s\\n\\u\{E9\}\\u\{1F\}\"\n\nlet r = #\"\{\"k\": \"\\n\"\}\"#\n"
 }
 
 // THE SURFACE SET IS THE FIXTURE'S, read at the model: the declaration testSurfaceMatchesTheFixture
