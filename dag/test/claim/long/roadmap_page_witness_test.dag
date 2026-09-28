@@ -2500,12 +2500,23 @@ fn issue_detail_profiled_fixture_view() -> gunbc.roadmap_presentation.WorkRowVie
 }
 
 test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> Bool {
+  let claim = fx_event_envelope_chained(id: "prof-ho-1", parent: "cmt-3d", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let pub = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+    id: "prof-ho-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
+    event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
+      node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
+      author: fixture_fabric_principal(),
+      parent: Present { value: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
+      kind: gunbc.roadmap.roadmap_event_log.PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr },
+      recorded_at: "2026-09-25T11:00:00Z",
+    },
+  }
   match try_serialize_html_source(node: issue_detail_page_launch(
     view: issue_detail_profiled_fixture_view(),
     panel: issue_detail_fixture_panel(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
-    events: concat(fx_comment_stream_events(), fx_handoff_events()),
+    events: concat(fx_comment_stream_events(), [claim, pub]),
     viewer: "principal:google-oidc/accounts/sub-viewer",
     recents: [ fixture_teammate_legacy() ],
     expected_revision: "",
@@ -2514,7 +2525,7 @@ test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> 
     EmitOk { html: h } =>
       let rail_region = string_at(parts: split(s: h, delimiter: "<aside class=\"issue-rail\">"), index: 1)
       occurrence_count(s: rail_region, pattern: "class=\"issue-avatar\" data-avatar=\"resolved\" title=\"Fixture Viewer — viewer@gunb.ai\">FV</span><span class=\"issue-assignee-text\">viewer@gunb.ai</span>") == 2
-        && string_contains(s: h, pattern: "class=\"issue-comment-author\">Fixture Viewer</span>")
+        && occurrence_count(s: h, pattern: "class=\"issue-comment-author\">Fixture Viewer</span>") == 3
         && string_contains(s: h, pattern: "reassigned for merge to Fixture Viewer")
   }
 }
