@@ -18,7 +18,9 @@ import gunbc.auth.approval_device_redemption { observe_enrolment_slot, Enrolment
 import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_argv, enrolment_code_issue_refuses_off_srv1 }
-import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus {
+  RevisionBoundAtEmission,
+}
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.fleet_converge_workflow {

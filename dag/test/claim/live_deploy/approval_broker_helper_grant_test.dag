@@ -6,10 +6,6 @@ import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_re
 import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pipeline_steps_text }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
-  ReleaseRevisionBinding,
-  RevisionBoundAtEmission,
-  RevisionNotInstalled,
-  approval_ntfy_runtime_observe_helper_argv,
   approval_broker_helper_sudoers_line,
   approval_broker_helper_sudoers_content,
   approval_broker_helper_sudoers_path,
@@ -23,12 +19,18 @@ import gunbc.live_deploy.emit {
   approval_broker_release_locus,
   path_ancestors_inclusive,
   helper_snapshot_readback_command_at,
-  HelperLocus,
   HelperGrantAdmission,
   HelperGrantAdmitted,
   HelperGrantWordRefused,
   HelperGrantLocusWritableByGrantee,
   approval_broker_release_revision_argument,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+  RevisionNotInstalled,
+  approval_ntfy_runtime_observe_helper_argv,
+  HelperLocus,
 }
 import gunbc.cli_invoke { NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 import gunbc.executor_privileged_operation {
