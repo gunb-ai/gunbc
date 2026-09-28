@@ -8,10 +8,9 @@ import std.content_hash { serialize_content_hash }
 import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, intent_frame_head }
 import extdeps.crypto.mac { MacKey, HmacSha256 }
-import gunbc.durable_cas_file_store { GenerationPresent }
-import gunbc.auth.approval_broker { BrokerApproved, ExecutionObligation }
-import gunbc.auth.approval_decision_store { StoredApprovalRequest, EscalationDecided, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, stored_request_json, approval_mac_key_id }
-import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_id, approval_store_receipt_mac_key_path, issue_store_receipt_over, StoreReceiptIssued, StoreReceiptRefused }
+import gunbc.auth.approval_decision_store { StoredApprovalRequest, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_id }
+import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_id, approval_store_receipt_mac_key_path, store_receipt_claims }
+import gunbc.auth.approval_capability { issue_capability, CapabilityIssued, CapabilityIssuanceRefused }
 import gunbc.spark.pair_serving_d0 { d0_required_scope }
 import gunbc.fabric_store_operation_admission {
   protected_head_of, ConsentClaimSlotHead, ConsentFilingSlotHead, AuthorityPartitionHead,
@@ -45,7 +44,10 @@ fn fw_intent(scope: AuthorizationScope) -> String {
   }
 }
 
-// A receipt over exactly this intent's digest, minted by the broker's own fold.
+// A receipt over exactly this intent's digest, signed as the broker's mint signs one: the mint's own
+// claim constructor (gunbc.auth.approval_store_receipt store_receipt_claims) and the envelope's own
+// issuance under the receipt key. The mint's slot-and-filing path has its own claims beside it; here
+// the subject is the store's decision, so the receipt is supplied (§3: one interface per claim).
 fn fw_receipt_over(intent: String) -> StoreOperationCredentialOrNone {
   match intent_digest(text: intent) {
     Absent => NoReceipt
@@ -56,13 +58,9 @@ fn fw_receipt_over(intent: String) -> StoreOperationCredentialOrNone {
         requester: "witness", purpose: "witness d0", destructive: true,
         issued_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T01:00:00Z", key_id: approval_mac_key_id,
       }
-      let slot = EscalationDecided { decision: BrokerApproved {
-        escalation_id: "esc-d0-1", revision: revision, decided_by: "operator", decided_at: "2026-09-28T00:10:00Z",
-        obligation: ExecutionObligation { authority: "gunbc.auth.scoped_authorization", intent_revision: revision, execute_by: "2026-09-28T01:00:00Z" },
-      } }
-      match issue_store_receipt_over(slot: slot, filing: GenerationPresent { content: stored_request_json(r: filed) as NonEmptyStr }, attempt: ("tx-d0" as NonEmptyStr) as AttemptIdentity, keyring: ApprovalKeyLoaded { key: fw_receipt_key() }) {
-        StoreReceiptIssued { receipt: r } => HaveReceipt { credential: PresentedApproval { receipt: r, intent_text: intent } }
-        StoreReceiptRefused { refusal: _ } => NoReceipt
+      match issue_capability(claims: store_receipt_claims(filed: filed, revision: revision, decided_at: "2026-09-28T00:10:00Z", execute_by: "2026-09-28T01:00:00Z"), key: fw_receipt_key()) {
+        CapabilityIssued { capability: r } => HaveReceipt { credential: PresentedApproval { receipt: r, intent_text: intent } }
+        CapabilityIssuanceRefused { cause: _ } => NoReceipt
       }
     }
   }
@@ -97,13 +95,17 @@ test fn a_consent_write_with_no_approval_is_refused_at_the_store() -> Bool {
 }
 
 // A GENUINE RECEIPT DOES NOT CARRY ANOTHER OPERATION: an approved intent stating another scope is
-// refused, and an intent that is not the approved revision (edited after approval) is refused.
-test fn a_receipt_for_another_scope_or_an_edited_intent_is_refused() -> Bool {
-  let other = match fw_receipt_over(intent: fw_intent(scope: fw_other_scope())) {
+// refused.
+test fn a_receipt_whose_approved_intent_states_another_scope_is_refused() -> Bool {
+  match fw_receipt_over(intent: fw_intent(scope: fw_other_scope())) {
     NoReceipt => false
     HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationRefused { operation: _, refusal: IntentScopeNotAdmissible { stated: _, admissible: _ } } => true  _ => false }
   }
-  let edited = match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+}
+
+// AN INTENT EDITED AFTER APPROVAL is not the approved revision and is refused.
+test fn an_intent_edited_after_approval_is_refused() -> Bool {
+  match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
     NoReceipt => false
     HaveReceipt { credential: c } => match c {
       PresentedApproval { receipt: r, intent_text: t } =>
@@ -111,7 +113,6 @@ test fn a_receipt_for_another_scope_or_an_edited_intent_is_refused() -> Bool {
       NoOperationCredential => false
     }
   }
-  other && edited
 }
 
 // THE HEADS: the three protected families are recognized and an ordinary head is not; an authority
@@ -123,8 +124,16 @@ test fn protected_heads_are_recognized_and_unclassifiable_objects_refuse() -> Bo
     && (match protected_head_of(name: "pair-serving-authority-group-a") { Present { value: AuthorityPartitionHead } => true  _ => false })
     && (match protected_head_of(name: "harness-seat-group-a") { Absent => true  Present { value: _ } => false })
     && (match admit_store_operation(head: AuthorityPartitionHead, target_text: "not an event", credential: NoOperationCredential, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyLoaded { key: fw_receipt_key() }, observed_at: "2026-09-28T00:20:00Z") { StoreOperationRefused { operation: _, refusal: OperationUnclassifiable { reason: _ } } => true  _ => false })
-    && (match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
-          NoReceipt => false
-          HaveReceipt { credential: c } => match admit_store_operation(head: ConsentClaimSlotHead, target_text: "", credential: c, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }, observed_at: "2026-09-28T00:20:00Z") { StoreOperationRefused { operation: _, refusal: ReceiptKeyUnavailable } => true  _ => false }
-        })
+}
+
+// NO RECEIPT KEY AT THE STORE refuses rather than admitting.
+test fn a_store_without_the_receipt_key_refuses() -> Bool {
+  match fw_receipt_over(intent: fw_intent(scope: d0_required_scope())) {
+    NoReceipt => false
+    HaveReceipt { credential: c } =>
+      match admit_store_operation(head: ConsentClaimSlotHead, target_text: "", credential: c, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }, observed_at: "2026-09-28T00:20:00Z") {
+        StoreOperationRefused { operation: _, refusal: ReceiptKeyUnavailable } => true
+        _ => false
+      }
+  }
 }
