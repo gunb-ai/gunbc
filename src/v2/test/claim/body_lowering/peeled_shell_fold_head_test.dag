@@ -17,12 +17,13 @@ import v2.std.optional { Absent, Present }
 // output only while no pass-through shell the unwrap peels carries a fold-family
 // head: the fold-loop search descends through exactly those shells, so the retry
 // answered the same as the first search. This claim is the control that goes red
-// if the parser ever mints such a shell, over a source that puts fold calls in
-// every pass-through position the body grammar reaches, and it asserts the route
+// if the parser ever mints such a shell, over the smallest source that puts a fold call
+// under pass-through shells (kept inside v2.workflow.required_floor
+// claim_eval_step_budget_for_identity for a new witness), and it asserts the route
 // (shells and fold heads are both present) so it cannot pass on an empty tree.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data peeled_shell_fold_head_source: String = "module wall.peel\n\nfn a(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc + x })\n}\n\nfn b(xs: List<Int>) -> Int {\n  (fold(xs, init: 0, f: fn(acc, x) { acc + x })) + 1\n}\n\nfn c(xs: List<Int>) -> Int {\n  let t = fold(xs, init: 0, f: fn(acc, x) { acc + x })\n  t\n}\n\nfn d(xs: List<Int>) -> Int {\n  g(n: fold(xs, init: 0, f: fn(acc, x) { acc + x }))\n}\n"
+data peeled_shell_fold_head_source: String = "module w.p\n\ndata d: I = fold(x, f: g)\n"
 
 fn peeled_shell_fold_head_parsed() -> Outcome<Node> {
   match dag_prepared_grammar() {
