@@ -15,6 +15,8 @@ file and a fresh receipt identity:
 ```bash
 export GUNBC_GCP_ACCESS_TOKEN_FILE=/path/to/private/operator-token
 export GUNBC_IAM_BOOTSTRAP_RECEIPT=operator-bootstrap-unique-attempt
+export GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID=stable-authority-operation
+export GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT=2026-09-28T23:00:00Z # illustrative; set once for the intended operation
 systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
   ./target/release/gunbc run --source-root target/iam-bootstrap-controls \
   --entry target/iam-bootstrap-controls/gunbc.auth.gcp_iam_bootstrap.dag \
@@ -25,12 +27,20 @@ The token file must be private and short-lived. No token belongs in a command
 argument, source file, receipt, or GitHub variable. The ongoing workflow never
 falls back to this operator token. No service-account key is created.
 
-The operator needs existing authority to create/read the declared identities,
-custom roles, and deny policy, update the specified resource policies, and
-impersonate the observer/apply accounts for readback. GCP's
-[Deny Admin documentation](https://docs.cloud.google.com/iam/docs/deny-access)
-names `roles/iam.denyAdmin` for managing deny policies. Bootstrap does not grant
-administrative permissions to its operator to overcome a refusal.
+The missing deny-policy permission is a modeled dependency, not a console task.
+Under the operator's explicit authorization, the project IAM writer can publish a
+time-limited `roles/iam.denyAdmin` grant to `user:briansrls@gunb.ai`, install the
+protection policy, then remove exactly that grant. GCP documents
+[Deny Admin](https://docs.cloud.google.com/iam/docs/deny-access) and
+[time-limited conditional bindings](https://docs.cloud.google.com/iam/docs/managing-conditional-role-bindings).
+The account used for continuing automation never receives this grant.
+
+The operation ID and absolute UTC expiry identify one desired authority lease.
+The maximum remaining duration is one hour. Retries retain both values and the
+journal; they do not recalculate the expiry. A new lease requires a new explicit
+intent. The current credential must be able to read/write project IAM; if it
+cannot, convergence reports that upstream dependency. This is an observed
+boundary, not a declaration that project IAM authority must forever be manual.
 
 ## What bootstrap owns
 
@@ -39,7 +49,10 @@ administrative permissions to its operator to overcome a refusal.
    target federations, so resource-local administrative roles can be attached.
 2. Create or exactly read back the existing four apply role definitions and
    three resource-specific observer roles. Existing drift refuses adoption.
-3. Install and read back the declared project deny policy for the apply account.
+3. For an absent deny policy, converge the temporary operator authority, install
+   and read back the policy, and retire the exact temporary grant. Cleanup is
+   attempted on ordinary failure too; later capabilities and workflow trust require
+   successful cleanup. Existing exact deny policies need no new authority grant.
 4. Add declared capability bindings with policy etags, preserving foreign cells.
 5. Check access using short-lived impersonated observer/apply credentials. The
    operator must already have impersonation authority; bootstrap does not grant
@@ -106,6 +119,45 @@ and [deny policy creation](https://docs.cloud.google.com/iam/docs/reference/rest
 The 2026-09-28 run completed identity and exact custom-role readback, then GCP
 refused deny-policy creation with HTTP 403, `iam.denypolicies.create` missing.
 Capability bindings, account-context probes, and workflow-trust grants were not
-reached. See `receipts/gcp-iam-bootstrap-2026-09-28/README.md`. Resume requires an
-authorized administrator credential with the missing authority; successful source
-tests are not evidence that the approval workflow is operational.
+reached. See `receipts/gcp-iam-bootstrap-2026-09-28/README.md` for that historical
+standing. The new dependency slice can obtain temporary deny authority through
+project IAM convergence. Its own receipts must establish the grant, use, and
+cleanup before commissioning can be called complete.
+
+## Temporary-authority dependency and recovery
+
+```mermaid
+flowchart TD
+  R[Read project IAM] --> W[Project IAM write authority]
+  W --> I[Persist fixed operator lease intent]
+  I --> E[Elect one publication]
+  E --> G[CAS grant and read back exact conditioned cell]
+  G --> D[Install and read back deny policy]
+  D --> C[CAS remove owned cell and read back absence]
+  C --> T[Persist retirement; continue bootstrap]
+  E --> U[Interrupted or unreadable publication]
+  U --> O[Reobserve the same intent and cell]
+  O --> C
+  U --> Q[Absent cell with unresolved write: keep obligation outstanding]
+```
+
+`target/gcp-iam-authority-<operation>-*.txt` records the exact project, principal,
+role, condition, and expiry before effects. Keep these records with the operator
+recovery workspace; they are local bootstrap state, not yet protected fabric
+storage. Intent drift or unreadable records refuse. A create-only election means
+at most one grant request is issued for this operation, even across retries.
+A grant observed present closes that publication; cleanup can recover a crash
+between removal and recording retirement. A definitive publication HTTP 403 also
+closes the no-effect attempt. Other unresolved write outcomes remain outstanding
+when a read sees absence. Neither a timeout nor expiry proves physical cleanup.
+The cloud condition independently bounds effective access after process loss.
+
+The shared policy reconciler preserves unrelated grants and conditions, uses
+version 3, and requires etags. Cleanup owns only the exact conditioned cell;
+unconditional pre-existing administrator access survives. A retired operation
+cannot publish again. `iam_bootstrap_authority_cleanup` drives withdrawal alone,
+using the same authority ID, expiry, journal, and operator token-file input.
+
+The downstream account-impersonation readback still requires its actual authority.
+That is a separate dependency to classify when reached, not permission to invent
+an approval or give the continuing workflow self-elevation rights.

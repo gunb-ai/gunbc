@@ -1,8 +1,8 @@
 module gunbc.auth.gcp_iam_bootstrap
 
-import std.types { String, NonEmptyStr, Secret, List, Bool, Int, path_segment_is_safe }
+import std.types { String, NonEmptyStr, Secret, List, Bool, Int, path_segment_is_safe, Timestamp }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.iam_deny
 import extdeps.cloud.gcp.secret_manager
@@ -29,13 +29,21 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
 }
 
+import gunbc.auth.gcp_iam_bootstrap_authority {
+  BootstrapAuthorityIntent, bootstrap_authority_intent_valid, bootstrap_authority_may_grant,
+  bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_action,
+  AuthorityAbsent, AuthorityPresent, AuthorityUnreadable, PublishAuthority, UseAuthority,
+  RemoveAuthority, AuthoritySettled, AuthorityRefused,
+}
+import gunbc.auth.approval_gate { approval_instant_now }
+
 // Operator-authorized initial setup. This entry does not forge an app approval or workflow
 // identity. Its credential is never a fallback in the ongoing approval-gated job.
 // Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
-type IamBootstrapStage = BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapCapabilities | BootstrapPrivilegeReadback | BootstrapWorkflowTrust
+type IamBootstrapStage = BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapPrivilegeReadback | BootstrapWorkflowTrust
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust]
+data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust]
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
@@ -44,15 +52,16 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapIdentities => []
     BootstrapRoles => [BootstrapIdentities]
     BootstrapDeny => [BootstrapIdentities]
-    BootstrapCapabilities => [BootstrapRoles, BootstrapDeny]
+    BootstrapAuthorityCleanup => [BootstrapDeny]
+    BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup]
     BootstrapPrivilegeReadback => [BootstrapCapabilities]
-    BootstrapWorkflowTrust => [BootstrapDeny, BootstrapPrivilegeReadback]
+    BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback]
   }
   all(required, prerequisite => any(completed, done => done == prerequisite))
 }
 
 fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
-  match stage { BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapCapabilities => "capabilities" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
+  match stage { BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
 }
 
 fn iam_bootstrap_plan() -> CliWireResponse {
@@ -66,6 +75,9 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
+    "Deny dependency: project policy read/write -> temporary operator Deny Admin -> deny-policy readback -> exact grant retirement -> capabilities.",
+    "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
+    "The grant targets only user:briansrls@gunb.ai; its deadline is journaled, and retry cannot renew or republish it.",
   ]
   let roles = map(iam_bootstrap_roles, r => join(["role ", iam_bootstrap_role_name(role: r) as String, " permissions=", join(iam_bootstrap_role_permissions(role: r), ",")], ""))
   let cells = map(iam_bootstrap_capability_bindings() + iam_bootstrap_trust_bindings(), b => join([
@@ -196,7 +208,17 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
         if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: false, token: token) }) }
     }
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
-    BootstrapDeny => iam_bootstrap_ensure_deny(token: token)
+    BootstrapDeny => {
+      let seen = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
+      if rest_ok(o: seen.outcome) {
+        if iam_bootstrap_deny_matches(rules: seen.rules) { "" } else { "existing deny policy differs; no authority granted" }
+      } else if !outcome_is_not_found(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+      else {
+        let authority = iam_bootstrap_authority_converge(token: token, withdrawing: false)
+        if authority != "" { authority } else { iam_bootstrap_ensure_deny(token: token) }
+      }
+    }
+    BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
     BootstrapCapabilities => fold(iam_bootstrap_capability_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
     BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
     BootstrapWorkflowTrust => {
@@ -230,7 +252,9 @@ fn iam_bootstrap_apply() -> ProcessExit {
             else if outcome != "" { IamBootstrapProgress { completed: prior.completed, refusal: outcome } }
             else { IamBootstrapProgress { completed: prior.completed + [stage], refusal: "" } }
           })
-        if result.refusal == "" { ExitSuccess } else { exit_failure(reason: result.refusal) }
+        let cleanup = iam_bootstrap_authority_converge(token: token, withdrawing: true)
+        if result.refusal == "" && cleanup == "" { ExitSuccess }
+        else { exit_failure(reason: concat(result.refusal, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
       }
     }
   } }
@@ -320,6 +344,140 @@ fn iam_bootstrap_privilege_readback(token: Secret) -> String {
           })
         } }
       }
+    }
+  }
+}
+
+// These local bootstrap records are durable before effects and stay outside the cloud authority
+// they establish. They must travel with recovery. Read failure is never treated as absence.
+type IamAuthorityRecord = AuthorityRecordAbsent | AuthorityRecordPresent { bytes: String } | AuthorityRecordRefused
+
+fn iam_authority_record(name: String) -> IamAuthorityRecord {
+  let listed = Filesystem.List(path: "target")
+  if !listed.success { AuthorityRecordRefused } else {
+    let read = Filesystem.Read(path: concat("target/", name))
+    let present = filesystem_listing_names_entry(listing: listed.entries, name: name)
+    if present && read.success { AuthorityRecordPresent { bytes: read.content } }
+    else if !present && !read.success { AuthorityRecordAbsent }
+    else { AuthorityRecordRefused }
+  }
+}
+
+fn iam_authority_record_matches(record: IamAuthorityRecord, wire: String) -> Bool {
+  match record { AuthorityRecordAbsent => true AuthorityRecordPresent { bytes } => bytes == wire AuthorityRecordRefused => false }
+}
+
+fn iam_authority_record_present(record: IamAuthorityRecord) -> Bool {
+  match record { AuthorityRecordPresent { bytes: _ } => true _ => false }
+}
+
+fn iam_authority_pin(name: String, wire: String) -> Bool {
+  let saved = Filesystem.WriteCreateNew(path: concat("target/", name), content: wire)
+  if saved.success { true } else { match iam_authority_record(name: name) {
+    AuthorityRecordPresent { bytes } => bytes == wire
+    _ => false
+  } }
+}
+
+// The fixed subject comes from the operator's explicit authorization; only operation identity
+// and absolute deadline are inputs. They are pinned before publication and cannot drift on retry.
+fn iam_bootstrap_authority_converge(token: Secret, withdrawing: Bool) -> String {
+  let operation = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID")
+  let expiry = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT")
+  if operation == "" && expiry == "" {
+    if withdrawing { "" } else { "dependency unsatisfied: temporary deny administration needs an authority operation ID and absolute expiry; project IAM write authority is its prerequisite" }
+  } else {
+    let intent = BootstrapAuthorityIntent { operation: operation, expires_at: expiry as Timestamp }
+    if !bootstrap_authority_intent_valid(intent: intent) { "authority intent has an invalid operation identity or UTC deadline" }
+    else { iam_bootstrap_authority_reconcile(intent: intent, token: token, withdrawing: withdrawing) }
+  }
+}
+
+fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Secret, withdrawing: Bool) -> String {
+  let stem = concat("gcp-iam-authority-", intent.operation)
+  let wire = bootstrap_authority_intent_wire(intent: intent)
+  let intent_name = concat(stem, "-intent.txt")
+  let elected_name = concat(stem, "-publication-elected.txt")
+  let closed_name = concat(stem, "-publication-closed.txt")
+  let retired_name = concat(stem, "-retired.txt")
+  let intent_record = iam_authority_record(name: intent_name)
+  let elected_record = iam_authority_record(name: elected_name)
+  let closed_record = iam_authority_record(name: closed_name)
+  let retired_record = iam_authority_record(name: retired_name)
+  if !all([intent_record, elected_record, closed_record, retired_record], r => iam_authority_record_matches(record: r, wire: wire)) {
+    "authority journal unreadable or intent changed; no authority effects"
+  } else {
+    let owned = iam_authority_record_present(record: intent_record)
+    let elected = iam_authority_record_present(record: elected_record)
+    let closed = iam_authority_record_present(record: closed_record)
+    let retired = iam_authority_record_present(record: retired_record)
+    if !owned && (elected || closed || retired) { "authority intent missing beside publication history; recovery evidence unavailable" }
+    else { match iam_bootstrap_read_policy(resource: BootstrapProject, token: token) {
+      PolicyObserved { policy } => {
+        let cell = bootstrap_authority_cell(intent: intent)
+        let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: policy))
+        if !owned && present { "existing authority cell has no ownership journal; refusing adoption or removal" }
+        else if !owned && withdrawing { "" }
+        else if !owned && !iam_authority_pin(name: intent_name, wire: wire) { "authority intent could not be durably pinned" }
+        else {
+          let live = match approval_instant_now() { Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) Absent => false }
+          let action = bootstrap_authority_action(observed: if present { AuthorityPresent } else { AuthorityAbsent },
+            publication_elected: elected, publication_closed: closed, retired: retired, withdrawing: withdrawing, live: live)
+          match action {
+            AuthorityRefused => "authority dependency unresolved: expired, unowned, or publication may still commit; no grant retry or renewal"
+            AuthoritySettled => if withdrawing && iam_authority_pin(name: retired_name, wire: wire) { "" }
+              else { "authority operation is retired; a new authorized intent is required to grant again" }
+            UseAuthority => if iam_authority_pin(name: closed_name, wire: wire) { "" } else { "authority publication readback could not be recorded" }
+            PublishAuthority => iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: false, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
+            RemoveAuthority => if !iam_authority_pin(name: closed_name, wire: wire) { "authority readback could not be recorded before cleanup" }
+              else { iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: true, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name) }
+          }
+        }
+      }
+      _ => "project policy cannot be read; dependency remains unknown and no authority change is attempted"
+    } }
+  }
+}
+
+// Both publication and retirement use the existing cell reconciler and its etag. The owned
+// universe is exactly this conditioned cell; pre-existing unconditional or unrelated grants survive.
+fn iam_bootstrap_authority_policy_change(intent: BootstrapAuthorityIntent, before: GcpPolicy, removing: Bool, token: Secret, elected_name: String, closed_name: String, retired_name: String) -> String {
+  let cell = bootstrap_authority_cell(intent: intent)
+  let wire = bootstrap_authority_intent_wire(intent: intent)
+  match reconcile_gcp_policy(observed: before, desired_owned: if removing { [] } else { [cell] }, owned_universe: GcpIamOwnedCellUniverse { cells: [cell] }) {
+    GcpPolicyRepresentationLossy { conditional_roles: _ } => "project policy loses conditions; authority change refused"
+    GcpPolicyAlreadyConverged { policy: _ } => "authority policy moved before the intended change; reconverge"
+    GcpPolicyDeltaRequired { policy: after, added: _, removed: _, preserved: _ } => if before.etag == "" { "authority mutation requires an etag" }
+    else {
+      let elected = if removing { true } else { Filesystem.WriteCreateNew(path: concat("target/", elected_name), content: wire).success }
+      if !elected { "authority publication already elected or election unreadable; reread, never issue a second grant" }
+      else {
+      let changed = iam_bootstrap_write_policy(resource: BootstrapProject, policy: after, token: token)
+      if !rest_ok(o: changed) {
+        let terminal_refusal = if !removing && iam_bootstrap_is_forbidden(outcome: changed) { iam_authority_pin(name: closed_name, wire: wire) } else { false }
+        concat(if terminal_refusal { "project IAM writer dependency refused without publication: " } else { "authority mutation not established; recovery remains owed: " }, rest_refusal_text(o: changed))
+      } else { match iam_bootstrap_read_policy(resource: BootstrapProject, token: token) {
+        PolicyObserved { policy: checked } => {
+          let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: checked))
+          if present == removing { "authority mutation lacks the required independent readback" }
+          else if !iam_authority_pin(name: if removing { retired_name } else { closed_name }, wire: wire) { "authority readback receipt failed; reconverge from journal" }
+          else { "" }
+        }
+        _ => "authority mutation answered but policy readback is unavailable; recovery remains owed"
+      } }
+      }
+    }
+  }
+}
+
+// Recovery can withdraw the exact owned grant without rerunning identities, deny installation,
+// or workload provisioning. Expired grants still require this physical policy cleanup.
+fn iam_bootstrap_authority_cleanup() -> ProcessExit {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => exit_failure(reason: cause as String)
+    SuppliedTokenReady { token } => {
+      let result = iam_bootstrap_authority_converge(token: token, withdrawing: true)
+      if result == "" { ExitSuccess } else { exit_failure(reason: result) }
     }
   }
 }

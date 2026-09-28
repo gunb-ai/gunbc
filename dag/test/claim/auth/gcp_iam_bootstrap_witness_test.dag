@@ -8,7 +8,17 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 }
 import gunbc.auth.gcp_iam_bootstrap {
   iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
-  BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust,
+  BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
+}
+
+import gunbc.auth.gcp_iam_bootstrap_authority {
+  BootstrapAuthorityIntent, bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_may_grant,
+  bootstrap_authority_action, AuthorityAbsent, AuthorityPresent, AuthorityUnreadable,
+  AuthorityRefused, AuthoritySettled, RemoveAuthority, PublishAuthority,
+}
+import extdeps.cloud.gcp.iam {
+  GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse, gcp_cells_bindings, gcp_policy_cells,
+  reconcile_gcp_policy, GcpPolicyDeltaRequired, gcp_cell_in,
 }
 
 test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
@@ -44,5 +54,45 @@ test fn workflow_trust_requires_completed_deny_and_privilege_readback() -> Bool 
     && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapPrivilegeReadback])
-    && iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities, BootstrapPrivilegeReadback])
+    && iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapPrivilegeReadback])
+}
+
+
+data authority_specimen: BootstrapAuthorityIntent = BootstrapAuthorityIntent { operation: "control-1", expires_at: "2026-09-28T23:00:00Z" }
+
+test fn authority_deadline_is_bounded_and_retry_does_not_renew_it() -> Bool {
+  bootstrap_authority_may_grant(intent: authority_specimen, now: "2026-09-28T22:30:00Z")
+    && !bootstrap_authority_may_grant(intent: authority_specimen, now: "2026-09-28T21:00:00Z")
+    && !bootstrap_authority_may_grant(intent: authority_specimen, now: "2026-09-28T23:00:00Z")
+    && !bootstrap_authority_may_grant(intent: authority_specimen, now: "unreadable")
+    && bootstrap_authority_intent_wire(intent: authority_specimen) != bootstrap_authority_intent_wire(intent: BootstrapAuthorityIntent { operation: "control-1", expires_at: "2026-09-29T00:00:00Z" })
+}
+
+test fn uncertain_publication_cannot_be_settled_from_an_absent_cell() -> Bool {
+  bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: false, retired: false, withdrawing: true, live: false) == AuthorityRefused
+    && bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: true, retired: false, withdrawing: true, live: false) == AuthoritySettled
+    && bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: true, retired: true, withdrawing: false, live: true) != PublishAuthority
+    && bootstrap_authority_action(observed: AuthorityPresent, publication_elected: true, publication_closed: false, retired: false, withdrawing: true, live: false) == RemoveAuthority
+}
+
+test fn unknown_policy_and_unowned_grants_never_authorize_changes() -> Bool {
+  bootstrap_authority_action(observed: AuthorityUnreadable, publication_elected: false, publication_closed: false, retired: false, withdrawing: false, live: true) == AuthorityRefused
+    && bootstrap_authority_action(observed: AuthorityPresent, publication_elected: false, publication_closed: false, retired: false, withdrawing: true, live: true) == AuthorityRefused
+    && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapDeny, BootstrapPrivilegeReadback])
+}
+
+test fn authority_retirement_preserves_existing_human_and_foreign_access() -> Bool {
+  let owned = bootstrap_authority_cell(intent: authority_specimen)
+  let foreign = GcpIamBindingCell { role: "roles/iam.denyAdmin", member: "user:other@example.com", condition: none }
+  let original = GcpIamBindingCell { role: "roles/iam.denyAdmin", member: owned.member, condition: none }
+  let before = GcpPolicy { bindings: gcp_cells_bindings(cs: [foreign, original, owned]), etag: "observed-generation", version: 3 }
+  match reconcile_gcp_policy(observed: before, desired_owned: [], owned_universe: GcpIamOwnedCellUniverse { cells: [owned] }) {
+    GcpPolicyDeltaRequired { policy, added, removed, preserved: _ } =>
+      count(added) == 0 && count(removed) == 1 && policy.etag == "observed-generation"
+      && gcp_cell_in(c: foreign, xs: gcp_policy_cells(p: policy))
+      && gcp_cell_in(c: original, xs: gcp_policy_cells(p: policy))
+      && !gcp_cell_in(c: owned, xs: gcp_policy_cells(p: policy))
+    _ => false
+  }
 }
