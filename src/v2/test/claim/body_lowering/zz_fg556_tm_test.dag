@@ -1,0 +1,14 @@
+module v2.test.claim.body_lowering.zz_fg556_tm
+
+import v2.test.claim.body_lowering.normalize_outcome_helpers {
+  body_lowering_normalize_outcome
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn tm_1() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f(xs: Int, e: Int, v1: Int) -> Int { fold_list(xs: xs, empty: e, cons: fn(acc, segment) { bind_outcome(o: v1, f: fn(w1) { acc }) }) }\n", file: ^zz_tm_subject) }
+test fn tm_2() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f(xs: Int, e: Int, v1: Int, v2: Int) -> Int { fold_list(xs: xs, empty: e, cons: fn(acc, segment) { bind_outcome(o: v1, f: fn(w1) { bind_outcome(o: v2, f: fn(w2) { acc }) }) }) }\n", file: ^zz_tm_subject) }
+test fn tm_3() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f(xs: Int, e: Int, v1: Int, v2: Int, v3: Int) -> Int { fold_list(xs: xs, empty: e, cons: fn(acc, segment) { bind_outcome(o: v1, f: fn(w1) { bind_outcome(o: v2, f: fn(w2) { bind_outcome(o: v3, f: fn(w3) { acc }) }) }) }) }\n", file: ^zz_tm_subject) }
+test fn tm_4() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f(xs: Int, e: Int, v1: Int, v2: Int, v3: Int, v4: Int) -> Int { fold_list(xs: xs, empty: e, cons: fn(acc, segment) { bind_outcome(o: v1, f: fn(w1) { bind_outcome(o: v2, f: fn(w2) { bind_outcome(o: v3, f: fn(w3) { bind_outcome(o: v4, f: fn(w4) { acc }) }) }) }) }) }\n", file: ^zz_tm_subject) }
+test fn tm_5() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f(xs: Int, e: Int, v1: Int, v2: Int, v3: Int, v4: Int, v5: Int) -> Int { fold_list(xs: xs, empty: e, cons: fn(acc, segment) { bind_outcome(o: v1, f: fn(w1) { bind_outcome(o: v2, f: fn(w2) { bind_outcome(o: v3, f: fn(w3) { bind_outcome(o: v4, f: fn(w4) { bind_outcome(o: v5, f: fn(w5) { acc }) }) }) }) }) }) }\n", file: ^zz_tm_subject) }
+test fn tm_6() -> String { body_lowering_normalize_outcome(src: "module m.t\nfn f(xs: Int, e: Int, v1: Int, v2: Int, v3: Int, v4: Int, v5: Int, v6: Int) -> Int { fold_list(xs: xs, empty: e, cons: fn(acc, segment) { bind_outcome(o: v1, f: fn(w1) { bind_outcome(o: v2, f: fn(w2) { bind_outcome(o: v3, f: fn(w3) { bind_outcome(o: v4, f: fn(w4) { bind_outcome(o: v5, f: fn(w5) { bind_outcome(o: v6, f: fn(w6) { acc }) }) }) }) }) }) }) }\n", file: ^zz_tm_subject) }
