@@ -1,7 +1,7 @@
 module gunbc.host_effect_realize
 
 import std.algebra { trim, list_snoc_item, list_append }
-import extdeps.dpkg { dpkg_query_status_abbrev_argv, dpkg_installed_state_of, DpkgPackageInstalled, DpkgPackageNotInstalled }
+import extdeps.dpkg { dpkg_query_status_argv, dpkg_installed_state_of, DpkgPackageInstalled, DpkgPackageNotInstalled }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -1804,7 +1804,7 @@ type Srv3TokenSubject
   | Srv3PathOwnerUser { path: String }
   | Srv3PathOwnerGroup { path: String }
   | Srv3PathMode { path: String }
-  | Srv3DpkgStatusAbbrev { package: NonEmptyStr }
+  | Srv3DpkgStatusRecord { package: NonEmptyStr }
 
 // The single public token read. The argv never crosses this boundary in either direction: callers
 // hand in a subject and receive a typed observation.
@@ -1831,7 +1831,7 @@ fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
     Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
     Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
     Srv3PathMode { path: p } => stat_mode_argv(path: p)
-    Srv3DpkgStatusAbbrev { package: p } => dpkg_query_status_abbrev_argv(package: p)
+    Srv3DpkgStatusRecord { package: p } => dpkg_query_status_argv(package: p)
   }
 }
 
@@ -2286,17 +2286,17 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 // THE PACKAGE READ ASKS FOR THE INSTALLED STATE, NOT FOR A STATUS RECORD. `dpkg -s` exits zero for a
 // package removed with its configuration kept, so a converge built on it would read a removed
 // library as present and install nothing (side-chat review of gunbc#12500). The read is dpkg-query's
-// db:Status-Abbrev through the sealed token surface, classified by extdeps.dpkg
-// dpkg_installed_state_of: only `ii` holds. No output (dpkg-query exits 1 for a package it has never
+// status record through the sealed token surface, classified by extdeps.dpkg
+// dpkg_installed_state_of: only "Status: install ok installed" holds. No output (dpkg-query exits 1 for a package it has never
 // seen) is absent; a transport that cannot run it is Unobserved, never absent.
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
-  match srv3_read_token(subject: Srv3DpkgStatusAbbrev { package: package }, transport: transport) {
+  match srv3_read_token(subject: Srv3DpkgStatusRecord { package: package }, transport: transport) {
     Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
     Srv3TokenAbsent => Srv3PredicateFails
     Srv3TokenObserved { value: v } =>
-      match dpkg_installed_state_of(status_abbrev: v) {
+      match dpkg_installed_state_of(record: v) {
         DpkgPackageInstalled => Srv3PredicateHolds
-        DpkgPackageNotInstalled { status_abbrev: _ } => Srv3PredicateFails
+        DpkgPackageNotInstalled { status: _ } => Srv3PredicateFails
       }
   }
 }
