@@ -16968,6 +16968,12 @@ pub struct HeadsReadingDifferential {
     pub narrowed: Vec<String>,
     pub regressed: Vec<String>,
     pub both_refused: Vec<String>,
+    /// Modules both readings accept whose DECLARATION NAMES differ (the population the pool
+    /// name census reads), each with the names only one reading carries. Narrower than
+    /// `divergent`, which compares whole stripped nodes: a reading can differ in a field no
+    /// name census consumes and still agree here, and the converse is the defect this row
+    /// exists to show -- a declaration one reading silently loses.
+    pub declaration_names_divergent: Vec<String>,
     /// Wall spent in the FULL reading, summed over every module, and the same for the
     /// heads reading. Both are taken in ONE process, on ONE machine, over the SAME module
     /// list, alternating per module — so the ratio compares two READINGS, not two builds,
@@ -16999,6 +17005,7 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         narrowed: Vec::new(),
         regressed: Vec::new(),
         both_refused: Vec::new(),
+        declaration_names_divergent: Vec::new(),
         full_reading_nanos: 0,
         heads_reading_nanos: 0,
     };
@@ -17014,6 +17021,17 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         out.heads_reading_nanos += heads_nanos;
         match (full_read, heads_read) {
             (Ok(full), Ok(heads)) => {
+                let full_names: BTreeSet<String> =
+                    collect_module_decl_names(&full).into_iter().collect();
+                let heads_names: BTreeSet<String> =
+                    collect_module_decl_names(&heads).into_iter().collect();
+                if full_names != heads_names {
+                    let only_full: Vec<&String> = full_names.difference(&heads_names).collect();
+                    let only_heads: Vec<&String> = heads_names.difference(&full_names).collect();
+                    out.declaration_names_divergent.push(format!(
+                        "{path} only_full={only_full:?} only_heads={only_heads:?}"
+                    ));
+                }
                 if full != heads {
                     out.divergent.push(path);
                 }

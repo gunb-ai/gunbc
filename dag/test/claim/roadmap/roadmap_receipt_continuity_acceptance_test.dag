@@ -13,6 +13,9 @@ import gunbc.roadmap_authority {
   withheld_node_ids_projection,
   WithheldNodeIdsProjected,
   WithheldNodeIdsProjectionRefused,
+  accepted_node_ids_projection,
+  AcceptedNodeIdsProjected,
+  AcceptedNodeIdsProjectionRefused,
   roadmap_authority_projection,
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,
@@ -376,6 +379,37 @@ test fn witness_withheld_projection_refuses_when_history_load_refuses() -> Bool 
           withheld_detail == history_detail
             && string_contains(s: history_detail, pattern: "line 1:")
       }
+  }
+}
+
+test fn witness_accepted_projection_refuses_when_history_load_refuses() -> Bool {
+  let history = load_roadmap_acceptance_event_history_from_carrier_text(
+    text: unreadable_carrier_text_fixture,
+  )
+  match history {
+    RoadmapAcceptanceEventHistoryLoaded { events: _ } => false
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: history_detail } =>
+      match accepted_node_ids_projection(history: history) {
+        AcceptedNodeIdsProjected { ids: _ } => false
+        AcceptedNodeIdsProjectionRefused { detail: accepted_detail } =>
+          accepted_detail == history_detail
+            && string_contains(s: history_detail, pattern: "line 1:")
+      }
+  }
+}
+
+// The accepted projection and the document projection read one frontier plan, so over the same
+// history they carry the same accepted set; a live fixture receipt makes the set nonempty.
+test fn witness_accepted_projection_matches_authority_projection_on_fixture_history() -> Bool {
+  let history = fixture_history_load()
+  match accepted_node_ids_projection(history: history) {
+    AcceptedNodeIdsProjectionRefused { detail: _ } => false
+    AcceptedNodeIdsProjected { ids: ids } =>
+      count(ids) > 0
+        && match roadmap_authority_projection(history: history) {
+          RoadmapAuthorityProjectionRefused { detail: _ } => false
+          RoadmapAuthorityProjected { doc: _, accepted: accepted, withheld: _ } => ids == accepted
+        }
   }
 }
 

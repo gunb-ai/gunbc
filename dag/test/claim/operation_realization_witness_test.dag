@@ -523,7 +523,7 @@ test fn frames_are_independent_after_the_outer_scope_ends() -> Bool {
 // fires) and reads off, exactly as the uninterrupted history does. Had the resume restarted at the
 // origin its reads would complete at 1 and the loss would not yet have fired.
 fn loss_at_five() -> BmcWorld {
-  BmcWorld { power: BmcPowerOn, pending: [BmcScheduledEvent { at: second(count: 5), event: BmcAcPowerLost {} }], fired: [] }
+  BmcWorld { power: BmcPowerOn, pending: [BmcScheduledEvent { at: second(count: 5), event: BmcAcPowerLost {} }], fired: [], web: bmc_web_world_untouched }
 }
 
 fn killed_without_commit(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
