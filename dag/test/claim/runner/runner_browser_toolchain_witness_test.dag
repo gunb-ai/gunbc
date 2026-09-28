@@ -20,11 +20,12 @@ import gunbc.runner_browser_toolchain {
   BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
   BrowserToolchainArchive, runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
-  tree_admission_of, tree_manifest_text_of,
+  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
-import extdeps.dpkg { dpkg_installed_state_of, dpkg_query_status_argv, DpkgPackageInstalled, DpkgPackageNotInstalled }
+import extdeps.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import gunbc.verified_archive_install { ArchiveSha256 }
+import extdeps.exec.command { argv_words }
 import extdeps.browser.chromium { chromium_151_0_7922_34, chromium_version_line }
 import extdeps.automation.playwright { PlaywrightHostLibraryPackage, playwright_chromium_install_deps_ubuntu2404_arm64 }
 
@@ -110,14 +111,13 @@ test fn an_undefined_pool_refuses_every_host_rather_than_admitting_none_silently
 // THE LOCATION (the consumer seam)
 // ---------------------------------------------------------------------------------------------
 
-// THE LOCATION IS ABSOLUTE UNDER THE JOB USER'S HOME, NAMED BY THE RECIPE, and its staging, probe
-// and archive paths sit BESIDE the tree, never inside it.
-test fn the_location_is_absolute_named_by_the_recipe_with_staging_and_probe_beside_it() -> Bool {
+// THE LOCATION IS ABSOLUTE UNDER THE JOB USER'S HOME AND NAMED BY THE RECIPE; the retained archives
+// sit beside the tree, never inside it.
+test fn the_location_is_absolute_and_named_by_the_recipe() -> Bool {
   let loc = runner_browser_toolchain_location(job_user: "ghrunner")
   let root = concat("/home/ghrunner/.local/share/gunbc-browser-toolchain/", loc.recipe as String)
   (loc.root as String) == root
-    && (loc.staging as String) == concat(root, ".staging")
-    && (loc.probe as String) == concat(root, ".probe")
+    && (loc.base as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain"
     && (loc.archives as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/archives"
     && (loc.node_binary as String) == concat(root, "/node/bin/node")
     && (loc.playwright_module as String) == concat(root, "/node_modules/playwright")
@@ -197,6 +197,10 @@ test fn unrecognized_or_empty_ldd_output_is_unreadable_not_resolved() -> Bool {
   (match host_library_readback_of(binary: witness_binary, ldd_output: "\tnot a dynamic executable\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
     && (match host_library_readback_of(binary: witness_binary, ldd_output: "") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
     && (match host_library_readback_of(binary: witness_binary, ldd_output: concat(measured_ldd_resolved, "\tldd: exited unexpectedly\n")) { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tgarbage (0x\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tlibc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff9b26\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tlibc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0xZZ)\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tlibglib-2.0.so.0 => not\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
 }
 
 // EVERY SONAME PLAYWRIGHT'S TABLE MAPS FOR THIS BUILD NAMES A PACKAGE THE CONVERGE INSTALLS, so a
@@ -272,23 +276,54 @@ test fn a_render_through_any_module_but_the_converged_entry_file_is_the_wrong_mo
     && wrong_module(resolved: "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright/lib/index.js")
 }
 
-// A PACKAGE REMOVED WITH ITS CONFIGURATION KEPT IS NOT INSTALLED. `dpkg -s` exits zero for it; the
-// converge reads the record's Status line and only "install ok installed" holds.
+// THE QUERY'S WHOLE OUTCOME DECIDES (side-chat review 5334435195): installed only on exit 0 with ONE
+// decodable Status line saying so; a removed-with-config or unpacked package is not installed; a
+// package dpkg has no information about is unknown; and every other outcome -- another exit, a
+// refusal in other words, no Status line, two Status lines, an undecodable one -- is undecidable,
+// which the apt fold refuses rather than installing on.
 data witness_record_installed: String = "Package: libnss3\nStatus: install ok installed\nPriority: optional\n"
 
 data witness_record_config_remaining: String = "Package: libnss3\nStatus: deinstall ok config-files\nPriority: optional\n"
 
 data witness_record_unpacked: String = "Package: libnss3\nStatus: install ok unpacked\n"
 
+fn undecidable(v: DpkgInstalledState) -> Bool {
+  match v { DpkgQueryUndecidable { reason: _ } => true  _ => false }
+}
+
 test fn a_removed_package_with_config_remaining_is_not_installed() -> Bool {
-  (match dpkg_installed_state_of(record: witness_record_config_remaining) { DpkgPackageNotInstalled { status: st } => st == "Status: deinstall ok config-files"  _ => false })
-    && (match dpkg_installed_state_of(record: witness_record_unpacked) { DpkgPackageNotInstalled { status: _ } => true  _ => false })
-    && (match dpkg_installed_state_of(record: "") { DpkgPackageNotInstalled { status: _ } => true  _ => false })
-    && (match dpkg_installed_state_of(record: witness_record_installed) { DpkgPackageInstalled => true  _ => false })
+  (match dpkg_query_status_verdict_of(exit_code: 0, stdout: witness_record_config_remaining, stderr: "") { DpkgPackageNotInstalled { status: st } => st == "Status: deinstall ok config-files"  _ => false })
+    && (match dpkg_query_status_verdict_of(exit_code: 0, stdout: witness_record_unpacked, stderr: "") { DpkgPackageNotInstalled { status: _ } => true  _ => false })
+    && (match dpkg_query_status_verdict_of(exit_code: 0, stdout: witness_record_installed, stderr: "") { DpkgPackageInstalled => true  _ => false })
+}
+
+test fn only_a_uniquely_decoded_answer_decides_a_package_state() -> Bool {
+  (match dpkg_query_status_verdict_of(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'libnss3' is not installed and no information is available\n") { DpkgPackageUnknown => true  _ => false })
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 2, stdout: "", stderr: "dpkg-query: error: parsing file '/var/lib/dpkg/status'"))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 1, stdout: "", stderr: "dpkg-query: error: unable to access the dpkg database"))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: "Package: libnss3\n", stderr: ""))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: concat(witness_record_installed, "Status: deinstall ok config-files\n"), stderr: ""))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: "Package: libnss3\nStatus: install ok\n", stderr: ""))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: "Package: libnss3\nStatus: install ok sideways\n", stderr: ""))
 }
 
 test fn the_package_probe_is_a_plain_dpkg_query_status_read() -> Bool {
   join(dpkg_query_status_argv(package: "libnss3"), " ") == "dpkg-query -s libnss3"
+}
+
+// NODE STARTS UNDER A CLEARED ENVIRONMENT (side-chat review 5334435195): the command is /usr/bin/env -i
+// -C <dir> with exactly PLAYWRIGHT_BROWSERS_PATH and HOME, then the pinned node -- so NODE_OPTIONS and
+// every other inherited startup input cannot reach it.
+test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() -> Bool {
+  let loc = runner_browser_toolchain_location(job_user: "ghrunner")
+  let words = argv_words(command: runner_browser_toolchain_node_command(location: loc, directory: "/scratch/decoy", script: "0", operands: ["a"]))
+  join(words, " ") == join([
+    "/usr/bin/env -i -C /scratch/decoy",
+    concat("PLAYWRIGHT_BROWSERS_PATH=", loc.browsers_path as String),
+    "HOME=/scratch/decoy",
+    loc.node_binary as String,
+    "-e 0 a",
+  ], " ")
 }
 
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install

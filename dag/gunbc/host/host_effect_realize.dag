@@ -1,7 +1,7 @@
 module gunbc.host_effect_realize
 
 import std.algebra { trim, list_snoc_item, list_append }
-import extdeps.dpkg { dpkg_query_status_argv, dpkg_installed_state_of, DpkgPackageInstalled, DpkgPackageNotInstalled }
+import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -1804,7 +1804,6 @@ type Srv3TokenSubject
   | Srv3PathOwnerUser { path: String }
   | Srv3PathOwnerGroup { path: String }
   | Srv3PathMode { path: String }
-  | Srv3DpkgStatusRecord { package: NonEmptyStr }
 
 // The single public token read. The argv never crosses this boundary in either direction: callers
 // hand in a subject and receive a typed observation.
@@ -1831,7 +1830,6 @@ fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
     Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
     Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
     Srv3PathMode { path: p } => stat_mode_argv(path: p)
-    Srv3DpkgStatusRecord { package: p } => dpkg_query_status_argv(package: p)
   }
 }
 
@@ -2283,20 +2281,29 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
   }
 }
 
-// THE PACKAGE READ ASKS FOR THE INSTALLED STATE, NOT FOR A STATUS RECORD. `dpkg -s` exits zero for a
-// package removed with its configuration kept, so a converge built on it would read a removed
-// library as present and install nothing (side-chat review of gunbc#12500). The read is dpkg-query's
-// status record through the sealed token surface, classified by extdeps.dpkg
-// dpkg_installed_state_of: only "Status: install ok installed" holds. No output (dpkg-query exits 1 for a package it has never
-// seen) is absent; a transport that cannot run it is Unobserved, never absent.
+// THE PACKAGE READ KEEPS THE QUERY'S WHOLE OUTCOME (side-chat reviews of gunbc#12500). `dpkg -s`
+// exits zero for a package removed with its configuration kept, and a token read collapses every
+// unsuccessful query into "absent" -- either way an unanswered question could authorize an apt
+// install. So the read runs dpkg-query -s over the transport's typed exec, keeping exit code, stdout
+// and stderr, and extdeps.dpkg dpkg_query_status_verdict_of decides: installed holds; a decoded
+// not-installed state or a package unknown to dpkg fails (the ensure may install); anything
+// undecidable is Unobserved, which the ensure fold refuses rather than installing on.
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
-  match srv3_read_token(subject: Srv3DpkgStatusRecord { package: package }, transport: transport) {
-    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
-    Srv3TokenAbsent => Srv3PredicateFails
-    Srv3TokenObserved { value: v } =>
-      match dpkg_installed_state_of(record: v) {
+  let argv = dpkg_query_status_argv(package: package)
+  let outcome = match transport {
+    FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
+    _ => none
+  }
+  match outcome {
+    Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
+    Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
+    Present { value: TypedArgvExecConverged { result: r } } =>
+      match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
         DpkgPackageInstalled => Srv3PredicateHolds
         DpkgPackageNotInstalled { status: _ } => Srv3PredicateFails
+        DpkgPackageUnknown => Srv3PredicateFails
+        DpkgQueryUndecidable { reason: why } => Srv3PredicateUnobserved { reason: concat(concat(package as String, ": "), why) }
       }
   }
 }

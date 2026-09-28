@@ -166,15 +166,14 @@ fn plant_fixture_tree(dir: String) -> Bool {
   let bin = concat(loc.root as String, "/node/bin")
   process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: bin), transport: LocalExec))
     && process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: concat(loc.root as String, "/node_modules/playwright")), transport: LocalExec))
-    && Filesystem.Write(path: loc.node_binary as String, content: join(["#!/bin/sh\n: > '", fixture_marker(dir: dir), "'\necho v24.21.0\n"], "")).success
+    && Filesystem.Write(path: loc.node_binary as String, content: join(["#!/bin/sh\n/usr/bin/env > '", fixture_marker(dir: dir), "'\necho v24.21.0\n"], "")).success
     && Filesystem.Write(path: concat(loc.playwright_module as String, "/index.js"), content: "module.exports = {};\n").success
     && process_outcome_admitted(outcome: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0755", path: loc.node_binary as String), transport: LocalExec))
 }
 
 fn fixture_digest(dir: String) -> String {
   let loc = fixture_location(dir: dir)
-  let made = run_shell_command_capture(command: mkdir_parents_command(path: loc.probe as String), transport: LocalExec)
-  match tree_sha256_wet(tree: loc.root as String, manifest_path: concat(loc.probe as String, "/fixture.manifest")) {
+  match tree_sha256_wet(tree: loc.root as String, manifest_path: concat(dir, "/fixture.manifest")) {
     TreeDigestObserved { hex: h } => h as String
     TreeDigestUnobservable { reason: _ } => ""
   }
@@ -242,4 +241,23 @@ test fn an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by
   let intact = fixture_digest(dir: d) == pin
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && planted && pin != "" && repeat_ok && refused_ok && intact
+}
+
+// THE CANDIDATE SEES ONLY THE ADMITTED ENVIRONMENT: the fixture's inert node records the environment
+// it was started with. Under an admitted tree it runs, and what it saw carries
+// PLAYWRIGHT_BROWSERS_PATH and HOME and none of this process's own environment -- not even PATH, which
+// every runner process carries.
+test fn the_candidate_starts_with_only_the_admitted_environment_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let admitted = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let seen = Filesystem.Read(path: fixture_marker(dir: d))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && seen.success
+    && string_contains(s: seen.content, pattern: "PLAYWRIGHT_BROWSERS_PATH=")
+    && string_contains(s: seen.content, pattern: "HOME=")
+    && string_contains(s: concat("\n", seen.content), pattern: "\nPATH=") == false
 }

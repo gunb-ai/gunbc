@@ -1,6 +1,6 @@
 module extdeps.dpkg
 
-import std.types { NonEmptyStr, Bool, List }
+import std.types { NonEmptyStr, Bool, List, Int }
 import std.string_type { String }
 import std.algebra { trim }
 
@@ -50,18 +50,67 @@ fn dpkg_query_status_argv(package: NonEmptyStr) -> List<String> {
   [dpkg_query_program as String, "-s", package as String]
 }
 
-data dpkg_status_installed_line: String = "Status: install ok installed"
+// THE QUERY'S WHOLE OUTCOME DECIDES, AND ONLY A UNIQUELY DECODED ANSWER MAY AUTHORIZE A MUTATION
+// (side-chat review 5334435195 of gunbc#12500). dpkg-query -s exits 0 with the package's record, or
+// exits 1 naming a package it has no information about. The record carries exactly one Status line of
+// three words -- desired action, error flag, status (dpkg-query(1), "Package status and state"). So:
+//   installed          exit 0, one Status line, want install|hold, flag ok, status installed
+//   not installed      exit 0, one decodable Status line in any other state (config-files, unpacked,
+//                      half-configured, ...), carried verbatim
+//   unknown to dpkg    exit 1 with dpkg-query's "no information is available" refusal
+//   undecidable        everything else: another exit, zero or several Status lines, an undecodable
+//                      Status line, a refusal in other words
+// Only the first three are answers. Undecidable is never read as absent, because absent authorizes an
+// install and nothing was established.
+data dpkg_query_unknown_package_marker: String = "no information is available"
 
 type DpkgInstalledState
   = DpkgPackageInstalled
   | DpkgPackageNotInstalled { status: String }
+  | DpkgPackageUnknown
+  | DpkgQueryUndecidable { reason: String }
 
-fn dpkg_status_line_of(record: String) -> String {
-  fold(split(record, "\n"), init: "", f: (acc, line) =>
-    if acc == "" && starts_with(s: trim(s: line), prefix: "Status:") { trim(s: line) } else { acc })
+data dpkg_status_wants: List<String> = ["unknown", "install", "hold", "deinstall", "purge"]
+data dpkg_status_flags: List<String> = ["ok", "reinstreq"]
+data dpkg_status_states: List<String> = ["not-installed", "config-files", "half-installed", "unpacked", "half-configured", "triggers-awaited", "triggers-pending", "installed"]
+
+fn dpkg_member(xs: List<String>, x: String) -> Bool {
+  fold(xs, init: false, f: (acc, y) => acc || y == x)
 }
 
-fn dpkg_installed_state_of(record: String) -> DpkgInstalledState {
-  let status = dpkg_status_line_of(record: record)
-  if status == dpkg_status_installed_line { DpkgPackageInstalled } else { DpkgPackageNotInstalled { status: status } }
+fn dpkg_status_lines_of(record: String) -> List<String> {
+  fold(split(record, "\n"), init: [], f: (acc, line) =>
+    if starts_with(s: line, prefix: "Status:") { concat(acc, [trim(s: line)]) } else { acc })
+}
+
+fn dpkg_words_of(text: String) -> List<String> {
+  fold(split(text, " "), init: [], f: (acc, w) => if w == "" { acc } else { concat(acc, [w]) })
+}
+
+fn dpkg_status_decoded(status_line: String) -> DpkgInstalledState {
+  match dpkg_words_of(text: status_line) {
+    Cons { head: label, tail: Cons { head: want, tail: Cons { head: flag, tail: Cons { head: state, tail: Empty } } } } =>
+      if label != "Status:" || dpkg_member(xs: dpkg_status_wants, x: want) == false || dpkg_member(xs: dpkg_status_flags, x: flag) == false || dpkg_member(xs: dpkg_status_states, x: state) == false {
+        DpkgQueryUndecidable { reason: concat("the Status line does not decode: ", status_line) }
+      } else if state == "installed" && flag == "ok" && (want == "install" || want == "hold") {
+        DpkgPackageInstalled
+      } else {
+        DpkgPackageNotInstalled { status: status_line }
+      }
+    _ => DpkgQueryUndecidable { reason: concat("the Status line is not three words: ", status_line) }
+  }
+}
+
+fn dpkg_query_status_verdict_of(exit_code: Int, stdout: String, stderr: String) -> DpkgInstalledState {
+  if exit_code == 0 {
+    match dpkg_status_lines_of(record: stdout) {
+      Cons { head: line, tail: Empty } => dpkg_status_decoded(status_line: line)
+      Empty => DpkgQueryUndecidable { reason: "dpkg-query exited 0 and printed no Status line" }
+      _ => DpkgQueryUndecidable { reason: "dpkg-query printed more than one Status line" }
+    }
+  } else if exit_code == 1 && string_contains(s: stderr, pattern: dpkg_query_unknown_package_marker) {
+    DpkgPackageUnknown
+  } else {
+    DpkgQueryUndecidable { reason: join(["dpkg-query exited ", to_string(exit_code), ": ", trim(s: stderr)], "") }
+  }
 }

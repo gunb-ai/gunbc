@@ -35,5 +35,3 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 fn ldd_command(binary: String) -> ArgvCommand {
   argv_command(program: ldd_program, arguments: [binary])
 }
-
-data ldd_not_found_marker: String = "=> not found"
