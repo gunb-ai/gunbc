@@ -20,7 +20,7 @@ import gunbc.runner_browser_toolchain {
   BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
   BrowserToolchainArchive, runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
-  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command,
+  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
 import extdeps.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
@@ -312,7 +312,7 @@ test fn the_package_probe_is_a_plain_dpkg_query_status_read() -> Bool {
 }
 
 // NODE STARTS UNDER A CLEARED ENVIRONMENT (side-chat review 5334435195): the command is /usr/bin/env -i
-// -C <dir> with exactly PLAYWRIGHT_BROWSERS_PATH and HOME, then the pinned node -- so NODE_OPTIONS and
+// -C <dir> with exactly PLAYWRIGHT_BROWSERS_PATH, HOME and the declared PATH, then the pinned node -- so NODE_OPTIONS and
 // every other inherited startup input cannot reach it.
 test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() -> Bool {
   let loc = runner_browser_toolchain_location(job_user: "ghrunner")
@@ -321,9 +321,19 @@ test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() ->
     "/usr/bin/env -i -C /scratch/decoy",
     concat("PLAYWRIGHT_BROWSERS_PATH=", loc.browsers_path as String),
     "HOME=/scratch/decoy",
+    "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
     loc.node_binary as String,
     "-e 0 a",
   ], " ")
+}
+
+// WHAT COUNTS AS SUPERSEDED (reported, never removed): everything under the base except the current
+// recipe's tree, the retained archives and any staging.* directory.
+test fn only_other_recipe_trees_are_reported_as_superseded() -> Bool {
+  superseded_entries_of(
+    entries: ["e4ad7f3f559ad5a8", "archives", "staging.Ab12Cd34", "staging.retiring-x-old", "playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef", ""],
+    current: "e4ad7f3f559ad5a8",
+  ) == ["playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef"]
 }
 
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install

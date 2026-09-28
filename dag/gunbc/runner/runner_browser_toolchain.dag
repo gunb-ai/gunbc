@@ -31,11 +31,12 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_owner_executable_files_command, find_symlink_targets_command }
-import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command, ls_one_per_line_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.json.emit { serialize_json_object, json_kv, json_string }
 import std.content_hash { content_hash_atom, content_hash_validate_lower_hex_syntax }
 import extdeps.tools { apt_package_of }
 import extdeps.apt { package_xz_utils }
@@ -217,39 +218,47 @@ fn runner_browser_toolchain_location(job_user: NonEmptyStr) -> RunnerBrowserTool
   )
 }
 
-// THE ENVIRONMENT A CONSUMER RUNS NODE UNDER: only PLAYWRIGHT_BROWSERS_PATH, pointing Playwright's
-// registry at the pinned browsers rather than its default ~/.cache (an empty RUNNER_TEMP directory
-// under the floor job's isolated HOME).
+// ONE DECLARED ENVIRONMENT FOR EVERY CANDIDATE SUBPROCESS (side-chat reviews 5334435195 and
+// 5336109370). Everything the readback runs out of the tree or about it -- node --version, the
+// package-version reads, chromium --version, ldd, and the launch -- starts under env -i with exactly
+// these bindings and nothing inherited: an inherited NODE_OPTIONS can --require a preload that
+// answers the probe's expected output without the declared package or a browser running, and an
+// inherited LD_PRELOAD or LD_LIBRARY_PATH changes what ldd and the browser resolve. The admitted
+// startup inputs are exactly: the binary by absolute path, its argv, the working directory,
+//   PLAYWRIGHT_BROWSERS_PATH  the pinned browsers (not Playwright's default ~/.cache, which under the
+//                             floor job's isolated HOME is an empty RUNNER_TEMP directory)
+//   HOME                      the working directory
+//   PATH                      runner_browser_toolchain_system_path, a fixed value -- ldd is a shell
+//                             script, and a declared search path is not an inherited one
 //
-// NODE_PATH IS DELIBERATELY NOT SET, because it cannot pin the package (side-chat review of
-// gunbc#12500): node consults NODE_PATH only AFTER walking node_modules upward from the working
-// directory, so a workspace that carries its own node_modules/playwright shadows the converged one
-// and the readback would certify a package nobody pinned. A consumer requires Playwright by the
-// ABSOLUTE path location.playwright_module, passed as an operand; resolution of playwright-core then
-// walks up from that package's own directory and meets the converged node_modules first.
-fn runner_browser_toolchain_env(location: RunnerBrowserToolchainLocation) -> List<EnvBinding> {
+// NODE_PATH IS DELIBERATELY NOT SET: node consults it only AFTER walking node_modules upward from the
+// working directory, so it cannot pin the package. Playwright is required by the ABSOLUTE path
+// location.playwright_module, passed as an operand.
+data runner_browser_toolchain_system_path: String = "/usr/sbin:/usr/bin:/sbin:/bin"
+
+fn runner_browser_toolchain_env(location: RunnerBrowserToolchainLocation, directory: String) -> List<EnvBinding> {
   [
     EnvSet { name: playwright_browsers_path_env as String, value: location.browsers_path as String },
+    EnvSet { name: "HOME", value: directory },
+    EnvSet { name: "PATH", value: runner_browser_toolchain_system_path },
   ]
 }
 
-// `node -e <script> <operands>` under ONLY that environment (env -i), with the pinned node binary,
-// started in a directory the caller names. The environment is CLEARED rather than overlaid (side-chat
-// review 5334435195): an inherited NODE_OPTIONS can --require a preload that answers the probe's
-// expected title, width and resolved path without the declared package or a browser ever running,
-// and require.resolve cannot tell. The admitted startup inputs are exactly: the node binary by
-// absolute path, its argv, the working directory, PLAYWRIGHT_BROWSERS_PATH, and HOME set to that
-// working directory. Nothing else of the caller's environment reaches node or the browser it launches. This is the command a consumer runs; it is not free to pick a node
-// from PATH, a package from elsewhere, or to inherit a working directory it did not choose.
+fn runner_browser_toolchain_cleared_command(location: RunnerBrowserToolchainLocation, directory: String, command: ArgvCommand) -> ArgvCommand {
+  env_cleared_command_in(directory: directory, bindings: runner_browser_toolchain_env(location: location, directory: directory), command: command)
+}
+
+// `node -e <script> <operands>` with the pinned node, under the declared environment, started in a
+// directory the caller names. This is the command a consumer runs.
 fn runner_browser_toolchain_node_command(
   location: RunnerBrowserToolchainLocation,
   directory: String,
   script: String,
   operands: List<String>,
 ) -> ArgvCommand {
-  env_cleared_command_in(
+  runner_browser_toolchain_cleared_command(
+    location: location,
     directory: directory,
-    bindings: list_append(left: runner_browser_toolchain_env(location: location), right: [EnvSet { name: "HOME", value: directory }]),
     command: node_eval_command(node_binary: location.node_binary, script: script, operands: operands),
   )
 }
@@ -782,8 +791,11 @@ fn browser_toolchain_probe_page_path(scratch: String) -> String {
 
 // THE PROBE IS JAVASCRIPT HANDED TO node AS A STRING, AND THAT IS A DECLARED SCAFFOLD, NOT THE
 // TERMINAL SHAPE (review 72115): no .dag realization drives a browser, and no grammar rows emit
-// ECMAScript (extdeps.languages.ecmascript declares the subject only). The launch script and the
-// package-version script are the two strings it covers.
+// ECMAScript (extdeps.languages.ecmascript declares the subject only). It covers exactly three
+// strings, the JavaScript this module hands to node or writes for node to load:
+// browser_toolchain_launch_script, browser_toolchain_package_version_script and
+// browser_toolchain_decoy_index. (The decoy's package.json is emitted by extdeps.languages.json and is
+// not covered.)
 // ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_87357a75,
 // DEFAULT-APPROVED on recommendation A, 2026-09-28, after the operator did not answer within the
 // default window -- not an explicit operator ruling. An explicit ruling covering this and the two
@@ -798,7 +810,7 @@ data runner_browser_toolchain_probe_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script and browser_toolchain_package_version_script -- node -e script strings. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
+data runner_browser_toolchain_probe_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.runner_browser_toolchain browser_toolchain_launch_script, browser_toolchain_package_version_script and browser_toolchain_decoy_index -- JavaScript held as strings (two run by node -e, one written as the decoy module node would load). RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO LAUNCH THE PINNED HEADLESS CHROMIUM THROUGH THE PINNED PLAYWRIGHT, LOAD A LOCAL PAGE, MEASURE AN ELEMENT'S LAID-OUT GEOMETRY, AND REPORT THE RESOLVED IMPLEMENTATION IDENTITY -- the same capability class that retires gunbc.machine_intake_mtcollins1_kvm_still mtcollins1_kvm_observer_script. An artifact covering only part of that (a launch without a measurement, or a measurement without the resolved identity) does not retire it. Admission: operator escalation msg_87357a75, default-approved on recommendation A, 2026-09-28")
 
 // THE LAUNCH IS PLAYWRIGHT'S DEFAULT HEADLESS CHROMIUM, which on linux-arm64 resolves to the
 // headless shell under PLAYWRIGHT_BROWSERS_PATH -- the route the KVM observer takes. The page and the
@@ -813,7 +825,15 @@ data browser_toolchain_package_version_script: String = "console.log(require(pro
 // first. Its entry point throws, and its package.json names a version no pin carries. Together with
 // the resolved-identity check below (the launch must report the converged package's own entry file),
 // this discriminates the absolute-path resolution on every readback.
-data browser_toolchain_decoy_package_json: String = "{\"name\":\"playwright\",\"version\":\"0.0.0-gunbc-decoy\",\"main\":\"index.js\"}"
+// The decoy's package.json is a JSON document, emitted by extdeps.languages.json rather than written
+// as a string literal.
+data browser_toolchain_decoy_version: String = "0.0.0-gunbc-decoy"
+
+data browser_toolchain_decoy_package_json: String = serialize_json_object(members: [
+  json_kv(key: "name", value: json_string(s: "playwright")),
+  json_kv(key: "version", value: json_string(s: browser_toolchain_decoy_version)),
+  json_kv(key: "main", value: json_string(s: "index.js")),
+])
 
 data browser_toolchain_decoy_index: String = "throw new Error('gunbc decoy playwright resolved: a workspace package shadowed the converged toolchain');"
 
@@ -868,8 +888,8 @@ fn version_readback_wet(subject: NonEmptyStr, expected: String, command: ArgvCom
   }
 }
 
-fn library_readback_wet(binary: NonEmptyStr) -> HostLibraryReadback {
-  match capture_text(command: ldd_command(binary: binary as String)) {
+fn library_readback_wet(binary: NonEmptyStr, run_as: ArgvCommand) -> HostLibraryReadback {
+  match capture_text(command: run_as) {
     CaptureRefused { reason: r } => HostLibrariesUnreadable { binary: binary, reason: r }
     CapturedText { text: t } => host_library_readback_of(binary: binary, ldd_output: t)
   }
@@ -939,15 +959,15 @@ fn runner_browser_toolchain_readback_in_wet(host: NonEmptyStr, location: RunnerB
     }
   } else {
     let libraries = [
-      library_readback_wet(binary: location.headless_shell),
-      library_readback_wet(binary: location.chromium),
+      library_readback_wet(binary: location.headless_shell, run_as: runner_browser_toolchain_cleared_command(location: location, directory: browser_toolchain_decoy_root(scratch: scratch), command: ldd_command(binary: location.headless_shell as String))),
+      library_readback_wet(binary: location.chromium, run_as: runner_browser_toolchain_cleared_command(location: location, directory: browser_toolchain_decoy_root(scratch: scratch), command: ldd_command(binary: location.chromium as String))),
     ]
     let versions = [
-      version_readback_wet(subject: "node", expected: runner_browser_toolchain_node.version as String, command: node_version_command(node_binary: location.node_binary)),
+      version_readback_wet(subject: "node", expected: runner_browser_toolchain_node.version as String, command: runner_browser_toolchain_cleared_command(location: location, directory: browser_toolchain_decoy_root(scratch: scratch), command: node_version_command(node_binary: location.node_binary))),
       version_readback_wet(subject: "playwright-core", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, scratch: scratch, package: "playwright-core")),
       version_readback_wet(subject: "playwright", expected: runner_browser_toolchain_automation.version as String, command: package_version_command(location: location, scratch: scratch, package: "playwright")),
       if libraries_resolved(libraries: libraries) {
-        version_readback_wet(subject: "chromium", expected: chromium_version_line(build: runner_browser_toolchain_browser), command: chromium_version_command(binary: location.chromium))
+        version_readback_wet(subject: "chromium", expected: chromium_version_line(build: runner_browser_toolchain_browser), command: runner_browser_toolchain_cleared_command(location: location, directory: browser_toolchain_decoy_root(scratch: scratch), command: chromium_version_command(binary: location.chromium)))
       } else {
         VersionUnreadable { subject: "chromium", reason: "not run: a host library did not resolve" }
       },
@@ -1142,23 +1162,14 @@ fn run_ok(command: ArgvCommand) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
 }
 
-// PUBLICATION NEVER DELETES A TREE A CONSUMER COULD HAVE BEEN HANDED (side-chat review 5334435195).
-// A consumer is only ever handed an ADMITTED tree, and an admitted tree is never replaced (placement
-// returns early on it). So publication meets one of two states: no tree -- rename the admitted stage
-// into place; mv -T onto a path a concurrent converge published first fails, and the readback then
-// judges that converge's tree like any other -- or a tree whose content does NOT match the pin --
-// rename it aside to a name unique to this invocation, rename the stage into place, then remove the
-// retired tree, which no consumer can hold as admitted. A tree whose admission could not be OBSERVED
-// is neither: placement refuses rather than rebuild over something it could not read.
-fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String, replacing_mismatched: Bool) -> Bool {
-  let retired = concat(staging, ".retired")
-  if replacing_mismatched {
-    run_ok(command: mv_exact_destination_command(source: location.root as String, destination: retired))
-      && run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String))
-      && run_ok(command: rm_recursive_force_command(path: retired))
-  } else {
-    run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String))
-  }
+// PUBLICATION ONLY EVER FILLS AN ABSENT PATH (side-chat review 5336109370). A tree already at the
+// recipe path is never renamed or removed by this converge: an admitted one is left alone, and a
+// mismatched one is refused as contested, because a Boolean decided before staging does not identify
+// the object a later rename would move, and a consumer may hold paths into it. So the one publication
+// step is `mv -T <stage> <root>`, which fails if anything occupies <root> by then -- a competing
+// converge that published first -- and the readback then judges that converge's tree.
+fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String) -> Bool {
+  run_ok(command: mv_exact_destination_command(source: staging, destination: location.root as String))
 }
 
 // EVERY CONVERGE OWNS ITS SCRATCH AND ITS STAGING: manifests in a temporary directory of its own,
@@ -1175,14 +1186,14 @@ fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<
   }
 }
 
-fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String, staging: String, replacing: Bool) -> ToolchainPlacement {
+fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String, staging: String) -> ToolchainPlacement {
   let staged = stage_archives_wet(location: location, staging: staging, archives: archives)
   if all_staged(ps: staged, archives: archives) == false {
     ToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
   } else {
     match admit_tree_wet(tree: staging as NonEmptyStr, manifest_path: join([scratch, "/staging.manifest"], ""), pinned: pinned) {
       TreeAdmitted =>
-        if publish_staged_wet(location: location, staging: staging, replacing_mismatched: replacing) {
+        if publish_staged_wet(location: location, staging: staging) {
           ToolchainPublished { archives: staged }
         } else {
           ToolchainPlacementRefused { archives: staged, cause: join(["the admitted staged tree could not be published over ", location.root as String, " (a concurrent converge may have published first; the readback decides)"], "") }
@@ -1197,12 +1208,13 @@ fn place_toolchain_in_wet(location: RunnerBrowserToolchainLocation, archives: Li
     TreeAdmitted => ToolchainAlreadyAdmitted
     TreeUnobservable { tree: t, reason: r } =>
       ToolchainPlacementRefused { archives: [], cause: join(["the existing tree's admission could not be observed (", r, "), so it is neither rebuilt nor replaced: ", t as String], "") }
-    TreeAbsent { tree: _ } => stage_in_fresh_directory_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, replacing: false)
-    TreeContentMismatch { tree: _, expected: _, observed: _ } => stage_in_fresh_directory_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, replacing: true)
+    TreeAbsent { tree: _ } => stage_in_fresh_directory_wet(location: location, archives: archives, pinned: pinned, scratch: scratch)
+    TreeContentMismatch { tree: t, expected: _, observed: o } =>
+      ToolchainPlacementRefused { archives: [], cause: join(["ContestedTreeNotReplaced -- ", t as String, " holds content ", o as String, " that is not the pinned tree; it is not replaced, because nothing here establishes that no consumer is using it or that a competing converge did not just publish it. Its repair is outstanding"], "") }
   }
 }
 
-fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String, replacing: Bool) -> ToolchainPlacement {
+fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archives: List<BrowserToolchainArchive>, pinned: NonEmptyStr, scratch: String) -> ToolchainPlacement {
   if run_ok(command: mkdir_parents_command(path: location.base as String)) == false {
     ToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
   } else {
@@ -1211,10 +1223,58 @@ fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archiv
       ToolchainPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
     } else {
       let staging = trim(s: made.path as String)
-      let result = stage_and_publish_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, staging: staging, replacing: replacing)
+      let result = stage_and_publish_wet(location: location, archives: archives, pinned: pinned, scratch: scratch, staging: staging)
       let dropped = run_ok(command: rm_recursive_force_command(path: staging))
       result
     }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// SUPERSEDED TREES: OBSERVED AND RETAINED, RETIREMENT OUTSTANDING
+// ---------------------------------------------------------------------------------------------
+
+// OTHER RECIPES' TREES ARE REPORTED, NEVER REMOVED, BY THIS CONVERGE (side-chat review 5336109370).
+// "A different recipe" establishes neither that the tree is older nor that it is unused: a consumer
+// admitted before a retirement holds absolute paths into its tree, and a rename or removal under it
+// turns its next open into ENOENT while the new tree is healthy; and a converge at an OLDER revision
+// would "retire" a NEWER recipe by the same rule. Nothing in this corpus yet establishes that a
+// candidate population is unused, so retirement is an OUTSTANDING obligation: every entry under the
+// base other than the current recipe's tree, the archives and staging.* is named in the receipt as
+// superseded-retained, so the obligation is visible on every run and nothing is removed on a guess.
+type SupersededTrees
+  = SupersededTreesObserved { entries: List<String> }
+  | SupersededTreesUnobservable { cause: String }
+
+data runner_browser_toolchain_archives_entry: String = "archives"
+
+data runner_browser_toolchain_staging_prefix: String = "staging."
+
+fn superseded_entries_of(entries: List<String>, current: String) -> List<String> {
+  fold(entries, init: [], f: (acc, e) => {
+    let n = trim(s: e)
+    if n == "" || n == current || n == runner_browser_toolchain_archives_entry || starts_with(s: n, prefix: runner_browser_toolchain_staging_prefix) {
+      acc
+    } else {
+      list_append(left: acc, right: [n])
+    }
+  })
+}
+
+fn observe_superseded_trees_wet(location: RunnerBrowserToolchainLocation) -> SupersededTrees {
+  match run_shell_command_capture(command: ls_one_per_line_command(path: location.base as String), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      SupersededTreesUnobservable { cause: join(["the toolchain base could not be listed (exit ", to_string(c), "): ", trim(s: e)], "") }
+    ProcessOutputAbsent => SupersededTreesObserved { entries: [] }
+    ProcessOutputPresent { text: t } => SupersededTreesObserved { entries: superseded_entries_of(entries: split(t, "\n"), current: location.recipe as String) }
+  }
+}
+
+fn superseded_trees_text(r: SupersededTrees) -> String {
+  match r {
+    SupersededTreesObserved { entries: es } =>
+      if list_length(es) == 0 { "superseded-retained=none" } else { join(["superseded-retained=", join(es, ","), " (retirement outstanding: nothing establishes these trees are unused)"], "") }
+    SupersededTreesUnobservable { cause: c } => concat("superseded=unobservable ", c)
   }
 }
 
@@ -1263,6 +1323,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
+              let retirement_text = superseded_trees_text(r: observe_superseded_trees_wet(location: location))
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)
                 Absent => "readback=not-run (placement did not hold, so no candidate was executed)\nstanding=not-ready"
@@ -1275,6 +1336,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 "apt: ", join(map(apt, o => apt_outcome_text(o: o)), " "), "\n",
                 toolchain_placement_text(p: placement), "\n",
                 readback_text, "\n",
+                retirement_text, "\n",
               ], "")
               let w = Filesystem.Write(path: runner_browser_toolchain_converge_receipt_path, content: body)
               if w.success == false {

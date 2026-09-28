@@ -741,9 +741,21 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "the_candidate_starts_with_only_the_admitted_environment_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution" },
       entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
-      function: "the_candidate_starts_with_only_the_admitted_environment_by_real_execution",
+      function: "every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "superseded_trees_are_reported_and_retained_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "superseded_trees_are_reported_and_retained_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_contested_tree_is_refused_not_replaced_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_contested_tree_is_refused_not_replaced_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
