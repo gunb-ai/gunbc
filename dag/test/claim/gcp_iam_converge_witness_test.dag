@@ -429,3 +429,17 @@ test fn a_grant_outside_the_fleet_project_refuses_the_plan() -> Bool {
     _ => false
   }
 }
+
+
+test fn namecheap_has_a_dedicated_secret_scoped_federation() -> Bool {
+  let matching = filter(gcp_iam_converge_targets, f => (f.service_account_id as String) == "namecheap-dns")
+  count(matching) == 1 && all(matching, f =>
+    (f.pool_id as String) == "github-namecheap-dns"
+    && count(f.secret_grants) == 1
+    && all(f.secret_grants, g => (g.target.project as String) == "gunbai-secrets"
+      && (g.target.secret as String) == "namecheap-api-key"
+      && g.role == "roles/secretmanager.secretAccessor")
+    && string_contains(s: f.attribute_condition, pattern: "namecheap-dns")
+    && string_contains(s: f.attribute_condition, pattern: "refs/heads/main")
+  )
+}

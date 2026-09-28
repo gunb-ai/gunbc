@@ -110,6 +110,7 @@ import gunbc.rung_drop.systemctl_show_property_input_type_wall { systemctl_show_
 import gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure { compiler_change_refusals_land_outside_every_compiled_closure }
 import gunbc.rung_drop.retention_census_counts_one_retention_per_refused_module { retention_census_counts_one_retention_per_refused_module }
 import gunbc.rung_drop.typed_statement_let_refuses_until_the_bind_annotation_carrier { typed_statement_let_refuses_until_the_bind_annotation_carrier }
+import gunbc.rung_drop.python_to_typescript_compile_inhabitance_off_the_required_gate { python_to_typescript_compile_inhabitance_off_the_required_gate }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -203,6 +204,7 @@ data rung_drop_roster: List<RungDrop> = [
   retention_census_counts_one_retention_per_refused_module,
   typed_statement_let_refuses_until_the_bind_annotation_carrier,
   mtcollins1_boot_accepts_socket1_absent,
+  python_to_typescript_compile_inhabitance_off_the_required_gate,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
