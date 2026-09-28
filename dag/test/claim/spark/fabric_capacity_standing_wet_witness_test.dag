@@ -13,7 +13,7 @@ import gunbc.spark.pair_serving_authority_log {
   CurrentAuthorityRead, CurrentAuthorityUnread,
   current_pair_serving_authorities, current_authority_group,
 }
-import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing, fabric_capacity_standing_for }
+import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing, fabric_capacity_standing_for, fabric_capacity_unread_marker }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -61,9 +61,9 @@ test fn the_live_entry_judges_exactly_what_the_runners_log_read_returned() -> Bo
           length(current) == length(spark_pair_serving_authorities)
             && all(current, c => match c {
               CurrentAuthorityUnread { group: g, step: s, reason: _ } =>
-                string_contains(s: reason, pattern: join([fabric_group_wire(g: g) as String, ": serving authority could not be read at ", s], ""))
+                string_contains(s: reason, pattern: join([fabric_group_wire(g: g) as String, fabric_capacity_unread_marker, s], ""))
               CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
-                !string_contains(s: reason, pattern: join([fabric_group_wire(g: current_authority_group(c: c)) as String, ": serving authority could not be read"], ""))
+                !string_contains(s: reason, pattern: join([fabric_group_wire(g: current_authority_group(c: c)) as String, fabric_capacity_unread_marker], ""))
             })
         }
       }
