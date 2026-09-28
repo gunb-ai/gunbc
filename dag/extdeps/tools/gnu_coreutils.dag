@@ -36,6 +36,7 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data cat_program: NonEmptyStr = "cat"
+data mktemp_program: NonEmptyStr = "mktemp"
 data cp_program: NonEmptyStr = "cp"
 data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
@@ -56,6 +57,17 @@ data od_program: NonEmptyStr = "od"
 // needs its own builder and its own name, not a flags parameter here.
 fn ls_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program, arguments: ["-1", path])
+}
+
+// mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
+// X's replaced), mode 0700, and prints its path; it refuses rather than reuse an existing name
+// (coreutils manual, "mktemp invocation"). That exclusive creation is what makes the directory one
+// caller's own. This is the argv for a remote typed-argv transport; extdeps.shell shell.Mktemp
+// DirWithTemplate is the local realization of the same invocation -- the op-plus-builder seam
+// extdeps.crypto.hash records for sha256sum, folding when a transport row can be read from the
+// operation itself.
+fn mktemp_directory_command(template: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: mktemp_program, arguments: ["-d", template as String])
 }
 
 fn cat_command(path: String) -> ArgvCommand {

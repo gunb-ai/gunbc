@@ -770,16 +770,6 @@ fn required_gate_prefixes() -> List<String> {
 // declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
 // its identity-grained disposition.
 //
-// THE EIGHTH AND NINTH ROWS ARE THE SPARK AUTHORITY-READ ROUTE CLAIMS (adhoc-0536e80f-be0, gunbc#12461;
-// parent ruling msg_fe97729b from eager-owl-205, option (b)). They were scheduled on the local-repo
-// wet lane because they observed the executing runner's hostname, and on srv1 -- a declared
-// dashboard host -- that premise was false and they went red on unrelated PRs
-// (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
-// Supplying the executor and the instant made them pure, so they left the wet schedule; without a
-// row here they would have run only when they themselves changed, and the pairing obligation's
-// real-path half (DESIGN 3) would stop executing where merges are decided. Named modules, not a
-// spark prefix. Both declare SubstrateInputsOnly.
-//
 // THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
@@ -803,8 +793,6 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
     "test.claim.host_allocation_conservation",
-    "test.claim.spark.fabric_capacity_standing_wet_witness",
-    "test.claim.spark.spark_pair_serving_apply_wet_witness",
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.manual.cross_language_add_python_to_typescript",
   ]

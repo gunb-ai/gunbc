@@ -1,41 +1,78 @@
 module test.claim.spark.fabric_capacity_standing_wet_witness
 
 import std.logic { Bool }
-import std.types { String, EpochSecs }
+import std.types { String, List, EpochSecs }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.process { ExitSuccess, ExitFailure }
-import gunbc.roadmap_dashboard_instance { DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
-import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing_at }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.fabric_switch_observed { fabric_group_wire }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthorityRead, CurrentAuthorityUnread,
+  current_pair_serving_authorities, current_authority_group,
+}
+import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing, fabric_capacity_standing_for, fabric_capacity_standing_current, fabric_capacity_unread_marker }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The executor this claim is about: a host with no event log placement. It is SUPPLIED (DESIGN §3,
-// a witness discriminates at one interface), because the executor the runner observes is not the
-// claim's subject -- srv1 is both a CI runner and a declared dashboard host, so observing it made
-// the verdict a function of which runner took the job (gunbc.recurring_failure_mode
-// wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
-data off_fleet_executor: String = "off-fleet-witness-executor"
+// THE OFF-FLEET PREMISE IS SUPPLIED, NOT READ FROM THE RUNNER. This claim used to take the executor
+// from the runner's own hostname and assume that host declared no dashboard instance. That is true
+// on srv3/srv4 runners and false on srv1 ones, where the log is readable, so the claim went red by
+// runner placement (#12444 floor runs 36355617646 and 36361351081, both on srv1). The premise is
+// now a supplied value at the entry's seam, fabric_capacity_standing_for. Everything beneath it is
+// real on every runner: store resolution for that host, the per-group CurrentAuthorityUnread, and
+// the verdict text. test.claim.spark.fabric_capacity_standing_witness drives the READ arm over a
+// supplied roster; the real read on the actual runner is the next claim's subject.
+data witness_host_declaring_no_dashboard_instance: String = "gunbc-witness-host-without-dashboard-instance"
+data witness_instant: EpochSecs = 1000
 
-// The instant is supplied too: a store that does not resolve refuses before any lease standing is
-// derived from it, so the claim does not depend on the clock.
-data supplied_at: EpochSecs = 1790000000
-
-// THE LIVE ENTRY BELOW ITS OBSERVATIONS, EXECUTED HERMETICALLY. test.claim.spark.fabric_capacity_standing_witness
-// drives the verdict over a SUPPLIED roster; this is the other half of DESIGN §3's pairing
-// obligation: fabric_capacity_standing_at resolves the supplied executor's event log layout
-// through the real host-store derivation and reads every claimed group's authority before any
-// standing is judged. The executor is first shown to have no declared placement, so the refusal
-// that NAMES THE READ -- "serving authority could not be read at <step>" -- is the route and not
-// an accident of the runner. Deleting the log read, or letting an unreadable log fall back to the
-// source row, changes this text.
 test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
-  match dashboard_instance_for_host(host: off_fleet_executor) {
-    DashboardInstanceForHost { instance: _ } => false
-    DashboardInstanceHostUnknown { host: _ } =>
-      match fabric_capacity_standing_at(executor: off_fleet_executor, at: supplied_at) {
-        ExitSuccess => false
-        ExitFailure { code: _, reason: reason } =>
-          string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+  match fabric_capacity_standing_for(executor: witness_host_declaring_no_dashboard_instance, at: witness_instant) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      string_contains(s: reason, pattern: "group-a: serving authority could not be read at store: no dashboard instance is declared for host gunbc-witness-host-without-dashboard-instance")
+  }
+}
+
+fn exit_reason(e: ProcessExit) -> String {
+  match e {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason: r } => r as String
+  }
+}
+
+// THE REAL READ, ON WHATEVER RUNNER THIS LANDS ON: DESIGN §3's pairing obligation for the seam
+// above. The live entry is run end to end (hostname, clock, store, log), and the log is read again
+// for the same host. Two things are asserted.
+// - The entry's verdict EQUALS the verdict over the readings the log returned. An entry that judged
+//   a group from its resting row, or skipped the read, disagrees whenever the log's state for that
+//   group differs from the row.
+// - Per group, each unread reading appears in the verdict with its step, and no read group is
+//   reported unread.
+// ITS CEILING, stated rather than implied (DESIGN §4d): on a runner that can read the log, a group
+// whose logged authority still equals its resting row (generation 0, no transition) cannot tell a
+// row fallback from a real read, because both give the same answer. The supplied-roster witness
+// test.claim.spark.fabric_capacity_standing_witness drives the read arm with differing authorities.
+test fn the_live_entry_judges_exactly_what_the_runners_log_read_returned() -> Bool {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: _ } => false
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => false
+        Present { value: at } => {
+          let current = current_pair_serving_authorities(short_hostname: executor, at: at)
+          let reason = exit_reason(e: fabric_capacity_standing())
+          length(current) == length(spark_pair_serving_authorities)
+            && reason == exit_reason(e: fabric_capacity_standing_current(current: current))
+            && all(current, c => match c {
+              CurrentAuthorityUnread { group: g, step: s, reason: _ } =>
+                string_contains(s: reason, pattern: join([fabric_group_wire(g: g) as String, fabric_capacity_unread_marker, s], ""))
+              CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+                !string_contains(s: reason, pattern: join([fabric_group_wire(g: current_authority_group(c: c)) as String, fabric_capacity_unread_marker], ""))
+            })
+        }
       }
   }
 }

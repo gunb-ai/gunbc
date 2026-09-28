@@ -19,7 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 // Typed argv transport for sudo.NopasswdExecuteProbe.Check and sudo.NopasswdGrantList.Read —
-// program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828
+// program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 typed-argv
 // slice). Grant-list authorization is not inferred from exit zero: sudoers listpw may permit a
 // noninteractive list query because some other entry is NOPASSWD. The typed observation must also
 // contain an exact NOPASSWD row for the requested command path.
