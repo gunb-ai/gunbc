@@ -7,7 +7,7 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   CasReadableAbsent, CasReadablePresent, CasSlotVersion,
-  CasUnreadableReadRefused, cas_generation_count, CasGeneration,
+  CasUnreadableReadRefused, cas_generation_count, CasGeneration, cas_generation_first,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
@@ -315,10 +315,19 @@ test fn holder_equality_is_exact() -> Bool {
 // ONLY in the liveness verdict: a live holder blocks, an observed-dead holder is recovered at the
 // generation both the read and the report name, and an unobservable holder refuses -- never
 // recovered. There is no age input to vary: the assessment takes none.
+// The report's generation is taken from an observation, the only place a CasGeneration comes from.
+fn eh_generation_of(o: DurableHoldObservation) -> CasGeneration {
+  match o {
+    HoldSlotHeld { generation: g, owner: _ } => g
+    HoldSlotFree { generation: g, released_by: _ } => g
+    _ => cas_generation_first()
+  }
+}
+
 fn eh_report(holder: String, generation: Int, dead: Int) -> DurableHoldHolderReport {
   DurableHoldHolderReport {
     holder: eh_owner(text: holder),
-    generation: generation as CasGeneration,
+    generation: eh_generation_of(o: eh_held_at(owner: holder, generation: generation)),
     liveness: if dead == 0 { HolderObservedLive { evidence: "process 7 started at tick 90 still runs" } }
       else if dead == 1 { HolderObservedDead { evidence: "no process 7 on the holder's boot" } }
       else { HolderLivenessUnobservable { cause: "/proc/7/stat could not be read" } },
