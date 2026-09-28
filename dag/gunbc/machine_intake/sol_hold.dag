@@ -12,6 +12,33 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // fact about IPMI (DESIGN §3). The hold is still bash: process-hold is not a Node in the grammar
 // yet, so the transport is a marked scaffold rather than an unmarked script fused into the BMC
 // interface (review 67590).
+//
+// THE COLLECTOR'S STDIN IS OPEN AND SILENT, AND ITS LIFETIME IS THE COLLECTOR'S. `sol activate` is
+// interactive. ipmitool 1.8.19 lib/ipmi_sol.c ipmi_sol_red_pill tests stdin FIRST in an if/else over
+// its select set and forwards every byte it reads to the host as SOL input (processSolUserInput); a
+// read of <= 0 bytes sets bShouldExit. So /dev/zero TYPED an endless run of NULs at the host (and,
+// being always readable, starved the receive branch), and /dev/null is EOF, which ends the session
+// seconds after activation. The replacement is a fifo created 0600 beside the pid file, opened
+// read-write on fd 3 (a read-write open of a fifo does not block and makes the holder its own
+// writer, so no read ever returns EOF), unlinked at once, and handed to the collector as fd 0 with
+// fd 3 closed in the child. Nothing ever writes to it and no second process holds it: the last
+// descriptor is the collector's own, so the pipe ends with the collector. Keepalives are unaffected
+// -- the loop sends them at the top of every pass on SOL_KEEPALIVE_TIMEOUT whatever stdin holds.
+//
+// IF THE PID CANNOT BE PUBLISHED, THE CHILD THIS LAUNCH CREATED IS STOPPED. The collector is started
+// before its pid file is written; a pid destination that cannot be written used to leave a live,
+// unrecorded collector behind a failed launch that nothing would ever release. The launch now kills
+// and reaps exactly `$!` on that arm and exits nonzero -- never a global kill or a BMC deactivate.
+//
+// THE BUILD THIS IS READ FROM. srv1, reported 2026-09-27: `ipmitool -V` 1.8.19; dpkg ipmitool
+// 1.8.19-7ubuntu0.24.04.3 arm64; /usr/bin/ipmitool sha256 prefix 84b8c7b03972e809. That package's
+// debian/patches series (11 patches) touches lib/ipmi_tsol.c, sensor, SEL/SDR, lan print, time and
+// manpage paths and nothing in lib/ipmi_sol.c, so the loop above is upstream IPMITOOL_1_8_19.
+//
+// THE EXECUTABLE IS AN INPUT so the launch can be exercised against a probe: the boot passes
+// `ipmitool` (resolved on the runner's PATH, as every extdeps.bmc.ipmi operation is), and
+// test.claim.machine_intake.sol_hold_stdin_wet_witness passes a process that reports what arrived
+// on its stdin -- the executed evidence that the stdin supplies zero bytes and no EOF.
 
 data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -22,7 +49,7 @@ data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — holding `ipmitool sol activate` as a background collector (redirect, stdin from /dev/zero, pid file) is still a bash -c process-hold; paths are positional data (`$1`…`$5`), not interpolated shell syntax. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) or a typed process-hold realization starts a streaming session, redirects its bytes, and records the holder pid without a medium-as-string script")
+data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — holding `ipmitool sol activate` as a background collector (redirect, stdin from an unlinked read-write fifo, pid file) is still a bash -c process-hold; paths are positional data (`$1`…`$5`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) lands, or a typed process-hold realization starts a streaming session, redirects its bytes, and records the holder pid without a medium-as-string script")
 
 service gunbc.machine_intake.sol_hold {
   operation ActivateHeld {
@@ -32,19 +59,21 @@ service gunbc.machine_intake.sol_hold {
       password_file: NonEmptyStr
       capture_path: NonEmptyStr
       pid_path: NonEmptyStr
+      ipmitool: NonEmptyStr
     }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     transport shell {
       argv: [
         "bash",
         "-c",
-        "ipmitool -H \"$1\" -I lanplus -U \"$2\" -f \"$3\" sol activate >> \"$4\" 2>&1 < /dev/zero & echo $! > \"$5\"",
+        "in=$(mktemp -u \"$5.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" && { \"$6\" -H \"$1\" -I lanplus -U \"$2\" -f \"$3\" sol activate >> \"$4\" 2>&1 <&3 3<&- & p=$!; echo \"$p\" > \"$5\" || { kill \"$p\"; wait \"$p\"; exit 1; }; }",
         "sol-hold",
         "{bmc_host}",
         "{username}",
         "{password_file}",
         "{capture_path}",
-        "{pid_path}"
+        "{pid_path}",
+        "{ipmitool}"
       ]
     }
     exit {

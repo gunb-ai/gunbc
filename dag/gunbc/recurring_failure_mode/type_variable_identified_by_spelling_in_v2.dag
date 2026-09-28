@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.type_variable_identified_by_spelling_in_v2
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data type_variable_identified_by_spelling_in_v2: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_variable_identified_by_spelling_in_v2" as NonEmptyStr,
+
+  receipts: [
+    "**a type variable is identified by its SPELLING, not by the binder that declares it** (INVALID STATE: in the v2 pipeline a type parameter reference carries no link to its binder. v2.compiler.resolve rewrites a type-parameter atom to canonical_atom(identity: id), keeping only the name; v2.compiler.infer recognizes a callee's type variables by name, through v2.std.type_binder type_param_names; v2.std.node content_hash hashes the atom's identity. Two distinct type parameters that happen to share a spelling are therefore the same variable to every consumer after resolve.)",
+    "HARM, derived from reading those consumers and NOT YET OBSERVED BY EXECUTION: wherever two independent type variables with one spelling meet -- nested or sibling function values whose compiler-minted variables collide, or two generic declarations whose types flow into one unification -- infer can conflate them, unifying two variables that should vary independently. That is silent wrong typing. Resolve's no-shadowing rule (resolve_reason_type_parameter_shadows_visible_name) catches only the nested, lexically-visible case, and it catches it by refusing a legitimate program rather than by telling the variables apart.",
+    "RECEIPT (2026-09-27, fierce-gull-556, gunbc#12210 with gunbc#12283). gunbc#12210 minted a function value's elided return type as the bare fresh variable `'` for every literal. Once gunbc#12283 made a lambda-valued body reachable, the curried `x => y => x` refused resolve_reason_type_parameter_shadows_visible_name at `'` (seed-interpreted at gunbc#12283 ff6249c55f; two sibling lambdas in one module stayed Accepted). The shadow refusal is the visible symptom; the conflation it guards against is the class.",
+    "DISTINGUISHING FACTS. generic_type_parameter_resolved_as_an_ordinary_atom_in_v2 is the neighbour: that class had NO binder at all, so `T` fell to the ordinary name chain; this class has the binder (gunbc#12217) but identifies its uses by name after resolve. The recognition rule: two type-parameter binders with equal spellings, in scopes that can both reach one type, are indistinguishable to infer or content_hash.",
+    "RUNG FOUND AT: outside the ladder for the conflation arm (silent), mitigated for the nested-visible arm (refused). MITIGATION IN PLACE for COMPILER-MINTED variables: gunbc#12210 mints each function value's fresh type variables under a name unique by construction (the minting rule ruled on gunbc#12210), so minted names never collide. That does not cover AUTHORED type parameters that share a spelling across declarations whose types meet. THE ENCODING THIS MITIGATION RESTS ON, NAMED AS ITS POPULATION: v2.std.anonymous_binder fresh_type_variable spells each minted variable `<type-variable@P:L>` -- the structural path P and the binder label L packed into one Symbol, because a Symbol is the only identity those consumers read. Nothing recovers P, L, or positioned-versus-unpositioned from that spelling: v2.compiler.body_lowering_fold decides a function value's renaming by equality with names it builds from the Arrow's own domain labels (body_lower_arrow_declares_a_renamed_type_param). The encoding dissolves with this row's trigger, when type variables carry their binder instead of a name.",
+    "CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: type variables identified by their RESOLVED BINDER -- resolve links each type-parameter reference to its declaring binder, and infer, unification and content_hash compare that binder identity, never the spelling -- so two variables with one name cannot be conflated and the shadow refusal for unauthorable minted names becomes unnecessary.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_type_param_binder", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "type_param_names", field: WholeDeclaration },
+  ],
+}

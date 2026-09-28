@@ -6540,24 +6540,25 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
         );
+        let closure_source_indices = merged_module_source_indices(typed.modules.clone());
         let clone_bounded = crate::v1_compiler_trait_derive_emit::v1_clone_bounded_type_params(
             base_info.type_decl_items.clone(),
-            merged_module_source_indices(typed.modules.clone()),
+            closure_source_indices.clone(),
         );
         let map_key_required = crate::v1_compiler_trait_derive_emit::v1_map_key_required_type_names(
             v1_map_key_seed_type_exprs(
                 typed.modules.clone(),
                 base_info.type_decl_items.clone(),
-                merged_module_source_indices(typed.modules.clone()),
+                closure_source_indices.clone(),
             ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
-            merged_module_source_indices(typed.modules.clone()),
+            closure_source_indices.clone(),
         );
         let clone_impl_required =
             crate::v1_compiler_trait_derive_emit::v1_clone_impl_required_type_params(
                 base_info.type_decl_items.clone(),
-                merged_module_source_indices(typed.modules.clone()),
+                closure_source_indices.clone(),
             );
         let data_items = build_data_item_index(typed.modules.clone());
         let module_index = build_module_index(
@@ -7406,12 +7407,8 @@ pub fn closure_needs_module_filename_stub(
     ctx: Rc<EmitRustContext>,
     filename: String,
 ) -> bool {
-    (closure_references_module_filename(typed.clone(), ctx.clone(), filename.clone())
-        && !typed_closure_includes_module_filename(
-            typed.modules.clone(),
-            filename.clone(),
-            merged_module_source_indices(typed.modules.clone()),
-        ))
+    (!typed_closure_includes_module_filename(typed.modules.clone(), filename.clone())
+        && closure_references_module_filename(typed.clone(), ctx.clone(), filename.clone()))
 }
 
 pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
@@ -15395,13 +15392,15 @@ pub fn module_data_field_struct_import_names(
 pub fn typed_closure_includes_module_filename(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     filename: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
         for tm in typed_modules.iter().cloned() {
             if (crate::gunbc_rust_emitted_edge::module_to_filename(
-                crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone()),
+                crate::v1_std_core::authored_name_at(
+                    tm.type_env.clone().source_indices.clone(),
+                    tm.module.clone(),
+                ),
             ) == filename.clone())
             {
                 __found = true;
@@ -31610,25 +31609,21 @@ pub fn struct_candidates_by_field_names(
             for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
                 if match (*summary.repr.clone()).clone() {
                     TypeRepr::StructRepr => {
-                        let ftm_keys =
-                            Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()));
-                        if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
-                            {
-                                let mut __all = true;
-                                for fn_name in field_names.iter().cloned() {
-                                    if !(v1_rt::map_contains_key(
-                                        &summary.field_type_map.clone(),
-                                        fn_name.clone(),
-                                    )) {
-                                        __all = false;
-                                        break;
-                                    }
+                        ({
+                            let mut __all = true;
+                            for fn_name in field_names.iter().cloned() {
+                                if !(v1_rt::map_contains_key(
+                                    &summary.field_type_map.clone(),
+                                    fn_name.clone(),
+                                )) {
+                                    __all = false;
+                                    break;
                                 }
-                                __all
                             }
-                        } else {
-                            false
-                        }
+                            __all
+                        } && ((Rc::new(v1_rt::map_keys(&summary.field_type_map.clone())).len()
+                            as i64)
+                            == n_fields.clone()))
                     }
                     _ => false,
                 } {

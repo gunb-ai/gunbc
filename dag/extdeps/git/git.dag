@@ -1082,6 +1082,11 @@ fn git_observe_meta_shell_fragment() -> String {
 // git.Core LogPathCommits is git-log(1) --format=%H -- <path>: every commit reachable from HEAD
 // that changed <path>, newest first. It needs history: on a shallow clone it answers only the
 // commits present.
+// git.Core RestoreBlobTo is git-restore(1) --source=<ref> --worktree -- <path> under --work-tree=<dir>: writes the blob
+// at <ref>:<path> to <dir>/<path> BYTE-EXACTLY and leaves the index untouched. This is the
+// byte-exact counterpart of Show: Show's content arrives through the shell stdout channel, whose
+// retained text is trailing-whitespace trimmed, so it cannot carry a blob whose meaning ends in
+// whitespace (a patch ending in blank context lines). Read <dir>/<path> with Filesystem.Read.
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -1328,6 +1333,19 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"
+    }
+  }
+
+  operation RestoreBlobTo {
+    input { ref: GitRef, path: FilePath, work_tree: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "--work-tree={work_tree}", "restore", "--source={ref}", "--worktree", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Path absent at ref, invalid ref, or not a git repository"
     }
   }
 

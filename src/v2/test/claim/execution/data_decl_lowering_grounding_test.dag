@@ -23,6 +23,8 @@ import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rej
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  OrderLabels,
+  arrow_signature_order_read,
   Arrow,
   Atom,
   Conj,
@@ -192,22 +194,20 @@ fn ddl_edge_is_body(e: Edge) -> Bool {
   }
 }
 
-// An Arrow shaped the way a lowered nullary fn is: a childless domain, the declared type twice,
-// and a body edge whose target is the int literal ATOM (never its digit list).
+// An Arrow shaped the way a lowered nullary fn is: a childless domain, the declared type twice, the
+// declared parameter order -- here the EMPTY list, one order edge (v2.std.node
+// arrow_signature_order_read) -- and a body edge, found by its label, whose target is the int literal
+// ATOM (never its digit list). Five children.
 fn ddl_is_nullary_literal_arrow(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: n.children, index: 0) {
         Absent => false
         Present { value: domain } =>
-          match list_at_optional(xs: n.children, index: 3) {
-            Absent => false
-            Present { value: body } =>
-              (length(xs: n.children) == 4)
-                && ddl_edge_target_childless(e: domain)
-                && ddl_edge_is_body(e: body)
-                && ddl_edge_target_is_int_literal(e: body)
-          }
+          (length(xs: n.children) == 5)
+            && ddl_edge_target_childless(e: domain)
+            && (arrow_signature_order_read(children: n.children) == OrderLabels { labels: [] })
+            && any(xs: n.children, predicate: fn(e) { ddl_edge_is_body(e: e) && ddl_edge_target_is_int_literal(e: e) })
       }
     _ => false
   }

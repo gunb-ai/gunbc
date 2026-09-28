@@ -3350,19 +3350,20 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
+  let closure_source_indices = merged_module_source_indices(modules: typed.modules)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
-    source_indices: merged_module_source_indices(modules: typed.modules)
+    source_indices: closure_source_indices
   )
   let map_key_required = v1_map_key_required_type_names(
-    seed_type_exprs: v1_map_key_seed_type_exprs(modules: typed.modules, type_decl_items: base_info.type_decl_items, source_indices: merged_module_source_indices(modules: typed.modules)),
+    seed_type_exprs: v1_map_key_seed_type_exprs(modules: typed.modules, type_decl_items: base_info.type_decl_items, source_indices: closure_source_indices),
     extra_seed_names: hand_maintained_map_key_required_type_names,
     type_decl_items: base_info.type_decl_items,
-    source_indices: merged_module_source_indices(modules: typed.modules)
+    source_indices: closure_source_indices
   )
   let clone_impl_required = v1_clone_impl_required_type_params(
     type_decl_items: base_info.type_decl_items,
-    source_indices: merged_module_source_indices(modules: typed.modules)
+    source_indices: closure_source_indices
   )
   let data_items = build_data_item_index(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules, leaf_owner_modules: base_info.item_leaf_owner_modules)
@@ -3739,13 +3740,15 @@ fn closure_references_module_filename(typed: ResolvedGraph, ctx: EmitRustContext
 // REFERENCED BUT ABSENT, and both halves read the resolved graph. `includes` is exact -- a module
 // is in the closure or it is not -- so the superset lives entirely in the reference half and the
 // conjunction inherits its one-sided direction.
+//
+// ABSENCE IS ASKED FIRST because it is the half that can end the question. `includes` reads one
+// name per module; the reference half re-derives every module's reference candidates. When the
+// module is in the closure -- every whole-closure emit, which is the stage0 regen -- the answer is
+// already false, and asking the reference half first walked the whole closure twice per emit (once
+// per stub filename) to produce a Bool the conjunction then discarded.
 fn closure_needs_module_filename_stub(typed: ResolvedGraph, ctx: EmitRustContext, filename: String) -> Bool {
-  closure_references_module_filename(typed: typed, ctx: ctx, filename: filename)
-    && !typed_closure_includes_module_filename(
-      typed_modules: typed.modules,
-      filename: filename,
-      source_indices: merged_module_source_indices(modules: typed.modules)
-    )
+  !typed_closure_includes_module_filename(typed_modules: typed.modules, filename: filename)
+    && closure_references_module_filename(typed: typed, ctx: ctx, filename: filename)
 }
 
 fn emit_v2_std_integer_closure_stub_module() -> TextFile {
@@ -7281,8 +7284,8 @@ fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<
     }))
 }
 
-fn typed_closure_includes_module_filename(typed_modules: List<TypedModule>, filename: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  typed_modules |> any(tm => module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == filename)
+fn typed_closure_includes_module_filename(typed_modules: List<TypedModule>, filename: String) -> Bool {
+  typed_modules |> any(tm => module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) == filename)
 }
 
 // The runtime and facade paths below are rendered FROM gunbc.rust_emitted_edge
@@ -14145,16 +14148,21 @@ fn record_field_expected_type(struct_node: Node, outer_type_name: String?, field
   }
 }
 
+// A STRUCT IS A CANDIDATE WHEN ITS FIELD SET IS THE LITERAL'S: every literal field present and no
+// other field. PRESENCE IS ASKED FIRST because it is the half that ends the question for almost every
+// struct -- one hash lookup, short-circuiting on the first literal field the struct lacks -- where the
+// count built and SORTED the struct's whole key list before a single name was compared, once per
+// struct per anonymous record literal. The count needs no order, so it reads the keys unsorted. The
+// literal's names are unique (02_parse refuses a repeated field init), so presence plus equal count
+// is exactly set equality, as before.
 fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let n_fields = field_names |> count
   if n_fields == 0 { return [] }
   map_values(type_summaries) |> filter(summary =>
     match summary.repr {
       StructRepr =>
-        let ftm_keys = sorted_map_keys(summary.field_type_map)
-        if ftm_keys |> count == n_fields {
-          field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
-        } else { false }
+        field_names |> all(fn_name => map_contains_key(summary.field_type_map, fn_name))
+          && (map_keys(summary.field_type_map) |> count) == n_fields
       _ => false
     }
   )

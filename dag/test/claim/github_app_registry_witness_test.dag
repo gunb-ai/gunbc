@@ -609,7 +609,7 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
         AcceptInstallationPermissions => false
         ApplyAppPermissionChange => false
       }
-        && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai"
+        && locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot"
         && match postcondition {
              AppHasRegisteredSigningKey { app: a } => a.app_id.value == 3909950
              _ => false
@@ -790,7 +790,7 @@ test fn witness_registration_readback_preserves_unknown_provider_permission() ->
 }
 
 test fn witness_settings_locator_names_the_app_slug() -> Bool {
-  app_settings_permissions_locator(app: gunbai_bot_declared).locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
+  app_settings_permissions_locator(app: gunbai_bot_declared).locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot/permissions"
 }
 
 test fn witness_fingerprint_mismatch_is_detected() -> Bool {
@@ -863,7 +863,7 @@ test fn witness_registration_gap_precedes_installation_approval() -> Bool {
   ) {
     AppRegistrationPermissionMissing { request } =>
       count(request.add) == 1
-        && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai/permissions"
+        && request.settings_locator.locator == "github.com/organizations/gunb-ai/settings/apps/gunbai-bot/permissions"
         && fold_list(xs: request.add, empty: false, cons: fn(_a, p) { permission_axis_wire_name(axis: p.name) == "workflows" })
     _ => false
   }

@@ -1,13 +1,8 @@
 module test.claim.executor_privileged_operation_witness
 
 import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  RunnerHostSudoersArtifact,
-  registry_contains,
-  artifact_path,
-  artifact_is_committed,
-}
+import gunbc.generated_artifact { GeneratedArtifact, RunnerHostSudoersArtifact, artifact_path, artifact_is_committed }
+import gunbc.generated_artifact_registry { registry_contains }
 import gunbc.generated_artifact_emit {
   artifact_generate,
   ArtifactGenerated,

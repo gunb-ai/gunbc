@@ -40,6 +40,12 @@ fn shape_scp_copy_to_argv(
   [local_path as String, join([host as String, ":", remote_path as String], "")]
 }
 
+// ssh(1) EXIT STATUS (OpenBSD 7.6): "ssh exits with the exit status of the remote command or with 255
+// if an error occurred." 255 is the CLIENT's status: it does not establish that the remote command
+// did not run -- a connection lost after the command started, or before its status came back, also
+// ends here. A command that itself exits 255 is indistinguishable from it at this boundary.
+data ssh_client_error_exit_status: Int = 255
+
 type SshSessionExecResult {
   exit_code: Int
   success: Bool

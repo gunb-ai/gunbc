@@ -1,11 +1,12 @@
 module std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any, filter }
-import v2.std.collection { List }
+import v2.std.algebra { filter, fold_list, list_flat_map }
+import v2.std.collection { List, empty_map, map_insert, map_lookup }
+import std.types { Map }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
-import v2.std.optional { Optional, optional_absent, optional_present }
+import v2.std.optional { Optional }
 
 // THE KIND OF A TYPE-LEVEL NODE, AT ONE LEVEL (Type_0 only, no universe tower). A node that DENOTES
 // a type -- the Int inhabitant, a fn Arrow between inhabitants -- has a type too, and that type is
@@ -48,15 +49,28 @@ fn kind_node(kind: Kind) -> Node {
 //     composites built from records (e.g. a fn Arrow whose positions are records).
 // A node that is not a member of the roster has no kind here (Absent).
 
+// THE ROSTER-KIND INDEX, DERIVED ONCE PER ROSTER AND KEYED BY THE NODE. A member's kind is a fact
+// about the ROSTER, not about the node that asks: it is fixed when the roster is declared, so it is
+// derived once and every query reads it (DESIGN section 2: the demand is shared at its least common
+// ancestor, the run that consults the roster, never re-produced per query and never cached per
+// query node). The index is a v2.std.collection Map from each member to its kind: every member is
+// entered as TypeDenotationKind, then every fact a record states is entered as TypeFactKind over
+// it, so a member that is also a fact answers TypeFactKind, exactly as the definition above
+// requires. A query is one keyed lookup, so a run's cost is (nodes + roster), not (nodes x roster)
+// (DESIGN section 6, bare minimum cost).
+//
 // LINEAR IN THE ROSTER. A record's facts are its subtree minus the record and its subject, and only
 // a RECORD (a member carrying the subject field) walks a subtree -- every other member answers at
-// the named-child lookup -- so a classification visits each record's subtree once, never a subtree
-// per member and never through a copied accumulator (DESIGN section 6, bare minimum cost). That
-// bound holds because records do not nest in the declared-inhabitants rosters; a record inside
-// another record's facts would be walked once per enclosing record. A record is
-// found through the canonical accessor v2.std.node_query named_child_lookup, which already requires
-// a Conj; an ambiguous subject field is not a record (the language authorities declare one subject
-// edge per record).
+// the named-child lookup -- so building the index visits each record's subtree once, never a
+// subtree per member and never through a copied accumulator. That bound holds because records do
+// not nest in the declared-inhabitants rosters; a record inside another record's facts would be
+// walked once per enclosing record. A record is found through the canonical accessor
+// v2.std.node_query named_child_lookup, which already requires a Conj; an ambiguous subject field
+// is not a record (the language authorities declare one subject edge per record).
+
+type RosterKindIndex {
+  kinds: Map<Node, Kind>
+}
 
 fn kind_record_fact_nodes(record: Node, subject_field: Symbol) -> List<Node> {
   match named_child_lookup(root: record, name: subject_field) {
@@ -70,27 +84,33 @@ fn kind_record_fact_nodes(record: Node, subject_field: Symbol) -> List<Node> {
   }
 }
 
-fn kind_node_is_fact_of_record(record: Node, subject_field: Symbol, n: Node) -> Bool {
-  any(
-    xs: kind_record_fact_nodes(record: record, subject_field: subject_field),
-    predicate: fn(fact) { fact == n }
+fn roster_kind_enter(kinds: Map<Node, Kind>, nodes: List<Node>, kind: Kind) -> Map<Node, Kind> {
+  fold_list(
+    xs: nodes,
+    empty: kinds,
+    cons: fn(acc, n) { roster_kind_enter_one(kinds: acc, n: n, kind: kind) }
   )
 }
 
-fn roster_member_kind(roster: Node, subject_field: Symbol, n: Node) -> Optional<Kind> {
+fn roster_kind_enter_one(kinds: Map<Node, Kind>, n: Node, kind: Kind) -> Map<Node, Kind> {
+  map_insert(m: kinds, key: n, value: kind)
+}
+
+fn roster_kind_index(roster: Node, subject_field: Symbol) -> RosterKindIndex {
   let members = node_subtree_nodes(root: roster)
-  if any(xs: members, predicate: fn(member) { member == n }) {
-    if any(
-      xs: members,
-      predicate: fn(record) {
-        kind_node_is_fact_of_record(record: record, subject_field: subject_field, n: n)
-      }
-    ) {
-      optional_present(value: TypeFactKind)
-    } else {
-      optional_present(value: TypeDenotationKind)
-    }
-  } else {
-    optional_absent()
+  let denotations = roster_kind_enter(kinds: empty_map(), nodes: members, kind: TypeDenotationKind)
+  RosterKindIndex {
+    kinds: roster_kind_enter(
+      kinds: denotations,
+      nodes: list_flat_map(
+        xs: members,
+        f: fn(record) { kind_record_fact_nodes(record: record, subject_field: subject_field) }
+      ),
+      kind: TypeFactKind
+    )
   }
+}
+
+fn roster_kind_index_lookup(index: RosterKindIndex, n: Node) -> Optional<Kind> {
+  map_lookup(m: index.kinds, key: n)
 }

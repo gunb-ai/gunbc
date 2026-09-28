@@ -17,7 +17,7 @@ import gunbc.rust_item_identity {
   RustTypeAlias,
   rust_item_identity_key
 }
-import std.algebra { trim, list_snoc_item }
+import std.algebra { trim, list_snoc_item, freemonoid_empty }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.algebra { any, filter, fold_list, length, list_map }
 
@@ -523,13 +523,13 @@ fn list_drop_last<T>(xs: List<T>) -> List<T> {
   let n = length(xs: xs)
   fold_list(
     xs: xs,
-    empty: [] as List<T>,
+    empty: freemonoid_empty(),
     cons: fn(acc, x) { if length(xs: acc) + 1 >= n { acc } else { list_snoc_item(xs: acc, item: x) } }
   )
 }
 
 fn list_last_scope(xs: List<RustScanScope>) -> List<RustScanScope> {
-  fold_list(xs: xs, empty: [] as List<RustScanScope>, cons: fn(_acc, x) { [x] })
+  fold_list(xs: xs, empty: freemonoid_empty(), cons: fn(_acc, x) { [x] })
 }
 
 fn scan_scope_depth(state: RustScanState) -> Int {

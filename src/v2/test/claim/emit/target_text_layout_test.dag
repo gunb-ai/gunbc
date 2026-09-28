@@ -16,7 +16,7 @@ import v2.std.compilers.target_model {
   render_target_text,
   fixed_token_spelling_from_model
 }
-import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.compiler.target_serialize { target_serialize_relation_row_from_model_bounded }
 import v2.extdeps.languages.verilog {
   verilog_interlock_emitted,
   verilog_relation_row_for,

@@ -6508,6 +6508,27 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
   }
 }
 
+// A `Present { .. }` ARM OVER A SCRUTINEE WHOSE TYPE DID NOT RESOLVE REFUSES. Whether that arm reads an
+// optional's present value is decided from the scrutinee's type (annotate_pattern_parent_enums stamps
+// parent_enum Optional), and the interpreter's raw-payload peel reads that stamp. With the subject
+// blocked the stamp is none, and a present optional whose payload is itself a variant then MISSES the
+// arm and falls to the next one -- a silent wrong answer (gunbc.recurring_failure_mode
+// generic_variant_without_expected_type_leaves_a_present_arm_undecided). The reviewed distinction is
+// Present versus Absent only: an Absent arm matches Null and Optional.Absent without the stamp, so its
+// meaning does not rest on the missing type. Scope: a direct arm pattern over a PatternLookupBlocked
+// scrutinee; nested field patterns are not audited here.
+fn present_arms_over_unresolved_scrutinee(arms: List<Node>, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  flat_map(arms, arm =>
+    match arm_pattern(n: arm) {
+      VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
+        if qualified_last_segment(name: n) == "Present" && pe == none {
+          [make_error_node(diagnostic: PresentArmScrutineeTypeUnresolved { pattern: n, span: span }, module_name: module_name)]
+        } else { [] }
+      _ => []
+    }
+  )
+}
+
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue })
@@ -8503,10 +8524,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         PatternDynamic { span: _ } => []
         PatternLookupBlocked => []
       }
+      let unresolved_present_arm_diags = match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
+        PatternLookupBlocked => present_arms_over_unresolved_scrutinee(arms: typed_arms, span: span, module_name: scope.module_name)
+        _ => []
+      }
       let match_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprMatch, children: concat([scrut_typed], typed_arms), inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
-        diagnostics: concat(scrut_diags, arm_diags, arm_join_diags, empty_arms_diags, exhaustiveness_diags)
+        diagnostics: concat(scrut_diags, arm_diags, arm_join_diags, empty_arms_diags, exhaustiveness_diags, unresolved_present_arm_diags)
       }
 
     ExprIf =>
