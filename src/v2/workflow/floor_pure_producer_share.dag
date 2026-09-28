@@ -884,6 +884,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_let_annotation.bla_ambiguous_kernel_int_literal",
   "v2.test.claim.body_let_annotation.bla_symbol_literal_as_int",
   "v2.test.claim.body_let_annotation.bla_symbol_literal_as_int_inferred",
+  "v2.test.claim.body_let_annotation.bla_symbol_literal_as_symbol",
+  "v2.test.claim.body_let_annotation.bla_symbol_literal_as_symbol_inferred",
   "v2.test.claim.body_let_annotation.bla_annotated_bind_emitted",
   "v2.test.claim.body_let_annotation.bla_reordered_self_reference",
   "v2.test.claim.body_let_annotation.bla_reordered_outer_reference",

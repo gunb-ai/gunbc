@@ -38,7 +38,6 @@ import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length, list_snoc_item, skip }
-import v2.std.grammar { node_atom_identity_optional }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -400,13 +399,17 @@ test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
     && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
 }
 
-// (5c) A SYMBOL LITERAL'S TYPE IS NOT DERIVED, AND AN ANNOTATION THAT DEMANDS ONE IS NEVER PASSED AS
-// MATCHED. MQ-1 PR-2 lowers `^s` to a symbol literal (v2.extdeps.languages.dag dag_symbol_literal_node)
-// but no v2 node yet denotes v2.std.node Symbol (gunbc.symbol_identity_census
-// symbol_nominality_next_rung_trigger (a)), so infer leaves the literal on the counted
-// GroundingNotDerived frontier. `let y: Int = ^s` must therefore either refuse or carry that frontier
-// advisory AT THE LITERAL (the `^` atom); an infer that typed the literal as Int -- a fabricated
-// grounding -- would admit the ascription with no such advisory, and this row reds.
+// (5d) A SYMBOL LITERAL IS TYPED AS v2.std.node Symbol. MQ-1 PR-2 lowers `^s` to a symbol literal
+// (v2.extdeps.languages.dag dag_symbol_literal_node), and the one canonical-literal decision
+// (dag_canonical_literal_from_node) now reads it as DagCanonicalSymbolLiteral, whose type binding
+// denotes v2.std.node symbol_type_node. RED BEFORE: infer left the literal on the counted
+// GroundingNotDerived frontier (gunbc.symbol_identity_census symbol_nominality_next_rung_trigger
+// (a)). `let y: Int = ^s` was then admitted with the frontier advisory at the caret, and
+// `let y: Symbol = ^s` was admitted without being judged.
+// - `let y: Int = ^s` refuses at the annotation with coercion's typed mismatch.
+// - `let y: Symbol = ^s` is admitted, its annotation is the Symbol binding, and no
+//   grounding-not-derived advisory is located at the literal or its name payload: the literal's
+//   frontier count is 0.
 fn bla_symbol_literal_as_int() -> Outcome<Node> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = ^bla_sym\n  x\n}\n")
 }
@@ -415,12 +418,23 @@ fn bla_symbol_literal_as_int_inferred() -> Outcome<Bool> {
   bla_infers(o: bla_symbol_literal_as_int())
 }
 
-fn bla_frontier_at_caret(xs: List<Diagnostic>) -> Bool {
+fn bla_symbol_literal_as_symbol() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Symbol = ^bla_sym\n  x\n}\n")
+}
+
+fn bla_symbol_literal_as_symbol_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_symbol_literal_as_symbol())
+}
+
+// A grounding-not-derived advisory located at the symbol literal: its caret atom or its name
+// payload (`bla_sym`). The fixture's other nodes carry their own frontier advisories, which the Int
+// literal control (5b) carries equally, so the count that must be 0 is the literal's own.
+fn bla_frontier_at_symbol_literal(xs: List<Diagnostic>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(held, d) {
     held || ((d.reason == ^infer_grounding_not_derived) && match d.at {
       NodeLocus { anchor: a } =>
-        match node_atom_identity_optional(node: a.at) {
-          Present { value: id } => id == ^dag_token_caret
+        match bla_atom_identity(n: a.at) {
+          Present { value: id } => (id == ^dag_token_caret) || (id == ^bla_sym)
           Absent => false
         }
       _ => false
@@ -428,13 +442,23 @@ fn bla_frontier_at_caret(xs: List<Diagnostic>) -> Bool {
   })
 }
 
-test fn bla_symbol_literal_ascribed_int_is_never_passed_as_matched() -> Bool {
+test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
   tpb_accepts(o: bla_symbol_literal_as_int())
     && match bla_symbol_literal_as_int_inferred() {
-      Rejected { diagnostics: _ } => true
-      Accepted { value: _, diagnostics: None } => false
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
+    }
+}
+
+test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
+  bla_annotation_is(o: bla_symbol_literal_as_symbol(), id: ^symbol_node_symbol)
+    && match bla_symbol_literal_as_symbol_inferred() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: _, diagnostics: None } => true
       Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
-        bla_frontier_at_caret(xs: Cons { head: d.head, tail: d.tail })
+        !bla_frontier_at_symbol_literal(xs: Cons { head: d.head, tail: d.tail })
     }
 }
 
