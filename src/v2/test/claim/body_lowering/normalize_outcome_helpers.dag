@@ -1,9 +1,8 @@
 module v2.test.claim.body_lowering.normalize_outcome_helpers
 
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
-import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_lexeme }
 
 fn body_lowering_normalize_outcome(src: String, file: Symbol) -> String {
   match conserved_normalize_of_text(path: symbol_lexeme(sym: file), text: src, explained: no_explained_drops()) {

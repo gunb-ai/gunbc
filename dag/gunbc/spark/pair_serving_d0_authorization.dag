@@ -71,7 +71,7 @@ fn d0_authorization_request(group: FabricGroup, escalation_id: NonEmptyStr, tran
     D0SubjectRefused { defects: d } => D0RequestRefused { defects: d }
     D0SubjectFor { subject: s } =>
       match d0_intent_hash(subject: s, group: group, transaction: transaction) {
-        Absent => D0RequestUnestablished { obligations: ["the intent over the exact operation could not be digested (sha256sum unavailable)" as NonEmptyStr] }
+        Absent => D0RequestUnestablished { obligations: ["the intent over the exact operation could not be stated and digested (sha256sum unavailable, or the scope has no wire)" as NonEmptyStr] }
         Present { value: i } => D0RequestFor { request: d0_request(escalation_id: escalation_id, subject: s, transaction: transaction, intent: i) }
       }
   }
@@ -101,7 +101,7 @@ fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr
         D0FiledRequestRefused { reason: join(["the frozen filing under this escalation is transaction ", parsed.transaction as String, ", not ", transaction as String], "") as NonEmptyStr }
       } else {
         match d0_intent_hash(subject: parsed.subject, group: group, transaction: transaction) {
-          Absent => D0FiledRequestRefused { reason: "the frozen intent could not be digested (sha256sum unavailable)" as NonEmptyStr }
+          Absent => D0FiledRequestRefused { reason: "the frozen intent could not be stated and digested (sha256sum unavailable, or the scope has no wire)" as NonEmptyStr }
           Present { value: i } => D0FiledRequestFor { request: d0_request(escalation_id: escalation_id, subject: parsed.subject, transaction: transaction, intent: i), intent_text: frozen.intent_text }
         }
       }
@@ -111,7 +111,7 @@ fn d0_filed_request(text: String, group: FabricGroup, escalation_id: NonEmptyStr
 }
 
 // The intent text a live request is frozen as: the same bytes its intent hash was taken over.
-fn d0_request_intent_text(request: AuthorizationRequest<D0Subject>, group: FabricGroup, transaction: NonEmptyStr) -> String {
+fn d0_request_intent_text(request: AuthorizationRequest<D0Subject>, group: FabricGroup, transaction: NonEmptyStr) -> String? {
   d0_intent_text(subject: request.subject, group: group, transaction: transaction)
 }
 

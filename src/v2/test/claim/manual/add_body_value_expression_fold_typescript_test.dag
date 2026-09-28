@@ -5,7 +5,7 @@ import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body,
   table_fixture_add_arrow_with_body_swapped_operands
 }
-import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript {
   ts_add_return_body_tokens,

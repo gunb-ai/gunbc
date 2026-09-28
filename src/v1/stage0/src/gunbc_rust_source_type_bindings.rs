@@ -237,7 +237,7 @@ pub fn symbol_capture_declarers() -> Rc<Vec<Rc<SymbolCaptureDeclarer>>> {
             "return FreeMonoid<Symbol>".to_string(),
         ),
         symbol_capture_declarer(
-            "v2.compiler.translate".to_string(),
+            "v2.compiler.target_serialize".to_string(),
             "target_bundle_child".to_string(),
             "edge_name".to_string(),
         ),

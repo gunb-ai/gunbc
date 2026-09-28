@@ -29,7 +29,7 @@ data generic_type_parameter_resolved_as_an_ordinary_atom_in_v2: RecurringFailure
     DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_arrow_node", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_children_homogeneous_scope", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.inhabitance", decl_name: "inhabitance_formal_declaration", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_bodied_arrow_from_model", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.target_serialize", decl_name: "target_serialize_bodied_arrow_from_model", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_project", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.type_param_binder_frame", decl_name: "tpb_type_param_shadowing_a_visible_name_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.type_param_binder_frame", decl_name: "tpb_type_decl_param_shadowing_a_visible_name_refuses", field: WholeDeclaration },
