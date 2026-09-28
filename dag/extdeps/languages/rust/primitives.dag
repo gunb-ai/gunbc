@@ -154,10 +154,14 @@ type RustFloatBindingVerdict
   | RustFloatBindingNoPrimitive { target_name: String }
 
 fn rust_grounding_primitive_named(target_name: String) -> Bool {
-  rust_grounding_primitives |> any(p => match p {
-    IntegerPrimitive { target_name: n, algebra: _, carrier: _, range_min_inclusive: _, range_max_inclusive: _, is_copy: _, overflow: _ } => false
+  rust_grounding_primitives |> fold(init: false, f: (found, p) => if found { true } else { rust_primitive_is_float_named(p: p, target_name: target_name) })
+}
+
+fn rust_primitive_is_float_named(p: RustPrimitive, target_name: String) -> Bool {
+  match p {
+    IntegerPrimitive { target_name: _, algebra: _, carrier: _, range_min_inclusive: _, range_max_inclusive: _, is_copy: _, overflow: _ } => false
     NonIntegerPrimitive { target_name: n, algebra: a, carrier: _, is_copy: _ } => n == target_name && a == ApproximateFieldAlgebra
-  })
+  }
 }
 
 // The denotation rows are a parameter so a claim can plant a mismatched table at this interface;
