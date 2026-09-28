@@ -1,0 +1,13 @@
+module test.claim.workspace_supply_host_boundary_witness_test
+
+import std.types { Bool }
+import gunbc.workspace_allocation_supply { workspace_observe_host_supply, WorkspaceHostSupplyUnavailable }
+
+// This is a live hostname read, with an impossible hostname (Linux hostnames cannot contain /).
+// Refusal occurs before fabric probes or reads of the local readiness authority.
+test fn foreign_host_supply_refuses_before_local_authorities_are_read() -> Bool {
+  match workspace_observe_host_supply(host: "foreign/host") {
+    WorkspaceHostSupplyUnavailable { reason: detail } => detail == "workspace supply must be observed on the requested host"
+    other => false
+  }
+}

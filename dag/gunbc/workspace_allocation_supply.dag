@@ -1,6 +1,11 @@
 module gunbc.workspace_allocation_supply
 
 import std.types { NonEmptyStr, String, List, Int, Timestamp, EpochSecs }
+import std.algebra { trim }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
 import std.decl_ref { DeclarationRef }
 import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree }
@@ -41,11 +46,25 @@ type WorkspaceHostSupplyObservation {
 type WorkspaceSupplyRefusal { slot: RunnerSlotIdentity, reason: NonEmptyStr }
 type WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply, refused: List<WorkspaceSupplyRefusal> }
 
-fn workspace_observe_host_supply(host: HostIdentity) -> WorkspaceHostSupplyObservation {
-  WorkspaceHostSupplyObservation {
-    host: host, cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host)),
-    readiness: read_cell_readiness_store(),
-    observed_at: match clock_now_probed_at() { Present { value: instant } => instant as String Absent => "" },
+type WorkspaceHostSupplyRead
+  = WorkspaceHostSupplyObserved { observation: WorkspaceHostSupplyObservation }
+  | WorkspaceHostSupplyUnavailable { reason: NonEmptyStr }
+
+// Readiness and hold paths are host-local authorities. Refuse another host before probing any
+// supply or reading readiness; remote orchestration must execute this observer on that host.
+fn workspace_observe_host_supply(host: HostIdentity) -> WorkspaceHostSupplyRead {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputAbsent => WorkspaceHostSupplyUnavailable { reason: "local host identity is absent" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostSupplyUnavailable { reason: "local host identity is unreadable" }
+    ProcessOutputPresent { text: hostname } => if trim(s: hostname) == "" || trim(s: hostname) != (host as String) {
+      WorkspaceHostSupplyUnavailable { reason: "workspace supply must be observed on the requested host" }
+    } else {
+      WorkspaceHostSupplyObserved { observation: WorkspaceHostSupplyObservation {
+        host: host, cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host)),
+        readiness: read_cell_readiness_store(),
+        observed_at: match clock_now_probed_at() { Present { value: instant } => instant as String Absent => "" },
+      } }
+    }
   }
 }
 
