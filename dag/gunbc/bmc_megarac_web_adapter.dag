@@ -3,9 +3,9 @@ module gunbc.bmc_megarac_web_adapter
 import std.types { Bool, Int, List, String }
 import std.measure { Second, second_count }
 import v2.std.algebra { contains }
+import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_bool, json_string, serialize_json }
 import extdeps.bmc.megarac {
-  MegaRacLoginAccepted, MegaRacLoginRefused,
-  megarac_login_reply_status, megarac_login_reply_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
+  MegaRacLoginSession, megarac_login_session_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
 }
 import gunbc.bmc_model {
   BmcWorld, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController, BmcWebLoginAccepted, BmcWebLoginRefused,
@@ -65,27 +65,39 @@ fn megarac_stream_open(world: BmcWorld) -> Bool {
   }
 }
 
-// ONE REQUEST AGAINST ONE WORLD, answered by the model. The statuses a refused connect or logout
-// carries (403 / 401) are the renderer's: 0.32's refusal wire was not captured (extdeps.bmc.megarac).
+// THE RENDERER'S REFUSALS. 0.32's refusal wire was not captured (extdeps.bmc.megarac states none), so a
+// refused login, connect or logout is rendered with these statuses and an empty JSON object. They are
+// this adapter's choice, typed as such: the observer keys only on "not ok === 0" and "no 101", so no
+// claim about the controller rests on them. A captured refusal replaces them.
+data megarac_web_login_refusal_status: Int = 401
+data megarac_web_connect_refusal_status: Int = 403
+data megarac_web_logout_refusal_status: Int = 401
+
+fn megarac_web_refusal(world: BmcWorld, status: Int) -> MegaRacWebAnswer {
+  MegaRacWebAnswer { status: status, body: serialize_json(v: json_object(members: [])), stream_open: megarac_stream_open(world: world) }
+}
+
+// ONE REQUEST AGAINST ONE WORLD, answered by the model.
 fn megarac_web_step(world: BmcWorld, request: MegaRacWebRequest, extended_privilege: Int) -> MegaRacWebStep {
   match request {
     MegaRacWebLogin { username: u, password: p } => {
       let login = bmc_web_login(world: world, username: u, password: p)
-      let reply = match login.reply {
-        BmcWebLoginAccepted { session: s } => MegaRacLoginAccepted { csrf_token: s.csrf_token, privilege: s.privilege, extended_privilege: extended_privilege, racsession_id: s.id }
-        BmcWebLoginRefused {} => MegaRacLoginRefused {}
+      match login.reply {
+        BmcWebLoginAccepted { session: x } =>
+          MegaRacWebStep { world: login.world, answer: MegaRacWebAnswer { status: 200, body: serialize_json(v: megarac_login_session_json(session: MegaRacLoginSession { csrf_token: x.csrf_token, privilege: x.privilege, extended_privilege: extended_privilege, racsession_id: x.id })), stream_open: megarac_stream_open(world: login.world) } }
+        BmcWebLoginRefused {} =>
+          MegaRacWebStep { world: login.world, answer: megarac_web_refusal(world: login.world, status: megarac_web_login_refusal_status) }
       }
-      MegaRacWebStep { world: login.world, answer: MegaRacWebAnswer { status: megarac_login_reply_status(reply: reply), body: megarac_login_reply_json(reply: reply), stream_open: megarac_stream_open(world: login.world) } }
     }
     MegaRacWebServices {} =>
-      MegaRacWebStep { world: world, answer: MegaRacWebAnswer { status: 200, body: megarac_services_kvm_json(viewer_count: bmc_kvm_viewer_count(world: world)), stream_open: megarac_stream_open(world: world) } }
+      MegaRacWebStep { world: world, answer: MegaRacWebAnswer { status: 200, body: serialize_json(v: megarac_services_kvm_json(viewer_count: bmc_kvm_viewer_count(world: world))), stream_open: megarac_stream_open(world: world) } }
     MegaRacWebConnect { token: t } => {
       let c = bmc_kvm_connect(world: world, csrf_token: t)
-      MegaRacWebStep { world: c.world, answer: MegaRacWebAnswer { status: if c.accepted { 101 } else { 403 }, body: "", stream_open: megarac_stream_open(world: c.world) } }
+      MegaRacWebStep { world: c.world, answer: if c.accepted { MegaRacWebAnswer { status: 101, body: "", stream_open: megarac_stream_open(world: c.world) } } else { megarac_web_refusal(world: c.world, status: megarac_web_connect_refusal_status) } }
     }
     MegaRacWebLogout { token: t } => {
       let o = bmc_web_logout(world: world, csrf_token: t)
-      MegaRacWebStep { world: o.world, answer: MegaRacWebAnswer { status: if o.released { 200 } else { 401 }, body: "\{}", stream_open: megarac_stream_open(world: o.world) } }
+      MegaRacWebStep { world: o.world, answer: if o.released { MegaRacWebAnswer { status: 200, body: serialize_json(v: json_object(members: [])), stream_open: megarac_stream_open(world: o.world) } } else { megarac_web_refusal(world: o.world, status: megarac_web_logout_refusal_status) } }
     }
     MegaRacWebAdvance { at: a } => {
       let w = bmc_advance(world: world, now: a)
@@ -168,12 +180,22 @@ data megarac_web_exploration_depth: Int = 6
 // canvas unreadable. TRIGGER: gunbc#12492 lands. The transport itself, and its process lifecycle, are
 // in that change beside their consumers; this module stays pure.
 //
-// THE TABLE THE TRANSPORT ENFORCES: its first line names the initial world and the canvas flag, then
-// one tab-separated row per (world, request): from, key, status, stream_open, to, body.
+// THE TABLE THE TRANSPORT ENFORCES, as one JSON document: the initial world, the canvas flag, the
+// /kvm path, and one row per (world, request): from, key, status, stream_open, to, body.
 fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebRequest>, extended_privilege: Int) -> String {
   let start = megarac_web_world_text(world: initial)
   let rows = megarac_web_explore(frontier: [initial], seen: [start], rows: [], depth: megarac_web_exploration_depth, credentials: credentials, extended_privilege: extended_privilege)
-  join([
-    join(["initial", start, if initial.web.canvas_readable { "canvas_readable" } else { "canvas_unreadable" }, megarac_kvm_websocket_path as String], "\t"),
-  ].concat(map(rows, r => join([r.from, r.key, to_string(r.answer.status), if r.answer.stream_open { "open" } else { "none" }, r.to, r.answer.body], "\t"))).concat([""]), "\n")
+  serialize_json(v: json_object(members: [
+    json_kv(key: "initial", value: json_string(s: start)),
+    json_kv(key: "canvas_readable", value: json_bool(b: initial.web.canvas_readable)),
+    json_kv(key: "kvm_path", value: json_string(s: megarac_kvm_websocket_path as String)),
+    json_kv(key: "rows", value: json_array(elements: map(rows, r => json_object(members: [
+      json_kv(key: "from", value: json_string(s: r.from)),
+      json_kv(key: "key", value: json_string(s: r.key)),
+      json_kv(key: "status", value: json_int(n: r.answer.status)),
+      json_kv(key: "stream_open", value: json_bool(b: r.answer.stream_open)),
+      json_kv(key: "to", value: json_string(s: r.to)),
+      json_kv(key: "body", value: json_string(s: r.answer.body)),
+    ])))),
+  ]))
 }
