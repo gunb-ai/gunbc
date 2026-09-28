@@ -80,6 +80,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
   hosted_runner_memory_cgroup_bind_commands,
+  hosted_arm_runner_cgroup_memory_max,
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -197,8 +198,8 @@ data compiler_gate_clippy_step_name: String = "Lint every target"
 // THE v1 UNIT TESTS RUN HERE, AFTER THE LINT (operator ruling 2026-09-27). That ruling orders ONE
 // wall-time measurement on this runner BEFORE the step is required, so it lands NON-REQUIRED
 // (continue_on_error) under its own job timeout long enough to complete once. The first run was
-// cancelled at the shared 45-minute cap with 575 of 1155 tests passed, and six tests were red on
-// main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop stays
+// cancelled at the shared 45-minute cap (the first run on PR #12450), and
+// tests were red on main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop stays
 // Standing until the population is green and the complete wall is measured; then this step turns
 // required and the drop retires in the same change. It is a STEP on the hosted lane, so it adds no
 // job to the closed roster and claims no fleet slot.
@@ -207,15 +208,13 @@ data compiler_gate_clippy_step_name: String = "Lint every target"
 // gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup binds the process, which
 // is every hosted runner. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
 // refuse, so the step's shell moves itself into a leaf with memory.max set -- the same bind the heal
-// publisher performs -- and cargo, and every test binary it starts, inherits it. 12 GiB against the
-// 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
+// publisher performs, at the one hosted-runner bound gunbc.ci_spec hosted_arm_runner_cgroup_memory_max
+// -- and cargo, and every test binary it starts, inherits it.
 data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
 data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
-data compiler_gate_unit_test_memory_max_bytes: Int = 12884901888
-// The shared 45-minute cap cancelled the first run mid-population. The complete run measured a
-// 38m25s job (lint 1m17s, unit-test step 36m53s; head 7f06993e, PR #12450), so 60 is that wall
-// with margin. It is re-derived when the step turns required or the live-tree tests are reshaped.
+// Sized with margin over the complete wall of the clippy job in witnesses run 36355834138 (the
+// timing is that run's job record, re-read there rather than copied here). It is re-derived when the step turns required or the live-tree tests are reshaped.
 data compiler_gate_clippy_timeout_minutes: Int = 60
 
 fn compiler_gate_unit_test_command() -> String {
@@ -223,7 +222,7 @@ fn compiler_gate_unit_test_command() -> String {
     list_append(
       hosted_runner_memory_cgroup_bind_commands(
         cgroup_name: compiler_gate_unit_test_cgroup_name,
-        memory_max_bytes: compiler_gate_unit_test_memory_max_bytes,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
       ),
       [repo_self_test_command()],
     ),
