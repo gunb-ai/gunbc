@@ -2,7 +2,7 @@ module v2.test.claim.emit.realized_closure_parameter_order
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { List }
-import v2.std.compilers.body_lowering { declared_signature }
+import v2.std.arrow_signature { declared_signature }
 import v2.std.compilers.target_model { arrow_domain_binder_names, realized_closure_ordered_params }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // target_project_realized_closure hands to the closure wire -- must follow the Arrow's declared
 // order, not its domain Conj's stored sequence. The specimen declares (z, a), both Int, body z: its
 // domain is built by the declared-signature constructor lowering uses
-// (v2.std.compilers.body_lowering declared_signature), and a second copy has only its domain
+// (v2.std.arrow_signature declared_signature), and a second copy has only its domain
 // canonicalized, exactly as v2.test.claim.declared_parameter_order dpo_canonical_domain does. Both
 // denote the same function, so both must answer [z, a]; a reader that folds the canonical domain in
 // stored order answers [a, z] (asserted below as the mutation this claim discriminates), and would

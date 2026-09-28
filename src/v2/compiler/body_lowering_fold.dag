@@ -65,7 +65,17 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { declared_signature, lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_bind_annotated, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering {
+  lower_binary_infix,
+  lower_branch,
+  lower_bind,
+  lower_bind_annotated,
+  lower_loop,
+  lower_match,
+  lower_unary_prefix
+}
+import v2.std.list_introduction { lower_list_introduction }
+import v2.std.arrow_signature { declared_signature, signature_order_edge }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -3383,7 +3393,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 }
 
 // THE DECLARED ORDER, CARRIED ON THE ARROW. Every Arrow built from a declared signature carries one
-// ^arrow_signature_order_edge (v2.std.compilers.body_lowering signature_order_edge) whose target is
+// ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge) whose target is
 // the language's canonical FreeMonoid introduction (lower_list_introduction) of the parameter labels as childless
 // Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).

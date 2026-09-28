@@ -407,12 +407,12 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
 }
 
 // THE ONE PARSER OF AN ARROW'S DECLARED ORDER. An Arrow built from a declared signature carries one
-// ^arrow_signature_order_edge (v2.std.compilers.body_lowering signature_order_edge): a Transform
+// ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge): a Transform
 // whose positional children after the head are childless Atoms, one per domain binder, in declared
 // order. This answers the labels in that order, OrderAbsent when there is no such edge, and
 // OrderUnreadable for two edges or any other shape. The head's identity -- the FreeMonoid
 // introduction -- is the one thing this module cannot name without an import cycle, so
-// v2.std.compilers.body_lowering arrow_declared_parameter_order checks the head and consumes THIS
+// v2.std.arrow_signature arrow_declared_parameter_order checks the head and consumes THIS
 // parse for the labels; it does not parse them again.
 type ArrowParameterOrderRead
   = OrderAbsent
@@ -474,7 +474,7 @@ fn symbol_list_reverse(xs: List<Symbol>) -> List<Symbol> {
 // THE DECLARED ORDER IS EXACTLY A PERMUTATION OF THE DOMAIN'S BINDERS: at most one order edge, and
 // when present its labels and the domain's binder labels are the same multiset with no label twice.
 // The producer mints the list and the domain from one fold (v2.std.anonymous_binder
-// anonymous_binder_mint_parameter_list, through v2.std.compilers.body_lowering declared_signature), so
+// anonymous_binder_mint_parameter_list, through v2.std.arrow_signature declared_signature), so
 // a disagreement has no producer there; this wall refuses one built anywhere else -- a missing, an
 // extra, or a repeated label. The comparison sorts both sides once and walks them together, so it is
 // O(n log n) rather than a scan per label. The stored domain is NOT assumed sorted: lowering keeps

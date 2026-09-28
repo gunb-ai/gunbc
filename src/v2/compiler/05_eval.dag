@@ -14,12 +14,7 @@ import v2.compiler.infer {
   inferred_facts_resolved_type
 }
 import std.algebra { Cons, Empty }
-import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order
-}
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
@@ -1379,7 +1374,7 @@ fn eval_bind_arrow_params(
 // THE PARAMETERS' BINDING LABELS, IN DECLARED ORDER. A domain of named binders is a Conj sorted by
 // label for identity, so its stored sequence is not a declared order; the order is read from the
 // Arrow's ^arrow_signature_order_edge through the one reader infer also uses
-// (v2.std.compilers.body_lowering arrow_declared_parameter_order), so the two stages cannot bind one
+// (v2.std.arrow_signature arrow_declared_parameter_order), so the two stages cannot bind one
 // call differently. The answer is the LABELS, not edges: a binder's type is not what binding reads,
 // and an edge built here would have to point somewhere it does not. A named domain with no readable
 // order refuses. A domain with no named binder binds no name, exactly as its positional edges bound
