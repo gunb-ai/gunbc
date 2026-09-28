@@ -1,0 +1,38 @@
+module gunbc.fabric_storage_state_bootstrap
+
+import std.types { String }
+import std.process { ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.secret_provision { SecretProvisionAttemptIdentity }
+import gunbc.fabric_storage_state_policy { fabric_state_key_secret_ref }
+import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+import gunbc.auth.approval_mac_key_provision { provision_one, standing_ok, standing_line, ensure_grant, grant_ok, grant_line }
+import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row }
+
+// Explicit operator bootstrap, authorized for initial fabric-state setup on 2026-09-28.
+// This is not a workload credential fallback, an app decision, or a GitHub run identity.
+// Normal operation remains in fabric_storage_state_provision with separate app-gated credentials.
+// An ambiguous create/add outcome must be inspected before another invocation.
+data fabric_state_operator_bootstrap_attempt: SecretProvisionAttemptIdentity = "fabric-state-operator-bootstrap-2026-09-28" as SecretProvisionAttemptIdentity
+
+fn bootstrap_fabric_state_material() -> CliWireResponse {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => CliWirePrintable { bytes: cause as String, exit: exit_failure(reason: "explicit operator bootstrap credential unavailable") }
+    SuppliedTokenReady { token } => {
+      let observed = provision_one(ref: fabric_state_key_secret_ref, token: token, attempt: fabric_state_operator_bootstrap_attempt)
+      CliWirePrintable { bytes: standing_line(s: observed), exit: if standing_ok(s: observed) { ExitSuccess } else { exit_failure(reason: "fabric-state material bootstrap did not establish the pinned version") } }
+    }
+  }
+}
+
+// Invoked separately after material readback. The operator bootstrap principal is explicit;
+// automated policy convergence must continue to use its distinct approved credential.
+fn bootstrap_fabric_state_access() -> CliWireResponse {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => CliWirePrintable { bytes: cause as String, exit: exit_failure(reason: "explicit operator bootstrap credential unavailable") }
+    SuppliedTokenReady { token } => {
+      let observed = ensure_grant(row: fabric_state_key_accessor_row, token: token)
+      CliWirePrintable { bytes: grant_line(g: observed), exit: if grant_ok(g: observed) { ExitSuccess } else { exit_failure(reason: "fabric-state accessor bootstrap did not converge") } }
+    }
+  }
+}
