@@ -2289,19 +2289,17 @@ fn eval_fold_control_transfer_state(
   }
 }
 
-// THE CALLEE EDGE IS IDENTIFIED BY BEING THE CALLEE EDGE, NOT BY A PROCESSED COUNT. This predicate
-// used to answer `p == 0 && is_positional(edge)`, which identifies the callee only while the callee is
-// the first child the fold happens to process. A call carrying a NAMED argument -- which every call
-// written `f(x: 3)` is -- advances the counter past zero before the positional callee edge is seen, so
-// the callee fell to eval_fold_child_for_edge's ordinary recursive arm and the walk descended into it.
-// For an Arrow callee that meant evaluating the arrow's body in an environment that cannot bind its
-// parameters; for a declaration reference it meant demanding value-grounding for the encoded declaring
-// path. The zero-argument call executed and the one-argument call did not, which is the tell that the
-// discriminator was the child ORDER and never the callee.
+// THIS PREDICATE IDENTIFIES THE CALLEE EDGE BY A PROCESSED COUNT, WHICH IS A STANDING OBSERVATION AND
+// NOT A REPAIR THIS FUNCTION CONTAINS. `p == 0 && is_positional(edge)` names the callee only while the
+// callee is the first child the fold happens to process, so the discriminator is child ORDER rather
+// than the callee -- and eval_transform_callee_edge already answers the question directly.
 //
-// So the question asked here is now the one eval_transform_callee_edge already answers, and the two
-// cannot disagree because the dispatch reads the same producer. The `progress` arms are unchanged:
-// they keep the seam from re-firing once the node has been interpreted.
+// IT IS LEFT ALONE BECAUSE REWRITING IT CHANGED NO VERDICT. Keying on eval_transform_callee_edge was
+// written and measured: all seven controls in v2.test.claim.callexec.declaration_reference_eval pass
+// either way, in both directions. A second formulation nothing needs is redundant work (DESIGN section
+// 2), so the count-based test stays and the observation is recorded here rather than acted on. Whoever
+// finds a call shape where the two DISAGREE has the discriminating case this lacked, and that case is
+// what would justify the change.
 fn eval_fold_is_callee_reference_edge(
   parent: Node,
   progress: EvalProgress,
