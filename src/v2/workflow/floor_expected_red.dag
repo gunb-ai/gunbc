@@ -1124,8 +1124,6 @@ fn floor_expected_red_chunk_loaded_carrier_body_receipt() -> List<String> {
   Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Empty {} }
 }
 
-}
-
 // ONE IDENTITY ENROLLED 2026-09-26, red on main and FIRST SELECTED by an unrelated edit. The
 // refinement-obligation carrier cut (deep-bee-18) had to edit this claim's file because infer's
 // return type changed, and that edit pulled the claim into the floor's changed-population selection
