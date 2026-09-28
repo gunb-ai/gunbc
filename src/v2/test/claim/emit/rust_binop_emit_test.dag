@@ -2,7 +2,7 @@ module v2.test.emit.rust_binop_emit
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
 import v2.std.compilers.target_model { render_target_text }
 import v2.extdeps.languages.dag {
   dag_arrow_domain_conj_node,

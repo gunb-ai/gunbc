@@ -2,7 +2,7 @@ module v2.test.claim.bash_build_round_trip
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_assign_lit,

@@ -1,6 +1,6 @@
 module v2.workflow.bash_command_fold_serialize
 
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
   bash_stmt_andor_emitted,
   bash_stmt_andor_target_model,
