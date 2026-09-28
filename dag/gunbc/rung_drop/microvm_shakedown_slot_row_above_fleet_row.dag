@@ -38,7 +38,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
   identity: "microvm_shakedown_slot_row_above_fleet_row" as NonEmptyStr,
 
-  subject: "the fleet-uniform slot row (gunbc.runner_slot_allocation gunbc_runner_slot_desired): every committed slot on a host carries the same MemoryMax, so width and slice cap are one quotient",
+  subject: "the fleet-uniform slot row (gunbc.runner_slot_desired gunbc_runner_slot_desired): every committed slot on a host carries the same MemoryMax, so width and slice cap are one quotient",
 
   declared: "2026-09-21",
 
