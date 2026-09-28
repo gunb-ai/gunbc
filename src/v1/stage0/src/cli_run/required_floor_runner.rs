@@ -12951,8 +12951,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         // the probe's designed refusal never reaches Strict resolve.
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        // ONE cwd guard for both preparations: the mutex is not reentrant.
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let prepared = prepare_repository_closure(
             &roots,
@@ -12961,7 +12959,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         );
         // THE DISCRIMINATOR: without the exclusion rows the same seed list refuses on the probe.
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let (prepared, views) = prepared.expect("the excluded probe must not refuse preparation");
         let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
         assert!(!modules.contains(&"armset.probe"), "{modules:?}");
@@ -13008,27 +13005,6 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     const REC_HEAD: &str = "module armset.rec\n\ntype Box {\n  width: Int\n  height: Int\n}\n";
     const REC_USER: &str =
         "module armset.rec_user\n\nimport armset.rec { Box }\n\nfn w(b: Box) -> Int {\n  b.width\n}\n";
-
-    /// Preparation resolves the index's workspace-relative entry paths against the PROCESS
-    /// CWD (`entry_source_from_index_or_disk`), which is the workspace root in production and
-    /// the crate directory under `cargo test`. A test enters the workspace root for one
-    /// preparation and leaves again, serialized because the working directory is process-global.
-    /// Free functions rather than a guard type: an `impl Drop` is an uncitable item under
-    /// `gunbc.seed_growth_admission` (`seed_growth_uncitable_item_keys`).
-    static WORKSPACE_CWD: Mutex<()> = Mutex::new(());
-
-    fn enter_workspace_cwd() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
-        let lock = WORKSPACE_CWD
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let previous = std::env::current_dir().expect("test working directory");
-        std::env::set_current_dir(process_workspace_root()).expect("enter workspace root");
-        (lock, previous)
-    }
-
-    fn leave_workspace_cwd(previous: &Path) {
-        let _ = std::env::set_current_dir(previous);
-    }
 
     /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
     /// made it; a panicking test leaves it for the next run of the same name to replace.
@@ -13165,13 +13141,11 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         // is empty, exactly as a diff-only seed list would be.
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.y".to_string()];
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)))
             .err()
             .expect("Strict preparation of the stale consumer must refuse");
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         assert!(
             refusal.contains("non-exhaustive match") && refusal.contains("Amber"),
@@ -13192,11 +13166,9 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.w"]);
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.w".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         let (prepared, _) = prepared.expect("a wildcard match stays exhaustive under growth");
         assert!(prepared.modules_resolved >= 2, "x and w prepared");
@@ -13308,11 +13280,9 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
     /// Prepare `seeds` over one fixture root under the floor's own Strict path.
     fn prepare_seeds(root: &Path, seeds: &[&str]) -> Result<(), String> {
         let roots = [root.to_string_lossy().into_owned()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         prepared.map(|_| ())
     }
 
@@ -14136,11 +14106,9 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.yz".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&fx);
         let (prepared, views) =
             prepared.expect("yz alone prepares clean: it never reaches the stale match in y");
