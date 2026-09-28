@@ -2324,7 +2324,7 @@ mod process_cwd_mutation_reachability_gate {
 // ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
 // Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
-// pool-root anchoring from `.dag` (same exit as bash-emit #5828 for floor shell scaffolds).
+// pool-root anchoring from `.dag` (the same exit the floor shell scaffolds take).
 // DELETE WHEN dissolved: `process_workspace_root`, `resolve_process_workspace_root`,
 // `anchor_source_root`, `repo_relative_path`, `repo_relative_path_normalized`, and call-site
 // migration in `build_module_*` / `pool_roots_*` / `workspace_relative_repo_path` (~130 LOC).
