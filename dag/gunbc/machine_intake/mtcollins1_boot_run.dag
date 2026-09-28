@@ -128,11 +128,22 @@ data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
 
 data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
+// THE SOL NOTICE WATCHER'S TWO TERMS (gunbc.machine_intake_mtcollins1_sol_notice), inside this step's
+// budget like every other phase. PREPARATION: the step starts the watcher and does not start the boot
+// until it has published readiness; resolving its entry was measured at 340 s on a loaded host, so the
+// allowance is 900 s. FINAL DELIVERY: after the trap asks it to stop, the watcher drains what is still
+// owed (mtcollins1_sol_notice_final_passes one-second passes) and the trap waits this long for its
+// result before recording it as not finished.
+data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
+
+data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
+
 // NO APPROVAL WINDOW IS BUDGETED ANY MORE (operator ruling 2026-09-23): the boot is a recurring
 // automated effect under workload identity (gunbc.auth.privileged_effect_census derives
 // FederatedScopedGrant for it), so the step no longer waits on a human.
 fn mtcollins1_boot_step_timeout_minutes() -> Minute {
-  let secs = second_count(s: mtcollins1_boot_prelude_allowance)
+  let secs = second_count(s: mtcollins1_sol_notice_ready_allowance)
+    + second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: oob_power_readback_allowance())
     + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
@@ -140,6 +151,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: mtcollins1_boot_diagnostics_allowance())
     + second_count(s: mtcollins1_kvm_still_allowance())
+    + second_count(s: mtcollins1_sol_notice_final_allowance)
   minute(count: (secs + 59) / 60)
 }
 
@@ -1482,6 +1494,10 @@ type SolSupervision
 
 fn mtcollins1_sol_supervised(stage: SolLossStage, pid_path: String, capture_path: String, password_file: String, last_live_at: String) -> SolSupervision {
   let at = clock_now_probed_at_or_unknown()
+  match mtcollins1_sol_observer_refusal(capture_path: capture_path) {
+    Present { value: why } => return SolLostAt { outcome: exit_failure(reason: why) }
+    Absent => {}
+  }
   let collector = mtcollins1_sol_collector_observe(pid_path: pid_path)
   match collector {
     SolCollectorHeld => SolHeldAt { at: at }
@@ -1503,6 +1519,61 @@ fn mtcollins1_sol_supervised(stage: SolLossStage, pid_path: String, capture_path
       SolLostAt { outcome: exit_failure(reason: observation_channel_lost_text(lost: lost)) }
     }
   }
+}
+
+// THE NOTICE WATCHER IS A REQUIRED OBSERVER, SUPERVISED AS ONE OWNED SIBLING. The step records the
+// watcher it started as "<pid> <starttime>" at capture + mtcollins1_sol_notice_file_infix + "watcher".
+// Before each further hardware effect -- the attach and the handoff, the two checkpoints
+// mtcollins1_sol_supervised guards -- the boot requires that record to name a live, non-zombie process
+// with that start time. A gone, replaced or unobservable watcher refuses the effect: no further BMC
+// write is made without the observer that would report the collector's loss. This stops effects; it
+// does not power the machine off. The step's trap separately collects the watcher's exit status.
+data mtcollins1_sol_notice_file_infix: String = ".notice."
+
+fn mtcollins1_sol_notice_watcher_path(capture_path: String) -> String {
+  concat(capture_path, concat(mtcollins1_sol_notice_file_infix, "watcher"))
+}
+
+fn sol_observer_refusal_of(record: ProcReadOutcome, stat: ProcReadOutcome) -> String? {
+  let lead = "mtcollins1 boot: the SOL notice watcher is required before a further BMC effect, and "
+  match record {
+    ProcReadRefused { kind: k, error: e } => Present { value: concat(lead, proc_read_refused_text(what: "its process record", kind: k, error: e)) }
+    ProcRead { content: c } =>
+      match sol_holder_record(pid_file_content: c) {
+        SolHolderUnrecorded => Present { value: concat(lead, "its process record names no \"<pid> <starttime>\"") }
+        SolHolderRecorded { pid: _, start_time: recorded } =>
+          match stat {
+            ProcReadRefused { kind: k, error: e } =>
+              if k == "not_found" { Present { value: concat(lead, "the recorded watcher process has exited") } } else { Present { value: concat(lead, proc_read_refused_text(what: "the watcher's /proc stat", kind: k, error: e)) } }
+            ProcRead { content: st } => {
+              let fields = proc_stat_after_comm(stat: st)
+              match fields.skip(n: 19).first() {
+                Absent => Present { value: concat(lead, "the watcher's /proc stat did not parse") }
+                Present { value: live } =>
+                  if live != recorded { Present { value: concat(lead, "the recorded pid now names a different process") } }
+                  else if proc_stat_is_zombie(fields: fields) { Present { value: concat(lead, "the recorded watcher process has exited (zombie)") } }
+                  else { none }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn mtcollins1_sol_observer_refusal(capture_path: String) -> String? {
+  let r = Filesystem.Read(path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path))
+  let record = proc_read_outcome(success: r.success, content: r.content, error: r.error, error_kind: r.error_kind)
+  let stat = match record {
+    ProcRead { content: c } => match sol_holder_record(pid_file_content: c) {
+      SolHolderRecorded { pid: pid, start_time: _ } => {
+        let st = Filesystem.Read(path: concat("/proc/", concat(pid, "/stat")))
+        proc_read_outcome(success: st.success, content: st.content, error: st.error, error_kind: st.error_kind)
+      }
+      SolHolderUnrecorded => ProcRead { content: "" }
+    }
+    ProcReadRefused { kind: k, error: e } => ProcReadRefused { kind: k, error: e }
+  }
+  sol_observer_refusal_of(record: record, stat: stat)
 }
 
 // THE DEADLINE REPORTS WHAT WAS LAST OBSERVED, never a bare "timed out": the final poll's Pending

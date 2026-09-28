@@ -1975,6 +1975,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
       function: "an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unreadable_incident_is_reported_and_is_not_success" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_unreadable_incident_is_reported_and_is_not_success",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unreadable_request_history_is_reported_and_is_not_success" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_unreadable_request_history_is_reported_and_is_not_success",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unreadable_client_file_is_reported_and_is_not_success" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_unreadable_client_file_is_reported_and_is_not_success",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_owed_exit_never_observed_is_not_success" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "an_owed_exit_never_observed_is_not_success",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "earlier_exits_stay_demanded_when_later_ones_appear" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "earlier_exits_stay_demanded_when_later_ones_appear",
+      expectation: ExpectedToHold {}
     }
   ]
 }
