@@ -129,7 +129,7 @@ fn module_name_of_path(path: String) -> String {
 }
 
 fn later_driver(lines: List<StampedLine>, after_index: Int, module_name: String) -> LaterDriverReading {
-  let later = filter(lines.skip(n: after_index + 1), l => starts_with(s: l.rest, prefix: concat(module_name, " ")) || starts_with(s: l.rest, prefix: concat(module_name, ":")))
+  let later: List<StampedLine> = filter(lines.skip(n: after_index + 1), l => starts_with(s: l.rest, prefix: concat(module_name, " ")) || starts_with(s: l.rest, prefix: concat(module_name, ":")))
   match first(later) {
     Absent => DriverNotSeenInCapture
     Present { value: l } => DriverPrintedLater { at: l.at, line: l.rest }

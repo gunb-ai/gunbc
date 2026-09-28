@@ -222,7 +222,8 @@ fn member_scratch_path(side: IsoSide, member: CensusIsoMember) -> String {
 }
 
 fn remote_first_field(stdout: String) -> String {
-  match first(filter(split(s: trim(stdout), delimiter: " "), t => t != "")) {
+  let tokens: List<String> = filter(split(s: trim(stdout), delimiter: " "), t => t != "")
+  match first(tokens) {
     Absent => ""
     Present { value: t } => t
   }
