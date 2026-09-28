@@ -28,7 +28,7 @@ import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_sourc
 // emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
 // ApproveIosWireSwiftArtifact). Transcribed from the hand-written file it replaces; deriving the
 // member names, arms and routes from gunbc.auth.approval_device_wire is the later step named by
-// gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier.
+// gunbc.approve_ios_app approve_ios_transcribed_swift_frontier.
 
 // ── Local constructors for the shapes this file repeats ──────────────────────────────────────
 fn aw_s() -> SwiftType { sw_t(n: "String") }

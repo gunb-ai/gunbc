@@ -16,7 +16,7 @@ import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_sourc
 // emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
 // ApproveIosProtocolSwiftArtifact; the drift gate refuses a hand edit). The tree is transcribed from
 // the hand-written file it replaces; deriving its constants from gunbc.auth.approval_device_wire is
-// the later step named by gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier.
+// the later step named by gunbc.approve_ios_app approve_ios_transcribed_swift_frontier.
 
 fn approve_ios_framed_call(fields: List<SwiftExpr>) -> SwiftExpr {
   sw_call(f: sw_path(b: "Protocol", m: "framed"), a: [sw_pos(v: sw_arr(e: fields))])

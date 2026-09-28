@@ -22,7 +22,7 @@ import v2.std.compilers.target_model {
   TargetModel, TokenClassEmitTransform, EmitSpellingConstant, EmitLineBreaks, ProducedDeclUnwired, render_target_text
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.translate { target_serialize_derived_row_bounded }
+import v2.compiler.target_serialize { target_serialize_derived_row_bounded }
 import v2.extdeps.languages.swift.syntax {
   SwiftComment, SwiftLineComment, SwiftDocLineComment,
   SwiftType, SwiftTypeIdentifier, SwiftArrayType, SwiftDictionaryType, SwiftOptionalType, SwiftTupleType, SwiftTupleTypeElement,
@@ -66,7 +66,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // SWIFT AS GRAMMAR ROWS, READ IN THE EMIT DIRECTION (DESIGN §4: one grammar, rows authored in
 // extdeps/languages, the fold unchanged). Every production below is a FormalProduction; emission
 // derives a relation row from the lowered program (derive_grammar_relation_row_node) and the generic
-// row serializer (v2.compiler.translate) spells it. There is no Swift printer: layout is three
+// row serializer (v2.compiler.target_serialize) spells it. There is no Swift printer: layout is three
 // grammar facts -- a fixed token's spelling, the line token (an EmitLineBreaks class), and the nested
 // occurrence of a code block's statements (grammar_formal_nested_occurrence, unit ^swift_indent).
 //
@@ -386,7 +386,7 @@ fn swift_row_target_model(row: Node) -> TargetModel {
 }
 
 // The target's rules hold the program's derived row and nothing else. Emission serializes that row
-// directly (v2.compiler.translate target_serialize_derived_row_bounded); a derived row is flat apart
+// directly (v2.compiler.target_serialize target_serialize_derived_row_bounded); a derived row is flat apart
 // from its nested blocks, so the serializer never re-selects a row through a production catalog, and
 // building one per emission would be work nothing reads.
 fn swift_row_rules(row: Node) -> Node {
