@@ -184,9 +184,10 @@ fn bash_emit_wrong_spelling_oracle_holds(emit_o: Outcome<String>, golden: String
 // materialized by ONE join, which copies each part exactly once. A fold that appends parts onto a
 // growing result copies that result again at every step in the String realization, which pushes
 // the RIGHT operand -- whichever side the accumulator sits on (review 5333525589; DESIGN §6: a
-// copied accumulator is fixed regardless of n). The accumulator-copy roster gate over this file
-// (v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash) is the control that tells the
-// two apart; equal output bytes cannot.
+// copied accumulator is fixed regardless of n). Equal output bytes cannot tell the two apart, and
+// NO executing discriminator exists yet: one is owed, and the accumulator-copy lens cannot serve
+// until the v2 front end normalizes this file -- gunbc.recurring_failure_mode
+// lens_cannot_establish_a_real_corpus_file_it_is_owed_an_answer_on.
 type BashProgramSequenceCheck
   = BashProgramSequenceOpen { line_open: Bool }
   | BashProgramSequenceFused
