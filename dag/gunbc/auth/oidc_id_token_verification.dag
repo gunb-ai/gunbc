@@ -1,5 +1,7 @@
 module gunbc.auth.oidc_id_token_verification
 
+import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
+
 // THE PRODUCTION PRODUCER OF OidcIdTokenSignature — the realization the frontier row in
 // extdeps.auth.oidc named. It dissolves oidc_jwks_verification_frontier by binding the whole
 // signature seam end to end: fetch Google's JWKS with a file cache and a TTL, decode the ID
@@ -771,7 +773,10 @@ fn rsa_public_key_pem(spki: List<UInt8>) -> String {
   join(
     [
       "-----BEGIN PUBLIC KEY-----\n",
-      base64_encode(octets: spki, variant: Standard),
+      match uint8_octets_of_ints(values: map(spki, o => o as Int)) {
+        QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: Standard)
+        QualifiedOctetsRefused { observed: _ } => ""
+      },
       "\n-----END PUBLIC KEY-----\n",
     ],
     "",

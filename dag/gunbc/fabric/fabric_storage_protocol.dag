@@ -1,6 +1,7 @@
 module gunbc.fabric_storage_protocol
 
 import std.types { String, NonEmptyStr, Int, List, CommitSha }
+import std.nat { Nat }
 import extdeps.http.server { ServeWireResponse }
 import std.fabric_storage {
   FabricObject, fabric_object_decode, fabric_object_ref_of_wire, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
@@ -15,7 +16,7 @@ import extdeps.tailscale.identity { tailnet_identity_of }
 
 import v2.std.algebra { skip }
 
-data fabric_storage_closure_bound_cap: Int = 65536
+data fabric_storage_closure_bound_cap: Nat = 65536
 
 fn text_response(status: Int, body: String) -> ServeWireResponse {
   ServeWireResponse { headers: [], status: status, content_type_label: "text/plain; charset=utf-8", body: body }

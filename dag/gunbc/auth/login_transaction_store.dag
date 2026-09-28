@@ -269,12 +269,14 @@ fn login_transaction_store_delete(layout: LoginTransactionStoreLayout, state: No
     FilesystemEntryAbsent(absence) =>
       LoginTransactionNothingToDelete { state: absence.name as NonEmptyStr }
     FilesystemEntryListed { directory: _, name: _ } =>
-      let deleted = Filesystem.Delete(path: login_transaction_file_path(layout: layout, state: state))
+      let won = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, state: state), ".consumed"), content: "consumed", mode: 384)
+      if !won.success { LoginTransactionDeleteRefused { state: state, detail: "transaction consumption already won or its durable claim failed" } }
+      else { let deleted = Filesystem.Delete(path: login_transaction_file_path(layout: layout, state: state))
       if deleted.success {
         LoginTransactionDeleted { state: state }
       } else {
         LoginTransactionDeleteRefused { state: state, detail: deleted.error }
-      }
+      } }
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       LoginTransactionDeleteRefused { state: state, detail: c }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>

@@ -699,6 +699,7 @@ fn roadmap_serve_invoke_over(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match handler {
     IssueEditorialGetHandler => match clock_now_probed_at() {
@@ -723,7 +724,7 @@ fn roadmap_serve_invoke_over(
     AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     AuthLoginHandler => auth_login_response(instance: instance, request: request)
-    AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path)
+    AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path, cookie_header: cookie_header)
     AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
     AuthSessionHandler => auth_session_response(request: request)
     RoadmapDailyPageHandler =>
@@ -952,6 +953,7 @@ fn roadmap_serve_selection_response_over(
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest<RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
@@ -962,6 +964,7 @@ fn roadmap_serve_selection_response_over(
         handler: h,
         params: ps,
         request: request,
+        cookie_header: cookie_header,
         release_revision: release_revision,
       )
     SelectedStatic { route: r } =>
@@ -1043,6 +1046,7 @@ fn roadmap_serve_respond_over(
             plan: plan,
             daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
+            cookie_header: cookie_header,
             request: ServeHttpRequest<RequestAuthenticationEvidence> {
               method: m,
               path: path,

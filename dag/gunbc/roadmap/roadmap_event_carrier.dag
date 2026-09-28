@@ -4,6 +4,7 @@ import gunbc.roadmap.roadmap_task_projection { roadmap_task_append_admits, roadm
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import gunbc.fabric_storage_protocol { fabric_storage_closure_bound_cap }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead }
 import std.list { distinct_by_key }
 import std.fabric_storage {
@@ -26,7 +27,7 @@ import gunbc.roadmap.roadmap_event_log {
 // No runtime read or write consults a Git worktree. Import is a separate pinned-source operation.
 data roadmap_event_manifest_schema: NonEmptyStr = "roadmap-event-set/v1"
 data roadmap_event_store_head: NonEmptyStr = "roadmap-events-v1"
-data roadmap_event_read_bound: Nat = 100000
+data roadmap_event_read_bound: Nat = fabric_storage_closure_bound_cap
 
 type RoadmapCarrierMode = RoadmapImportTarget | RoadmapMigratedService
 type RoadmapEventCarrierLayout { store: FabricStorageBinding, mode: RoadmapCarrierMode }

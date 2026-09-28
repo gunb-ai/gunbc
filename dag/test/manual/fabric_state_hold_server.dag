@@ -1,0 +1,23 @@
+module test.manual.fabric_state_hold_server
+
+import std.types { String, NonEmptyStr }
+import extdeps.shell
+import extdeps.http.server { ServeWireResponse }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_state_serve { fabric_storage_state_serve_over }
+import gunbc.fabric_storage_protocol { text_response }
+
+// Loopback fixture with a real authenticated protocol handler and an isolated temporary store.
+fn served_storage_hold_handler(method: String, path: String, body: String, tailscale_identity: String = "", release_revision: String = "", cookie_header: String = "") -> ServeWireResponse {
+  match shell.Env.Get(name: "GUNBC_HOLD_STORAGE_ROOT").value {
+    Absent => text_response(status: 503, body: "fixture root absent")
+    Present { value: root } => if !starts_with(s: root, prefix: "/tmp/gunbc-hold-storage-") { text_response(status: 503, body: "fixture root refused") }
+      else { let store = fabric_storage_file_root(root: root as NonEmptyStr)
+        match fabric_storage_file_root_ensure(root: store) {
+          FabricStorageRootReady => fabric_storage_state_serve_over(root: store, method: method, path: path, body: body)
+          _ => text_response(status: 503, body: "fixture store refused")
+        }
+      }
+  }
+}
+

@@ -1,5 +1,7 @@
 module gunbc.runner_microvm_slot_controller
 
+import gunbc.workspace_allocation_lifecycle { workspace_record_expiry }
+
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 
 import extdeps.filesystem.filesystem_io { filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent }
@@ -739,7 +741,19 @@ fn workspace_slot_refused(reason: String) -> SlotControllerOutcome {
   SlotControllerRefused { refusal: ShapeRefused { detail: reason } }
 }
 
+// Reconcile the deadline even after hold commit; retirement still requires observed sanitation.
 fn workspace_slot_from_ledger(allocation: WorkspaceAllocation, store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  match clock_now_probed_at() {
+    Absent => workspace_slot_refused(reason: "workspace desired-state clock is unreadable")
+    Present { value: now } => match workspace_record_expiry(store: store, owner: allocation.request.owner,
+      idempotency_key: allocation.request.idempotency_key, observed_at: now) {
+      WorkspaceStoreWritten { allocation: current } => workspace_slot_from_current_ledger(allocation: current, store: store, release_dir: release_dir, invocation_id: invocation_id)
+      _ => workspace_slot_refused(reason: "workspace deadline reconciliation refused; hold retained")
+    }
+  }
+}
+
+fn workspace_slot_from_current_ledger(allocation: WorkspaceAllocation, store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
   match allocation.reservation {
     Absent => workspace_slot_refused(reason: "workspace has no committed reservation")
     Present { value: held } => match allocation.plan {

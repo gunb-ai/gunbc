@@ -1,5 +1,7 @@
 module gunbc.roadmap_auth_routes
 
+import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted }
+
 import extdeps.tailscale.serve { ServeStatusUnreadable, ServeStatusProxies }
 import extdeps.tailscale.serve
 import gunbc.auth.serve_route_readback { serve_backend_route_readback }
@@ -20,6 +22,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { json_bool }
 import extdeps.languages.json.parse { parse_json_document, json_field_string, JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed }
+import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.encoding { base64_decode, base64_encode, UrlSafe, Standard }
 import gunbc.principal_projection { principal_ref_label }
 import gunbc.clock_read { clock_now_probed_at }
@@ -100,9 +103,10 @@ fn auth_entropy_draw() -> NonEmptyStr? {
 }
 
 fn auth_base64url_wire(octets: List<UInt8>) -> String {
-  match split(s: base64_encode(octets: octets, variant: UrlSafe), delimiter: "=").first() {
-    Present { value: wire } => wire
-    Absent => ""
+  match uint8_octets_of_ints(values: map(octets, o => o as Int)) {
+    QualifiedOctetsRefused { observed: _ } => ""
+    QualifiedOctetsReady { value: qualified } =>
+      join(split(s: base64_encode(octets: qualified, variant: UrlSafe), delimiter: "="), "")
   }
 }
 
@@ -245,7 +249,7 @@ fn auth_login_transaction_step(
     Absent =>
       serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the transaction lifetime cannot be bounded\n")
     Present { value: now } =>
-      let expires = Clock.TimestampOffsetAhead(timestamp: now, offset: config.login_transaction_lifetime_seconds)
+      let expires = Clock.TimestampAdd(timestamp: now, offset: config.login_transaction_lifetime_seconds)
       if expires.result == "" {
         serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the transaction lifetime refused\n")
       } else {
@@ -281,6 +285,8 @@ fn auth_login_redirect_response(config: OidcDeploymentConfig, transaction: OidcL
             content_type: text_plain_utf8,
             body: join(["redirecting to Google: ", transaction.return_path.path as String, "\n"], ""),
             headers: [
+              ServeResponseHeaderNoStore,
+              ServeResponseHeaderSetCookie { set_cookie: join(["Set-Cookie: __Host-gunbc-login=", auth_login_browser_binding(transaction: transaction), "; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=", to_string(config.login_transaction_lifetime_seconds)], "") as NonEmptyStr },
               ServeResponseHeaderLocation {
                 location: auth_login_redirect_location(
                   config: config,
@@ -329,7 +335,7 @@ fn auth_login_scope_wire() -> String {
   )
 }
 
-fn auth_google_callback_response(instance: HostDashboardInstance, path: String) -> ServeHttpResponse {
+fn auth_google_callback_response(instance: HostDashboardInstance, path: String, cookie_header: String) -> ServeHttpResponse {
   let state = uri_query_param(path: path, key: "state")
   if state == "" {
     auth_callback_state_refusal()
@@ -342,7 +348,7 @@ fn auth_google_callback_response(instance: HostDashboardInstance, path: String) 
       LoginTransactionStoreEntryMalformed { state: _, detail: d } =>
         serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the login transaction is malformed: ", d, "\n"], ""))
       LoginTransactionStoreFound { transaction: transaction } =>
-        auth_callback_transaction(instance: instance, layout: layout, transaction: transaction, path: path)
+        if !auth_login_browser_admitted(transaction: transaction, cookie_header: cookie_header) { auth_callback_state_refusal() } else { auth_callback_transaction(instance: instance, layout: layout, transaction: transaction, path: path) }
     }
   }
 }
@@ -377,7 +383,7 @@ fn auth_callback_transaction(instance: HostDashboardInstance, layout: LoginTrans
           LoginTransactionDeleted { state: _ } =>
             auth_callback_exchange(instance: instance, transaction: transaction, path: path)
           LoginTransactionNothingToDelete { state: _ } =>
-            auth_callback_exchange(instance: instance, transaction: transaction, path: path)
+            auth_callback_state_refusal()
         }
       }
   }
@@ -532,7 +538,7 @@ fn auth_callback_mint(instance: HostDashboardInstance, transaction: OidcLoginTra
     Absent =>
       serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock reading refused, so the session lifetime cannot be bounded\n")
     Present { value: now } =>
-      let expires = Clock.TimestampOffsetAhead(timestamp: now, offset: config.session_lifetime_seconds)
+      let expires = Clock.TimestampAdd(timestamp: now, offset: config.session_lifetime_seconds)
       if expires.result == "" {
         serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the clock offset for the session lifetime refused\n")
       } else {

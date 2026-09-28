@@ -216,17 +216,17 @@ type SessionCookieIdParse
   | SessionCookieIdNotPresent
   | SessionCookieIdMalformed { detail: String }
 
-fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
+fn session_cookie_id_of_header(cookie_header: String, cookie_name: NonEmptyStr = session_cookie_name) -> SessionCookieIdParse {
   let pairs = split(s: cookie_header, delimiter: ";")
   let matches = filter(
     pairs,
-    pair => starts_with(s: trim(pair), prefix: concat(session_cookie_name as String, "=")),
+    pair => starts_with(s: trim(pair), prefix: concat(cookie_name as String, "=")),
   )
   if count(matches) == 0 {
     SessionCookieIdNotPresent
   } else if count(matches) > 1 {
     SessionCookieIdMalformed {
-      detail: concat("duplicate ", concat(session_cookie_name as String, " cookie in the Cookie header")),
+      detail: concat("duplicate ", concat(cookie_name as String, " cookie in the Cookie header")),
     }
   } else {
     match matches.first() {
@@ -236,7 +236,7 @@ fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
         session_cookie_id_of_value(
           value: substring(
             s: trimmed_pair,
-            start: string_length(s: concat(session_cookie_name as String, "=")),
+            start: string_length(s: concat(cookie_name as String, "=")),
             end: string_length(s: trimmed_pair),
           ),
         )
