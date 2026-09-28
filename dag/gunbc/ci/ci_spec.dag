@@ -57,7 +57,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script }
-import gunbc.machine_intake_mtcollins1_sol_notice { mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_stop_suffix }
+import gunbc.machine_intake_mtcollins1_sol_notice { mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_stop_suffix, mtcollins1_sol_notice_ready_suffix }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
@@ -113,8 +113,9 @@ import gunbc.commit_workflow {
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
-  heal_publisher_installation_token_request_body,
-  heal_publisher_key_unreadable_message,
+  HealPublisherFederation, public_heal_publisher_federation,
+  heal_publisher_federation_installation_token_request_body,
+  heal_publisher_federation_key_unreadable_message,
   heal_publisher_token_refused_message
 }
 import extdeps.github.app { GitHubAppInstallationId }
@@ -2810,7 +2811,10 @@ data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: Dissolut
 // (the collector's exit record, and the incident the boot's watch freezes), its encoding (extdeps.github
 // log_annotations) and its delivery (per notice and channel, marked only after the write succeeded,
 // every outcome in the delivery ledger). The shell here only starts it, clears the files it owns (a
-// self-hosted workspace outlives the run that wrote them) and, in the trap, asks it to stop.
+// self-hosted workspace outlives the run that wrote them) and, in the trap, asks it to stop. The boot
+// does not start until the watcher has published readiness (up to 15 minutes: resolving its entry was
+// measured at 340 s on a loaded host); a watcher that exits or never becomes ready refuses the step
+// before any BMC contact.
 // THE TRAP RELEASES FIRST, THEN ASKS THE WATCHER TO STOP, so the exit its own release causes is still
 // published: the watcher's final passes run until that exit is delivered on both channels or five
 // seconds pass. The trap waits eight seconds for it and reports, as an ::error::, a watcher that had
@@ -2845,6 +2849,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: join([": > \"$SOL_LOSS\"; : > \"$SOL_CLIENT\"; : > \"$SOL_WORKFLOW\"; : > \"$SOL_DELIVERY\"; rm -f \"$SOL_OUT", mtcollins1_sol_notice_file_infix, "\"*"], "")) },
     gunbc_invoke_root_stamp_step(),
     Do { run: ci_retry_body_run(command: concat(gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_sol_notice_target.entry, function: gunbc_ci_mtcollins1_sol_notice_target.function, claim_run: false), " & SOL_NOTICE_WATCH=$!")) },
+    Do { run: ci_retry_body_run(command: join(["for i in $(seq 1 900); do [ -e \"$SOL_OUT", mtcollins1_sol_notice_ready_suffix, "\" ] && break; kill -0 \"$SOL_NOTICE_WATCH\" 2>/dev/null || break; sleep 1; done; if [ ! -e \"$SOL_OUT", mtcollins1_sol_notice_ready_suffix, "\" ]; then echo \"::error::mtcollins1 SOL notice watcher is not ready; refusing the boot before any BMC contact\"; exit 1; fi"], "")) },
   ])
 }
 
@@ -2857,7 +2862,7 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaf
   }
 }
 
-data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk; and the SOL notice watcher's PROCESS COORDINATION -- starting gunbc.machine_intake_mtcollins1_sol_notice as a background process, waiting for its readiness file before the boot, and in the EXIT trap recording the release request, releasing the collector through the hold's release script, writing the stop file and waiting a bounded time for the watcher to finish. What the watcher publishes and how it delivers are modeled in that module; only this start/ready/stop coordination and the trap are hand-shell. SOL hold and release are gunbc.machine_intake.sol_hold ActivateHeld/ReleaseHeld (their own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) or a typed step-lifecycle realization expresses ALL of it -- the credential runner, a supervised sibling process with readiness and a stop request, and an exit handler that runs on every exit arm including cancellation -- through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold; realizing the credential runner alone does not satisfy this trigger")
 
 // The enrolment-code step has no prelude: no secret is fetched on the runner, the host holds
 // everything the verb reads, and the step's stdout is the remote receipt line alone.
@@ -3342,7 +3347,7 @@ fn gunbc_ci_heal_publication_admit_invoke() -> String {
   )
 }
 
-fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> AppInstallationTokenMint {
+fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId, f: HealPublisherFederation) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "heal-publisher",
     key_secret: gunbai_bot_app_pem_secret,
@@ -3350,7 +3355,7 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
     app_slug: app.slug as String,
     installation_id: installation.value,
     export_env_names: FreeSemigroup { head: "GITHUB_TOKEN", tail: [] },
-    key_unreadable_message: heal_publisher_key_unreadable_message(http_status: "$SM_CODE"),
+    key_unreadable_message: heal_publisher_federation_key_unreadable_message(f: f, http_status: "$SM_CODE"),
     token_refused_message: heal_publisher_token_refused_message(
       status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
     ),
@@ -3361,9 +3366,28 @@ fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInst
       to_string(installation.value),
       " (one hour, contents:write on this repository only; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: Present { value: heal_publisher_installation_token_request_body() },
+    request_body: Present { value: heal_publisher_federation_installation_token_request_body(f: f) },
     observation_record: none
   }
+}
+
+// THE PUBLISH PRELUDE FOR A REPOSITORY WHOSE PUBLISHER DOES NOT RUN FROM THIS CHECKOUT. gunbc-private's
+// publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
+// the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
+// repository by its own federation record, as one rendered fragment ahead of its own invocation.
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
+  concat(
+    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+      steps: concat(
+        heal_publisher_cgroup_prelude(),
+        github_app_installation_token_prelude(
+          spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: f)
+        )
+      ),
+      on_failure: FailFast
+    }),
+    "\n"
+  )
 }
 
 // THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
@@ -3376,7 +3400,7 @@ fn gunbc_ci_heal_publication_publish_invoke() -> String {
     prelude: concat(
       heal_publisher_cgroup_prelude(),
       github_app_installation_token_prelude(
-        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: public_heal_publisher_federation())
       )
     ),
     source_roots: witness_layer_roots,
