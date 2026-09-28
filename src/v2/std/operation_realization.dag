@@ -7,6 +7,7 @@ import std.effect_grant {
 }
 import v2.std.operation_argv { OperationRef, BoundOperationInvocation, InputText, InputTextList }
 import std.list { first_duplicate_by_key }
+import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
@@ -146,7 +147,7 @@ fn operation_handler_selection<S>(
         if named != (realization.identity as String) {
           OperationHandlerRefused { cause: OperationRealizationMismatch { at: at, named: named, active: realization.identity } }
         } else {
-          match map_get(index, operation_ref_key(at: at)) {
+          match map_lookup(m: index, key: operation_ref_key(at: at)) {
             Absent => OperationHandlerRefused { cause: OperationNotBound { at: at } }
             Present { value: b } => OperationHandlerSelected { binding: b }
           }
@@ -161,7 +162,7 @@ fn operation_handler_selection<S>(
 // per-dispatch scan re-derived the same fact on every call (DESIGN section 2). Admission has already
 // refused a realization that binds one identity twice, so each key holds exactly one binding.
 fn operation_realization_index<S>(realization: OperationRealization<S>) -> Map<String, OperationBinding<S>> {
-  fold(realization.bindings, init: empty_map(), f: fn(acc, b) { map_insert(acc, operation_ref_key(at: b.at), b) })
+  fold(realization.bindings, init: empty_map(), f: fn(acc, b) { map_insert(m: acc, key: operation_ref_key(at: b.at), value: b) })
 }
 
 // ADMISSION BEFORE THE SUBJECT RUNS: a realization binding one identity twice is malformed whatever
