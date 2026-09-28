@@ -52,9 +52,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // authorization producer cannot make D0 executable before both walls stand, by construction.
 //
 // THE SERVED HALF STANDS; THE ROW STILL DOES (2026-09-27). gunbc.fabric_storage_serve now refuses a
-// put or advance from any login outside gunbc.fabric_writer_roster's roster, including an absent
+// put or advance from any login outside gunbc.fabric_writer_roster's roster (an authored roster of recorded readings), including an absent
 // login, as FabricWriterRefused (discriminating reds over the real handler in
-// test.claim.fabric.fabric_storage_file_store_wet_witness). The roster is derived from the recorded
+// test.claim.fabric.fabric_storage_file_store_wet_witness). The roster is the fold of the recorded
 // readings, which today ground no login (srv1 unproxied; srv3, srv4 could not resolve the door), so
 // it is empty and the door refuses every served write. The row stands because the local half does
 // not: the placed host's in-process writers are walled only by the store directories' ownership

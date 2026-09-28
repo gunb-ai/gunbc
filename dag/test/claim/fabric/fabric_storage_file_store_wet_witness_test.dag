@@ -260,11 +260,11 @@ fn served_advance_absent(s: FabricStorageFileRoot, roster: List<NonEmptyStr>, lo
 }
 
 fn put_writer_refused(p: FabricPut) -> Bool {
-  match p { FabricPutRefused { fault: f } => match f { FabricWriterRefused { principal: _ } => true  _ => false }  FabricObjectStored { object: _ } => false }
+  match p { FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: _ } => true  _ => false }  FabricObjectStored { object: _ } => false }
 }
 
 fn advance_writer_refused(a: FabricHeadAdvance) -> Bool {
-  match a { FabricHeadAdvanceRefused { fault: f } => match f { FabricWriterRefused { principal: _ } => true  _ => false }  _ => false }
+  match a { FabricHeadAdvanceRefused { fault: f } => match f { FabricWriterRefused { refusal: _ } => true  _ => false }  _ => false }
 }
 
 fn head_absent(s: FabricStorageFileRoot) -> Bool {
