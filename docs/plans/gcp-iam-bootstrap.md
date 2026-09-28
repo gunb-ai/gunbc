@@ -29,7 +29,7 @@ falls back to this operator token. No service-account key is created.
 
 The missing deny-policy permission is a modeled dependency, not a console task.
 Under the operator's explicit authorization, the organization IAM writer can publish a
-time-limited `roles/iam.denyAdmin` grant to `user:briansrls@gunb.ai`, install the
+time-limited `roles/iam.denyAdmin` grant to `user:brian@gunb.ai`, install the
 protection policy, then remove exactly that grant. GCP documents
 [Deny Admin](https://docs.cloud.google.com/iam/docs/deny-access) and
 [time-limited conditional bindings](https://docs.cloud.google.com/iam/docs/managing-conditional-role-bindings).
@@ -193,3 +193,13 @@ permits at most 30 attempts separated by ten seconds, only after an explicit HTT
 retried as if nothing committed. An accepted create is followed by at most seven
 readbacks separated by ten seconds, with no additional creation request. Exhaustion
 or clock/deadline refusal enters the same authority cleanup obligation.
+
+
+Before publishing temporary authority, the native Google UserInfo operation must
+establish subject `116084671989231734979` (previously confirmed by the operator),
+verified email, and the pinned IAM member `user:brian@gunb.ai`. Live UserInfo readback
+identified this primary email; the earlier `briansrls@gunb.ai` spelling is not used
+as the authority identity. A different subject with the same email, missing claims,
+or changed transport email refuses publication. Cleanup does not require the old
+operator credential's identity: an authorized recovery credential may remove the
+already-pinned exact cell. No access token is put in a URL or command argument.

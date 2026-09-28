@@ -1,6 +1,7 @@
 module test.claim.auth.gcp_iam_bootstrap_witness_test
 
 import std.types { Bool }
+import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
@@ -13,6 +14,7 @@ import gunbc.auth.gcp_iam_bootstrap {
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
+  bootstrap_operator_matches, iam_bootstrap_operator_subject,
   iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_requires, TemporaryAuthorityRetired, DenyPolicyReadback,
   BootstrapAuthorityIntent, bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_may_grant,
   bootstrap_authority_action, AuthorityAbsent, AuthorityPresent, AuthorityUnreadable,
@@ -131,4 +133,14 @@ test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() 
 
 test fn cleanup_dependency_does_not_wait_for_successful_deny_installation() -> Bool {
   !any(bootstrap_authority_requires(subject: TemporaryAuthorityRetired), prerequisite => prerequisite == DenyPolicyReadback)
+}
+
+
+test fn authority_beneficiary_requires_the_verified_stable_google_subject() -> Bool {
+  let claims = OidcStandardClaims { email: Present { value: "brian@gunb.ai" }, email_verified: Present { value: true }, name: none }
+  bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: claims)
+    && !bootstrap_operator_matches(subject: "another-subject", claims: claims)
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: claims.email, email_verified: Present { value: false }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: none, email_verified: Present { value: true }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: Present { value: "briansrls@gunb.ai" }, email_verified: Present { value: true }, name: none })
 }

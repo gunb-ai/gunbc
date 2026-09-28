@@ -2,6 +2,7 @@ module gunbc.auth.gcp_iam_bootstrap_authority
 
 import std.types { String, Timestamp, Bool, List, NonEmptyStr, Int, path_segment_is_safe }
 import extdeps.transports.rest { RestOutcome, RestStatusRefused, mutation_status_is_commit_ambiguous }
+import extdeps.auth.oidc { OidcStandardClaims }
 import std.decimal { decimal_digits_only }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
@@ -15,7 +16,15 @@ import gunbc.auth.gcp_iam_converge { cell_preimage }
 // Deny Admin is grantable only on an organization, per Google's role definition.
 data iam_bootstrap_authority_organization: NonEmptyStr = "organizations/266638272282"
 
-data iam_bootstrap_operator_member: String = "user:briansrls@gunb.ai"
+data iam_bootstrap_operator_subject: String = "116084671989231734979"
+data iam_bootstrap_operator_email: String = "brian@gunb.ai"
+data iam_bootstrap_operator_member: String = concat("user:", iam_bootstrap_operator_email)
+
+fn bootstrap_operator_matches(subject: String, claims: OidcStandardClaims) -> Bool {
+  subject == iam_bootstrap_operator_subject
+    && match claims.email_verified { Present { value: true } => true _ => false }
+    && match claims.email { Present { value: email } => (email as String) == iam_bootstrap_operator_email _ => false }
+}
 
 type BootstrapAuthorityIntent { operation: String, expires_at: Timestamp }
 

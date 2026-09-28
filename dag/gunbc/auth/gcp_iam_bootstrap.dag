@@ -3,6 +3,8 @@ module gunbc.auth.gcp_iam_bootstrap
 import std.types { String, NonEmptyStr, Secret, List, Bool, Int, path_segment_is_safe, Timestamp }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import extdeps.google.userinfo
+import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.iam_deny
 import extdeps.cloud.gcp.secret_manager
@@ -30,6 +32,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
+  bootstrap_operator_matches, iam_bootstrap_operator_member, iam_bootstrap_operator_subject,
   iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_dependency_plan,
   BootstrapAuthorityIntent, bootstrap_authority_intent_valid, bootstrap_authority_may_grant,
   bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_action,
@@ -80,7 +83,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
     bootstrap_authority_dependency_plan(),
     "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
-    "The grant targets only user:briansrls@gunb.ai; its deadline is journaled, and retry cannot renew or republish it.",
+    concat("The grant targets ", iam_bootstrap_operator_member, " after verified Google subject ", iam_bootstrap_operator_subject, "; retry cannot renew or republish it."),
   ]
   let roles = map(iam_bootstrap_roles, r => join(["role ", iam_bootstrap_role_name(role: r) as String, " permissions=", join(iam_bootstrap_role_permissions(role: r), ",")], ""))
   let cells = map(iam_bootstrap_capability_bindings() + iam_bootstrap_trust_bindings(), b => join([
@@ -401,8 +404,11 @@ fn iam_bootstrap_authority_converge(token: Secret, withdrawing: Bool) -> String 
     let intent = BootstrapAuthorityIntent { operation: operation, expires_at: expiry as Timestamp }
     if !bootstrap_authority_intent_valid(intent: intent) { "authority intent has an invalid operation identity or UTC deadline" }
     else {
-      let ancestry = if withdrawing { "" } else { iam_bootstrap_authority_ancestry(token: token) }
-      if ancestry != "" { ancestry } else { iam_bootstrap_authority_reconcile(intent: intent, token: token, withdrawing: withdrawing) }
+      let actor = if withdrawing { "" } else { iam_bootstrap_operator_readback(token: token) }
+      if actor != "" { actor } else {
+        let ancestry = if withdrawing { "" } else { iam_bootstrap_authority_ancestry(token: token) }
+        if ancestry != "" { ancestry } else { iam_bootstrap_authority_reconcile(intent: intent, token: token, withdrawing: withdrawing) }
+      }
     }
   }
 }
@@ -549,4 +555,12 @@ fn iam_bootstrap_deny_creation_readback(token: Secret, remaining: Int) -> String
       iam_bootstrap_deny_creation_readback(token: token, remaining: remaining - 1)
     } else { "deny creation readback wait failed" }
   } else { concat("deny creation accepted but exact readback is not established: ", rest_refusal_text(o: check.outcome)) }
+}
+
+
+fn iam_bootstrap_operator_readback(token: Secret) -> String {
+  let actor = google.OidcUserInfo.Get(access_token: token)
+  if !rest_ok(o: actor.outcome) { concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: actor.outcome)) }
+  else if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { "" }
+  else { "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" }
 }
