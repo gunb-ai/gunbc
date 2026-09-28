@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a member of gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population
 // and does not discharge that stall.
 //
-// ONE BUILD, FOUR RUNS: every run shares one workspace, so the second through fourth must report
+// ONE BUILD, REUSED: every run shares one workspace, so within a claim the second run must report
 // compile_skipped -- the inputs are supplied to one artifact after it is built, and constant
 // evaluation cannot have removed the operation under test. The inputs are distinct, include zero and
 // a negative, and each expected frame is the input's own little-endian i32 bytes, so an `f` that
@@ -75,13 +75,25 @@ fn identity_cast_native_run_is(text: String, value: String, expect_skipped: Bool
   }
 }
 
-test fn the_emitted_identity_cast_preserves_its_runtime_argument_holds() -> Bool {
+// TWO INDEPENDENT PAIRS, NOT ONE CONJUNCTION: each run spawns the host build tool, and four in one
+// claim measured 397ms cpu against the 302ms enrolment margin while two measured 212ms. The pairs
+// share nothing but the artifact, so splitting them loses no coverage; within each pair the second
+// run must reuse the build the first found or made. Positive and negative in one pair, zero and a
+// value past 16 bits in the other.
+test fn the_emitted_identity_cast_preserves_a_positive_and_a_negative_argument_holds() -> Bool {
   match identity_cast_native_emitted() {
     Absent => false
     Present { value: text } =>
       identity_cast_native_run_is(text: text, value: "7", expect_skipped: false, octets: [0, 7, 0, 0, 0])
         && identity_cast_native_run_is(text: text, value: "-17", expect_skipped: true, octets: [0, 239, 255, 255, 255])
-        && identity_cast_native_run_is(text: text, value: "0", expect_skipped: true, octets: [0, 0, 0, 0, 0])
+  }
+}
+
+test fn the_emitted_identity_cast_preserves_zero_and_a_wide_argument_holds() -> Bool {
+  match identity_cast_native_emitted() {
+    Absent => false
+    Present { value: text } =>
+      identity_cast_native_run_is(text: text, value: "0", expect_skipped: false, octets: [0, 0, 0, 0, 0])
         && identity_cast_native_run_is(text: text, value: "70000", expect_skipped: true, octets: [0, 112, 17, 1, 0])
   }
 }
