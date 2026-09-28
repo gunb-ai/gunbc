@@ -265,6 +265,21 @@ pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     acc
 }
 
+/// THE PATH THAT SPELLS THE RUNNING IMAGE, NOT THE PATH IT WAS STARTED FROM -- one selection for
+/// every reader of the running compiler's bytes (`transform_content_digest` below, and the native
+/// route's preparation seed identity). On Linux `current_exe()` is the start path, which reads
+/// `<path> (deleted)` once a cargo build re-links it. Measured 2026-08-30 (BuildBuddy, regen round
+/// cost): the in-round seed build re-linked a byte-identical binary and this read panicked on the
+/// stale path. `/proc/self/exe` resolves to the mapped image even after the directory entry is
+/// replaced; elsewhere the start path is the only spelling available.
+pub fn running_image_path() -> std::io::Result<PathBuf> {
+    if cfg!(target_os = "linux") {
+        Ok(PathBuf::from("/proc/self/exe"))
+    } else {
+        std::env::current_exe()
+    }
+}
+
 /// Content hash of the running compiler binary — the compiler-identity key term.
 /// One authority for every key that must invalidate across a seed rebuild: the
 /// resolved-graph subject digest (below) and the typed-module content key
@@ -274,22 +289,12 @@ pub fn transform_content_digest() -> Hash {
     static DIGEST: OnceLock<Hash> = OnceLock::new();
     DIGEST
         .get_or_init(|| {
-            // THE RUNNING IMAGE, NOT THE PATH IT WAS STARTED FROM. On Linux `current_exe()` is
-            // the start path, which reads `<path> (deleted)` once a cargo build re-links it.
-            // Measured 2026-08-30 (BuildBuddy, regen round cost): the in-round seed build
-            // re-linked a byte-identical binary and this read panicked on the stale path.
-            // `/proc/self/exe` resolves to the mapped image even after the directory entry is
-            // replaced; elsewhere the start path is the only spelling available.
-            let exe = if cfg!(target_os = "linux") {
-                std::path::PathBuf::from("/proc/self/exe")
-            } else {
-                std::env::current_exe().unwrap_or_else(|e| {
-                    panic!(
-                        "resolve cache: cannot locate compiler executable to content-address \
-                         the transform: {e}"
-                    )
-                })
-            };
+            let exe = running_image_path().unwrap_or_else(|e| {
+                panic!(
+                    "resolve cache: cannot locate compiler executable to content-address \
+                     the transform: {e}"
+                )
+            });
             let bytes = fs::read(&exe).unwrap_or_else(|e| {
                 panic!(
                     "resolve cache: cannot read compiler executable {:?} to content-address \
