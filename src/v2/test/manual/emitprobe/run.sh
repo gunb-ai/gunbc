@@ -4,6 +4,7 @@ E="--entry src/v2/test/manual/emitprobe/emit_probe.dag"
 for f in $(cat src/v2/test/manual/emitprobe/host_entries.txt); do E="$E --entry $f"; done
 $B --print-entry-closure --source-root dag --source-root src/v2 $E > clo.txt 2>&1
 grep -o 'file="[^"]*"' clo.txt | sed 's/file="//;s/"$//' | sort -u > files.txt
+cat files.txt | xargs grep -ohE '(dag|src/v2)/[A-Za-z0-9_/]+\.dag' 2>/dev/null | sort -u | while read f; do [ -f "$f" ] && echo $f; done >> files.txt; sort -u -o files.txt files.txt
 echo FILES $(wc -l < files.txt); grep entry-closure-summary clo.txt
 rm -rf /tmp/mini; mkdir -p /tmp/mini; tar cf - -T files.txt | tar xf - -C /tmp/mini
 cd /tmp/mini; git init -q .; touch Cargo.toml
