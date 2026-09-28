@@ -360,3 +360,59 @@ test fn cref_a_bool_returning_call_still_refuses_holds() -> Bool {
 test fn cref_an_unresolved_callee_does_not_execute_holds() -> Bool {
   !cref_executes(o: cref_unresolved_callee_source())
 }
+
+// AN ARGUMENT-DEPENDENT CALLEE: its body IS its parameter, so its result cannot be produced without
+// consuming the supplied argument. Two different arguments are supplied because ONE would not
+// discriminate -- a callee returning a constant that happened to equal the argument would satisfy a
+// single case.
+fn cref_identity_source(lex: String) -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn identity(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  identity(only_arg: " + lex + ")\n}\n")
+}
+
+fn cref_identity_executes_to(lex: String, n: Int) -> Bool {
+  cref_executes_to(o: cref_identity_source(lex: lex), n: n)
+}
+
+// THE ACCEPTANCE TARGET FOR THIS LANE, ENROLLED AS THE REFUSAL IT IS TODAY. The value path is written
+// and EXECUTED by this claim -- both arguments are supplied and both results are compared -- so what
+// remains when the boundary is repaired is inverting this assertion, not authoring the behaviour it
+// checks. Writing it the other way round would land a red and specify the same thing.
+//
+// It refuses at the shared facts key, not at anything about calls or arguments: see
+// v2.test.claim.callexec.synthetic_facts_key_collision, where more than one entry carries one key and
+// those entries disagree on grounding.
+test fn cref_argument_dependent_execution_still_refuses_holds() -> Bool {
+  !cref_identity_executes_to(lex: "3", n: 3)
+    && !cref_identity_executes_to(lex: "8", n: 8)
+    && cref_refusal_reason_is(
+         o: cref_identity_source(lex: "3"),
+         wanted: ^eval_rejected_grounding_not_derived
+       )
+}
+
+// AND THE SAME CALLEE MUST NOT ANSWER A DIFFERENT ARGUMENT'S VALUE once it executes. THIS CLAIM IS
+// VACUOUS TODAY and is recorded as such: nothing executes, so both conjuncts hold for the wrong
+// reason. It is enrolled anyway because it is exactly the check that stops the repair being credited
+// by a callee that consumes its argument and returns the WRONG one, and it becomes discriminating the
+// moment the claim above inverts. A reader must not count it as present coverage until then.
+test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Bool {
+  !cref_identity_executes_to(lex: "3", n: 8)
+    && !cref_identity_executes_to(lex: "8", n: 3)
+}
+
+// THE BOOL PAIR'S DISTINCT OUTCOMES, the same shape one type further on. A true-returning and a
+// false-returning callee must produce DIFFERENT runtime answers; a repair that made both execute to
+// the same value would satisfy "executes" and destroy the distinction the pair exists for. Enrolled as
+// the refusal it is today, with the comparison written and executed.
+fn cref_bool_false_source() -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn falsity(only_arg: Int) -> Bool {\n  false\n}\n\nfn consumer() -> Bool {\n  falsity(only_arg: 3)\n}\n")
+}
+
+test fn cref_the_bool_pair_does_not_yet_separate_holds() -> Bool {
+  !cref_executes(o: cref_bool_pair_source())
+    && !cref_executes(o: cref_bool_false_source())
+    && cref_refusal_reason_is(
+         o: cref_bool_false_source(),
+         wanted: ^eval_rejected_grounding_not_derived
+       )
+}
