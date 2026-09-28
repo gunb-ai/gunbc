@@ -3820,7 +3820,7 @@ fn body_lower_lowered_behind_shells_optional(node: Node) -> Optional<Node> {
 // would in body position. Absent means this reader could not lower the value.
 //
 // CALL ARGUMENTS DO NOT GO THROUGH IT. gunbc#12108 is the authority for call-argument lowering
-// (body_lower_call_args_from_capture -> body_lower_call_arg_value), and this reader once also served
+// (body_lower_call_args_from_capture -> body_lower_call_arg_edges -> body_lower_call_arg_edge), and this reader once also served
 // arguments; that route was dropped at the merge rather than kept beside #12108's. The two differ in
 // strength: #12108's per-argument read goes through body_lower_operand_ref_optional, which narrows a
 // sequence operand to its head (gunbc.recurring_failure_mode
