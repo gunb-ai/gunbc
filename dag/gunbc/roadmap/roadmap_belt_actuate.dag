@@ -220,6 +220,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardObserveOnly,
   DashboardActuating,
   srv1_live_dashboard_instance,
+  srv2_deploy_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
@@ -8952,6 +8953,36 @@ data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
 // DispatchAlreadyLive -> ExitSuccess (the click achieved or already holds the desired state); every
 // refusal or failure (node_not_found, already_done, observe_refused, spawn_failed) -> exit_failure
 // with the JSON receipt on stderr, so the server relays the exact cause.
+// THE INSTANCE SELECTION (owner ruling 2026-09-28: sessions are pressured toward latest — a fresh
+// dispatch binds the CURRENT deployment line, never a stale recorded pin): GUNBC_BELT_INSTANCE_ID
+// names the admitted instance ("srv2-deploy" or "srv1-live"); absent/empty defaults to srv1-live,
+// the historical behavior; any other spelling refuses before anything stages. The default stays
+// srv1-live only until the CLI's callers move; the dispatch surface on the dashboard already serves
+// its own instance.
+fn belt_dispatch_instance_cli() -> HostDashboardInstance? {
+  match shell.Env.Get(name: belt_dispatch_instance_env_var).value {
+    Absent => Present { value: srv1_live_dashboard_instance() }
+    Present { value: v } =>
+      if string_length(s: v) == 0 {
+        Present { value: srv1_live_dashboard_instance() }
+      } else {
+        belt_dispatch_instance_named(id: trim(s: v))
+      }
+  }
+}
+
+data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr
+
+fn belt_dispatch_instance_named(id: String) -> HostDashboardInstance? {
+  if id == "srv2-deploy" {
+    Present { value: srv2_deploy_dashboard_instance() }
+  } else if id == "srv1-live" {
+    Present { value: srv1_live_dashboard_instance() }
+  } else {
+    none
+  }
+}
+
 fn belt_dispatch_node_cli() -> ProcessExit {
   match shell.Env.Get(name: belt_dispatch_env_var).value {
     Absent =>
@@ -8960,11 +8991,16 @@ fn belt_dispatch_node_cli() -> ProcessExit {
       if string_length(s: v) == 0 {
         exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_NODE_ID is empty — no node id to dispatch (fail-closed)")
       } else {
-        let r = belt_dispatch_node(node_id: v)
-        if belt_dispatch_result_ok(r: r) {
-          ExitSuccess
-        } else {
-          exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r)))
+        match belt_dispatch_instance_cli() {
+          Absent =>
+            exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_INSTANCE_ID names no admitted instance (srv1-live or srv2-deploy) — refusing before anything stages")
+          Present { value: instance } =>
+            let r = belt_dispatch_node_for_instance(instance: instance, node_id: v)
+            if belt_dispatch_result_ok(r: r) {
+              ExitSuccess
+            } else {
+              exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r)))
+            }
         }
       }
   }
