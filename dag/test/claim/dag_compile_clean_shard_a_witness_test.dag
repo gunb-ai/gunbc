@@ -7,6 +7,24 @@ import v2.std.subject_evidence {
   subject_evidence_establishes
 }
 import tools.host_prelude { WitnessBinNotEnrolled }
+import tools.dag_compile_clean_partition {
+  ShardClean,
+  ShardFailed,
+  compose_compile_clean_shard_verdicts,
+  witness_partition_entry_roots_are_witness_layer_roots,
+  witness_partition_pool_roots_are_compile_clean_source_roots,
+  witness_compose_all_clean_is_clean,
+  witness_compose_any_failure_fails_closed,
+  witness_compose_associativity,
+  witness_reduce_projection_preserves_compose,
+  witness_empty_compose_is_unknown_reduce
+}
+import tools.dag_compile_clean_shard_transport {
+  shard_a_exemplar_entry_path,
+  run_shard_a_exemplar_compile,
+  run_shard_a_exemplar_compile_with_unenrolled_compiler
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
