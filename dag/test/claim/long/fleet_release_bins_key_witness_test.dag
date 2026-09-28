@@ -19,7 +19,7 @@ import gunbc.fleet_release_bins_key {
 import gunbc.ci_spec { ci_release_bins_archive_name }
 import v2.extdeps.languages.bash_build {
   bash_build_assign, bash_build_with_redir_to_file, bash_build_and_then, bash_build_word_cmdsubst,
-  bash_build_if_else, bash_build_stmt_list_from_nodes,
+  bash_build_if_else, bash_build_stmt_list_from_nodes, bash_build_pipe,
 }
 
 // RETAINED EXECUTING CONTROLS for gunbc.fleet_release_bins_key (review 5332304117). Each claim runs
@@ -51,7 +51,9 @@ fn fake_tool(name: String, lines: List<String>) -> List<Node> {
 
 // The fixture: every variable the runners read, refused-override names cleared so the host running
 // the claim cannot leak them in, and a committed tree with fake members in target/release.
-fn fixture() -> List<Node> {
+// The checkout and environment every claim needs; fixture() adds the fake toolchain the key runner
+// probes, which the pack and lookup claims never reach.
+fn fixture_env() -> List<Node> {
   seq(parts: [
     [
       assign_sub(name: "T", body: cmdl(ls: ["mktemp", "-d"])),
@@ -66,11 +68,6 @@ fn fixture() -> List<Node> {
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "CARGO_BIN="), in_t(path: "/bin/cargo")])]),
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "PATH="), in_t(path: "/bin:"), var(n: "PATH")])]),
     ],
-    fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (fixture)'", "echo 'host: aarch64-unknown-linux-gnu'"]),
-    fake_tool(name: "cargo", lines: ["echo 'cargo 1.93.0 (fixture)'"]),
-    fake_tool(name: "cc", lines: ["echo 'cc (fixture) 14'"]),
-    fake_tool(name: "ld", lines: ["echo 'GNU ld (fixture) 2.44'"]),
-    fake_tool(name: "ldd", lines: ["echo 'ldd (fixture) 2.41'"]),
     [
       cmd(ws: [fx(t: "cd"), in_t(path: "/ws")]),
       cmdl(ls: ["git", "init", "-q"]),
@@ -81,12 +78,29 @@ fn fixture() -> List<Node> {
   ])
 }
 
+fn fixture() -> List<Node> {
+  seq(parts: [
+    fixture_env(),
+    fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (fixture)'", "echo 'host: aarch64-unknown-linux-gnu'"]),
+    fake_tool(name: "cargo", lines: ["echo 'cargo 1.93.0 (fixture)'"]),
+    fake_tool(name: "cc", lines: ["echo 'cc (fixture) 14'"]),
+    fake_tool(name: "ld", lines: ["echo 'GNU ld (fixture) 2.44'"]),
+    fake_tool(name: "ldd", lines: ["echo 'ldd (fixture) 2.41'"]),
+  ])
+}
+
 // Fake pack members, only for the claims whose subject is a pack.
 fn fixture_members() -> List<Node> {
-  seq(parts: map(ci_floor_required_artifact_names(), m => [
-    write_file(path: fx(t: join(["target/release/", m], "")), lines: ["#!/bin/sh", join(["# fixture member ", m], ""), "exit 0"]),
-    cmd(ws: [fx(t: "chmod"), fx(t: "+x"), fx(t: join(["target/release/", m], ""))]),
-  ]))
+  [
+    bash_build_with_redir_to_file(
+      inner: bash_build_pipe(
+        left: cmdl(ls: ["printf", "#!/bin/sh\nexit 0\n"]),
+        right: cmd(ws: concat([fx(t: "tee")], map(ci_floor_required_artifact_names(), m => fx(t: join(["target/release/", m], ""))))),
+      ),
+      path: fx(t: "/dev/null"),
+    ),
+    cmd(ws: concat([fx(t: "chmod"), fx(t: "+x")], map(ci_floor_required_artifact_names(), m => fx(t: join(["target/release/", m], ""))))),
+  ]
 }
 
 // THE KEY IS SUPPLIED, NOT RE-DERIVED, for claims whose subject is downstream of it (DESIGN section 3,
@@ -114,7 +128,7 @@ fn supplied_key() -> List<Node> {
 // Produce: key, then pack the fixture members, then keep the entry as the store.
 fn produced_store() -> List<Node> {
   seq(parts: [
-    fixture(),
+    fixture_env(),
     fixture_members(),
     supplied_key(),
     release_bins_pack_statements(),
@@ -164,6 +178,7 @@ fn e(statements: List<Node>) -> Outcome<String> { release_bins_emitted(statement
 // ── THE SHARED PARTS, each emitted once ────────────────────────────────────────────────────────
 data part_produced_store: Outcome<String> = e(statements: produced_store())
 data part_fixture: Outcome<String> = e(statements: fixture())
+data part_fixture_env: Outcome<String> = e(statements: fixture_env())
 data part_key: Outcome<String> = e(statements: release_bins_key_statements())
 data part_restore_prep: Outcome<String> = e(statements: [
   cmd(ws: [fx(t: "rm"), fx(t: "-rf"), fx(t: release_bins_staging_dir), fx(t: "target")]),
@@ -212,7 +227,7 @@ fn key_twice(first: Outcome<String>, second: Outcome<String>) -> List<Outcome<St
 }
 
 fn decode_answer(body: Outcome<String>) -> List<Outcome<String>> {
-  [part_fixture, part_supplied_key, body, part_decode]
+  [part_fixture_env, part_supplied_key, body, part_decode]
 }
 
 fn answer_body(body: String) -> Outcome<String> {
@@ -259,11 +274,11 @@ data malformed_gunbc_line_edit: String = "s/^[0-9a-f]{64}  gunbc$/xxxxxxxxxxxxxx
 
 data mutation_malformed_line_and_altered_gunbc: Outcome<String> = e(statements: concat(
   [cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), fx(t: malformed_gunbc_line_edit), in_t(path: join(["/store/", release_bins_manifest_name], ""))])],
-  repack(edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])], names: ci_floor_required_artifact_names()),
+  repack(edit: [write_file(path: in_t(path: "/re/gunbc"), lines: ["#!/bin/sh", "echo altered"])], names: ci_floor_required_artifact_names()),
 ))
 
 data mutation_altered_gunbc: Outcome<String> = e(statements: repack(
-  edit: [cmd(ws: [fx(t: "cp"), in_t(path: "/bin/ld"), in_t(path: "/re/gunbc")])],
+  edit: [write_file(path: in_t(path: "/re/gunbc"), lines: ["#!/bin/sh", "echo altered"])],
   names: ci_floor_required_artifact_names(),
 ))
 
