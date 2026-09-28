@@ -817,9 +817,18 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 /// empty means the parse did not carry one; treating unknown as "not a string" would
 /// under-report exactly the survivors a census exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
-    match decl.item.type_annotation.as_ref() {
+    data_item_declared_type_name(&decl.item, &decl.source_indices)
+}
+
+/// The same spelling for a data item the caller already holds, so the parse sweep can record it
+/// at ingestion (`declaration_index::record_from_module`) without a second rule beside this one.
+pub(crate) fn data_item_declared_type_name(
+    item: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match item.type_annotation.as_ref() {
         Some(ann) => {
-            let authored = authored_name_at(decl.source_indices.clone(), ann.clone());
+            let authored = authored_name_at(source_indices.clone(), ann.clone());
             if authored.is_empty() {
                 ann.name.clone()
             } else {
