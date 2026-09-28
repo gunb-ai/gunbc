@@ -3194,6 +3194,21 @@ pub(crate) enum LocalRepoWetExecution {
 /// on this tree, so production reaches only the refusing cell of that arm.
 ///
 /// `LocalRepoWetLaneOutcome` is DERIVED from a join that held, never accepted from the executor.
+/// THE LANE A REFUSED FINALIZATION STANDS FOR, for the one reader that must still run after it:
+/// the changed-witness projection. It admits nothing and carries the refusal, so every wet-joined
+/// arm reads it as a join that did not hold -- the same answer the refusal itself gives.
+pub(crate) fn refused_local_repo_wet_lane_outcome(
+    candidate: &str,
+    refusal: &str,
+) -> LocalRepoWetLaneOutcome {
+    LocalRepoWetLaneOutcome {
+        scheduled: 0,
+        candidate: candidate.to_string(),
+        admitted: HashSet::new(),
+        refusals: vec![refusal.to_string()],
+    }
+}
+
 pub(crate) fn finalize_local_repo_wet_lane(
     schedule: &[LocalRepoWetScheduledRow],
     execution: LocalRepoWetExecution,
@@ -11103,11 +11118,28 @@ pub fn run_required_floor(
     // unread schedule holds vacuously while `std.witness_admission` goes on claiming the route.
     let wet_execution: LocalRepoWetExecution =
         run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone());
-    let wet_lane = finalize_local_repo_wet_lane(
+    let finalized_wet_lane = finalize_local_repo_wet_lane(
         &local_repo_wet_schedule_rows,
         wet_execution,
         &prepared.subject_digest,
-    )?;
+    );
+    // A REFUSED WET LANE STILL REPORTS WHAT THE CHANGE'S OWN WITNESSES DID. The lane's refusal
+    // used to return here, before the projection below printed, so a floor red on an unrelated
+    // wet member published no `[changed-witness]` row at all, and two sessions read that
+    // silence as "the changed witnesses never executed" (#12499). The claims had executed; only
+    // their report was lost. So the projection is computed and emitted against the refused
+    // lane FIRST and the refusal is returned after it. The refused lane admits nothing -- its
+    // `refusals` are non-empty, which is exactly the arm `changed_witness_projection_rows`
+    // already reads as "the join does not hold" -- so no row's standing changes.
+    let refused_wet_lane;
+    let projection_wet_lane = match &finalized_wet_lane {
+        Ok(lane) => lane,
+        Err(refusal) => {
+            refused_wet_lane =
+                refused_local_repo_wet_lane_outcome(&prepared.subject_digest, refusal);
+            &refused_wet_lane
+        }
+    };
     let changed_projection_rows = if let Some(changed_witnesses) = changed_witnesses {
         let rows = changed_witness_projection_rows(
             &changed_witnesses,
@@ -11115,7 +11147,7 @@ pub fn run_required_floor(
             &terminal_rows,
             &cost_debt_verdict_only,
             &cost_debt_observations,
-            &wet_lane,
+            projection_wet_lane,
             &prepared.subject_digest,
         );
         emit_changed_witness_projection(&rows)?;
@@ -11133,6 +11165,8 @@ pub fn run_required_floor(
     } else {
         None
     };
+    // The lane's refusal, deferred only past the projection above and returned on every path.
+    finalized_wet_lane?;
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -14530,6 +14564,56 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         assert!(
             refused[0].blocks,
             "an admission under a refused lane join must not green this run"
+        );
+    }
+
+    /// A REFUSED WET LANE STILL YIELDS THE CHANGED-WITNESS PROJECTION (#12499). A planted
+    /// refusal from the SAME finalizer the floor calls is turned into the lane the projection
+    /// reads, and the change's own witnesses keep their rows: the one that passed still reads
+    /// planned-and-passed, and a route gap the refused lane had "admitted" still blocks. Before
+    /// the fix the refusal returned ahead of the projection, so neither row was ever printed.
+    #[test]
+    fn a_refused_wet_lane_still_projects_the_changed_witnesses() {
+        let refusal = finalize_local_repo_wet_lane(
+            &[scheduled_row("test.claim.x.w_holds")],
+            LocalRepoWetExecution::Ran {
+                candidate: TEST_CANDIDATE.to_string(),
+                terminals: Vec::new(),
+            },
+            TEST_CANDIDATE,
+        )
+        .expect_err("a scheduled member with no terminal must refuse");
+        let lane = refused_local_repo_wet_lane_outcome(TEST_CANDIDATE, &refusal);
+        let rows = changed_witness_projection_rows(
+            &["m.passed".to_string(), "m.gap".to_string()],
+            &[
+                disposition(
+                    "m.passed",
+                    RequiredFloorDisposition::PlannedAsChangedWitness,
+                ),
+                disposition("m.gap", RequiredFloorDisposition::PlannedAsChangedWitness),
+            ],
+            &[
+                terminal("m.passed", ClaimOutcome::Pass),
+                terminal(
+                    "m.gap",
+                    ClaimOutcome::HostEffectRefused {
+                        operation: "Dir".to_string(),
+                        ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
+                    },
+                ),
+            ],
+            &HashSet::new(),
+            &HashMap::new(),
+            &lane,
+            TEST_CANDIDATE,
+        );
+        assert_eq!(rows.len(), 2, "every changed identity keeps its row");
+        assert_eq!(rows[0].standing, "planned-and-passed");
+        assert!(!rows[0].blocks);
+        assert!(
+            rows[1].blocks,
+            "a refused lane admits nothing, so a route gap stays blocking"
         );
     }
 
