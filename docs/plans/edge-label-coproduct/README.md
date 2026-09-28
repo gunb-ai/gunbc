@@ -39,7 +39,7 @@ type StructuralEdgeLabel
   = Core { marker: CoreEdgeLabel }                      // closed, v2.std.node
   | Production { grammar: GrammarRef, edge: Symbol }    // minted only by the grammar fold from a declared row
 ```
-Here `Production` is closed per grammar by construction. Its only constructor is the grammar's own projection (`v2.std.grammar` / `v2.compiler.02_parse` `parse_tree_projection_edge`, already a closed roster of 4, is the precedent). Readers compare `Production` values minted from the same row, not `^text`.
+Here `Production` is closed per grammar by construction. Its only constructor is the grammar's own projection (`v2.std.grammar` / `v2.compiler.02_parse` `parse_tree_projection_edge`, already a closed roster, is the precedent). Readers compare `Production` values minted from the same row, not `^text`.
 Alternative (B): one flat closed enum of every candidate in `v2.std.node`. Rejected for the layer inversion above.
 Needs a ruling: whether `Production.edge` can be a row reference rather than a Symbol. That depends on `v2.std.grammar` exposing a row identity type. If it cannot, `Production` is rung 3 per grammar (it is checked when the grammar is admitted), not rung 4.
 
@@ -65,7 +65,7 @@ Needs a ruling: whether `Production.edge` can be a row reference rather than a S
 
 ## Step-2 controls (the cut)
 
-1. For each of the 4 readers, an authored name spelled like its structural label (for example an authored `dag_surface_module_header`) reaches none of them.
+1. For each of the four readers, an authored name spelled like its structural label (for example an authored `dag_surface_module_header`) reaches none of them.
 2. The real structural labels still route (positive control over the real ingest path).
 3. A mutation that re-keys a reader on text makes the control red.
 4. Gating: base-vs-head over shape consumers, neat-boar-16's srv1 per-file native census, and self-host.
