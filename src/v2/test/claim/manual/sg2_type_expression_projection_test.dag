@@ -1,13 +1,8 @@
 module v2.test.manual.sg2_type_expression_projection
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  translate_type_expression_project,
-  target_bundle_child_optional_type_expr_projection,
-  target_serialize_source_from_model,
-  translate,
-  ProjectionAbsent
-}
+import v2.compiler.translate { translate_type_expression_project, target_bundle_child_optional_type_expr_projection, translate, ProjectionAbsent }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.rust {
   rust_target_model,
   rust_sg2_arrow_malformed_source_type_node,
