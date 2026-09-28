@@ -49,12 +49,12 @@ import gunbc.auth.approval_keyring_pins {
   approval_capability_mac_key_path_env,
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
-  mtcollins1_sol_incident_suffix,
+  mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix,
   mtcollins1_boot_sol_capture_path_env,
   mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
-import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script }
+import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script, sol_hold_exit_record_prefix }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
@@ -2769,17 +2769,24 @@ data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: Dissolut
 // THE BOOT PRELUDE'S BMC FETCH IS THE SHARED ONE (gunbc_ci_mtcollins1_bmc_credential_fetch_steps).
 // The four steps it used to spell inline are byte-identical to what that function returns when it is
 // given this lane's destination variable, which is why the factoring changes no emitted YAML here.
-// THE SOL-LOSS NOTICE IS THIS STEP'S OWN LOG (operator ruling 2026-09-27: not ntfy, no new
-// credential). The boot's watch freezes an ObservationChannelLost incident to "$SOL_OUT<suffix>"
-// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_incident_suffix) before it takes any
-// enrichment read; a one-second watcher started here prints that file as one `::error::` annotation
-// in the live run log and appends it to the step summary, once (the .noted marker). The file is
-// emptied first because a self-hosted workspace outlives the run that wrote it. The trap stops the
-// watcher and flushes a notice it had not yet printed, so a loss frozen just before exit is never
-// dropped. `%` is escaped per the workflow-command grammar; the incident is one line. Every trap
-// command that may legitimately fail carries `|| true`: the step runs under `set -e`, which aborts a
-// trap at its first failing command -- a watcher that had already exited after its notice once made
-// the `kill` fail and skipped the collector release (caught by the executed cancel control).
+// THE SOL NOTICES ARE THIS STEP'S OWN LOG (operator ruling 2026-09-27: not ntfy, no new credential),
+// and they do not wait on the boot process. A one-second watcher, independent of the .dag run and of
+// any BMC read it may be blocked in, publishes two things. (1) THE COLLECTOR'S EXIT, as the hold's
+// supervisor recorded it (status and instant, gunbc.machine_intake_sol_hold), the moment that record
+// appears -- a ::warning:: naming the last act this run had RECORDED requesting (teardown deactivate,
+// trap release), at requested strength, or that none had been. This is the detection path during the
+// attach, the handoff, an in-watch SMpro pass and every other interval the .dag watch cannot poll.
+// (2) THE CLASSIFIED INCIDENT the watch freezes (gunbc.machine_intake_mtcollins1_boot_run
+// mtcollins1_sol_loss_freeze, renamed into place whole), as an ::error::. Delivery is per notice
+// IDENTITY (content hash) and per channel: the annotation and the step-summary entry each get a
+// marker written only AFTER that write succeeded, so a failed or interrupted delivery is retried on
+// the next pass or by the trap -- a duplicate is possible, a drop is not -- and every outcome,
+// delivered or FAILED, is appended to "$SOL_OUT<delivery suffix>", which is uploaded with the capture.
+// The trap stops the watcher and waits for it (so it is never killed mid-write without a retry),
+// flushes both notices, records its own release request, releases, and flushes again so the exit its
+// release causes is noticed too. Every fallible trap command carries `|| true`: under set -e a
+// failing command aborts the trap, and a kill of an already-exited watcher once skipped the release.
+// `%` is escaped per the workflow-command grammar.
 // THE TRAP STOPS THE SOL COLLECTOR THROUGH THE HOLD'S OWN RELEASE (gunbc.machine_intake_sol_hold
 // mtcollins1_sol_hold_release_script), not a `kill $(cat pidfile)` of its own: the pid file holds
 // "<pid> <starttime>", and a bare kill would signal whatever process now has that pid. The EXIT trap
@@ -2799,17 +2806,17 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
     Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
     Do { run: ci_retry_body_run(command: concat("SOL_RELEASE='", concat(mtcollins1_sol_hold_release_script, "'"))) },
-    Do { run: ci_retry_body_run(command: "trap 'kill \"$\{SOL_LOSS_WATCH:-\}\" 2>/dev/null || true; if type sol_loss_notice >/dev/null 2>&1; then sol_loss_notice || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: join(["trap 'if [ -n \"$\{SOL_NOTICE_WATCH:-\}\" ]; then kill \"$SOL_NOTICE_WATCH\" 2>/dev/null || true; wait \"$SOL_NOTICE_WATCH\" 2>/dev/null || true; fi; if type sol_deliver >/dev/null 2>&1; then for i in 1 2 3 4 5; do sol_exit_event && break; sleep 0.2; done; sol_deliver \"$SOL_NOTICE_DIR/exit.event\" warning \"mtcollins1 SOL collector exited\" || true; sol_deliver \"$SOL_LOSS\" error \"mtcollins1 SOL observation lost\" || true; fi; if [ -n \"$\{SOL_WORKFLOW:-\}\" ]; then echo \"", mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_WORKFLOW\" || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; if type sol_deliver >/dev/null 2>&1; then for i in 1 2 3 4 5; do sol_exit_event && break; sleep 0.2; done; sol_deliver \"$SOL_NOTICE_DIR/exit.event\" warning \"mtcollins1 SOL collector exited\" || true; sol_deliver \"$SOL_LOSS\" error \"mtcollins1 SOL observation lost\" || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT"], "")) },
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
-    Do { run: ci_retry_body_run(command: concat("SOL_LOSS=\"$SOL_OUT", concat(mtcollins1_sol_incident_suffix, "\""))) },
-    Do { run: ci_retry_body_run(command: ": > \"$SOL_LOSS\"") },
-    Do { run: ci_retry_body_run(command: "SOL_LOSS_NOTED=\"$RUNNER_TEMP/mtcollins1-sol-loss.noted\"; rm -f \"$SOL_LOSS_NOTED\"") },
-    Do { run: ci_retry_body_run(command: "sol_loss_notice() { [ -s \"$SOL_LOSS\" ] && [ ! -e \"$SOL_LOSS_NOTED\" ] || return 1; : > \"$SOL_LOSS_NOTED\"; m=$(head -c 4000 \"$SOL_LOSS\" | tr -d '\\r\\n'); m=$\{m//\\%/%25\}; printf '::error title=mtcollins1 SOL observation lost::%s\\n' \"$m\"; { printf '### mtcollins1 SOL observation lost\\n\\n'; cat \"$SOL_LOSS\"; } >> \"$GITHUB_STEP_SUMMARY\"; }") },
-    Do { run: ci_retry_body_run(command: "( while :; do sol_loss_notice && exit 0; sleep 1; done ) & SOL_LOSS_WATCH=$!") },
+    Do { run: ci_retry_body_run(command: join(["SOL_LOSS=\"$SOL_OUT", mtcollins1_sol_incident_suffix, "\"; SOL_CLIENT=\"$SOL_OUT", mtcollins1_sol_client_suffix, "\"; SOL_WORKFLOW=\"$SOL_OUT", mtcollins1_sol_workflow_suffix, "\"; SOL_DELIVERY=\"$SOL_OUT", mtcollins1_sol_delivery_suffix, "\""], "")) },
+    Do { run: ci_retry_body_run(command: ": > \"$SOL_LOSS\"; : > \"$SOL_DELIVERY\"; SOL_NOTICE_DIR=\"$RUNNER_TEMP/mtcollins1-sol-notice\"; rm -rf \"$SOL_NOTICE_DIR\"; mkdir -p \"$SOL_NOTICE_DIR\"") },
+    Do { run: ci_retry_body_run(command: "sol_deliver() \{ [ -s \"$1\" ] || return 1; id=$(sha256sum < \"$1\" | cut -c1-16) || return 2; if [ ! -e \"$SOL_NOTICE_DIR/$id.annotation\" ]; then m=$(head -c 4000 \"$1\" | tr -d '\\r\\n'); m=$\{m//\\%/%25\}; if printf '::%s title=%s::%s\\n' \"$2\" \"$3\" \"$m\"; then : > \"$SOL_NOTICE_DIR/$id.annotation\"; echo \"$id $2 annotation delivered at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_DELIVERY\" || true; else echo \"$id $2 annotation FAILED at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_DELIVERY\" || true; fi; fi; if [ ! -e \"$SOL_NOTICE_DIR/$id.summary\" ]; then if \{ printf '### %s\\n\\n' \"$3\"; cat \"$1\"; printf '\\n'; \} >> \"$GITHUB_STEP_SUMMARY\"; then : > \"$SOL_NOTICE_DIR/$id.summary\"; echo \"$id $2 summary delivered at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_DELIVERY\" || true; else echo \"$id $2 summary FAILED at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$SOL_DELIVERY\" || true; fi; fi; [ -e \"$SOL_NOTICE_DIR/$id.annotation\" ] && [ -e \"$SOL_NOTICE_DIR/$id.summary\" ]; \}") },
+    Do { run: ci_retry_body_run(command: join(["sol_exit_event() \{ [ -e \"$SOL_NOTICE_DIR/exit.event\" ] && return 0; l=$(grep -m1 -F \"", sol_hold_exit_record_prefix, "\" \"$SOL_CLIENT\" 2>/dev/null) || return 1; a=$(grep -F \"", mtcollins1_sol_workflow_event_prefix, "\" \"$SOL_WORKFLOW\" 2>/dev/null | tail -n 1); if [ -n \"$a\" ]; then c=\"after this run's last recorded request: $a (requested, not proven to be the cause)\"; else c=\"no teardown or release had been requested by this run; the boot watch classifies it against the capture at its next observation\"; fi; printf 'mtcollins1 SOL collector exited -- %s -- %s\\n' \"$l\" \"$c\" > \"$SOL_NOTICE_DIR/exit.staged\" && mv -f \"$SOL_NOTICE_DIR/exit.staged\" \"$SOL_NOTICE_DIR/exit.event\"; \}"], "")) },
+    Do { run: ci_retry_body_run(command: "( while :; do if sol_exit_event; then sol_deliver \"$SOL_NOTICE_DIR/exit.event\" warning \"mtcollins1 SOL collector exited\" || true; fi; sol_deliver \"$SOL_LOSS\" error \"mtcollins1 SOL observation lost\" || true; sleep 1; done ) & SOL_NOTICE_WATCH=$!") },
   ])
 }
 

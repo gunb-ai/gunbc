@@ -39,6 +39,14 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // from an untimestamped client line. Lines the hold itself writes
 // carry the "gunbc-sol-hold:" prefix; every other diagnostic line is the client's.
 //
+// THE COLLECTOR'S STDOUT IS LINE-BUFFERED so that "the session is established" is observable. ipmitool
+// 1.8.19 prints "[SOL Session operational.  Use ~? for help]" with printf just before its receive
+// loop and flushes stdout only after each received SOL packet (output()); into a file that is a full
+// stdio buffer, so on a quiet console -- expected here, the census kernel's /dev/console is tty0 --
+// the banner could sit unwritten indefinitely. `stdbuf -oL` (coreutils) execs the collector, so the
+// pid, start time and cmdline stay the collector's own, and the banner lands at activation. Received
+// host bytes are unchanged: output() already flushes after every packet.
+//
 // IF THE PID CANNOT BE PUBLISHED, THE CHILD THIS LAUNCH CREATED IS STOPPED. The supervisor is the
 // child's parent and has not yet reaped it, so its pid cannot have been reused: it kills exactly that
 // child, records "gunbc-sol-hold: pid not published; collector stopped", and still records the exit.
@@ -79,7 +87,7 @@ data sol_hold_exit_record_instant_marker: String = " at="
 
 data sol_hold_pid_not_published_line: String = "gunbc-sol-hold: pid not published; collector stopped"
 
-data mtcollins1_sol_hold_activate_script: String = "h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf.tmp\" && mv -T \"$pf.tmp\" \"$pf\" || \{ rm -f \"$pf.tmp\"; kill \"$p\" 2>/dev/null; echo \"gunbc-sol-hold: pid not published; collector stopped\" >> \"$diag\"; \}; wait \"$p\"; rc=$?; echo \"gunbc-sol-hold: collector exited status=$rc at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$diag\" ) < /dev/null > /dev/null 2>&1 & exec 3<&-"
+data mtcollins1_sol_hold_activate_script: String = "h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf.tmp\" && mv -T \"$pf.tmp\" \"$pf\" || \{ rm -f \"$pf.tmp\"; kill \"$p\" 2>/dev/null; echo \"gunbc-sol-hold: pid not published; collector stopped\" >> \"$diag\"; \}; wait \"$p\"; rc=$?; echo \"gunbc-sol-hold: collector exited status=$rc at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$diag\" ) < /dev/null > /dev/null 2>&1 & exec 3<&-"
 
 // RELEASE KILLS THE OWNED COLLECTOR AND NOTHING ELSE, ON EVERY EXIT ARM. It is the one spelling of
 // "stop the collector this hold started": the workflow's teardown calls ReleaseHeld after the BMC

@@ -11,9 +11,12 @@ import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_await_capture_terminal, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, TerminalWatch,
   mtcollins1_sol_teardown_record, mtcollins1_sol_workflow_events_path, mtcollins1_sol_pre_teardown_suffix,
+  mtcollins1_sol_await_establishment, SolEstablishment, SolEstablished, SolNotEstablished,
+  SolActivationUnconfirmed, SolActivateRefused,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.machine_intake_mtcollins1_boot_run { SolCollectorUnrecorded }
 
 // THE COLLECTOR, EXECUTED RATHER THAN SPELLED. Each test runs the real gunbc.machine_intake.sol_hold
 // ActivateHeld launch -- its fifo, fd plumbing, supervisor, pid+starttime publication and
@@ -218,4 +221,35 @@ test fn our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_k
     && string_contains(s: snapshot, pattern: "host line")
     && !string_contains(s: client_snapshot, pattern: "SOL session closed")
     && string_contains(s: events, pattern: "gunbc-workflow: SOL deactivate issued by this run's teardown at=")
+}
+
+// ESTABLISHMENT, THROUGH THE REAL ACQUISITION WAIT (mtcollins1_sol_await_establishment) OVER THE REAL
+// LAUNCH. A collector that prints ipmitool's operational banner and then stays quiet -- the expected
+// census console -- is established; one that stays alive and silent is NOT (activation unconfirmed
+// within the allowance), and one that prints an activation refusal and exits carries that cause.
+fn banner_then_quiet_probe() -> String {
+  "#!/bin/sh\necho '[SOL Session operational.  Use ~? for help]'\nsleep 8\n"
+}
+
+fn silent_probe() -> String {
+  "#!/bin/sh\nsleep 8\n"
+}
+
+fn refused_probe() -> String {
+  "#!/bin/sh\necho 'Info: SOL payload already active on another session' >&2\nexit 1\n"
+}
+
+fn establishment(script: String) -> SolEstablishment {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: script, pid_path: concat(dir, "/collector.pid"))
+  let e = if run.launched { mtcollins1_sol_await_establishment(pid_path: run.pid_path, capture_path: run.capture_path, remaining: 3) } else { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorUnrecorded, allowance: second(count: 0) } } }
+  let _waited = settle(seconds: 6)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  e
+}
+
+test fn a_session_is_established_only_by_its_banner_not_by_a_live_pid() -> Bool {
+  (match establishment(script: banner_then_quiet_probe()) { SolEstablished { at: _ } => true  _ => false })
+    && (match establishment(script: silent_probe()) { SolNotEstablished { failure: SolActivationUnconfirmed { collector: _, allowance: _ } } => true  _ => false })
+    && (match establishment(script: refused_probe()) { SolNotEstablished { failure: SolActivateRefused { refusal: _ } } => true  _ => false })
 }

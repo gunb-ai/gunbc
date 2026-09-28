@@ -18,8 +18,10 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
   mtcollins1_boot_sol_is_held,
-  mtcollins1_boot_sol_held_from_observations,
-  mtcollins1_sol_observed_from_collector,
+  SolCollectorObservation, SolCollectorHeld, SolCollectorExited, SolCollectorUnrecorded, SolCollectorUnobservable, SolCollectorPathUnset,
+  SolExitPidGone, SolExitPidReused, SolExitZombie, ProcReadOutcome, ProcRead, ProcReadRefused,
+  sol_collector_observation_of, held_lease_of_collector, sol_capture_opens_with_banner, SolActivationUnconfirmed,
+  SolObservationLoss, SolLostDuringWatch, sol_observation_loss_text,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text,
   mtcollins1_boot_pre_os_verdict,
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
@@ -28,7 +30,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   SolEstablishmentFailure, SolSpawnRefused, SolActivateRefused, SolSessionRefused, SolCollectorLeftUnexplained,
   sol_establishment_failure, sol_establishment_failure_text,
   SolPidNotPublished,
-  SolChannelReading, SolChannelLive, SolChannelGone, sol_channel_reading,
+  SolChannelReading, SolChannelLive, SolChannelNotLive, sol_channel_reading,
   SolClientDiagnostics, SolCollectorExitRecorded, SolCollectorExitUnrecorded,
   SolClientReportedSessionClosed, SolClientReportedKeepaliveUnanswered, SolClientReportedNothing, sol_client_diagnostics,
   sol_client_diagnostics_text,
@@ -49,7 +51,7 @@ import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted,
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
 import std.temporal_effect {
-  LeaseAbsent, LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
+
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
@@ -78,107 +80,61 @@ fn stat_line(state: String, start_time: String) -> String {
   concat("4242 (ipmi tool) ", state, concat(" 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 ", concat(start_time, " 12345 67 18446744073709551615\n")))
 }
 
-fn held(pid_file: String, stat: String, cmdline: String) -> Bool {
-  mtcollins1_boot_sol_held_from_observations(
-    pid_path: "/tmp/sol.pid",
-    pid_file_ok: true,
-    pid_file_content: pid_file,
-    stat_ok: true,
-    stat_content: stat,
-    cmdline_ok: true,
-    cmdline_content: cmdline,
-  )
+fn read_ok(content: String) -> ProcReadOutcome {
+  ProcRead { content: content }
 }
 
-test fn sol_held_is_a_live_ipmitool_pid_not_a_nonempty_capture() -> Bool {
-  !mtcollins1_boot_sol_is_held(pid_path: "")
-    && !mtcollins1_boot_sol_held_from_observations(
-      pid_path: "/tmp/sol.pid",
-      pid_file_ok: false,
-      pid_file_content: "4242 283885975",
-      stat_ok: true,
-      stat_content: stat_line(state: "S", start_time: "283885975"),
-      cmdline_ok: true,
-      cmdline_content: "ipmitool",
-    )
-    && !held(pid_file: "\n", stat: stat_line(state: "S", start_time: "283885975"), cmdline: "ipmitool")
-    && !held(pid_file: "4242 283885975\n", stat: stat_line(state: "S", start_time: "283885975"), cmdline: "bash")
-    && !mtcollins1_boot_sol_held_from_observations(
-      pid_path: "/tmp/sol.pid",
-      pid_file_ok: true,
-      pid_file_content: "4242 283885975\n",
-      stat_ok: true,
-      stat_content: stat_line(state: "S", start_time: "283885975"),
-      cmdline_ok: false,
-      cmdline_content: "ipmitool",
-    )
-    && held(pid_file: "4242 283885975\n", stat: stat_line(state: "S", start_time: "283885975"), cmdline: "ipmitool\x00sol\x00activate")
+fn read_refused(kind: String) -> ProcReadOutcome {
+  ProcReadRefused { kind: kind, error: "host error" }
 }
 
-// A REUSED PID IS NOT OUR COLLECTOR. The kernel gave 4242 to a later process (a later start time)
-// that is ALSO an ipmitool -- the case a cmdline check alone reads as held. The start-time join
-// refuses it, and the lease then reads stale: channel lost in the watch, never alive. A pid file
-// that records a pid without its start time (the pre-change format) names no holder at all, and a
-// zombie with the right start time has already exited.
-test fn a_reused_pid_is_stale_never_held() -> Bool {
-  !held(pid_file: "4242 283885975\n", stat: stat_line(state: "S", start_time: "283999999"), cmdline: "ipmitool\x00sol\x00activate")
-    && !held(pid_file: "4242\n", stat: stat_line(state: "S", start_time: "283885975"), cmdline: "ipmitool")
-    && !held(pid_file: "4242 283885975\n", stat: stat_line(state: "Z", start_time: "283885975"), cmdline: "ipmitool")
-    && mtcollins1_sol_observed_from_collector(pid_path_set: true, pid_file_ok: true, pid_file_content: "4242 283885975\n", collector_held: false) == LeaseRunningStale
-    && (match sol_channel_reading(lease: LeaseRunningStale, client_diagnostics: "") { SolChannelGone { lease: LeaseRunningStale, client: _ } => true  _ => false })
+fn observe(pid_file: ProcReadOutcome, stat: ProcReadOutcome, cmdline: ProcReadOutcome) -> SolCollectorObservation {
+  sol_collector_observation_of(pid_path_set: true, pid_file: pid_file, stat: stat, cmdline: cmdline)
 }
 
+data recorded: String = "4242 283885975\n"
+
+// HELD IS ESTABLISHED, NOT ASSUMED: the recorded (pid, start time) is live, not a zombie, and is the
+// collector. Each negative is the same reading with one fact moved.
+test fn a_held_collector_is_the_recorded_live_process() -> Bool {
+  (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_ok(content: "stdbuf\x00-oL\x00ipmitool\x00-H")) { SolCollectorHeld => true  _ => false })
+    && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_ok(content: "bash")) { SolCollectorHeld => false  _ => true })
+    && (match sol_collector_observation_of(pid_path_set: false, pid_file: read_ok(content: recorded), stat: read_ok(content: ""), cmdline: read_ok(content: "")) { SolCollectorPathUnset => true  _ => false })
+    && !mtcollins1_boot_sol_is_held(pid_path: "")
+}
+
+// AN EXIT IS ESTABLISHED ONLY BY EVIDENCE THAT A PROCESS ENDED: its /proc entry is gone (not_found),
+// the pid now carries a later start time -- even when that later process is ALSO an ipmitool, the
+// case a cmdline check alone reads as held -- or it is a zombie.
+test fn an_exit_is_established_only_by_evidence_that_the_process_ended() -> Bool {
+  (match observe(pid_file: read_ok(content: recorded), stat: read_refused(kind: "not_found"), cmdline: read_ok(content: "")) { SolCollectorExited { evidence: SolExitPidGone } => true  _ => false })
+    && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283999999")), cmdline: read_ok(content: "ipmitool\x00sol\x00activate")) { SolCollectorExited { evidence: SolExitPidReused } => true  _ => false })
+    && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "Z", start_time: "283885975")), cmdline: read_ok(content: "ipmitool")) { SolCollectorExited { evidence: SolExitZombie } => true  _ => false })
+    && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_refused(kind: "not_found")) { SolCollectorExited { evidence: SolExitPidGone } => true  _ => false })
+}
+
+// UNREADABLE IS NOT DEAD. A /proc stat or cmdline, or the pid file itself, that could not be read for
+// any reason but absence leaves the collector UNOBSERVABLE with that cause -- never exited -- so the
+// watch neither claims a final capture nor reports an exit it did not see. A missing or malformed
+// record (including the pre-change bare-pid format) is unrecorded.
+test fn an_unreadable_process_is_unobservable_not_exited() -> Bool {
+  (match observe(pid_file: read_ok(content: recorded), stat: read_refused(kind: "permission_denied"), cmdline: read_ok(content: "")) { SolCollectorUnobservable { cause: c } => string_contains(s: c, pattern: "permission_denied")  _ => false })
+    && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_refused(kind: "other")) { SolCollectorUnobservable { cause: _ } => true  _ => false })
+    && (match observe(pid_file: read_refused(kind: "permission_denied"), stat: read_ok(content: ""), cmdline: read_ok(content: "")) { SolCollectorUnobservable { cause: _ } => true  _ => false })
+    && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: "4242 (ipmitool) S 1"), cmdline: read_ok(content: "ipmitool")) { SolCollectorUnobservable { cause: _ } => true  _ => false })
+    && (match observe(pid_file: read_refused(kind: "not_found"), stat: read_ok(content: ""), cmdline: read_ok(content: "")) { SolCollectorUnrecorded => true  _ => false })
+    && (match observe(pid_file: read_ok(content: "4242\n"), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_ok(content: "ipmitool")) { SolCollectorUnrecorded => true  _ => false })
+}
+
+// THE ACQUISITION READS THE COLLECTOR THROUGH THE LEASE PROJECTION: held converges, an established
+// exit drifts (release, then start), no record is absent, and an unobservable collector is
+// inaccessible -- the acquisition refuses rather than deactivating or starting over it.
 test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
-  held_lease_observed_verdict(
-    observed: mtcollins1_sol_observed_from_collector(
-      pid_path_set: false,
-      pid_file_ok: false,
-      pid_file_content: "",
-      collector_held: false,
-    ),
-  ) == Inaccessible
-    && held_lease_observed_verdict(
-      observed: mtcollins1_sol_observed_from_collector(
-        pid_path_set: true,
-        pid_file_ok: true,
-        pid_file_content: "123\n",
-        collector_held: true,
-      ),
-    ) == Converged
-    && held_lease_observed_verdict(
-      observed: mtcollins1_sol_observed_from_collector(
-        pid_path_set: true,
-        pid_file_ok: true,
-        pid_file_content: "123\n",
-        collector_held: false,
-      ),
-    ) == Drifted
-    && held_lease_observed_verdict(
-      observed: mtcollins1_sol_observed_from_collector(
-        pid_path_set: true,
-        pid_file_ok: false,
-        pid_file_content: "",
-        collector_held: false,
-      ),
-    ) == Absent
-    && mtcollins1_sol_observed_from_collector(
-      pid_path_set: true,
-      pid_file_ok: true,
-      pid_file_content: "123\n",
-      collector_held: false,
-    ) == LeaseRunningStale
-    && mtcollins1_sol_observed_from_collector(
-      pid_path_set: true,
-      pid_file_ok: true,
-      pid_file_content: "123\n",
-      collector_held: true,
-    ) == LeaseRunningExpected
-    && mtcollins1_sol_observed_from_collector(
-      pid_path_set: false,
-      pid_file_ok: false,
-      pid_file_content: "SOL enabled",
-      collector_held: false,
-    ) == LeaseInaccessible
+  held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorHeld)) == Converged
+    && held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorExited { evidence: SolExitPidGone })) == Drifted
+    && held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorUnrecorded)) == Absent
+    && held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorUnobservable { cause: "x" })) == Inaccessible
+    && held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorPathUnset)) == Inaccessible
 }
 
 // A refusal is compared by its rendered causes, in order: the list pattern is the claim.
@@ -847,35 +803,35 @@ test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
 // without any -- its last line and the lease the settle saw. Never a bare "not held".
 test fn a_failed_establishment_names_its_cause() -> Bool {
   let at = "2026-09-27T19:00:00Z" as NonEmptyStr
-  (match sol_establishment_failure(observed: LeaseAbsent, client_diagnostics: concat(sol_hold_pid_not_published_line, concat("\n", concat(sol_hold_exit_record_prefix, "143\n"))), at: at) {
+  (match sol_establishment_failure(collector: SolCollectorUnrecorded, client_diagnostics: concat(sol_hold_pid_not_published_line, concat("\n", concat(sol_hold_exit_record_prefix, "143\n"))), at: at) {
     SolPidNotPublished => true
     _ => false
   })
-    && (match sol_establishment_failure(observed: LeaseAbsent, client_diagnostics: "Info: SOL payload already active on another session\n", at: at) {
+    && (match sol_establishment_failure(collector: SolCollectorUnrecorded, client_diagnostics: "Info: SOL payload already active on another session\n", at: at) {
       SolActivateRefused { refusal: SolPayloadAlreadyActive } => true
       _ => false
     })
-    && (match sol_establishment_failure(observed: LeaseAbsent, client_diagnostics: "Error: No response activating SOL payload\n", at: at) {
+    && (match sol_establishment_failure(collector: SolCollectorUnrecorded, client_diagnostics: "Error: No response activating SOL payload\n", at: at) {
       SolActivateRefused { refusal: SolPayloadActivationUnanswered } => true
       _ => false
     })
-    && (match sol_establishment_failure(observed: LeaseAbsent, client_diagnostics: "Error in open session response message : insufficient resources for session\nError: Unable to establish IPMI v2 / RMCP+ session\n", at: at) {
+    && (match sol_establishment_failure(collector: SolCollectorUnrecorded, client_diagnostics: "Error in open session response message : insufficient resources for session\nError: Unable to establish IPMI v2 / RMCP+ session\n", at: at) {
       SolSessionRefused { cause: BmcSessionUnestablished { endpoint: _, at: _, detail: _ } } => true
       _ => false
     })
-    && (match sol_establishment_failure(observed: LeaseAbsent, client_diagnostics: "RAKP 2 HMAC is invalid\nError: Unable to establish IPMI v2 / RMCP+ session\n", at: at) {
+    && (match sol_establishment_failure(collector: SolCollectorUnrecorded, client_diagnostics: "RAKP 2 HMAC is invalid\nError: Unable to establish IPMI v2 / RMCP+ session\n", at: at) {
       SolSessionRefused { cause: BmcAuthRefused { endpoint: _, at: _, detail: _ } } => true
       _ => false
     })
-    && (match sol_establishment_failure(observed: LeaseRunningStale, client_diagnostics: "tcgetattr: Inappropriate ioctl for device\nsomething else\n", at: at) {
-      SolCollectorLeftUnexplained { observed: LeaseRunningStale, last_line: l } => l == "something else"
+    && (match sol_establishment_failure(collector: SolCollectorExited { evidence: SolExitPidGone }, client_diagnostics: "tcgetattr: Inappropriate ioctl for device\nsomething else\n", at: at) {
+      SolCollectorLeftUnexplained { collector: SolCollectorExited { evidence: SolExitPidGone }, last_line: l } => l == "something else"
       _ => false
     })
     && string_contains(s: sol_establishment_failure_text(failure: SolSpawnRefused { detail: "mkfifo: Permission denied" }), pattern: "mkfifo: Permission denied")
 }
 
 fn is_channel_lost(t: WatchTick) -> Bool {
-  match t { WatchChannelLost { lease: _, client: _, last: _ } => true  _ => false }
+  match t { WatchChannelLost { collector: _, client: _, last: _ } => true  _ => false }
 }
 
 // LOSS IS THE PROCESS, NOT A LINE. A gone collector (stale, absent, unset) under a pending capture
@@ -883,12 +839,12 @@ fn is_channel_lost(t: WatchTick) -> Bool {
 // "SOL session closed" -- the line only classifies a loss the lease has already established.
 test fn a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending() -> Bool {
   let pending = TerminalPending { reason: "no begin marker for this machine yet" }
-  is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(lease: LeaseRunningStale, client_diagnostics: "")))
-    && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(lease: LeaseAbsent, client_diagnostics: "")))
-    && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(lease: LeaseInaccessible, client_diagnostics: "")))
-    && (match sol_channel_reading(lease: LeaseRunningExpected, client_diagnostics: "SOL session closed by BMC\n") { SolChannelLive => true  _ => false })
-    && (match watch_tick(verdict: pending, channel: sol_channel_reading(lease: LeaseRunningStale, client_diagnostics: "")) {
-      WatchChannelLost { lease: LeaseRunningStale, client: _, last: l } => l == "no begin marker for this machine yet"
+  is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(collector: SolCollectorExited { evidence: SolExitPidGone }, client_diagnostics: "")))
+    && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(collector: SolCollectorUnrecorded, client_diagnostics: "")))
+    && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(collector: SolCollectorUnobservable { cause: "stat permission_denied" }, client_diagnostics: "")))
+    && (match sol_channel_reading(collector: SolCollectorHeld, client_diagnostics: "SOL session closed by BMC\n") { SolChannelLive => true  _ => false })
+    && (match watch_tick(verdict: pending, channel: sol_channel_reading(collector: SolCollectorExited { evidence: SolExitPidGone }, client_diagnostics: "")) {
+      WatchChannelLost { collector: SolCollectorExited { evidence: SolExitPidGone }, client: _, last: l } => l == "no begin marker for this machine yet"
       _ => false
     })
 }
@@ -915,7 +871,7 @@ test fn a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_strong
 
 // A LIVE COLLECTOR WITH NO OUTPUT IS PENDING: silence over a held channel is still waiting.
 test fn a_live_collector_with_no_output_is_pending() -> Bool {
-  (match sol_channel_reading(lease: LeaseRunningExpected, client_diagnostics: "") { SolChannelLive => true  _ => false })
+  (match sol_channel_reading(collector: SolCollectorHeld, client_diagnostics: "") { SolChannelLive => true  _ => false })
     && (match watch_tick(verdict: TerminalPending { reason: "capture empty" }, channel: SolChannelLive) {
       WatchContinue { reason: r } => r == "capture empty"
       _ => false
@@ -925,9 +881,33 @@ test fn a_live_collector_with_no_output_is_pending() -> Bool {
 // THE CAPTURE'S OWN TERMINAL STANDS OVER A GONE COLLECTOR: the census powers off at END, so a
 // collector that exits after a refused or accepted envelope does not turn the verdict into a loss.
 test fn a_decided_capture_is_not_unmade_by_a_later_channel_loss() -> Bool {
-  let gone = sol_channel_reading(lease: LeaseRunningStale, client_diagnostics: concat(sol_hold_exit_record_prefix, "0\n"))
+  let gone = sol_channel_reading(collector: SolCollectorExited { evidence: SolExitPidGone }, client_diagnostics: concat(sol_hold_exit_record_prefix, "0\n"))
   (match watch_tick(verdict: TerminalRefused { causes: [WorkloadWriteFailed { rc: "1" }] }, channel: gone) {
     WatchRefused { causes: _ } => true
     _ => false
   })
+}
+
+// ONLY AN ESTABLISHED EXIT IS REPORTED AS ONE, AND ONLY IT CLAIMS A FINAL CAPTURE. The same loss read
+// through an unobservable collector is ObservationChannelUnobservable, carries the read's cause, and
+// says the capture is NOT known to be final.
+test fn an_unobservable_collector_is_never_reported_as_an_exit() -> Bool {
+  let client = sol_client_diagnostics(text: "")
+  let exited = sol_observation_loss_text(loss: SolObservationLoss { stage: SolLostDuringWatch, last_live_at: "t0", observed_gone_at: "t1" as NonEmptyStr, collector: SolCollectorExited { evidence: SolExitPidGone }, client: client, last_capture_observation: "pending" })
+  let unobserved = sol_observation_loss_text(loss: SolObservationLoss { stage: SolLostDuringWatch, last_live_at: "t0", observed_gone_at: "t1" as NonEmptyStr, collector: SolCollectorUnobservable { cause: "the recorded pid's /proc stat could not be read (permission_denied: EACCES)" }, client: client, last_capture_observation: "pending" })
+  string_contains(s: exited, pattern: "ObservationChannelLost")
+    && string_contains(s: exited, pattern: "the capture read after this is final")
+    && string_contains(s: unobserved, pattern: "ObservationChannelUnobservable")
+    && string_contains(s: unobserved, pattern: "permission_denied")
+    && string_contains(s: unobserved, pattern: "NOT known to be final")
+    && !string_contains(s: unobserved, pattern: "has exited")
+}
+
+// A LIVE PROCESS IS NOT AN ESTABLISHED SESSION: establishment needs the operational banner as the
+// capture's first line. A capture that is empty, or opens with host text that merely contains the
+// words later, has not established it.
+test fn establishment_is_the_operational_banner_first_not_a_live_pid() -> Bool {
+  sol_capture_opens_with_banner(capture: "[SOL Session operational.  Use ~? for help]\nhost\n")
+    && !sol_capture_opens_with_banner(capture: "")
+    && !sol_capture_opens_with_banner(capture: "host line\n[SOL Session operational.  Use ~? for help]\n")
 }

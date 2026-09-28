@@ -1830,6 +1830,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_session_is_established_only_by_its_banner_not_by_a_live_pid" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_session_is_established_only_by_its_banner_not_by_a_live_pid",
+      expectation: ExpectedToHold {}
     }
   ]
 }
