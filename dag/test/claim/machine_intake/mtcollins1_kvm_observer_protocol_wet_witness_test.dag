@@ -1,4 +1,4 @@
-module test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness_test
+module test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import std.measure { second, millisecond_count }
@@ -55,7 +55,15 @@ fn scratch_dir() -> String {
 }
 
 // Serve the model's world on loopback, write the credential, and launch the real observer at it.
-fn rig(w: BmcWorld, port: Int) -> Rig {
+// The transport binds an ephemeral port and logs "listening port=<n>".
+fn served_port(log: String) -> String {
+  match split(s: log, delimiter: "listening port=").skip(n: 1).first() {
+    Present { value: rest } => match split(s: rest, delimiter: "\n").first() { Present { value: p } => p  Absent => "" }
+    Absent => ""
+  }
+}
+
+fn rig(w: BmcWorld) -> Rig {
   let dir = scratch_dir()
   let script_path = concat(dir, "/controller.script")
   let log_path = concat(dir, "/controller.log")
@@ -66,16 +74,15 @@ fn rig(w: BmcWorld, port: Int) -> Rig {
   let node_binary = match loc { Present { value: l } => l.node_binary as String  Absent => "node-not-provisioned" }
   let _served = gunbc.bmc_megarac_web.transport.ServeScript(
     script: megarac_web_transport_script as NonEmptyStr,
-    port: to_string(port) as NonEmptyStr,
-    image_port: to_string(port + 1) as NonEmptyStr,
     script_path: script_path as NonEmptyStr,
     log_path: log_path as NonEmptyStr,
     pid_path: concat(dir, "/controller.pid") as NonEmptyStr,
     node_binary: node_binary as NonEmptyStr,
   )
+  let port = served_port(log: read_or_empty(path: log_path))
   let obs = concat(dir, "/observer")
   let _made = shell.Mkdir.Parents(path: obs as FilePath)
-  let start = match loc { Absent => KvmObserverNotStarted { reason: "the runner browser toolchain is not ready on this host" }  Present { value: loc } => kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", to_string(port)), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet") }
+  let start = match loc { Absent => KvmObserverNotStarted { reason: "the runner browser toolchain is not ready on this host" }  Present { value: loc } => kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet") }
   Rig { dir: dir, start: start, transport_log: log_path }
 }
 
@@ -111,7 +118,7 @@ fn released(rec: KvmObserverRecord) -> Bool {
 // with its instant; the teardown snapshot is kept, the boot's stop request is separately timestamped,
 // and the controller saw the logout.
 test fn a_held_observer_is_established_first_and_its_triggered_still_is_hash_bound() -> Bool {
-  let r = rig(w: world(other_viewers: 0, close_at: -1, canvas_readable: true), port: 18180)
+  let r = rig(w: world(other_viewers: 0, close_at: -1, canvas_readable: true))
   let est = established(s: r.start)
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
   let _w = settle(seconds: 3)
@@ -128,7 +135,7 @@ test fn a_held_observer_is_established_first_and_its_triggered_still_is_hash_bou
 // VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that
 // count, never connects the stream, and still releases its web session.
 test fn a_busy_viewer_slot_refuses_without_connecting_and_releases_the_session() -> Bool {
-  let r = rig(w: world(other_viewers: 1, close_at: -1, canvas_readable: true), port: 18190)
+  let r = rig(w: world(other_viewers: 1, close_at: -1, canvas_readable: true))
   let refused = match r.start {
     KvmObserverStarted { dir: _, standing: st, checked_at: _ } => match st { KvmObserverRefused { at: _, refusal: x } => match x { KvmSeatBusy { viewer_count: n } => n == "1"  _ => false }  _ => false }
     _ => false
@@ -143,7 +150,7 @@ test fn a_busy_viewer_slot_refuses_without_connecting_and_releases_the_session()
 // close is journalled as connection-lost, the boot's tick report freezes it, and a still asked after
 // it is acquisition-failed not-connected -- never a still from a dead stream.
 test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it() -> Bool {
-  let r = rig(w: world(other_viewers: 0, close_at: 3, canvas_readable: true), port: 18200)
+  let r = rig(w: world(other_viewers: 0, close_at: 3, canvas_readable: true))
   let est = established(s: r.start)
   let _w = settle(seconds: 5)
   let reported = mtcollins1_boot_screen_boundary_report(screen: r.start, already: [])
@@ -162,7 +169,7 @@ test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it(
 // CANVAS UNREADABLE: the world's browser-side flag makes the page's canvas unexportable; the still
 // asked for is acquisition-failed canvas-unreadable with the browser's own words.
 test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> Bool {
-  let r = rig(w: world(other_viewers: 0, close_at: -1, canvas_readable: false), port: 18210)
+  let r = rig(w: world(other_viewers: 0, close_at: -1, canvas_readable: false))
   let est = established(s: r.start)
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
   let _w = settle(seconds: 3)
