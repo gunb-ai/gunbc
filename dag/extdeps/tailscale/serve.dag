@@ -1,7 +1,6 @@
 module extdeps.tailscale.serve
 
 import std.types { NonEmptyStr, Port, List, Bool, Unit }
-import std.string_type { String }
 import std.key_relation {
   KeyRelation,
   KeyedResourceRelation,

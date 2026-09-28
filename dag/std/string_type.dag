@@ -1,9 +1,15 @@
 module std.string_type
 
-import std.algebra { FreeMonoid, Ordering, Less, Equal, Greater, ordering_is_less }
-import std.types { Char }
+import std.algebra { Ordering, Less, Equal, Greater, ordering_is_less }
 
-type String = FreeMonoid<Char>
+// LEXICOGRAPHIC ORDER OVER HOST TEXT. The parameters are the kernel String because the bodies
+// are the kernel string primitives (string_length, char_at, substring, code_point), whose contract
+// is host text. This module once also declared `type String = FreeMonoid<Char>` and typed these
+// same parameters with it, so every call to a primitive was a crossing from the code-point
+// sequence to host text with no unfold -- accepted by the checker and refused by rustc (eight
+// E0308 in string_lex_compare). The structural text carrier is v2.std.text String; a second
+// structural declaration here had no consumer that used it structurally
+// (gunbc.rung_drop text_boundary_identity_wall).
 
 fn string_lex_compare(left: String, right: String) -> Ordering {
   let left_len = string_length(s: left)

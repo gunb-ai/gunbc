@@ -9,7 +9,8 @@ import std.algebra {
   AlgebraFieldTemplate, algebra_templates_for_profile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
-  OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable
+  OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
+  free_monoid_scalar_templates
 }
 
 import v1.std.core { Unmarked,
@@ -444,6 +445,34 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
 
 fn builtin_signature(name: String) -> BuiltinSignature? {
   map_get(builtin_function_registry, name)
+}
+
+// WHICH PARAMETERS OF A BUILTIN ARE HOST TEXT. A builtin's contract is realized over host text
+// wherever its signature names the kernel String, and also at ReceiverSelf when the name is a
+// method of the scalar-string algebra profile (std.algebra free_monoid_scalar_templates:
+// substring is declared there as (Self, Int, Int) -> Self). v1.compiler.infer reads this to refuse
+// a code-point-sequence value handed to such a parameter (gunbc.rung_drop
+// text_boundary_identity_wall): the builtin registry otherwise admits its arguments untyped.
+fn builtin_param_names(name: String) -> List<String> {
+  match builtin_signature(name: name) {
+    Present { value: sig } => sig.params |> map(p => p.name)
+    Absent => []
+  }
+}
+
+fn builtin_host_text_param_names(name: String) -> List<String> {
+  match builtin_signature(name: name) {
+    Absent => []
+    Present { value: sig } =>
+      let scalar_string_method = free_monoid_scalar_templates() |> any(t => t.name == name)
+      sig.params |> filter(p =>
+        match p.ty {
+          NamedTemplate { name: n } => n == "String"
+          ReceiverSelf => scalar_string_method
+          _ => false
+        }
+      ) |> map(p => p.name)
+  }
 }
 
 fn infer_builtin_call_type(name: String) -> Node? {

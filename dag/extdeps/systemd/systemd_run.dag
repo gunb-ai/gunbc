@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim }
-import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

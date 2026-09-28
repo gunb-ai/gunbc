@@ -1,6 +1,5 @@
 module extdeps.docker.container_inspect
 
-import std.string_type { String }
 import std.types { Timestamp, Int, FilePath, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count }

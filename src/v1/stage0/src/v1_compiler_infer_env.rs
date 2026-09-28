@@ -1665,6 +1665,14 @@ pub fn record_global_bare_ambiguous_silent_pick(
 }
 
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    if crate::std_types::is_kernel_type(name.clone()) {
+        std::option::Option::None
+    } else {
+        global_bare_lookup_candidates(env.clone(), name.clone())
+    }
+}
+
+pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
         .cloned()

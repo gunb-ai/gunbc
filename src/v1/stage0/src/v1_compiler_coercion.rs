@@ -28,13 +28,14 @@ use crate::std_coercion::RealizationRefusalCause::{
     DeclarationIdentityUnavailable, ExactBindingAmbiguousForOneDeclaration,
     ExactSourceIdentityAbsent,
 };
+use crate::std_coercion::TextRepresentation::{CodePointSequence, HostText, NotText};
 use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 use crate::std_coercion::TypeRealizationDecision::{RealizationRefused, Realized, Unrealized};
 pub use crate::std_coercion::{
     CallableRepr, CastSyntax, InhabitantDecl, RealizationGround, RealizationRefusalCause,
-    TypeCheckpoint, TypeDeclarationProvenance, TypeRealizationDecision,
+    TextRepresentation, TypeCheckpoint, TypeDeclarationProvenance, TypeRealizationDecision,
 };
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_target_representation::ExactBindingResolution;
@@ -52,9 +53,10 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
-    declaration_provenance_of, qualified_last_segment, type_reference_provenance,
+    authored_name_at, declaration_provenance_of, find_property, qualified_last_segment,
+    type_reference_provenance,
 };
-pub use crate::v1_std_core::{InferredNode, Node};
+pub use crate::v1_std_core::{InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -161,10 +163,7 @@ pub fn type_reference_identity_note() -> String {
 pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
     match dag_name.clone().as_str() {
         "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
-        "String" => Rc::new(vec![
-            "src/v2/std/text.dag".to_string(),
-            "dag/std/string_type.dag".to_string(),
-        ]),
+        "String" => Rc::new(vec!["src/v2/std/text.dag".to_string()]),
         "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
         _ => Rc::new(vec![]),
     }
@@ -199,6 +198,155 @@ pub fn provenance_declares_structurally(
         }
         TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => false,
         TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
+    }
+}
+
+pub fn text_carrier_element_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.children.clone().first().cloned() {
+        Some(ch) => crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone()),
+        std::option::Option::None => match crate::v1_std_core::find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => match applied.children.clone().first().cloned() {
+                Some(ach) => {
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), ach.clone())
+                }
+                std::option::Option::None => "".to_string(),
+            },
+            std::option::Option::None => "".to_string(),
+        },
+    }
+}
+
+pub fn provenance_is_corpus_declared(p: Rc<TypeDeclarationProvenance>) -> bool {
+    match (*p.clone()).clone() {
+        TypeDeclarationProvenance::CorpusDeclared { decl_file: _, .. } => true,
+        TypeDeclarationProvenance::KernelMinted { minted_name: m, .. } => {
+            v1_rt::contains(m.clone(), ".".to_string())
+        }
+        TypeDeclarationProvenance::DeclarationIdentityAbsent => false,
+    }
+}
+
+pub fn qualified_string_names_structural_declaration(qualified: String) -> bool {
+    {
+        let module_path = v1_rt::substring(
+            &qualified,
+            0,
+            v1_rt::int_sub(
+                v1_rt::string_length(&qualified),
+                v1_rt::string_length(&".String".to_string()),
+            ),
+        );
+        let module_file = v1_rt::concat(
+            v1_rt::replace(module_path.clone(), ".".to_string(), "/".to_string()),
+            ".dag".to_string(),
+        );
+        {
+            let mut __found = false;
+            for f in structural_declaration_modules_for("String".to_string())
+                .iter()
+                .cloned()
+            {
+                if v1_rt::contains(f.clone(), module_file.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn text_representation_of_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> TextRepresentation {
+    {
+        let authored = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+        );
+        let resolved_name = crate::v1_std_core::qualified_last_segment(n.name.clone());
+        let element = crate::v1_std_core::qualified_last_segment(text_carrier_element_name(
+            n.clone(),
+            source_indices.clone(),
+        ));
+        let p = crate::v1_std_core::type_reference_provenance(n.clone());
+        let is_monoid = ((((authored.clone() == "FreeMonoid".to_string())
+            || (authored.clone() == "List".to_string()))
+            || (resolved_name.clone() == "FreeMonoid".to_string()))
+            || (resolved_name.clone() == "List".to_string()));
+        if is_monoid.clone() {
+            if (element.clone() != "Char".to_string()) {
+                TextRepresentation::NotText
+            } else {
+                if provenance_is_corpus_declared(p.clone()) {
+                    TextRepresentation::CodePointSequence
+                } else {
+                    TextRepresentation::HostText
+                }
+            }
+        } else {
+            if (((resolved_name.clone() == "String".to_string())
+                && (authored.clone() != "String".to_string()))
+                && v1_rt::contains(n.name.clone(), ".".to_string()))
+            {
+                if qualified_string_names_structural_declaration(n.name.clone()) {
+                    TextRepresentation::CodePointSequence
+                } else {
+                    TextRepresentation::NotText
+                }
+            } else {
+                if (authored.clone() == "String".to_string()) {
+                    if ((element.clone() == "Char".to_string())
+                        && provenance_is_corpus_declared(p.clone()))
+                    {
+                        TextRepresentation::CodePointSequence
+                    } else {
+                        if (element.clone() != "".to_string()) {
+                            TextRepresentation::NotText
+                        } else {
+                            if provenance_declares_structurally("String".to_string(), p.clone()) {
+                                TextRepresentation::CodePointSequence
+                            } else {
+                                TextRepresentation::HostText
+                            }
+                        }
+                    }
+                } else {
+                    TextRepresentation::NotText
+                }
+            }
+        }
+    }
+}
+
+pub fn text_representations_cross(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let l = text_representation_of_type(left.clone(), source_indices.clone());
+        let r = text_representation_of_type(right.clone(), source_indices.clone());
+        match l.clone() {
+            TextRepresentation::NotText => false,
+            TextRepresentation::HostText => match r.clone() {
+                TextRepresentation::CodePointSequence => true,
+                TextRepresentation::HostText => false,
+                TextRepresentation::NotText => false,
+            },
+            TextRepresentation::CodePointSequence => match r.clone() {
+                TextRepresentation::HostText => true,
+                TextRepresentation::CodePointSequence => false,
+                TextRepresentation::NotText => false,
+            },
+        }
     }
 }
 

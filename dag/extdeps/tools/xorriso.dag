@@ -1,7 +1,6 @@
 module extdeps.tools.xorriso
 
 import std.types { NonEmptyStr, Unit }
-import std.string_type { String }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

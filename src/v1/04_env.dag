@@ -992,7 +992,19 @@ fn record_global_bare_ambiguous_silent_pick(
   }
 }
 
+// A KERNEL SPELLING NEVER BINDS A CORPUS DECLARATION THROUGH THE GLOBAL BARE FALLBACK -- kernel
+// precedence (v1.compiler.infer direct_import_export_precedence_note) applied to the last tier. The
+// outcome for String used to hold by accident: std.string_type and v2.std.text both declared it,
+// the entry was ambiguous, and nearest-ancestor containment answered nothing for any module outside
+// those two. Deleting std.string_type's duplicate (gunbc.rung_drop text_boundary_identity_wall) left
+// one candidate, which a unique entry binds from anywhere -- so every service output field spelled
+// `String` became v2.std.text's code-point sequence. The rule is stated here so it no longer depends
+// on how many modules happen to reuse a kernel spelling.
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
+  if is_kernel_type(name: name) { none } else { global_bare_lookup_candidates(env: env, name: name) }
+}
+
+fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {

@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
@@ -17,7 +17,7 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -113,10 +113,10 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
-import v1.compiler.coercion { provenance_realizes_natively }
+import v1.compiler.coercion { provenance_realizes_natively, text_representation_of_type, text_representations_cross }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -1468,11 +1468,25 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // set -- so this is consumption of the existing authority at a second declared-type position,
 // not a new relation (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel,
 // specimen four).
+// IN declared_type_conformance_diags, A TEXT CROSSING IS PROVEN, NOT UNJUDGED: both sides' representations come from the one
+// classifier (v1.compiler.coercion text_representation_of_type), so a host-text value produced
+// where a code-point sequence is declared -- or the reverse -- is a real difference with no
+// alias or brand between the two, and these positions carry no unfold (only a call argument
+// does, v1.compiler.infer host_text_unfolded_at_code_point_boundary). gunbc.rung_drop
+// text_boundary_identity_wall.
 fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
-  if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
+  if text_representations_cross(left: declared, right: produced, source_indices: si) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -5493,7 +5507,8 @@ fn direct_call_arg_type_mismatch(
   else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
+    text_representations_cross(left: formal, right: actual, source_indices: source_indices)
+      || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
       || kernel_value_declared_type_mismatch(
@@ -5793,6 +5808,44 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 
 // Record-literal actuals skip this path; handoff lives in
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
+// A VALUE'S TEXT REPRESENTATION IS READ FROM BOTH OF ITS TYPE VIEWS. The resolved type and its
+// alias-peeled form each lose the structure in one known case: a qualified v2.std.text.String value's
+// resolved node still reads as the spelling String (so only the peel sees the carrier), while a node
+// typed by its declaring module's alias spelling String<Char> is re-resolved by name in the caller's
+// environment by the peel (so only the resolved view sees it). Either view establishing a code-point
+// sequence establishes it; host text only when neither view does -- EXCEPT that a resolved type the
+// kernel minted is host text outright: the peel looks its spelling up by name, and a by-name lookup
+// of the kernel spelling String may find a corpus declaration, which kernel precedence says it never
+// binds to.
+fn argument_text_representation(value: Node, type_env: TypeEnv, module_name: String) -> TextRepresentation {
+  let raw = expression_value_type(e: value)
+  let peeled = peel_nominal_alias_identity(n: raw, env: type_env, module_name: module_name)
+  let raw_rep = text_representation_of_type(n: raw, source_indices: type_env.source_indices)
+  let peeled_rep = text_representation_of_type(n: peeled, source_indices: type_env.source_indices)
+  let raw_is_kernel_mint = match type_reference_provenance(n: raw) {
+    KernelMinted { minted_name: _ } => true
+    CorpusDeclared { decl_file: _ } => false
+    DeclarationIdentityAbsent => false
+  }
+  match raw_rep {
+    CodePointSequence => CodePointSequence
+    HostText => if raw_is_kernel_mint { HostText } else { match peeled_rep { CodePointSequence => CodePointSequence  HostText => HostText  NotText => HostText } }
+    NotText => peeled_rep
+  }
+}
+
+fn text_representation_is_text(r: TextRepresentation) -> Bool {
+  match r { NotText => false  HostText => true  CodePointSequence => true }
+}
+
+fn text_representations_disagree(a: TextRepresentation, b: TextRepresentation) -> Bool {
+  match a {
+    NotText => false
+    HostText => match b { CodePointSequence => true  HostText => false  NotText => false }
+    CodePointSequence => match b { HostText => true  CodePointSequence => false  NotText => false }
+  }
+}
+
 fn direct_call_arg_mismatch_diags(
   plan: List<ResolvedCallFormal>,
   typed_args: List<Node>,
@@ -5816,7 +5869,13 @@ fn direct_call_arg_mismatch_diags(
           } else {
           let actual_raw = expression_value_type(e: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if direct_call_arg_type_mismatch(
+          let formal_text = if formal_code_point_view(formal: app.formal, source_indices: source_indices) != none { CodePointSequence } else { text_representation_of_type(n: formal, source_indices: source_indices) }
+          let actual_text = argument_text_representation(value: actual_expr, type_env: type_env, module_name: module_name)
+          if text_representations_disagree(a: formal_text, b: actual_text) {
+            [make_error_node(diagnostic: InternalError { message: concat("text representation crossing at a call argument: declared ", node_type_shape(n: formal, source_indices: source_indices), ", produced ", node_type_shape(n: actual, source_indices: source_indices), " -- host text and a code-point sequence (FreeMonoid<Char>) meet only through the Unicode scalar unfold, which is applied to a host value at a code-point formal; a code-point sequence has no declared route into host text"), span: actual_expr.span }, module_name: module_name)]
+          } else if text_representation_is_text(r: formal_text) && text_representation_is_text(r: actual_text) {
+            []
+          } else if direct_call_arg_type_mismatch(
             formal: formal, substitution_basis: app.formal.substitution_basis, actual: actual, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
@@ -5865,6 +5924,45 @@ type Tier2bBt {
 // existing two contracts distinguishable, which is the prerequisite for either answer. The name is
 // currently forked across v1.compiler.method, v1.compiler.languages (bridge_method_overrides maps
 // it to with_update), v1.compiler.parse and v1.compiler.emit_rust, each special-casing it apart.
+// A CODE-POINT SEQUENCE HANDED TO A HOST-TEXT BUILTIN IS A CROSSING WITH NO ROUTE (XL-0T ruling B;
+// gunbc.rung_drop text_boundary_identity_wall). The builtin registry types a call by its return
+// alone, so its arguments were never judged, and a module declaring `type String = FreeMonoid<Char>`
+// could call string_length / char_at / substring on its own values with zero diagnostics while
+// rustc refused the emission. Each argument bound to a host-text parameter
+// (v1.compiler.infer_method builtin_host_text_param_names) is asked the one text-representation
+// authority (v1.compiler.coercion text_representation_of_type); a CodePointSequence there refuses,
+// located at the argument. An argument is matched to its parameter by label, else by position.
+fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  let host_params = builtin_host_text_param_names(name: func_name)
+  if host_params |> count == 0 { [] }
+  else {
+    let formal_names = builtin_param_names(name: func_name)
+    typed_args |> enumerate |> flat_map(pair => {
+      let arg = pair.second
+      let bound_name = match arg_name_at(n: arg, source_indices: scope.type_env.source_indices) {
+        Present { value: label } => label
+        Absent => match formal_names |> skip(pair.first) |> first { Present { value: n } => n  Absent => "" }
+      }
+      if !(host_params |> any(n => n == bound_name)) { [] }
+      else {
+        let value = arg_value(n: arg)
+        match value.inferred {
+          Present { value: Resolved { node: _ } } =>
+            match argument_text_representation(value: value, type_env: scope.type_env, module_name: scope.module_name) {
+              CodePointSequence => [inference_error(
+                message: concat("text representation crossing: argument '", bound_name, "' of ", func_name,
+                  " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
+                span: value.span, module_name: scope.module_name)]
+              HostText => []
+              NotText => []
+            }
+          _ => []
+        }
+      }
+    })
+  }
+}
+
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
   if func_name == "lookup" || func_name == "map_get" {
     Tier2bBt {
@@ -6755,6 +6853,82 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
   }
 }
 
+// THE UNFOLD IS KEYED TO THE ONE DECLARED ROW, NOT RE-DECIDED HERE. A value is unfolded at a
+// destination only when that destination's literal homomorphism is the Unicode scalar sequence
+// unfold (gunbc.structural_realization_bindings literal_homomorphism_rows UnicodeScalarSequenceUnfold,
+// asked through literal_boundary_elaboration exactly as a string literal at the same boundary asks
+// it). A destination with no such row keeps the value as it was and the crossing then refuses at
+// the argument judgment; no second conversion table exists for values.
+fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: InferScope) -> Bool {
+  match literal_boundary_elaboration(lit: LitStr { value: "" }, expected: Present { value: destination_type }, scope: scope) {
+    LiteralBoundaryElaborated { elaboration: e, destination_type: _ } =>
+      match e.homomorphism.producer {
+        UnicodeScalarSequenceUnfold => true
+        _ => false
+      }
+    LiteralBoundaryPlain => false
+    LiteralBoundaryRefused { message: _ } => false
+  }
+}
+
+// THE UNFOLD, FOR A VALUE (XL-0T ruling B; gunbc.rung_drop text_boundary_identity_wall). A call
+// argument bound to a formal whose DECLARATION-BOUND type is a code-point sequence is inferred under
+// that type, never under the formal's spelling re-resolved in the caller: a callee declaring its
+// parameter with the bare String of v2.std.text means the structural carrier at every call site,
+// and reading param_node_type_expr in the caller's scope made the same parameter host text there.
+// A kernel literal then takes its declared homomorphism (literal_boundary_elaboration). A
+// NON-literal host-text value takes the SAME unfold, selected by the SAME row
+// (destination_declares_scalar_sequence_unfold), as a node in the typed tree: the scalar-string
+// algebra method `chars` (std.algebra free_monoid_scalar_templates: String -> List<Int>, one scalar
+// per character) applied to the value and typed as the destination. That is the one declared route
+// between the two representations -- the Unicode scalar sequence of the text -- so every target
+// realizes it through its own row for `chars` and the emitter never decides it. The reverse
+// direction has no declared route and is not unfolded: a code-point sequence at a host-text formal
+// stays a refusal (v1.compiler.infer_types node_type_equals_core, builtin_text_argument_crossing_diags).
+// The value's representation is read from the SAME peeled type direct_call_arg_mismatch_diags
+// judges (expression_value_type through peel_nominal_alias_identity), so a qualified
+// v2.std.text.String value whose raw resolved node still reads as the spelling String is not
+// mistaken for host text and unfolded twice.
+fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
+  match value.inferred {
+    Present { value: Resolved { node: _ } } =>
+      match argument_text_representation(value: value, type_env: scope.type_env, module_name: scope.module_name) {
+        HostText =>
+          if destination_declares_scalar_sequence_unfold(destination_type: destination_type, scope: scope) {
+            make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
+              name: "chars", expr_data: ExprMethodCall { method_semantics: Present { value: PlainMethodSemantics } },
+              children: [value],
+              inferred: Present { value: Resolved { node: destination_type } },
+              span: value.span,
+              name_span: elaborated_span(name: "chars")
+            )
+          } else { value }
+        CodePointSequence => value
+        NotText => value
+      }
+    _ => value
+  }
+}
+
+// A FORMAL IS A CODE-POINT SEQUENCE WHEN EITHER OF ITS DECLARATION-BOUND VIEWS SAYS SO, and the
+// view that says so is the one the argument is typed against. The declaration-bound conformance of a
+// parameter declared with the QUALIFIED v2.std.text.String is peeled to the FreeMonoid coproduct
+// declaration itself, which has lost its Char argument; its substitution basis still carries
+// FreeMonoid<Char>, and where it too is generalized the declared type still does. Reading only the
+// first let a host value reach a qualified text parameter with no unfold. Absent means neither view is a code-point sequence.
+fn formal_code_point_view(formal: ResolvedFormal, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match text_representation_of_type(n: formal.declaration_bound_conformance, source_indices: source_indices) {
+    CodePointSequence => Present { value: formal.declaration_bound_conformance }
+    _ => match text_representation_of_type(n: formal.substitution_basis, source_indices: source_indices) {
+      CodePointSequence => Present { value: formal.substitution_basis }
+      _ => match text_representation_of_type(n: formal.declared_type, source_indices: source_indices) {
+        CodePointSequence => Present { value: formal.declared_type }
+        _ => none
+      }
+    }
+  }
+}
+
 fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
@@ -6779,13 +6953,29 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       }
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
-    let contextual_expected = match arg_value(n: a).expr_data {
+    let formal_declaration_bound = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => formal_code_point_view(formal: carried, source_indices: scope.type_env.source_indices)
+        Absent => none
+      }
+      CallArgumentFormalUnavailable => none
+    }
+    let formal_is_code_point_sequence = formal_declaration_bound != none
+    let code_point_formal = match formal_declaration_bound { Present { value: bound } => bound  Absent => formal_conformance_type }
+    let argument_is_literal = match arg_value(n: a).expr_data {
+      ExprLiteral { value: _ } => true
+      _ => false
+    }
+    let contextual_expected = if formal_is_code_point_sequence && argument_is_literal { code_point_formal } else { match arg_value(n: a).expr_data {
       ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
       ExprRecordLit { parent_enum: _ } => formal_param_type
       _ => formal_param_type
-    }
+    } }
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
-    let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    let ar = if formal_is_code_point_sequence {
+      InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
+    } else { ar_inferred }
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
       st.subst
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
@@ -6987,6 +7177,18 @@ type LiteralBoundary
   | LiteralBoundaryElaborated { elaboration: LiteralElaboration, destination_type: Node }
   | LiteralBoundaryRefused { message: String }
 
+// A CODE-POINT-SEQUENCE DESTINATION IS KEYED BY ITS STRUCTURE. v1.compiler.coercion
+// text_representation_of_type establishes that the destination is a corpus-declared FreeMonoid over
+// Char however it is spelled -- the qualified v2.std.text.String peels to std.algebra FreeMonoid, but
+// the same declaration read in its own module (the declaration-bound formal a foreign call site now
+// uses) keeps its alias name String<Char>, and its declaration reference names the alias rather than
+// the structure. The literal homomorphism row is keyed on the structure that survives resolution
+// (gunbc.structural_realization_bindings literal_homomorphism_rows), so the lookup is asked for that
+// structure directly rather than for whichever alias spelled it.
+fn code_point_sequence_structure_ref() -> DeclarationRef {
+  decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid")
+}
+
 fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: InferScope) -> LiteralBoundary {
   match expected {
     Absent => LiteralBoundaryPlain
@@ -6994,17 +7196,29 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
       if exp.return_cardinality == CardOptional {
         LiteralBoundaryPlain
       } else {
-        match type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+        let is_code_point_sequence = match text_representation_of_type(n: exp, source_indices: scope.type_env.source_indices) {
+          CodePointSequence => true
+          HostText => false
+          NotText => false
+        }
+        let identified = if is_code_point_sequence {
+          Present { value: code_point_sequence_structure_ref() }
+        } else {
+          type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env)
+        }
+        match identified {
           Absent => LiteralBoundaryPlain
           Present { value: destination } =>
             let kind = literal_source_kind_of(value: lit)
-            let element = if exp.children |> count == 1 {
+            let element = if is_code_point_sequence {
+              Present { value: decl_ref(module_path: "std.types", decl_name: "Char") }
+            } else if exp.children |> count == 1 {
               match exp.children |> first {
                 Present { value: arg } => type_reference_declaration_ref(n: arg, source_indices: scope.type_env.source_indices, env: scope.type_env)
                 Absent => none
               }
             } else { none }
-            let natively = provenance_realizes_natively(p: declaration_provenance_of_ref(d: destination, env: scope.type_env))
+            let natively = if is_code_point_sequence { false } else { provenance_realizes_natively(p: declaration_provenance_of_ref(d: destination, env: scope.type_env)) }
             match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, element: element, destination_realizes_natively: natively) {
               DirectLiteral => LiteralBoundaryPlain
               ViaHomomorphism { homomorphism: h } =>
@@ -7941,7 +8155,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(arg_diags, tier2b.kernel_diags)
+            diagnostics: concat(concat(arg_diags, tier2b.kernel_diags), builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {

@@ -341,7 +341,7 @@ fn snoc_reference_edge_unique(
   edge: ModuleDependencyEdge
 ) -> List<ModuleDependencyEdge> {
   if any(xs: acc, predicate: fn(existing) {
-    string_eq(a: existing.path, b: edge.path) && string_eq(a: existing.target_module, b: edge.target_module)
+    existing.path == edge.path && existing.target_module == edge.target_module
   }) {
     acc
   } else {
@@ -851,7 +851,7 @@ fn strip_leading_dot_slash(s: String) -> String {
 fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   let file = strip_leading_dot_slash(closure_path)
   let target = strip_leading_dot_slash(touched_path)
-  string_eq(a: file, b: target)
+  file == target
     || ends_with(s: file, suffix: target)
     || ends_with(s: target, suffix: file)
 }

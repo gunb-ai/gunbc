@@ -109,8 +109,8 @@ fn reference_first_refusal_diagnostic(refusals: List<ReferenceIngestRefusal>) ->
 }
 
 fn reference_fact_eq(a: ReferenceResolutionFact, b: ReferenceResolutionFact) -> Bool {
-  string_eq(a: a.path, b: b.path)
-    && string_eq(a: a.reference_module, b: b.reference_module)
+  a.path == b.path
+    && a.reference_module == b.reference_module
 }
 
 fn reference_snoc_fact_unique(
@@ -790,7 +790,7 @@ fn reference_import_facts_at_path(
     xs: import_edges,
     empty: acc,
     cons: fn(a, edge) {
-      if string_eq(a: edge.path, b: rel_path) {
+      if edge.path == rel_path {
         reference_snoc_fact_unique(acc: a, fact: import_edge_to_reference_fact(edge: edge))
       } else {
         a

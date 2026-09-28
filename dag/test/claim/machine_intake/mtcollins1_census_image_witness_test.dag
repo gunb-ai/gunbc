@@ -3,7 +3,6 @@ module test.claim.mtcollins1_census_image
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr }
-import std.string_type { String }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
   SeededInstallMediaPinnedDates,

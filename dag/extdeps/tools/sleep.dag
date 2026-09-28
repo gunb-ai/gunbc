@@ -1,7 +1,6 @@
 module extdeps.tools.sleep
 
 import std.types { NonEmptyStr, Bool, Unit, List }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
