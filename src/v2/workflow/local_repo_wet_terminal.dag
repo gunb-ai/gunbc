@@ -1920,6 +1920,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
       function: "release_bins_RED_partial_print_then_failing_producer_publishes_no_key",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_multiline_rustflags_keys_apart_from_its_first_line" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_multiline_rustflags_keys_apart_from_its_first_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_registry_token_refuses_and_is_never_printed" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_registry_token_refuses_and_is_never_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_named_registry_token_refuses_and_is_never_printed" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_named_registry_token_refuses_and_is_never_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_value_stream_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_value_stream_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_two_documents_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_two_documents_refuses",
+      expectation: ExpectedToHold {}
     }
   ]
 }

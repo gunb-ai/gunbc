@@ -1696,7 +1696,7 @@ fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
     tail: Empty {} } } } }
 }
 
-// The twenty-one test.claim.long.fleet_release_bins_key_witness identities (review 5332304117's retained
+// The twenty-six test.claim.long.fleet_release_bins_key_witness identities (review 5332304117's retained
 // controls for gunbc.fleet_release_bins_key). Each runs the emitted release-bins runners through
 // shell.Exec.Run, which has no mock_response, so the hermetic route cannot reach them. Triple
 // enrollment: this expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the lane's
@@ -1744,7 +1744,17 @@ fn floor_route_gap_expectation_chunk_26() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_ancestor_cargo_config_refuses", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_partial_print_then_failing_producer_publishes_no_key", operation: "Run", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } } } } } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_multiline_rustflags_keys_apart_from_its_first_line", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_registry_token_refuses_and_is_never_printed", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_named_registry_token_refuses_and_is_never_printed", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_lookup_value_stream_refuses", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.long.fleet_release_bins_key_witness.release_bins_RED_lookup_two_documents_refuses", operation: "Run", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

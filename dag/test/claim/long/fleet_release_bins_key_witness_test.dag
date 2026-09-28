@@ -347,3 +347,39 @@ test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() 
   ]))
   r.ran && !r.success && !string_contains(s: r.stdout, pattern: "release-bins request key")
 }
+
+// ── Review 5332937814: lossless environment framing, credential-free environment, one document ──
+test fn release_bins_multiline_rustflags_keys_apart_from_its_first_line() -> Bool {
+  succeeded_with(
+    statements: key_twice(
+      first: [cmdl(ls: ["export", "RUSTFLAGS=-Copt-level=3"])],
+      second: [cmdl(ls: ["export", "RUSTFLAGS=-Copt-level=3\n-Cdebug-assertions=yes"])],
+    ),
+    marker: "keys differ",
+  )
+}
+
+data release_bins_credential_sentinel: String = "fixture-credential-sentinel-7f3a"
+
+fn credential_refused_unprinted(variable: String) -> Bool {
+  let r = run_script(statements: concat(fixture(), concat([cmdl(ls: ["export", join([variable, "=", release_bins_credential_sentinel], "")])], release_bins_key_statements())))
+  r.ran && !r.success
+    && string_contains(s: r.stdout, pattern: "title=release-bins CredentialInBuildEnvironment::")
+    && !string_contains(s: r.stdout, pattern: release_bins_credential_sentinel)
+}
+
+test fn release_bins_RED_registry_token_refuses_and_is_never_printed() -> Bool {
+  credential_refused_unprinted(variable: "CARGO_REGISTRY_TOKEN")
+}
+
+test fn release_bins_RED_named_registry_token_refuses_and_is_never_printed() -> Bool {
+  credential_refused_unprinted(variable: "CARGO_REGISTRIES_PRIVATE_TOKEN")
+}
+
+test fn release_bins_RED_lookup_value_stream_refuses() -> Bool {
+  refused_as(statements: decode_main_answer(body: "\"absent\"\n\"present\""), refusal: "LookupAnswerUnusable")
+}
+
+test fn release_bins_RED_lookup_two_documents_refuses() -> Bool {
+  refused_as(statements: decode_main_answer(body: "{\"total_count\":0,\"actions_caches\":[]}\n{\"total_count\":0,\"actions_caches\":[]}"), refusal: "LookupAnswerUnusable")
+}

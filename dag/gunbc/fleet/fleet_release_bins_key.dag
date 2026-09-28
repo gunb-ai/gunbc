@@ -233,6 +233,7 @@ type ReleaseBinsRefusal
   | MemberNotExecutable { site: ReleaseBinsVerifySite, member: String }
   | MemberDigestMismatch { site: ReleaseBinsVerifySite }
   | BuildOverrideNotAdmitted
+  | CredentialInBuildEnvironment
   | AncestorCargoConfigPresent
   | CheckoutPathTooDeep
   | ConsumerKeyMissing
@@ -260,6 +261,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
     MemberNotExecutable { site: _, member: _ } => "MemberNotExecutable"
     MemberDigestMismatch { site: _ } => "MemberDigestMismatch"
     BuildOverrideNotAdmitted => "BuildOverrideNotAdmitted"
+    CredentialInBuildEnvironment => "CredentialInBuildEnvironment"
     AncestorCargoConfigPresent => "AncestorCargoConfigPresent"
     CheckoutPathTooDeep => "CheckoutPathTooDeep"
     ConsumerKeyMissing => "ConsumerKeyMissing"
@@ -288,6 +290,7 @@ fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
     MemberNotRegularFile { site: w, member: m } => join([release_bins_site_noun(site: w), " member ", m, " is not a self-contained regular file (a link, special file or hard-link dependency)"], "")
     MemberNotExecutable { site: w, member: m } => join([release_bins_site_noun(site: w), " member ", m, " is not executable"], "")
     MemberDigestMismatch { site: w } => join([release_bins_site_noun(site: w), " member bytes do not match the manifest under strict checking; refusing before any member is promoted or run"], "")
+    CredentialInBuildEnvironment => "a registry or toolchain credential is present in the build environment; credentials are not build inputs and must not reach a key or a published preimage, so the build is refused"
     BuildOverrideNotAdmitted => "the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly"
     CheckoutPathTooDeep => "the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out"
     AncestorCargoConfigPresent => "a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused"
@@ -540,7 +543,7 @@ fn axis_line(axis: GenerationAxis) -> List<Node> {
     BuildConfigurationAxis => [cmd(ws: [
       lit(t: "printf"),
       lit(t: "build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\\n"),
-      lit(t: ci_release_build_line()), var(n: "SOURCE_CLOSURE"), var(n: "AXIS_ENVIRONMENT"),
+      lit(t: ci_release_build_line()), var(n: "SOURCE_CLOSURE"), words(ws: [lit(t: "sha256:"), var(n: "AXIS_ENVIRONMENT_DIGEST")]),
       lit(t: release_bins_roster_text()),
     ])]
     RequiredLensContractAxis => [cmdl(ls: ["printf", "required_lens_contract=none (a seed cargo build admits no lens contract)\\n"])]
@@ -575,6 +578,19 @@ fn preimage_statements() -> List<Node> {
 // or schedule the build, or wrap it without changing its output; (3) a Cargo config file in any
 // ancestor directory refuses. CARGO_HOME is isolated and emptied by the prelude, so its config.toml
 // cannot exist.
+// THE ENVIRONMENT IS READ LOSSLESSLY AND KEYED BY DIGEST (review 5332937814). It is read NUL-framed
+// (env -0) and filtered, pruned and sorted with the -z forms of grep, sed and sort, so a value that
+// contains a newline stays one record: RUSTFLAGS="-Copt-level=3<newline>-Cdebug-assertions=yes" can
+// no longer key the same as "-Copt-level=3". The preimage carries the SHA-256 of the sorted
+// NUL-framed records, never the values, so nothing in the environment is printed or retained in the
+// published preimage.
+//
+// AND IT MUST BE CREDENTIAL-FREE. A registry token or credential provider authenticates a fetch; it is
+// not an input to what the build produces, and a key or a published preimage must not carry it in any
+// form. Any variable in the keyed namespaces whose name marks a credential refuses the build
+// (CredentialInBuildEnvironment) before anything is keyed or printed. This lane fetches only public
+// crates, so no admitted build needs one.
+data release_bins_credential_pattern: String = "^(CARGO|RUST|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|TARGET_CC|HOST_CC)[A-Za-z0-9_]*(TOKEN|CREDENTIAL|SECRET|PASSWORD|PASSWD|AUTH)[A-Za-z0-9_]*="
 data release_bins_refused_override_pattern: String = "^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))="
 data release_bins_keyed_environment_pattern: String = "/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p"
 // Excluded from the key, each with its reason: CARGO_HOME, RUSTUP_HOME and CARGO_BIN name locations
@@ -596,15 +612,21 @@ data release_bins_ancestor_levels: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1
 fn release_bins_environment_statements() -> List<Node> {
   seq(parts: [
     [
-      produce_to(file: "env.out", command: cmdl(ls: ["env"])),
+      produce_to(file: "env.nul", command: cmdl(ls: ["env", "-0"])),
       bash_build_if(
-        cond: cmd(ws: [lit(t: "grep"), lit(t: "-qE"), lit(t: release_bins_refused_override_pattern), temp(file: "env.out")]),
+        cond: cmd(ws: [lit(t: "grep"), lit(t: "-zqE"), lit(t: release_bins_credential_pattern), temp(file: "env.nul")]),
+        body: bash_build_stmt_list_from_nodes(stmts: [refuse(r: CredentialInBuildEnvironment)]),
+      ),
+      bash_build_if(
+        cond: cmd(ws: [lit(t: "grep"), lit(t: "-zqE"), lit(t: release_bins_refused_override_pattern), temp(file: "env.nul")]),
         body: bash_build_stmt_list_from_nodes(stmts: [refuse(r: BuildOverrideNotAdmitted)]),
       ),
-      produce_to(file: "env-keyed.out", command: cmd(ws: [lit(t: "sed"), lit(t: "-nE"), lit(t: release_bins_keyed_environment_pattern), temp(file: "env.out")])),
-      produce_to(file: "env-kept.out", command: cmd(ws: [lit(t: "sed"), lit(t: "-E"), lit(t: release_bins_unkeyed_environment_pattern), temp(file: "env-keyed.out")])),
-      produce_to(file: "env-sorted.out", command: cmd(ws: [lit(t: "sort"), temp(file: "env-kept.out")])),
-      read_back(name: "AXIS_ENVIRONMENT", file: "env-sorted.out", reader: ["paste", "-s", "-d", ";"]),
+      produce_to(file: "env-keyed.nul", command: cmd(ws: [lit(t: "sed"), lit(t: "-z"), lit(t: "-nE"), lit(t: release_bins_keyed_environment_pattern), temp(file: "env.nul")])),
+      produce_to(file: "env-kept.nul", command: cmd(ws: [lit(t: "sed"), lit(t: "-z"), lit(t: "-E"), lit(t: release_bins_unkeyed_environment_pattern), temp(file: "env-keyed.nul")])),
+      produce_to(file: "env-sorted.nul", command: cmd(ws: [lit(t: "sort"), lit(t: "-z"), temp(file: "env-kept.nul")])),
+    ],
+    digest_of(name: "AXIS_ENVIRONMENT_DIGEST", path: temp(file: "env-sorted.nul")),
+    [
       bash_build_assign(name: "ANCESTOR_0", value: var(n: "ROOT")),
     ],
     seq(parts: map(release_bins_ancestor_levels, l => release_bins_ancestor_level(level: l))),
@@ -726,7 +748,10 @@ fn release_bins_key_statements() -> List<Node> {
 // file, and the answer is DECODED STRUCTURALLY by jq (extdeps.tools.jq), through the jq model's own
 // lowering (jq_invocation_process_plan), under --exit-status (JqLastResultExit). The program admits
 // only an object whose total_count is a number equal to the length of an actions_caches ARRAY of
-// objects with string key and ref, no larger than one page; anything else -- truncated or malformed
+// objects with string key and ref, no larger than one page, and it must be EXACTLY ONE document --
+// jq otherwise runs the program once per value of a stream, so `"absent" "present"` would print two
+// lines and exit 0 -- which the program enforces by binding the first value and consuming the rest
+// with `inputs` (an empty answer produces no output and exits 4 under --exit-status); anything else -- truncated or malformed
 // JSON, a missing array, a count that disagrees with the rows, a wrong-shaped row -- makes jq exit
 // nonzero, which refuses as LookupAnswerUnusable and is never absence. Of the admitted rows, exactly
 // one with key == the requested key and ref == the admitted ref is a candidate (its id, ref, version
@@ -735,6 +760,7 @@ data release_bins_lookup_page_size: String = "100"
 
 fn release_bins_lookup_program(ref_expression: String) -> String {
   join([
+    ". as $answer | [inputs] | if length != 0 then error(\"the cache-API answer is not exactly one JSON document\") else $answer | ",
     "if type == \"object\"",
     " and (.total_count | type) == \"number\"",
     " and (.actions_caches | type) == \"array\"",
@@ -746,7 +772,7 @@ fn release_bins_lookup_program(ref_expression: String) -> String {
     " elif length == 1 then \"", release_bins_standing_wire(standing: LookupEntryPresent),
     "\\nid=\\(.[0].id) ref=\\(.[0].ref) version=\\(.[0].version) created=\\(.[0].created_at)\"",
     " else error(\"duplicate exact entries\") end",
-    " else error(\"cache-API answer is not the admitted shape\") end",
+    " else error(\"cache-API answer is not the admitted shape\") end end",
   ], "")
 }
 
