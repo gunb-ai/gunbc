@@ -1,0 +1,125 @@
+module test.claim.machine_intake.kernel_module_decompression_observation_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import std.measure { byte_size }
+import extdeps.linux.module_decompress { ZstdCorruptionDetected }
+import gunbc.machine_intake_kernel_module_decompression_observation {
+  kernel_module_decompression_observation, kernel_module_decompression_text, kernel_module_decompression_findings,
+  KernelModuleDecompressionObservation, ModuleDecompressionNotRefused, ModuleDecompressionRefused,
+  ModuleIdentityKnown, ModuleIdentityUnread, FailedModuleIdentity, DriverPrintedLater, DriverNotSeenInCapture,
+}
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_console_reading, ReferenceCaptureRead, ConsoleRetained }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXCERPT OF THE FAILED ATTEMPT'S RETAINED SOL CAPTURE, byte-for-byte lines 1893-1897 of
+// mtcollins1-boot-sol.capture (sha256 761e79ca42b7ac955a3a4186a1cc5c2bcc1fde0422340d5be02cde2690fcee87)
+// in artifact mtcollins1-boot-receipts of fleet-converge run 36335369059
+// (artifact digest sha256:16dcc1b34233cea3b338104a6cff5d88a46f8b6c2e815443653da5271062dd9b).
+// That boot ran without the module-identity instrument, so no loader record exists.
+data failed_attempt_excerpt: List<String> = [
+  "[   10.149389] Run /init as init process\r",
+  "[   10.374590] ZSTD-decompression failed with status 20\r",
+  "[   10.380475] ZSTD-decompression failed with status 20\r",
+  "[   10.392987] igb: Intel(R) Gigabit Ethernet Network Driver\r",
+  "[   10.398716] igb: Copyright (c) 2007-2014 Intel Corporation.\r",
+]
+
+// EXCERPT OF THE CENSUS-REACHING ATTEMPT'S RETAINED SOL CAPTURE, lines 1895-1900 of
+// mtcollins1-boot-sol.capture (sha256 83e818fb2be55383966f5e98c69c7853625d429941192062530da5f5d21f8161)
+// in artifact mtcollins1-boot-receipts of fleet-converge run 36253081549
+// (artifact digest sha256:ca38324ebcad6477911b0f56a86f91a0785a77dc31163ede6b9afc616fde3496).
+// It carries the renesas "fallback to ROM" warning, which is not a refusal.
+data census_reaching_excerpt: List<String> = [
+  "[   10.154211] Run /init as init process\r",
+  "[   10.391272] xhci_hcd 0004:03:00.0: Adding to iommu group 17\r",
+  "[   10.391751] igb: Intel(R) Gigabit Ethernet Network Driver\r",
+  "[   10.397592] xhci_hcd 0004:03:00.0: failed to load firmware renesas_usb_fw.mem, fallback to ROM\r",
+  "[   10.402897] igb: Copyright (c) 2007-2014 Intel Corporation.\r",
+  "[   10.403241] xhci_hcd 0004:03:00.0: xHCI Host Controller\r",
+]
+
+// THE OFFLINE CONTROL'S INSTRUMENTED CAPTURE, lines 323-325 of its ttyAMA0 log (sha256
+// b8b333934516a1172baabb11cc2b8b649e83d367578aa63773582e556daf6bcf): qemu-system-aarch64 10.0.13 -M virt
+// with a qemu-xhci device, booting the stock 24.04.3 /casper/vmlinuz and /casper/initrd with ONE edit --
+// 64 bytes inverted inside the zstd body of xhci-pci.ko.zst, frame header intact (initrd sha256
+// 83fd2a47a6449584e5062d5238ad84915da7d095c5ebdee406469046a8e40f96) -- under the census cmdline plus
+// mtcollins1_census_module_identity_args, "--- console=tty0" kept. The same boot WITHOUT the args
+// (log sha256 7e8db2f8d916ea009b2085c65e5a2348d77c06d27ad4eeac60f03988874b5552) printed the status-20
+// line and no loader record: the instrument is what names the file. The uas and xhci_pci lines are
+// DESIGNED, added to exercise the errno filter and the later-driver reading.
+data instrumented_excerpt: List<String> = [
+  "[   27.190394] ZSTD-decompression failed with status 20\r",
+  "[   27.209606] (udev-worker)[100]: Failed to insert module '/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst': Invalid argument\r",
+  "[   27.300000] (udev-worker)[101]: Failed to insert module '/lib/modules/6.8.0-71-generic/kernel/drivers/usb/storage/uas.ko.zst': No such device\r",
+  "[   28.916926] input: gpio-keys as /devices/platform/gpio-keys/input/input0\r",
+  "[   29.000000] xhci_pci: printed later\r",
+]
+
+// POSITIVE CONTROL: the census-reaching boot is not a refusal, renesas warning included.
+test fn the_census_reaching_capture_reads_as_not_refused() -> Bool {
+  match kernel_module_decompression_observation(lines: census_reaching_excerpt) {
+    ModuleDecompressionNotRefused => true
+    _ => false
+  }
+    && count(kernel_module_decompression_findings(o: kernel_module_decompression_observation(lines: census_reaching_excerpt))) == 0
+}
+
+// RED, ANONYMOUS: the failed boot is a refusal with both statuses retained, and identity UNREAD.
+test fn the_failed_capture_is_a_refusal_whose_identity_is_unread() -> Bool {
+  match kernel_module_decompression_observation(lines: failed_attempt_excerpt) {
+    ModuleDecompressionRefused { refusals: rs, identity: ModuleIdentityUnread } =>
+      count(rs) == 2
+        && match first(rs) {
+          Absent => false
+          Present { value: r } => r.at == "10.374590" && match r.status { ZstdCorruptionDetected => true _ => false }
+        }
+    _ => false
+  }
+}
+
+test fn the_failed_capture_text_names_no_module_and_leaves_the_request_unread_on_sol() -> Bool {
+  let text = kernel_module_decompression_text(o: kernel_module_decompression_observation(lines: failed_attempt_excerpt))
+  string_contains(s: text, pattern: "module identity UNREAD")
+    && string_contains(s: text, pattern: "status corruption_detected")
+    && string_contains(s: text, pattern: "requesting device/modalias: unread on SOL")
+}
+
+// RED, NAMED: a loader record with the refusal's errno names the file, the worker and the later
+// printing; an insert failure with another errno is NOT attributed to the refusal.
+test fn an_instrumented_capture_names_the_refused_module_path_and_worker() -> Bool {
+  match kernel_module_decompression_observation(lines: instrumented_excerpt) {
+    ModuleDecompressionRefused { refusals: rs, identity: ModuleIdentityKnown { failures: fs } } =>
+      count(rs) == 1 && count(fs) == 1
+        && match first(fs) { Absent => false Present { value: f } => named_xhci_pci(f: f) }
+    _ => false
+  }
+}
+
+fn named_xhci_pci(f: FailedModuleIdentity) -> Bool {
+  (f.failure.path as String) == "/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.zst"
+    && f.failure.loader == "(udev-worker)[100]"
+    && f.failure.at == "27.209606"
+    && f.module_name == "xhci_pci"
+    && match f.later { DriverPrintedLater { at: a, line: _ } => a == "29.000000" DriverNotSeenInCapture => false }
+}
+
+// A loader record with no refusal line is not a decompression refusal.
+test fn a_loader_failure_without_a_kernel_refusal_is_not_a_refusal() -> Bool {
+  match kernel_module_decompression_observation(lines: instrumented_excerpt.skip(n: 1).take(n: 1)) {
+    ModuleDecompressionNotRefused => true
+    _ => false
+  }
+}
+
+// INHABITANCE: the attempt-bound console reading carries this observation from the capture text it
+// retains -- the real route the boot bundle renders, not a supplied observation.
+test fn the_retained_console_reading_carries_the_refusal() -> Bool {
+  let capture = join(failed_attempt_excerpt, "\n")
+  match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 10), capture: concat(capture, "\n"), read_ok: true, read_error: "", reference: ReferenceCaptureRead { text: "", ok: false, error: "not supplied" }) {
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: _, sockets: _, against_reference: _, modules: m } =>
+      match m { ModuleDecompressionRefused { refusals: _, identity: ModuleIdentityUnread } => true _ => false }
+    _ => false
+  }
+}

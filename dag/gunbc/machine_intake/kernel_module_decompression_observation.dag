@@ -1,0 +1,195 @@
+module gunbc.machine_intake_kernel_module_decompression_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_prefix, ZstdErrorCode, zstd_error_code_of, zstd_error_code_name }
+import extdeps.kmod.libkmod { libkmod_insert_failed_prefix, libkmod_insert_failed_path_end }
+
+// WHAT A RETAINED CONSOLE CAPTURE SAYS ABOUT IN-KERNEL MODULE DECOMPRESSION, AT ITS REAL STRENGTH.
+//
+// Three facts, kept apart because they have different producers:
+//   1. the kernel REFUSED to decompress some module (extdeps.linux.module_decompress), with the
+//      decoder status it printed -- a decoder result, not a memory report, and no module name;
+//   2. WHICH FILE was refused, known only when the loader's own record reached the capture
+//      (extdeps.kmod.libkmod, under the module-identity instrument's KMOD_LOG / kmsg settings);
+//   3. whether that driver LATER printed anything in the capture.
+// Refusal without a loader record is IDENTITY UNREAD, never a guessed module: adjacent kernel lines
+// are not evidence of which finit_module call failed. The requesting device / modalias is not on the
+// serial console at the instrument's chosen levels (it stays in the kmsg ring), so it is reported
+// as unread on SOL and never inferred.
+//
+// This observation says nothing about device availability, live-root acceptance, SOL health or the
+// hardware: those are other readings of the same capture with other producers. In particular the
+// xhci renesas_usb_fw.mem "fallback to ROM" warning is not read here at all -- it appears in the
+// census-reaching boot too, so it is not a refusal of anything.
+
+type ModuleDecompressionRefusal {
+  at: String
+  status: ZstdErrorCode
+}
+
+type ModuleInsertFailure {
+  at: String
+  loader: String
+  path: NonEmptyStr
+  error: String
+}
+
+type LaterDriverReading
+  = DriverPrintedLater { at: String, line: String }
+  | DriverNotSeenInCapture
+
+type FailedModuleIdentity {
+  failure: ModuleInsertFailure
+  module_name: String
+  later: LaterDriverReading
+}
+
+type ModuleIdentityReading
+  = ModuleIdentityKnown { failures: List<FailedModuleIdentity> }
+  | ModuleIdentityUnread
+
+type KernelModuleDecompressionObservation
+  = ModuleDecompressionNotRefused
+  | ModuleDecompressionRefused { refusals: List<ModuleDecompressionRefusal>, identity: ModuleIdentityReading }
+
+// The errno a decompression refusal returns to finit_module (decompress.c: retval = -EINVAL), as
+// strerror renders it. An insert failure with another errno is a different failure and is not
+// attributed to the refusal.
+data refused_decompression_strerror: String = "Invalid argument"
+
+data request_identity_on_sol_text: String = "requesting device/modalias: unread on SOL (kmsg ring only)"
+
+fn first_or_empty(xs: List<String>) -> String {
+  match first(xs) {
+    Absent => ""
+    Present { value: x } => x
+  }
+}
+
+// A console line as written: CR and NUL removed.
+fn console_line(raw: String) -> String {
+  join(split(s: join(split(s: raw, delimiter: "\r"), ""), delimiter: "\0"), "")
+}
+
+type StampedLine {
+  at: String
+  rest: String
+}
+
+// "[   10.374590] text" -> at "10.374590", rest "text". An unstamped line keeps at "".
+fn stamped(raw: String) -> StampedLine {
+  let line = console_line(raw: raw)
+  let closed = split(s: line, delimiter: "] ")
+  if starts_with(s: trim(line), prefix: "[") && count(closed) >= 2 {
+    StampedLine {
+      at: trim(join(split(s: first_or_empty(xs: closed), delimiter: "["), "")),
+      rest: join(closed.skip(n: 1), "] "),
+    }
+  } else {
+    StampedLine { at: "", rest: line }
+  }
+}
+
+fn decompression_refusal(l: StampedLine) -> ModuleDecompressionRefusal? {
+  let prefix = linux_module_zstd_decompress_failed_prefix as String
+  if !string_contains(s: l.rest, pattern: prefix) { none } else {
+    match parse_int(s: trim(join(split(s: l.rest, delimiter: prefix).skip(n: 1), prefix))) {
+      Absent => none
+      Present { value: code } => Present { value: ModuleDecompressionRefusal { at: l.at, status: zstd_error_code_of(code: code) } }
+    }
+  }
+}
+
+fn insert_failure(l: StampedLine) -> ModuleInsertFailure? {
+  let prefix = libkmod_insert_failed_prefix as String
+  let parts = split(s: l.rest, delimiter: prefix)
+  if count(parts) < 2 { none } else {
+    let tail = join(parts.skip(n: 1), prefix)
+    let path_and_error = split(s: tail, delimiter: libkmod_insert_failed_path_end as String)
+    let path = first_or_empty(xs: path_and_error)
+    if count(path_and_error) < 2 || path == "" { none } else {
+      Present { value: ModuleInsertFailure {
+        at: l.at,
+        loader: trim(join(split(s: trim(first_or_empty(xs: parts)), delimiter: ":"), "")),
+        path: path as NonEmptyStr,
+        error: trim(join(path_and_error.skip(n: 1), libkmod_insert_failed_path_end as String)),
+      } }
+    }
+  }
+}
+
+// ".../xhci-pci-renesas.ko.zst" -> "xhci_pci_renesas": the name the kernel prints a module under.
+fn module_name_of_path(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  let file = first_or_empty(xs: segments.skip(n: count(segments) - 1))
+  join(split(s: first_or_empty(xs: split(s: file, delimiter: ".ko")), delimiter: "-"), "_")
+}
+
+fn later_driver(lines: List<StampedLine>, after_index: Int, module_name: String) -> LaterDriverReading {
+  let later = filter(lines.skip(n: after_index + 1), l => starts_with(s: l.rest, prefix: concat(module_name, " ")) || starts_with(s: l.rest, prefix: concat(module_name, ":")))
+  match first(later) {
+    Absent => DriverNotSeenInCapture
+    Present { value: l } => DriverPrintedLater { at: l.at, line: l.rest }
+  }
+}
+
+fn kernel_module_decompression_observation(lines: List<String>) -> KernelModuleDecompressionObservation {
+  let stamped_lines = map(lines, raw => stamped(raw: raw))
+  let refusals = flat_map(stamped_lines, l => match decompression_refusal(l: l) { Absent => [] Present { value: r } => [r] })
+  if count(refusals) == 0 { ModuleDecompressionNotRefused } else {
+    let failures = flat_map(enumerate(stamped_lines), il => match insert_failure(l: il.second) {
+      Absent => []
+      Present { value: f } =>
+        if f.error == refused_decompression_strerror {
+          [FailedModuleIdentity {
+            failure: f,
+            module_name: module_name_of_path(path: f.path as String),
+            later: later_driver(lines: stamped_lines, after_index: il.first, module_name: module_name_of_path(path: f.path as String)),
+          }]
+        } else { [] }
+    })
+    ModuleDecompressionRefused {
+      refusals: refusals,
+      identity: if count(failures) == 0 { ModuleIdentityUnread } else { ModuleIdentityKnown { failures: failures } },
+    }
+  }
+}
+
+fn refusal_text(r: ModuleDecompressionRefusal) -> String {
+  concat("[", r.at, "] status ", zstd_error_code_name(code: r.status))
+}
+
+fn later_text(l: LaterDriverReading) -> String {
+  match l {
+    DriverPrintedLater { at: a, line: t } => concat("printed later at ", a, ": ", t)
+    DriverNotSeenInCapture => "not seen later in this capture"
+  }
+}
+
+fn failed_module_text(f: FailedModuleIdentity) -> String {
+  concat("[", f.failure.at, "] ", f.failure.loader, " ", f.failure.path as String, ": ", f.failure.error, "; ", f.module_name, " ", later_text(l: f.later))
+}
+
+fn kernel_module_decompression_text(o: KernelModuleDecompressionObservation) -> String {
+  match o {
+    ModuleDecompressionNotRefused => "module decompression: no refusal in this capture"
+    ModuleDecompressionRefused { refusals: rs, identity: id } =>
+      concat(
+        "module decompression REFUSED ", to_string(count(rs)), " time(s): ", join(map(rs, r => refusal_text(r: r)), ", "), "; ",
+        match id {
+          ModuleIdentityUnread => "module identity UNREAD (no loader record reached this capture)"
+          ModuleIdentityKnown { failures: fs } => concat("module identity: ", join(map(fs, f => failed_module_text(f: f)), "; "))
+        },
+        "; ", request_identity_on_sol_text,
+      )
+  }
+}
+
+fn kernel_module_decompression_findings(o: KernelModuleDecompressionObservation) -> List<String> {
+  match o {
+    ModuleDecompressionNotRefused => []
+    ModuleDecompressionRefused { refusals: _, identity: _ } => [kernel_module_decompression_text(o: o)]
+  }
+}

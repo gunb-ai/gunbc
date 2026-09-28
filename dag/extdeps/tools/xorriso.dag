@@ -7,6 +7,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_xorriso }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -83,4 +84,11 @@ service xorriso.Iso {
       nonzero => String "xorriso -boot_image any replay build failed"
     }
   }
+}
+
+// THE SAME -extract ExtractPathBestEffort runs, as an argv for a remote typed-argv transport: one ISO
+// member copied out to one destination path, read-only on the ISO. xorriso exits nonzero when the
+// member is absent or the destination cannot be written.
+fn xorriso_extract_command(iso_path: String, iso_internal_path: String, destination: String) -> ArgvCommand {
+  argv_command(program: xorriso_cli_tool.name, arguments: ["-osirrox", "on", "-indev", iso_path, "-extract", iso_internal_path, destination])
 }
