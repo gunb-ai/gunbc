@@ -10,7 +10,7 @@ import gunbc.host_budget_source {
   BudgetSourceCgroupMemoryHigh,
   host_budget_resolved_observation,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileAdmission,
   WholeCorpusCompileAdmitted,
@@ -97,7 +97,7 @@ fn fleet_runner_slot_effective_budget() -> HostBudgetResolution {
 fn fleet_runner_slot_desired_budget() -> HostBudgetResolution {
   host_budget_resolved_observation(
     source: BudgetSourceCgroupMemoryHigh {
-      cgroup_dir: "<desired row: gunbc.runner_slot_allocation gunbc_runner_slot_desired, not observed on any host>" as NonEmptyStr,
+      cgroup_dir: "<desired row: gunbc.runner_slot_desired gunbc_runner_slot_desired, not observed on any host>" as NonEmptyStr,
     },
     bytes: gunbc_runner_slot_desired().memory_high
   )
