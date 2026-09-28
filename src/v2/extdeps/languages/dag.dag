@@ -3775,13 +3775,6 @@ fn dag_symbol_literal_name_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn dag_node_is_symbol_literal_atom(node: Node) -> Bool {
-  match dag_symbol_literal_name_optional(node: node) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn dag_node_is_float_literal_atom(node: Node) -> Bool {
   match node_atom_identity_optional(node: node) {
     Present { value: id } => id == ^dag_token_float_literal
