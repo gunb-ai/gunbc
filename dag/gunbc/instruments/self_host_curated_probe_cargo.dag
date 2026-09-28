@@ -6,8 +6,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.self_host_curated_seed_linked_harness { cssl_v1_compiled_probe_lib_cargo_toml }
 
-// SCAFFOLD — dissolve-on: deletes when cssl exposes probe-lib manifest projection or bash-emit
-// #5828 realizes curated_cargo_probe_one transport. Single authority:
+// SCAFFOLD — dissolve-on: deletes when cssl exposes probe-lib manifest projection or
+// curated_cargo_probe_one is emitted from v2.extdeps.languages.bash_build nodes (an available route). Single authority:
 // cssl_v1_compiled_probe_lib_cargo_toml (tools.self_host_curated_seed_linked_harness). Shell route:
 // curated_probe_cargo_toml_write_from_cssl_authority (ProcessExit + Filesystem.Write) — gunbc run
 // has no value-printing verb (#8286 wall).
