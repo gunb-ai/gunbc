@@ -389,6 +389,7 @@ type RestExchangeResolution
   | RestReplayExchangeAbsent { invocation: RestBoundOperationInvocation }
   | RestReplayExchangeAmbiguous { invocation: RestBoundOperationInvocation, count: Int }
   | RestExchangeHandlerUncovered { invocation: RestBoundOperationInvocation }
+  | RestExchangeModeledRealizationUnsupported { invocation: RestBoundOperationInvocation, realization: String }
 
 // THE SINGLE HANDLER-BINDING AND LOOKUP DECISION. Runtime code asks this function what the frame's
 // existing effect grant selected; it does not re-read Hermetic/Wet and does not implement its own
@@ -405,6 +406,7 @@ fn rest_exchange_resolution(
     RestHandlerUncovered { invocation: i } => RestExchangeHandlerUncovered { invocation: i }
     RestHandlerSelected { binding } => match binding {
       RealTransport => RestRealExchangeRequired
+      ModeledRealization { realization: r } => RestExchangeModeledRealizationUnsupported { invocation: invocation, realization: r }
       Replay { fixture_store } => match rest_exchange_fixture_lookup(
         fixtures: fixtures,
         store: fixture_store as NonEmptyStr,
