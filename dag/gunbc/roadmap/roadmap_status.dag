@@ -35,6 +35,74 @@ type TicketFields {
   last_verified_on: String
 }
 
+// Field identities survive projection; labels are presentation text, never routing keys.
+type TicketField
+  = TicketBrief
+  | TicketDisplacedCost
+  | TicketCurrentState
+  | TicketFirstSlice
+  | TicketRedControl
+  | TicketOutOfScope
+  | TicketHandback
+  | TicketVerified
+
+type TicketSection = TicketDescription | TicketAcceptance | TicketPlan | TicketScope | TicketMetadata
+
+fn ticket_field_value(ticket: TicketFields, field: TicketField) -> String {
+  match field {
+    TicketBrief => ticket.brief
+    TicketDisplacedCost => ticket.displaced_cost
+    TicketCurrentState => ticket.current_state
+    TicketFirstSlice => ticket.first_slice
+    TicketRedControl => ticket.red_control
+    TicketOutOfScope => ticket.out_of_scope
+    TicketHandback => ticket.handback
+    TicketVerified => ticket.last_verified_on
+  }
+}
+
+// A preview of an editable field preserves identity and evidence metadata. The caller must
+// separately admit the edit; TicketVerified intentionally has no mutation here.
+fn ticket_with_field_preview(ticket: TicketFields, field: TicketField, value: String) -> TicketFields {
+  TicketFields {
+    headline: ticket.headline,
+    brief: if field == TicketBrief { value } else { ticket.brief },
+    displaced_cost: if field == TicketDisplacedCost { value } else { ticket.displaced_cost },
+    current_state: if field == TicketCurrentState { value } else { ticket.current_state },
+    first_slice: if field == TicketFirstSlice { value } else { ticket.first_slice },
+    red_control: if field == TicketRedControl { value } else { ticket.red_control },
+    out_of_scope: if field == TicketOutOfScope { value } else { ticket.out_of_scope },
+    handback: if field == TicketHandback { value } else { ticket.handback },
+    updates: ticket.updates, authored_on: ticket.authored_on, last_verified_on: ticket.last_verified_on,
+  }
+}
+
+fn ticket_field_label(field: TicketField) -> String {
+  match field {
+    TicketBrief => "brief"
+    TicketDisplacedCost => "displaced cost"
+    TicketCurrentState => "current state"
+    TicketFirstSlice => "first slice"
+    TicketRedControl => "red control"
+    TicketOutOfScope => "out of scope"
+    TicketHandback => "hand-back"
+    TicketVerified => "verified"
+  }
+}
+
+fn ticket_field_section(field: TicketField) -> TicketSection {
+  match field {
+    TicketBrief => TicketDescription
+    TicketDisplacedCost => TicketPlan
+    TicketCurrentState => TicketPlan
+    TicketFirstSlice => TicketPlan
+    TicketRedControl => TicketAcceptance
+    TicketOutOfScope => TicketScope
+    TicketHandback => TicketAcceptance
+    TicketVerified => TicketMetadata
+  }
+}
+
 type RoadmapItem
 
   = DerivableLine { prs: List<Int>, title: String, description: String }

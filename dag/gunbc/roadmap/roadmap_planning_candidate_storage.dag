@@ -1,0 +1,133 @@
+module gunbc.roadmap_planning_candidate_storage
+
+import std.types { String, NonEmptyStr }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
+import gunbc.principal_projection { principal_ref_label }
+import gunbc.roadmap_status { TicketFields, TicketField, TicketBrief, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback, TicketVerified }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, PlanningIssueSnapshot, CandidateSetParent, CandidateSetBlockers }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef, FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent,
+  FabricObjectStored, FabricPutRefused, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
+  fabric_object_ref_eq, fabric_storage_fault_wire,
+}
+import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+
+// Proposals are immutable and have separate heads from issue state. Publishing a proposal
+// cannot advance the issue revision it was based on. The protected-state binding is supplied
+// by the caller; this module neither chooses a host nor falls back to another store.
+fn planning_candidate_head(identity: NonEmptyStr) -> NonEmptyStr {
+  concat("planning-candidate-v1-", identity as String) as NonEmptyStr
+}
+
+fn candidate_field_wire(field: TicketField) -> String {
+  match field {
+    TicketBrief => "brief"
+    TicketDisplacedCost => "displaced_cost"
+    TicketCurrentState => "current_state"
+    TicketFirstSlice => "first_slice"
+    TicketRedControl => "red_control"
+    TicketOutOfScope => "out_of_scope"
+    TicketHandback => "handback"
+    TicketVerified => "last_verified_on"
+  }
+}
+
+fn candidate_ticket_json(ticket: TicketFields) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "headline", value: json_string(s: ticket.headline)),
+    json_kv(key: "brief", value: json_string(s: ticket.brief)),
+    json_kv(key: "displaced_cost", value: json_string(s: ticket.displaced_cost)),
+    json_kv(key: "current_state", value: json_string(s: ticket.current_state)),
+    json_kv(key: "first_slice", value: json_string(s: ticket.first_slice)),
+    json_kv(key: "red_control", value: json_string(s: ticket.red_control)),
+    json_kv(key: "out_of_scope", value: json_string(s: ticket.out_of_scope)),
+    json_kv(key: "handback", value: json_string(s: ticket.handback)),
+    json_kv(key: "authored_on", value: json_string(s: ticket.authored_on)),
+    json_kv(key: "last_verified_on", value: json_string(s: ticket.last_verified_on)),
+    json_kv(key: "updates", value: json_array(elements: map(ticket.updates, u => json_object(members: [
+      json_kv(key: "on", value: json_string(s: u.on)), json_kv(key: "note", value: json_string(s: u.note))])))),
+  ])
+}
+
+fn candidate_snapshot_json(snapshot: PlanningIssueSnapshot) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "issue", value: json_string(s: snapshot.issue as String)),
+    json_kv(key: "ticket", value: candidate_ticket_json(ticket: snapshot.ticket)),
+    json_kv(key: "parent", value: json_string(s: match snapshot.parent { Absent => "" Present { value: p } => p as String })),
+    json_kv(key: "blockers", value: json_array(elements: map(snapshot.blockers, b => json_string(s: b as String)))),
+    json_kv(key: "event_revision", value: json_string(s: snapshot.event_revision)),
+    json_kv(key: "accountable_human", value: json_string(s: match snapshot.accountable_human { Absent => "" Present { value: p } => principal_ref_label(p: p) })),
+  ])
+}
+
+fn planning_candidate_json(candidate: IssueRevisionCandidate) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "planning-candidate/v1")),
+    json_kv(key: "identity", value: json_string(s: candidate.identity as String)),
+    json_kv(key: "issue", value: json_string(s: candidate.issue as String)),
+    json_kv(key: "base_issue_revision", value: candidate_snapshot_json(snapshot: candidate.base_issue_revision.snapshot)),
+    json_kv(key: "author", value: json_string(s: principal_ref_label(p: candidate.author))),
+    json_kv(key: "work_request", value: json_string(s: candidate.work_request as String)),
+    json_kv(key: "proposed_field_changes", value: json_array(elements: map(candidate.proposed_field_changes, c => json_object(members: [
+      json_kv(key: "field", value: json_string(s: candidate_field_wire(field: c.field))), json_kv(key: "value", value: json_string(s: c.value))])))),
+    json_kv(key: "proposed_relation_changes", value: json_array(elements: map(candidate.proposed_relation_changes, c => match c {
+      CandidateSetParent { parent } => json_object(members: [json_kv(key: "kind", value: json_string(s: "set_parent")),
+        json_kv(key: "parent", value: json_string(s: match parent { Absent => "" Present { value: p } => p as String }))])
+      CandidateSetBlockers { blockers } => json_object(members: [json_kv(key: "kind", value: json_string(s: "set_blockers")),
+        json_kv(key: "blockers", value: json_array(elements: map(blockers, b => json_string(s: b as String))))])
+    }))),
+    json_kv(key: "proposed_draft_children", value: json_array(elements: map(candidate.proposed_draft_children, c => json_object(members: [
+      json_kv(key: "identity", value: json_string(s: c.identity as String)), json_kv(key: "ticket", value: candidate_ticket_json(ticket: c.ticket))])))),
+  ])
+}
+
+fn planning_candidate_object(candidate: IssueRevisionCandidate) -> FabricObject {
+  FabricObject { links: [], body: serialize_json(v: planning_candidate_json(candidate: candidate)) as NonEmptyStr }
+}
+
+type CandidateStoredRead
+  = CandidateStoredAbsent
+  | CandidateStored { object: FabricObjectRef, body: NonEmptyStr }
+  | CandidateStoreReadRefused { reason: String }
+
+fn planning_candidate_read(store: FabricStorageBinding, identity: NonEmptyStr) -> CandidateStoredRead {
+  match fabric_storage_closure(binding: store, name: planning_candidate_head(identity: identity), bound: 1) {
+    FabricClosureRefused { fault } => CandidateStoreReadRefused { reason: fabric_storage_fault_wire(fault: fault) }
+    FabricClosureBudgetExhausted { at: _, bound: _ } => CandidateStoreReadRefused { reason: "candidate head links more than one object" }
+    FabricClosureRead { reading: FabricHeadAbsent, newest_first } => if count(newest_first) == 0 { CandidateStoredAbsent }
+      else { CandidateStoreReadRefused { reason: "absent candidate head returned objects" } }
+    FabricClosureRead { reading: FabricHeadAt { object: head, generation: _ }, newest_first } =>
+      if count(newest_first) != 1 { CandidateStoreReadRefused { reason: "candidate head must name exactly one object" } }
+      else { match newest_first.first() {
+        Absent => CandidateStoreReadRefused { reason: "candidate object missing" }
+        Present { value: stored } => if !fabric_object_ref_eq(a: stored.object, b: head) || count(stored.content.links) != 0 {
+          CandidateStoreReadRefused { reason: "candidate object does not match its head" }
+        } else { CandidateStored { object: head, body: stored.content.body } }
+      } }
+  }
+}
+
+type CandidatePublication
+  = CandidatePublished { object: FabricObjectRef }
+  | CandidatePublicationReplayed { object: FabricObjectRef }
+  | CandidateIdentityConflict
+  | CandidatePublicationRefused { reason: String }
+
+// Authentication, work-request admission and candidate review precede publication. Equality
+// checks the full canonical body after a lost CAS, never the structural locator alone.
+fn planning_candidate_publish(store: FabricStorageBinding, candidate: IssueRevisionCandidate) -> CandidatePublication {
+  let proposed = planning_candidate_object(candidate: candidate)
+  match fabric_storage_put(binding: store, object: proposed) {
+    FabricPutRefused { fault } => CandidatePublicationRefused { reason: fabric_storage_fault_wire(fault: fault) }
+    FabricObjectStored { object } => match fabric_storage_advance(binding: store, name: planning_candidate_head(identity: candidate.identity), expected: ExpectHeadAbsent, target: object) {
+      FabricHeadAdvanced { object: published, generation: _ } => CandidatePublished { object: published }
+      FabricHeadAdvanceRefused { fault } => CandidatePublicationRefused { reason: fabric_storage_fault_wire(fault: fault) }
+      FabricHeadMoved { expected: _, observed: _ } => match planning_candidate_read(store: store, identity: candidate.identity) {
+        CandidateStored { object: prior, body } => if body == proposed.body { CandidatePublicationReplayed { object: prior } } else { CandidateIdentityConflict }
+        CandidateStoredAbsent => CandidatePublicationRefused { reason: "candidate head disappeared after publication conflict" }
+        CandidateStoreReadRefused { reason } => CandidatePublicationRefused { reason: reason }
+      }
+    }
+  }
+}
