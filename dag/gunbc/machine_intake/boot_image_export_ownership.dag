@@ -324,7 +324,10 @@ fn observed_export_ownership_standing(host: CommandHost, path: NonEmptyStr) -> E
 fn export_ownership_admits_publication(standing: ExportOwnershipStanding) -> Bool {
   match standing {
     ExportOwnershipSatisfied => true
-    _ => false
+    ExportOwnershipIsRoot => false
+    ExportOwnershipWrongPrincipal { observed: _, required: _ } => false
+    ExportOwnershipUnrecognizedAccount { observed: _ } => false
+    ExportOwnershipUnobservable { path: _, reason: _ } => false
   }
 }
 
