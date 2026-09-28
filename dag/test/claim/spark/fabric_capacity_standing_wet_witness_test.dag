@@ -3,7 +3,9 @@ module test.claim.spark.fabric_capacity_standing_wet_witness
 import std.logic { Bool }
 import std.types { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.process { ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -13,15 +15,60 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // file is the other half of DESIGN §3's pairing obligation, the one that cannot be hermetic: the
 // entry reads the executor's hostname (shell.Exec.RunArgv, no mock_response), resolves its event
 // log layout and reads every claimed group's authority from the log before any standing is
-// judged. On the wet lane's runner that read does not reach a log -- the runner is no dashboard
-// host, or its remote is unreachable -- so the honest verdict is a refusal that NAMES THE READ:
-// every claimed group is reported "serving authority could not be read at <step>", and no
-// group's capacity is stood for. That is the route: deleting the live binding, or letting an
-// unreadable log fall back to the source row, changes this text.
-test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
-  match fabric_capacity_standing() {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: reason } =>
-      string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
+// judged.
+//
+// THE EXPECTED VERDICT IS DERIVED FROM THE RUNNER'S OBSERVED HOST STANDING, never assumed. The wet
+// lane runs on fleet hosts of both standings: a runner with no declared dashboard instance cannot
+// reach a log, so the honest verdict refuses every group AT THE STORE STEP with the standing's own
+// cause; a runner that IS a dashboard host (srv1) reaches the store, so no group may be refused at
+// the store step -- its verdict is whatever the log says. The off-fleet arm is the one that
+// discriminates a row fallback (an unreadable log standing on the resting row would stop naming
+// the read); the on-fleet arm discriminates a store resolution that ignores the host.
+fn verdict_follows_host_standing(standing: HostEventLogStore, verdict: ProcessExit) -> Bool {
+  match standing {
+    HostStoreRefused { detail: d } =>
+      match verdict {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: reason } =>
+          string_contains(s: reason, pattern: join(["group-a: serving authority could not be read at store: ", d], ""))
+      }
+    HostStoreResolved { store: _, executor: _ } =>
+      match verdict {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: reason } =>
+          !string_contains(s: reason, pattern: "serving authority could not be read at store: ")
+      }
   }
+}
+
+test fn the_live_entry_reads_the_authority_before_judging_and_its_verdict_follows_the_host_standing() -> Bool {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: _ } => false
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      verdict_follows_host_standing(standing: event_log_store_for_host(short_hostname: executor), verdict: fabric_capacity_standing())
+  }
+}
+
+// CONTROLS, ONE PER HOST STANDING, each with its red. The standing is produced by the real
+// event_log_store_for_host over the declared dashboard roster (srv1 is declared; the other name is
+// not), and the verdict is supplied.
+data off_fleet_standing: HostEventLogStore = event_log_store_for_host(short_hostname: "no-such-fleet-host")
+data on_fleet_standing: HostEventLogStore = event_log_store_for_host(short_hostname: "srv1")
+
+fn store_refusal(standing: HostEventLogStore) -> ProcessExit {
+  match standing {
+    HostStoreRefused { detail: d } => ExitFailure { code: 1, reason: join(["fabric capacity standing\ngroup-a: serving authority could not be read at store: ", d], "") }
+    HostStoreResolved { store: _, executor: _ } => ExitFailure { code: 1, reason: "fabric capacity standing\ngroup-a: serving authority could not be read at store: resolved" }
+  }
+}
+
+test fn off_fleet_a_store_refusal_holds_and_a_success_is_red() -> Bool {
+  verdict_follows_host_standing(standing: off_fleet_standing, verdict: store_refusal(standing: off_fleet_standing))
+    && !verdict_follows_host_standing(standing: off_fleet_standing, verdict: ExitSuccess)
+}
+
+test fn on_fleet_a_log_verdict_holds_and_a_store_refusal_is_red() -> Bool {
+  verdict_follows_host_standing(standing: on_fleet_standing, verdict: ExitSuccess)
+    && verdict_follows_host_standing(standing: on_fleet_standing, verdict: ExitFailure { code: 1, reason: "fabric capacity standing\ngroup-a: serving authority could not be read at claim: no authority has been established" })
+    && !verdict_follows_host_standing(standing: on_fleet_standing, verdict: store_refusal(standing: off_fleet_standing))
 }

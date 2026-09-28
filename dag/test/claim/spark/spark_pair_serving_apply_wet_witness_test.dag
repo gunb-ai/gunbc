@@ -4,9 +4,9 @@ import std.logic { Bool }
 import std.types { String, List }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.pair_serving_apply { spark_pair_apply_plans, spark_pair_apply_plan_refusals }
+import gunbc.spark.pair_serving_apply { SparkPairApplyPlan, SparkPairApplyRefused, spark_pair_apply_plans, spark_pair_apply_plan_refusals }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -14,24 +14,63 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE APPLY SEAM'S LIVE BINDING, EXECUTED. test.claim.spark.spark_pair_serving_apply_witness drives
 // the plan fold over a SUPPLIED roster; this is the other half of DESIGN §3's pairing obligation:
 // spark_pair_apply_plans reads the executor's hostname, resolves its event log layout and reads
-// every claimed group's authority from the log before planning anything. On the wet lane's
-// runner that read does not reach a log, so every claimed group's plan is a refusal that NAMES
-// THE READ -- "the serving authority could not be read" -- and nothing is planned from the
-// resting row. Deleting the log read, or letting an unreadable log fall back to the row, turns
-// these refusals into plans and this claim red.
-test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet() -> Bool {
+// every claimed group's authority from the log before planning anything.
+//
+// THE EXPECTED PLANS ARE DERIVED FROM THE RUNNER'S OBSERVED HOST STANDING, never assumed. A runner
+// with no declared dashboard instance cannot reach a log, so every claimed group's plan is a
+// refusal that names the read AT THE STORE STEP with the standing's own cause -- nothing is planned
+// from the resting row. A runner that IS a dashboard host (srv1) reaches the store, so no plan may
+// be refused at the store step; each is planned or refused by what the log says. Deleting the log
+// read, or letting an unreadable log fall back to the row, reds the off-fleet arm; resolving the
+// store without regard to the host reds the on-fleet arm.
+fn plans_follow_host_standing(standing: HostEventLogStore, plans: List<SparkPairApplyPlan>) -> Bool {
+  let refusals = spark_pair_apply_plan_refusals(plans: plans)
+  length(plans) == length(spark_pair_serving_authorities)
+    && match standing {
+      HostStoreRefused { detail: d } =>
+        length(refusals) == length(plans)
+          && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read, so nothing is converged: ")
+            && string_contains(s: r, pattern: join([" authority unread at store: ", d], "")))
+      HostStoreResolved { store: _, executor: _ } =>
+        all(refusals, r => !string_contains(s: r, pattern: " authority unread at store: "))
+    }
+}
+
+test fn the_apply_seam_reads_the_authority_before_planning_and_its_plans_follow_the_host_standing() -> Bool {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: _ } => false
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
       match now_epoch_seconds() {
         Absent => false
-        Present { value: at } => {
-          let plans = spark_pair_apply_plans(executor: executor, at: at)
-          let refusals = spark_pair_apply_plan_refusals(plans: plans)
-          length(plans) == length(spark_pair_serving_authorities)
-            && length(refusals) == length(plans)
-            && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read"))
-        }
+        Present { value: at } =>
+          plans_follow_host_standing(standing: event_log_store_for_host(short_hostname: executor), plans: spark_pair_apply_plans(executor: executor, at: at))
       }
   }
+}
+
+// CONTROLS, ONE PER HOST STANDING, each with its red. The standing is produced by the real
+// event_log_store_for_host over the declared dashboard roster (srv1 is declared; the other name is
+// not), and the plans are supplied.
+data off_fleet_standing: HostEventLogStore = event_log_store_for_host(short_hostname: "no-such-fleet-host")
+data on_fleet_standing: HostEventLogStore = event_log_store_for_host(short_hostname: "srv1")
+
+fn refused_plans(cause: String) -> List<SparkPairApplyPlan> {
+  map(spark_pair_serving_authorities, _a => SparkPairApplyRefused { cause: cause })
+}
+
+fn store_refusal_cause(standing: HostEventLogStore) -> String {
+  match standing {
+    HostStoreRefused { detail: d } => join(["the serving authority could not be read, so nothing is converged: group-a authority unread at store: ", d], "")
+    HostStoreResolved { store: _, executor: _ } => "the serving authority could not be read, so nothing is converged: group-a authority unread at store: resolved"
+  }
+}
+
+test fn off_fleet_store_refusals_hold_and_log_refusals_are_red() -> Bool {
+  plans_follow_host_standing(standing: off_fleet_standing, plans: refused_plans(cause: store_refusal_cause(standing: off_fleet_standing)))
+    && !plans_follow_host_standing(standing: off_fleet_standing, plans: refused_plans(cause: "the serving authority could not be read, so nothing is converged: group-a authority unread at claim: none"))
+}
+
+test fn on_fleet_log_refusals_hold_and_store_refusals_are_red() -> Bool {
+  plans_follow_host_standing(standing: on_fleet_standing, plans: refused_plans(cause: "the serving authority could not be read, so nothing is converged: group-a authority unread at claim: none"))
+    && !plans_follow_host_standing(standing: on_fleet_standing, plans: refused_plans(cause: store_refusal_cause(standing: off_fleet_standing)))
 }

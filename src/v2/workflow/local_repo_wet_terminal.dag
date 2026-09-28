@@ -1046,15 +1046,39 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging_and_its_verdict_follows_the_host_standing" },
       entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
-      function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet",
+      function: "the_live_entry_reads_the_authority_before_judging_and_its_verdict_follows_the_host_standing",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "off_fleet_a_store_refusal_holds_and_a_success_is_red" },
+      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
+      function: "off_fleet_a_store_refusal_holds_and_a_success_is_red",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "on_fleet_a_log_verdict_holds_and_a_store_refusal_is_red" },
+      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
+      function: "on_fleet_a_log_verdict_holds_and_a_store_refusal_is_red",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_its_plans_follow_the_host_standing" },
       entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
-      function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet",
+      function: "the_apply_seam_reads_the_authority_before_planning_and_its_plans_follow_the_host_standing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "off_fleet_store_refusals_hold_and_log_refusals_are_red" },
+      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
+      function: "off_fleet_store_refusals_hold_and_log_refusals_are_red",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "on_fleet_log_refusals_hold_and_store_refusals_are_red" },
+      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
+      function: "on_fleet_log_refusals_hold_and_store_refusals_are_red",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
