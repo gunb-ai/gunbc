@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
+import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_still_allowance }
 import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
 import gunbc.machine_intake_mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused }
 import extdeps.github.log_annotations { log_annotation_message_line }
@@ -70,6 +71,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn the_step_timeout_covers_the_boot_phases() -> Bool {
   let covered = (second_count(s: mtcollins1_sol_notice_ready_allowance) as Int)
     + (second_count(s: mtcollins1_sol_notice_final_allowance) as Int)
+    + (second_count(s: mtcollins1_kvm_still_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: oob_power_readback_allowance()) as Int)

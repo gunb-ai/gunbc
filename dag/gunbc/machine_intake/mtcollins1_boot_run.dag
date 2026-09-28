@@ -94,6 +94,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
+  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
   mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
@@ -1664,19 +1665,20 @@ type TerminalWatch {
 // THE SCREEN'S BOUNDARY, REPORTED IN THE TICK AND BEFORE ANY OPTIONAL READ (acceptance (b)). Every
 // connection loss, connection error or failed acquisition the observer has journalled since the last
 // tick is frozen to <observer>/boundary-report with the tick's instant, ahead of the SMpro pass and
-// every enrichment read -- the same order the SOL incident keeps. It reports and never decides: the
-// boot's verdict does not read it.
+// every enrichment read -- the same order the SOL incident keeps. The events count as reported only
+// once that write succeeded; a failed write leaves them unreported, so the next tick writes them again.
+// It reports and never decides: the boot's verdict does not read it.
 fn mtcollins1_boot_screen_boundary_report(screen: KvmObserverStart, already: List<String>) -> List<String> {
   match screen {
     KvmObserverNotStarted { reason: _ } => already
-    KvmObserverStarted { dir: d, standing: _, checked_at: _ } => {
+    KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } => {
       let lines: List<String> = map(kvm_boundary_events(events: kvm_journal_events_at(dir: d as String)), e => kvm_event_text(e: e))
       if count(lines) <= count(already) { already } else {
         let fresh = lines.skip(n: count(already))
         let path = concat(d as String, "/boundary-report")
         let prior = Filesystem.Read(path: path)
-        let _kept = Filesystem.Write(path: path, content: concat(if prior.success { prior.content } else { "" }, join(map(fresh, l => concat("reported at ", concat(clock_now_probed_at_or_unknown() as String, concat(": ", concat(l, "\n"))))), "")))
-        lines
+        let kept = Filesystem.Write(path: path, content: concat(if prior.success { prior.content } else { "" }, join(map(fresh, l => concat("reported at ", concat(clock_now_probed_at_or_unknown() as String, concat(": ", concat(l, "\n"))))), "")))
+        if kept.success { lines } else { already }
       }
     }
   }
@@ -1686,7 +1688,12 @@ fn mtcollins1_boot_screen_boundary_report(screen: KvmObserverStart, already: Lis
 // the boot parameter 5 read and before the attach, so the phase clock counts its bounded wait
 // (mtcollins1_kvm_observer_establish_wait) inside media_attach. Bound to the BMC host, the web session
 // it logs in with (the established line carries its id) and the attempt. The toolchain is resolved,
-// never assumed (gunbc.runner_browser_toolchain).
+// never assumed (gunbc.runner_browser_toolchain). FOR THIS DIAGNOSTIC PROFILE THE OBSERVER IS
+// REQUIRED: mtcollins1_boot_actuate re-reads it through kvm_handoff_admission immediately before the
+// handoff, and issues no handoff unless it is established for this BMC host and this attempt -- a
+// runner without the browser toolchain, a busy viewer seat, a mismatched subject or a lost connection
+// all stop the boot there, with that standing as the cause. It gates on the witness existing, never on
+// what the screen shows.
 fn mtcollins1_boot_screen_start(password_file: String, attempt: String) -> KvmObserverStart {
   match mtcollins1_bmc_username {
     Absent => KvmObserverNotStarted { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to log in to the viewer with" }
@@ -1968,7 +1975,14 @@ fn mtcollins1_boot_actuate(
               step: PhaseStepSkipped { reason: "the SOL collector was lost before the handoff" },
               live_at: attach_live_at,
             }
-            SolHeldAt { at: before_handoff } => {
+            SolHeldAt { at: before_handoff } =>
+              match kvm_handoff_admission(start: screen) {
+                KvmHandoffRefused { cause: why } => HandoffRun {
+                  result: MtCollins1HandoffResult { outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: ", why)), start: BootStartUnobserved { reason: "the required KVM observer was not established, so no handoff was issued" } },
+                  step: PhaseStepSkipped { reason: "the required KVM observer was not established" },
+                  live_at: before_handoff as String,
+                }
+                KvmHandoffAdmitted { session: _ } => {
               let issued = mtcollins1_drive_handoff(
                 proof: proof,
                 label: "mtcollins1 cdrom handoff",
@@ -1977,7 +1991,8 @@ fn mtcollins1_boot_actuate(
                 selection: subject.selection,
               )
               HandoffRun { result: issued, step: PhaseStepRan { result: exit_phase_result(outcome: issued.outcome), end: proc_uptime_read() }, live_at: before_handoff as String }
-            }
+                }
+              }
           }
         other => HandoffRun {
           result: MtCollins1HandoffResult { outcome: other, start: BootStartUnobserved { reason: "the SOL supervision or the attach refused, so no handoff was issued" } },
