@@ -1,6 +1,6 @@
 module gunbc.bmc_megarac_web_adapter
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, HttpStatus, Int, List, String }
 import std.measure { Second, second_count }
 import v2.std.algebra { contains }
 import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_bool, json_string, serialize_json }
@@ -48,7 +48,7 @@ fn megarac_web_request_key(r: MegaRacWebRequest) -> String {
 
 // The answer a request gets, and the stream the transport must hold after it.
 type MegaRacWebAnswer {
-  status: Int
+  status: HttpStatus
   body: String
   stream_open: Bool
 }
@@ -69,11 +69,11 @@ fn megarac_stream_open(world: BmcWorld) -> Bool {
 // refused login, connect or logout is rendered with these statuses and an empty JSON object. They are
 // this adapter's choice, typed as such: the observer keys only on "not ok === 0" and "no 101", so no
 // claim about the controller rests on them. A captured refusal replaces them.
-data megarac_web_login_refusal_status: Int = 401
-data megarac_web_connect_refusal_status: Int = 403
-data megarac_web_logout_refusal_status: Int = 401
+data megarac_web_login_refusal_status: HttpStatus = 401
+data megarac_web_connect_refusal_status: HttpStatus = 403
+data megarac_web_logout_refusal_status: HttpStatus = 401
 
-fn megarac_web_refusal(world: BmcWorld, status: Int) -> MegaRacWebAnswer {
+fn megarac_web_refusal(world: BmcWorld, status: HttpStatus) -> MegaRacWebAnswer {
   MegaRacWebAnswer { status: status, body: serialize_json(v: json_object(members: [])), stream_open: megarac_stream_open(world: world) }
 }
 
@@ -195,7 +195,7 @@ fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebR
     json_kv(key: "rows", value: json_array(elements: map(rows, r => json_object(members: [
       json_kv(key: "from", value: json_string(s: r.from)),
       json_kv(key: "key", value: json_string(s: r.key)),
-      json_kv(key: "status", value: json_int(n: r.answer.status)),
+      json_kv(key: "status", value: json_int(n: r.answer.status as Int)),
       json_kv(key: "stream_open", value: json_bool(b: r.answer.stream_open)),
       json_kv(key: "to", value: json_string(s: r.to)),
       json_kv(key: "body", value: json_string(s: r.answer.body)),
