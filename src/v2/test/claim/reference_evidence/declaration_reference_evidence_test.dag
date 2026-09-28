@@ -375,20 +375,18 @@ fn dre_infer_refuses(o: Outcome<ResolvedTree>) -> Bool {
   }
 }
 
-// EXPECTED RED, AND MEASURED AS PRE-EXISTING. infer ACCEPTS both mismatches. The cause is upstream of
-// the return reader: infer_arrow_body_inhabits_declared_return is only reached when the Arrow has
-// evidence edges; without them the arm answers inferred_facts_not_derived, which is the frontier, and
-// a frontier is not a refusal -- so the comparison never runs. Verified by reverting ONLY the return
-// reader and re-running: both rows fail identically, so this change neither causes nor repairs it.
+// THE CHECK IS NOW REACHABLE, SO THESE REFUSE. They were red until the return-type ATOM grounded:
+// infer_arrow_body_inhabits_declared_return runs only when infer_product_child_evidence_edges answers
+// Present, which requires EVERY Arrow child to carry a resolved type, and the Bool return atom carried
+// none -- so the Arrow dropped to the frontier and the comparison never ran. A frontier is not a
+// refusal, which is why the mismatch was ACCEPTED rather than reported.
 //
-// WHY THEY ARE ENROLLED ANYWAY: they are the controls that would catch a return-type recognition that
-// admitted nodes without activating the check. They cannot discharge that duty while the check is
-// unreachable, and saying so is more useful than deleting them -- when the evidence-edge condition is
-// repaired, these rows become the guard for it without anyone rediscovering the shape.
-fn dre_a_bool_declared_int_body_still_refuses_expected_red() -> Bool {
+// These are the controls that distinguish a return-type recognition which activates the check from one
+// that merely admits more nodes. Recognition alone would have left them red.
+test fn dre_a_bool_declared_int_body_still_refuses_holds() -> Bool {
   dre_infer_refuses(o: dre_bool_declared_int_body())
 }
 
-fn dre_an_int_declared_bool_body_still_refuses_expected_red() -> Bool {
+test fn dre_an_int_declared_bool_body_still_refuses_holds() -> Bool {
   dre_infer_refuses(o: dre_int_declared_bool_body())
 }

@@ -797,6 +797,14 @@ fn infer_node_facts(n: Node, partials: List<Node>, resolved: ResolvedTree) -> Ou
                           descent: Holds { value: descent_proof }
                         )
                       Absent =>
+                      match infer_established_return_type_optional(ret: n) {
+                        Present { value: _ } =>
+                          inferred_facts_from_derived_type(
+                            node: n,
+                            derived_type: kind_node(kind: TypeDenotationKind),
+                            descent: Holds { value: descent_proof }
+                          )
+                        Absent =>
                         match infer_roster_member_declared_type(n: n) {
                           Present { value: member_type } =>
                             inferred_facts_from_derived_type(
@@ -819,6 +827,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, resolved: ResolvedTree) -> Ou
                                 )
                             }
                         }
+                      }
                     }
                   Absent =>
                     infer_declaration_reference_facts(
