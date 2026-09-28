@@ -438,9 +438,11 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // witness_header_account_static_body_carries_signin_and_hidden_target (the account menu's
 // trigger/menu markup and the hidden-menu rule pin), witness_header_account_swap_table (the
 // menu toggle statements), the serve witnesses for the admitted login prompt, the register
-// censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
-// d43dd7a918f31c5f); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "d43dd7a918f31c5f"
+// censuses unchanged — plus the 2026-09-28 menu anchor fix (top:100% right:0 below the chip,
+// the top:auto fallback had rendered the menu at its static flex position above the viewport).
+// Derived by execution (roadmap_css_derived_digest on this tree,
+// 0e4185ec41c585f2); this digest only pins bytes.
+data roadmap_css_lift_parity_digest: String = "0e4185ec41c585f2"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

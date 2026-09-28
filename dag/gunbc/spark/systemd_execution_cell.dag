@@ -450,17 +450,27 @@ fn systemd_workload_watchdog_script(member: SystemdExecutionMember, serve_port: 
 // flight by construction, asserted by the witness reading the absence of the concurrency markers.
 // Both modes write the same evidence files (body, header-derived status, rc), so the reporting
 // fold below is one spelling inhabited twice.
+// THE DRIVER TIMING (2026-09-28, glm-group-b-workload-qualification W1): every seat's request
+// records its wall-clock submission epoch and curl's time_starttransfer/time_total into
+// $state/seat_<N>.timing, folded per seat into $state/seats.timing.tsv (seat, start, end, ttfb,
+// total). A max_tokens=1 completion latency is a COMPLETION latency — queueing, input
+// processing, prefill, sampling, and delivery together — and is never read as an instrumented
+// GPU-prefill duration; the TSV is what binds a run's timings to its frozen variant row rather
+// than to the live selector.
 fn systemd_workload_prefill_request(state: String, base: String, sequential: Bool) -> String {
   if sequential {
     join([
       "  echo \"seat $seat awaiting (sequential issue)\"\n",
-      "  if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\"; then seat_rc=0; else seat_rc=$?; fi\n",
+      "  seat_start=$(date +%s)\n",
+      "  if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%{time_starttransfer} %{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi\n",
+      "  seat_end=$(date +%s)\n",
       "  echo \"$seat_rc\" > \"$state/seat_$seat.rc\"\n",
       "  head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"\n",
+      "  printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$seat\" \"$seat_start\" \"$seat_end\" $(cat \"$state/seat_$seat.timing\" 2>/dev/null) >> \"$state/seats.timing.tsv\"\n",
     ], "")
   } else {
     join([
-      "  ( if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\"; then seat_rc=0; else seat_rc=$?; fi; echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\" ) &\n",
+      "  ( seat_start=$(date +%s); if curl -sS -m 1800 -D \"$state/seat_$seat.hdr\" -o \"$state/seat_$seat.resp\" -w '%{time_starttransfer} %{time_total}' -H 'Content-Type: application/json' -d @\"$state/seat_$seat.json\" \"$base/v1/completions\" > \"$state/seat_$seat.timing\"; then seat_rc=0; else seat_rc=$?; fi; seat_end=$(date +%s); echo \"$seat_rc\" > \"$state/seat_$seat.rc\"; head -1 \"$state/seat_$seat.hdr\" 2>/dev/null | cut -d' ' -f2 > \"$state/seat_$seat.http\"; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$seat\" \"$seat_start\" \"$seat_end\" $(cat \"$state/seat_$seat.timing\" 2>/dev/null) >> \"$state/seats.timing.tsv\" ) &\n",
       "  seat_pids=\"$seat_pids $!\"\n",
     ], "")
   }
@@ -480,7 +490,12 @@ fn systemd_workload_prefill_request(state: String, base: String, sequential: Boo
 // is written to the seat's evidence file with its header-derived status, and the usage.prompt_tokens
 // readback keeps the over-limit refusal as a located driver-defect backstop: unreachable by
 // construction, kept as the witness that catches any tokenizer non-locality the linearity argument
-// missed. THE VARIANT AXES live here as parameters, not forks: the caller names the seat count,
+// missed. THE ENGINE'S OWN ACCOUNTING brackets the seat phase (2026-09-28, W1): $state/metrics.pre
+// and $state/metrics.post snapshot the server's /metrics endpoint immediately before the first
+// seat and after the last verdict, so the run's prompt-token, latency-histogram, and preemption
+// DELTAS come from the engine rather than from driver-side inference; an unreadable endpoint
+// lands a named standing file, never a failed leg. THE VARIANT AXES live here as parameters, not
+// forks: the caller names the seat count,
 // the seat window, the execution mode (one request in flight, or all of them — variant d of the
 // liveness matrix), and whether the stall watchdog rides the leg (variant e, which the matrix says
 // must ride every hanging run); the dry renders every value. The leg closes by recording the
@@ -535,6 +550,7 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     "printf '%s' \"$unit_marginal\" > \"$state/unit_marginal_tokens\"\n",
     watchdog_launch,
     concurrent_init,
+    "if curl -sS -m 10 \"$base/metrics\" > \"$state/metrics.pre\" 2>/dev/null; then :; else echo \"metrics-endpoint-unreadable leg=pre\" > \"$state/metrics.pre.standing\"; fi\n",
     "seat=1\n",
     "while [ \"$seat\" -le ", to_string(seat_count), " ]; do\n",
     "  seat_units=$(( ( ", to_string(seat_window), " - unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1 ))\n",
@@ -556,6 +572,7 @@ fn systemd_workload_prefill_script(member: SystemdExecutionMember, serve_port: P
     "  esac\n",
     "  seat=$(( seat + 1 ))\ndone\n",
     "if [ \"$failed\" != \"0\" ]; then exit 22; fi\n",
+    "if curl -sS -m 10 \"$base/metrics\" > \"$state/metrics.post\" 2>/dev/null; then :; else echo \"metrics-endpoint-unreadable leg=post\" > \"$state/metrics.post.standing\"; fi\n",
     "warm=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits | awk -F', ' '{ v = $2 + 0; if (v > m) m = v } END { printf \"%d\", m }')\n",
     "if [ \"$warm\" -le 0 ]; then echo \"warm-reference-unreadable: nvidia-smi reports no compute process after the prefills\"; exit 23; fi\n",
     "printf '%s' \"$warm\" > \"$state/warm_mib\"\n",

@@ -267,8 +267,14 @@ fn spark_seat_window_tokens(context_window: Nat) -> Nat? {
 // 2026-09-27 run proved safe), the targeted prefill window (the full 262144, or 65536 separating
 // length from occupancy), the execution mode (concurrent, or sequential separating concurrency
 // from occupancy), and the stall watchdog (variant e, which the matrix says must ride every
-// hanging run). WHICH VARIANT RUNS is the operator's per-run call, spelled as one named row the
-// parent flips between wet runs; the default is variant a, the deterministic repro the parent runs
+// hanging run). W1 (2026-09-28, docs/plans/glm-group-b-workload-qualification.md) JOINS the
+// registry as the ATTRIBUTION workload, not a repro axis: one cold full-window request alone on
+// the engine, whose per-seat driver timing (the seats.timing.tsv the bracket now captures for
+// every variant) and /metrics pre/post deltas answer what one 262K prefill costs with nothing
+// else admitted — the reading the variant-e capture left open (steady progress at ~874 tok/s
+// aggregate, zero preemptions; efficiency unattributed). WHICH VARIANT RUNS is the operator's
+// per-run call, spelled as one named row the parent flips between wet runs; the default is
+// variant a, the deterministic repro the parent runs
 // on landing. The budget arithmetic never reads the variant: window, cadence, and bounds are the
 // plan's own, unchanged by which axis the run discriminates.
 type SparkWorkloadExecutionMode
@@ -318,6 +324,13 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
     window_tokens: 262144,
     mode: SparkSeatsConcurrent,
     watchdog: true,
+  },
+  SparkWorkloadVariant {
+    name: "w1-cold-single-full-window" as NonEmptyStr,
+    seat_count: 1,
+    window_tokens: 262144,
+    mode: SparkSeatsSequential,
+    watchdog: false,
   },
 ]
 
