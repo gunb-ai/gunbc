@@ -184,7 +184,10 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
   approval_broker_dark_install_script,
   microvm_controller_install_script,
-  ReleaseRevisionBinding, RevisionBoundAtEmission,
+}
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
 }
 import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
@@ -2998,7 +3001,7 @@ fn build_cache_provision_shell_script(instance: BuildCacheInstance, arch_token: 
   )
 }
 
-data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN bash-emit (#5828) realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
+data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN host_effect_apply carries a typed operation that realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
 
 data build_cache_provision_shell_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -3334,7 +3337,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
       match gunbc_apply_mode_for_host(host: host_converge.identity) {
         FreshStandup =>
           NotConverged {
-            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until bootstrap_fragment_script_carrier_scaffold and thin_invocation_argv_carrier_scaffold dissolve via bash-emit (#5828 / shell-emission slice 1+2).",
+            reason: "host_effect_apply: EmitArtifactThenThinRun fresh-standup bootstrap+thin-run is fail-closed Unimplemented until thin_invocation_argv_carrier_scaffold dissolves (steady-state typed argv dispatch for ThinInvocation.argv; bootstrap_fragment_script_carrier_scaffold is already Terminal).",
             applied: intent,
           }
         ExistingHostQuiescentReload =>
@@ -4459,7 +4462,7 @@ type BuildCacheReadResult
 // EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface
 // is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink
 // and must not grow, so an observation added as a concat-built bash body would have grown precisely
-// the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means
+// the surface build_cache_provision_shell_script_dissolution_trigger exists to retire. Routing the reads through the typed argv seam instead means
 // the observation lands in the direction the dissolve-on points, and the remaining concat-shell
 // body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect
 // does than it was.
@@ -4978,7 +4981,7 @@ fn compile_pool_stage_trap_line() -> String {
   join(["trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT"], "")
 }
 
-data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN bash-emit (#5828) realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
+data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN host_effect_apply carries a typed operation that realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
 
 fn compile_pool_ensure_admission_for(
   node: ComputeHost,

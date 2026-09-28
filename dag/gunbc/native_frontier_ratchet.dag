@@ -37,6 +37,7 @@ import gunbc.native_route_progress_guard {
   NativeProgressBaselineRow, NativeProgressObservedReading, NativeProgressObservedRow,
   NativeProgressFinding, NativeProgressDispositionRow, NativeCauseTransitionRow,
   NativeProgressDisposition, SubjectDeleted, SubjectLeftTheUniverse, SubjectRenamed,
+  NativeAcceptToRefuseRow, PriorAcceptanceWasNeverSound, native_exclusion_cause_reason,
   ReachExecutableStarted,
   native_progress_read_observed, native_progress_observed_rows, native_progress_reading_findings,
   native_progress_observed_index, native_progress_disposition_index, native_progress_baseline_index,
@@ -50,6 +51,10 @@ import gunbc.native_frontier_debt {
   NativeFrontierRosterStanding, RosterUnminted, RosterMinted
 }
 import gunbc.native_frontier_roster { native_frontier_roster }
+import v2.workflow.compile_door_cause_ownership {
+  CauseOwnership, CorrectnessFlipDeclaration, CauseCorrectnessFlip, FatalGrain,
+  known_frontier_causes, known_correctness_flips, cause_correctness_flip_lookup_over
+}
 
 // THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the v2.test.* universe
 // kept, lost or advanced the debt `gunbc.native_frontier_roster` records.
@@ -206,6 +211,125 @@ fn native_frontier_row_advanced(
   }
 }
 
+// ═══ debt that grows because a wrong acceptance now refuses ══════════════════════════════════
+
+// AN ADDED IDENTITY WHOSE DEBT IS AN OWNED CORRECTNESS FLIP. The roster is closed to growth, and
+// this is the one way it grows: a change made a silently wrong acceptance refuse at a located site
+// (DESIGN section 5), so the identity was never correct, only accepted. Reading that as a frontier
+// loss would punish the correction and invite reverting it. So an added identity (agreed at the
+// mint and refusing now, or new to the universe and refusing) is admitted when, and only when, the
+// cause it refused with has a fatal-grain row in v2.workflow.compile_door_cause_ownership
+// known_frontier_causes AND a known_correctness_flips declaration naming the pull request. The
+// disposition carries both, so the proposal pull request shows the owner and the flip it cites.
+// The declaration also names the mint it reconciles (`reconciles_tested_tree`); it admits nothing
+// against a roster minted from any other tree, so a re-mint ends the grant (review 71692).
+//
+// WHAT IS NEVER ADMITTED THIS WAY. A divergence (it has no cause an owner could declare). A cause
+// with no owning row, or an owning row with no flip declaration: that increase stays NEW DEBT or
+// ACCEPT-TO-REFUSE and the run is FrontierLost. An EXISTING debt row falling to an earlier stage:
+// that is a regression of debt already carried, not an added identity, and the guard's own clauses
+// still judge it. The admission is per identity, so a mixed run loses on exactly its unowned part.
+type NativeFrontierOwnedCorrectnessFlip {
+  identity: NativeRouteTestIdentity
+  debt: NativeFrontierDebt
+  flip: CauseCorrectnessFlip
+}
+
+// The authority the admission reads, supplied rather than imported at the decision so the witness
+// can discriminate at this interface (native_frontier_verdict supplies the committed tables).
+type NativeFrontierFlipAuthority {
+  owners: List<CauseOwnership>
+  flips: List<CorrectnessFlipDeclaration>
+}
+
+fn native_frontier_flip_authority() -> NativeFrontierFlipAuthority {
+  NativeFrontierFlipAuthority { owners: known_frontier_causes, flips: known_correctness_flips }
+}
+
+fn native_frontier_owned_flip(
+  identity: NativeRouteTestIdentity,
+  attained: NativeRouteAttainment,
+  minted_tree: String,
+  authority: NativeFrontierFlipAuthority
+) -> Optional<NativeFrontierOwnedCorrectnessFlip> {
+  match attained {
+    AttainRefused { stage: s, cause: c } =>
+      match cause_correctness_flip_lookup_over(
+        cause: native_exclusion_cause_reason(c: c), grain: FatalGrain,
+        owners: authority.owners, flips: authority.flips
+      ) {
+        Present { value: f } =>
+          if f.reconciles_tested_tree != minted_tree {
+            optional_absent()
+          } else {
+          optional_present(value: NativeFrontierOwnedCorrectnessFlip { identity: identity, debt: DebtRefused { stage: s, cause: c }, flip: f })
+          }
+        Absent => optional_absent()
+      }
+    AttainAgreed => optional_absent()
+    AttainDiverged { cause: _ } => optional_absent()
+    AttainUnreached { blocked_at: _ } => optional_absent()
+  }
+}
+
+// THE ADDED IDENTITIES THE AUTHORITY OWNS: every observed row whose baseline is agreement (in the
+// minted universe, no debt row) or absent (new to the universe), with an owned flip cause.
+fn native_frontier_owned_flips(
+  observed_rows: List<NativeProgressObservedRow>,
+  baseline_index: Map<String, NativeBaselineAttainment>,
+  minted_tree: String,
+  authority: NativeFrontierFlipAuthority
+) -> List<NativeFrontierOwnedCorrectnessFlip> {
+  list_flat_map(xs: observed_rows, f: fn(o) {
+    let added =
+      match map_lookup(m: baseline_index, key: native_route_identity_qualified(identity: o.identity)) {
+        Absent => true
+        Present { value: b } =>
+          match b {
+            BaselineAgreed => true
+            BaselineRefused { stage: _, cause: _ } => false
+            BaselineDiverged { cause: _ } => false
+          }
+      }
+    if added {
+      match native_frontier_owned_flip(identity: o.identity, attained: o.attained, minted_tree: minted_tree, authority: authority) {
+        Present { value: f } => [f]
+        Absent => []
+      }
+    } else {
+      []
+    }
+  })
+}
+
+// AN AGREED IDENTITY'S FALL, EXPRESSED IN THE GUARD'S OWN VOCABULARY. The guard already has the
+// disposition this is (`PriorAcceptanceWasNeverSound`); what it lacked was a source other than a
+// hand-authored per-identity row. Here the row is derived from the owned flip, so it cannot drift
+// from the run and cannot be written for an identity the run did not observe falling.
+fn native_frontier_flip_accept_to_refuse_row(f: NativeFrontierOwnedCorrectnessFlip) -> NativeAcceptToRefuseRow {
+  NativeAcceptToRefuseRow {
+    identity: f.identity,
+    disposition: PriorAcceptanceWasNeverSound {
+      authority: native_frontier_flip_citation(f: f),
+      now_refuses_with: native_frontier_debt_text(debt: f.debt)
+    }
+  }
+}
+
+fn native_frontier_flip_citation(f: NativeFrontierOwnedCorrectnessFlip) -> String {
+  join([
+    "v2.workflow.compile_door_cause_ownership correctness flip of gunbc#",
+    integer_int_to_decimal_string(value: f.flip.pull_request), " (", f.flip.why, ")"
+  ], "")
+}
+
+fn native_frontier_flip_text(f: NativeFrontierOwnedCorrectnessFlip) -> String {
+  join([
+    "OWNED CORRECTNESS FLIP (", native_frontier_debt_text(debt: f.debt), "; ",
+    native_frontier_flip_citation(f: f), ") ", native_route_identity_qualified(identity: f.identity)
+  ], "")
+}
+
 // ═══ integrity versus debt ═════════════════════════════════════════════════════════════════
 
 // EXHAUSTIVE, NO WILDCARD: a clause added to admission must be classified here before this module
@@ -282,6 +406,11 @@ type NativeFrontierProposal {
 type NativeFrontierVerdict
   = FrontierHeld
   | FrontierAdvanced { advanced: List<String>, proposal: NativeFrontierProposal }
+  | FrontierGrewByOwnedCorrectnessFlip {
+      flips: List<NativeFrontierOwnedCorrectnessFlip>
+      advanced: List<String>
+      proposal: NativeFrontierProposal
+    }
   | FrontierLost { findings: List<String> }
   | FrontierUnminted { proposal: NativeFrontierProposal }
   | FrontierNotAMeasurement { reasons: List<String> }
@@ -392,11 +521,13 @@ fn native_frontier_stale(
 // disposition, per cause transition), from the reading step (malformed readings), and from this
 // module (new debt, net of admitted rename targets).
 fn native_frontier_judge_minted(
+  minted_tree: String,
   universe: List<NativeRouteTestIdentity>,
   rows: List<NativeFrontierDebtRow>,
   dispositions: List<NativeProgressDispositionRow>,
   cause_transitions: List<NativeCauseTransitionRow>,
-  readings: List<NativeProgressObservedReading>
+  readings: List<NativeProgressObservedReading>,
+  authority: NativeFrontierFlipAuthority
 ) -> NativeFrontierVerdict {
   let baseline_rows = native_frontier_baseline_rows(universe: universe, rows: rows)
   let observed_rows = native_progress_observed_rows(readings: readings)
@@ -404,7 +535,13 @@ fn native_frontier_judge_minted(
   let baseline_index = native_progress_baseline_index(rows: baseline_rows)
   let disposition_index = native_progress_disposition_index(dispositions: dispositions)
   let transition_index = native_cause_transition_index(rows: cause_transitions)
-  let no_accept_to_refuse = native_accept_to_refuse_index(rows: [])
+  let owned_flips = native_frontier_owned_flips(observed_rows: observed_rows, baseline_index: baseline_index, minted_tree: minted_tree, authority: authority)
+  let flip_accept_to_refuse = native_accept_to_refuse_index(rows: list_flat_map(xs: owned_flips, f: fn(f) {
+    match map_lookup(m: baseline_index, key: native_route_identity_qualified(identity: f.identity)) {
+      Present { value: _ } => [native_frontier_flip_accept_to_refuse_row(f: f)]
+      Absent => []
+    }
+  }))
   let rename_targets = native_frontier_rename_targets(dispositions: dispositions)
   let guard_findings: List<NativeProgressFinding> = list_flat_map(
     xs: [
@@ -412,7 +549,7 @@ fn native_frontier_judge_minted(
       list_flat_map(xs: baseline_rows, f: fn(row) {
         native_progress_row_findings(
           row: row, observed: observed, dispositions: disposition_index,
-          accept_to_refuse: no_accept_to_refuse, cause_transitions: transition_index,
+          accept_to_refuse: flip_accept_to_refuse, cause_transitions: transition_index,
           reach: ReachExecutableStarted
         )
       }),
@@ -429,7 +566,9 @@ fn native_frontier_judge_minted(
   let new_debt = filter(
     xs: native_frontier_new_debt(observed_debt: observed_debt, baseline_index: baseline_index),
     predicate: fn(n) {
-      any(xs: rename_targets, predicate: fn(t) { t == native_route_identity_qualified(identity: n.identity) }) == false
+      let key = native_route_identity_qualified(identity: n.identity)
+      any(xs: rename_targets, predicate: fn(t) { t == key }) == false
+        && any(xs: owned_flips, predicate: fn(f) { native_route_identity_qualified(identity: f.identity) == key }) == false
     }
   )
   let findings = list_append(
@@ -443,6 +582,8 @@ fn native_frontier_judge_minted(
   let proposal = native_frontier_proposal_of(observed: observed_rows)
   if is_empty(xs: findings) == false {
     FrontierLost { findings: findings }
+  } else if is_empty(xs: owned_flips) == false {
+    FrontierGrewByOwnedCorrectnessFlip { flips: owned_flips, advanced: stale, proposal: proposal }
   } else if is_empty(xs: stale) {
     FrontierHeld
   } else {
@@ -466,7 +607,8 @@ fn native_frontier_verdict(
     standing: native_frontier_roster,
     readings: native_frontier_readings(receipt: receipt),
     admission: admission,
-    pattern: pattern
+    pattern: pattern,
+    authority: native_frontier_flip_authority()
   )
 }
 
@@ -477,7 +619,8 @@ fn native_frontier_verdict_over(
   standing: NativeFrontierRosterStanding,
   readings: List<NativeProgressObservedReading>,
   admission: NativeRouteAdmission,
-  pattern: TargetPattern
+  pattern: TargetPattern,
+  authority: NativeFrontierFlipAuthority
 ) -> NativeFrontierVerdict {
   let integrity = native_frontier_integrity_refusals(admission: admission)
   if native_frontier_pattern_is_whole(pattern: pattern) == false {
@@ -488,8 +631,8 @@ fn native_frontier_verdict_over(
     match standing {
       RosterUnminted =>
         FrontierUnminted { proposal: native_frontier_proposal_of(observed: native_progress_observed_rows(readings: readings)) }
-      RosterMinted { receipt: _, universe: u, rows: rows, dispositions: ds, cause_transitions: ts } =>
-        native_frontier_judge_minted(universe: u, rows: rows, dispositions: ds, cause_transitions: ts, readings: readings)
+      RosterMinted { receipt: mr, universe: u, rows: rows, dispositions: ds, cause_transitions: ts } =>
+        native_frontier_judge_minted(minted_tree: mr.tested_tree, universe: u, rows: rows, dispositions: ds, cause_transitions: ts, readings: readings, authority: authority)
     }
   }
 }
@@ -501,6 +644,7 @@ fn native_frontier_verdict_word(v: NativeFrontierVerdict) -> String {
   match v {
     FrontierHeld => "held"
     FrontierAdvanced { advanced: _, proposal: _ } => "advanced"
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: _ } => "grew-by-owned-correctness-flip"
     FrontierLost { findings: _ } => "lost"
     FrontierUnminted { proposal: _ } => "unminted"
     FrontierNotAMeasurement { reasons: _ } => "not-a-measurement"
@@ -519,6 +663,14 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
         ], "")],
         right: a
       )
+    FrontierGrewByOwnedCorrectnessFlip { flips: fl, advanced: a, proposal: _ } =>
+      list_append(
+        left: [join([
+          integer_int_to_decimal_string(value: length(xs: fl)),
+          " added identit(ies) owed debt under an owned correctness flip, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
+        ], "")],
+        right: list_append(left: list_map(xs: fl, f: native_frontier_flip_text), right: a)
+      )
     FrontierLost { findings: fs } => fs
     FrontierUnminted { proposal: p } =>
       [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", integer_int_to_decimal_string(value: length(xs: p.universe)), " identities and ", integer_int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
@@ -528,8 +680,8 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
 }
 
 // THE PROPOSED ROSTER, AS THE `.dag` MODULE IT WOULD BE. Present for every arm except `Held` and
-// `NotAMeasurement`. The nightly writes it over `dag/gunbc/native_frontier_roster.dag` and opens a
-// pull request. Dispositions and cause transitions are NOT carried forward, because each describes
+// `NotAMeasurement`. The nightly publishes it as a workflow artifact; it reaches
+// `dag/gunbc/native_frontier_roster.dag` only through a reviewed pull request that carries it. Dispositions and cause transitions are NOT carried forward, because each describes
 // a transition relative to the rows it was written against: once the roster is re-minted from the
 // run, a disposition for a subject with no row and a transition whose cause no longer moves are
 // both findings in their own right (`DisposedSubjectHasNoBaselineRow`,
@@ -539,6 +691,7 @@ fn native_frontier_proposal(v: NativeFrontierVerdict) -> Optional<NativeFrontier
   match v {
     FrontierHeld => optional_absent()
     FrontierAdvanced { advanced: _, proposal: p } => optional_present(value: p)
+    FrontierGrewByOwnedCorrectnessFlip { flips: _, advanced: _, proposal: p } => optional_present(value: p)
     FrontierLost { findings: _ } => optional_absent()
     FrontierUnminted { proposal: p } => optional_present(value: p)
     FrontierNotAMeasurement { reasons: _ } => optional_absent()

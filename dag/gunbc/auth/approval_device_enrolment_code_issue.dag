@@ -18,7 +18,13 @@ import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root }
-import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_release_binary_path, ReleaseRevisionBinding, RevisionBoundAtEmission, release_revision_execstart_text }
+import gunbc.live_deploy.release_locus {
+  approval_broker_release_dir,
+  approval_broker_release_binary_path,
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+  release_revision_execstart_text,
+}
 
 // ── THE OPERATOR'S CODE-ISSUING VERB, over the fleet SSH administrator edge ──────────────────
 // A FleetConvergeWorkflowMode step (ApprovalDeviceEnrolmentCodeIssue) run on the host-pinned

@@ -242,6 +242,7 @@ fn decoded_providers() -> ProvidersReading {
       ProvidersObserved { providers: match providers { Present { value: ps } => ps  Absent => [] } }
     }
     WitnessRefused { diagnostic: _ } => ProvidersUnreadable { cause: "the replayed provider list did not decode" }
+    WitnessInterrupted { at: _, route: _, state: _ } => ProvidersUnreadable { cause: "a replay frame carries no modeled realization, so an interruption cannot occur" }
   }
 }
 
@@ -256,6 +257,7 @@ fn decoded_pool() -> PoolReading {
   match result {
     WitnessReturned { value } => PoolObserved { pool: WifPoolWire { name: value.pool_name, display_name: value.display_name, disabled: value.disabled, state: value.state } }
     WitnessRefused { diagnostic: _ } => PoolObservedAbsent
+    WitnessInterrupted { at: _, route: _, state: _ } => PoolObservedAbsent
   }
 }
 
@@ -311,6 +313,7 @@ fn providers_body_refusal(body: String) -> String {
       _ => ""
     }
     WitnessRefused { diagnostic: _ } => ""
+    WitnessInterrupted { at: _, route: _, state: _ } => ""
   }
 }
 
