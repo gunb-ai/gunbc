@@ -1,10 +1,10 @@
 module test.claim.generated_artifact_producer_coverage_witness_test
 
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import gunbc.generated_artifact {
-  GeneratedArtifactProducerRow,
+import gunbc.generated_artifact { GeneratedArtifactProducerRow }
+import gunbc.generated_artifact_registry { generated_artifact_producer_rows }
+import gunbc.generated_artifact_producer_coverage {
   GeneratedArtifactProducerCoverage, GeneratedArtifactProducerCovered, GeneratedArtifactProducerUncovered,
-  generated_artifact_producer_rows,
   generated_artifact_producer_refusals,
   generated_artifact_producer_refusals_over,
   generated_artifact_producer_coverage_over,

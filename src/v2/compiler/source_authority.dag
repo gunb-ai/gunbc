@@ -75,7 +75,7 @@ import std.content_hash {
   content_hash_of_value,
   serialize_content_hash
 }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Violates, Witness }
 
