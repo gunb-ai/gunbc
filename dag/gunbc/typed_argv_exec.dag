@@ -40,8 +40,8 @@ import gunbc.fleet_bootstrap_principal_session {
 // to reach that shell, and refuses (typed, located, carrying the offending word) rather than
 // quoting or dropping it.\n\nThe wall is at this edge rather than in the transport, so it holds for
 // callers that come through typed_argv_exec_over_ssh or typed_argv_probe_over_ssh, and not by
-// construction for a future caller that imports extdeps.ssh.session directly. Wave C5 / bash-emit
-// #5828 slice.
+// construction for a future caller that imports extdeps.ssh.session directly. Wave C5
+// typed-argv slice.
 
 type TypedArgvExecOutcome =
   | TypedArgvExecConverged { result: SshSessionExecResult }

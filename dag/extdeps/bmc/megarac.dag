@@ -79,7 +79,6 @@ data megarac_supported_protocols_floor: List<BmcProtocol> = [Ipmi]
 // with form-encoded username/password; the JSON reply carries CSRFToken, and every
 // subsequent request presents the session cookie plus header X-CSRFTOKEN.
 // ---------------------------------------------------------------------------------------------
-
 type MegaRacApiOperation {
   http_method: NonEmptyStr
   path: NonEmptyStr
@@ -95,7 +94,7 @@ data megarac_op_session_login: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_config: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "PUT",
   path: "/api/settings/media/general",
-  contract_note: "JSON body: remote_media_support:1, cd_remote_server_address/source_path, cd_remote_share_type nfs|cifs, mount_cd:1; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
+  contract_note: "JSON body (GET answers the same object; member spellings as served by the Foxconn Mt. Collins build 0.32, 2026-09-27): remote_media_support:1, cd_remote_server_address, cd_remote_source_path, cd_remote_share_type nfs|cifs, mount_cd:1, plus cd_image_name, cd_error_code, rmedia_retry_count, rmedia_retry_interval and the hd_* counterparts; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
 }
 
 data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
@@ -113,7 +112,7 @@ data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/settings/media/remote/stop-media",
-  contract_note: "counterpart of start-media, same body shape",
+  contract_note: "counterpart of start-media, same body shape; stopping a presented image re-enumerates the share, so a file published to the export after the mount is offered by /remote/images within one retry interval of the stop (Foxconn Mt. Collins build, 2026-09-27, host off; PUT media/general with mount_cd 0 then 1 was refused with code 16425 and changed nothing); a stop is established only by the configurations listing no longer presenting the image (this build has answered HTTP 500 code 1411 to a stop that took effect)",
 }
 
 data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
@@ -136,7 +135,6 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 // exits and the rule that no later observation overwrites a terminal one are modelled in
 // gunbc.machine_intake_mount_establishment, which is where they belong: what our polling saw is
 // a receipt of OUR attempt, never a fact this vendor module owns.
-
 data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_session_login,
   megarac_op_media_config,
@@ -172,7 +170,6 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
 // AMI advertises Redfish on other builds; this surface does not carry it. Status-code meanings
 // are a separate fact, cited on megarac_redirection_status_of_wire.
 // ---------------------------------------------------------------------------------------------
-
 data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.32",
@@ -181,7 +178,6 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
-
 // REDIRECTION_STATUS. The 255-path catalog does not contain these mappings. The codes that this
 // decoder names are the ones committed observations actually returned on firmware 0.32:
 // 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started
@@ -447,6 +443,12 @@ fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
 // per probe and closing none. Every operation sequence that opens a session owes a close on every
 // exit, including refusals — an operation that failed still allocated the session that carried it.
 //
+// EVERY CALL IS BOUNDED BY ITS CALLER'S max_time, WRITES INCLUDED (side-chat review 5331991982). A
+// write that runs out of time has an UNCERTAIN effect -- the controller may have applied it -- so the
+// writes also return curl's exit code as a typed value (22: --fail-with-body received a complete HTTP
+// error response; 28: timed out; others: transport) and its stderr, and the caller keeps that answer
+// rather than reading a missing HTTP answer as a refusal.
+//
 // THE CREDENTIAL IS READ FROM A CALLER FILE ON OpenSession AND NOWHERE ELSE. curl --data-urlencode
 // password@FILE keeps the secret out of argv; every later call carries only the cookie. THE FILE IS
 // THE PASSWORD BYTES EXACTLY: curl(1) documents name@file as URL-encoding the file's content
@@ -465,10 +467,10 @@ fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
 service megarac.Media {
 
   operation OpenSession {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cookie_jar: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cookie_jar: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-c", "{cookie_jar}", "-X", "POST", "--data-urlencode", "username={username}", "--data-urlencode", "password@{password_file}", "https://{bmc_host}/api/session"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-c", "{cookie_jar}", "-X", "POST", "--data-urlencode", "username={username}", "--data-urlencode", "password@{password_file}", "https://{bmc_host}/api/session"]
     }
     exit {
       0 => Unit
@@ -477,11 +479,11 @@ service megarac.Media {
   }
 
   operation ProbeSessionOnMediaRoute {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
     }
     exit {
       0 => Unit
@@ -490,11 +492,11 @@ service megarac.Media {
   }
 
   operation GetMediaGeneral {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/general"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/general"]
     }
     exit {
       0 => Unit
@@ -503,11 +505,11 @@ service megarac.Media {
   }
 
   operation GetRemoteImages {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/remote/images"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/images"]
     }
     exit {
       0 => Unit
@@ -516,11 +518,11 @@ service megarac.Media {
   }
 
   operation GetRemoteConfigurations {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/configurations"]
     }
     exit {
       0 => Unit
@@ -529,10 +531,10 @@ service megarac.Media {
   }
 
   operation StartMedia {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
     }
     exit {
       0 => Unit
@@ -541,10 +543,10 @@ service megarac.Media {
   }
 
   operation StopMedia {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
     }
     exit {
       0 => Unit
@@ -553,10 +555,10 @@ service megarac.Media {
   }
 
   operation CloseSession {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-X", "DELETE", "https://{bmc_host}/api/session"]
     }
     exit {
       0 => Unit
