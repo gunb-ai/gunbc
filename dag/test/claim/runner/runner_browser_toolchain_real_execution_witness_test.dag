@@ -7,6 +7,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.posix.test_utility { test_exists_command }
 import extdeps.automation.playwright { playwright_1_62_1_npm_tarball }
@@ -21,6 +22,7 @@ import gunbc.runner_browser_toolchain {
   RunnerBrowserToolchainLocation, runner_browser_toolchain_location_at, runner_browser_toolchain_readback_at_wet,
   tree_sha256_wet, TreeDigestObserved, TreeDigestUnobservable, TreeAdmitted, TreeContentMismatch,
   place_toolchain_wet, ToolchainAlreadyAdmitted, ToolchainPlacementRefused,
+  retire_superseded_trees_wet, SiblingsRetired, SiblingRetirementRefused,
 }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
@@ -173,10 +175,13 @@ fn plant_fixture_tree(dir: String) -> Bool {
 
 fn fixture_digest(dir: String) -> String {
   let loc = fixture_location(dir: dir)
-  match tree_sha256_wet(tree: loc.root as String, manifest_path: concat(dir, "/fixture.manifest")) {
+  let scratch = shell.Mktemp.Dir()
+  let digest = match tree_sha256_wet(tree: loc.root as String, manifest_path: concat(scratch.path as String, "/fixture.manifest")) {
     TreeDigestObserved { hex: h } => h as String
     TreeDigestUnobservable { reason: _ } => ""
   }
+  let cleaned = shell.Remove.RecursiveForce(path: scratch.path)
+  if scratch.success { digest } else { "" }
 }
 
 // ALTERED OR DELETED EXTRACTED CODE CHANGES THE TREE DIGEST WHILE EVERY ARCHIVE IS UNTOUCHED -- the
@@ -261,3 +266,43 @@ test fn the_candidate_starts_with_only_the_admitted_environment_by_real_executio
     && string_contains(s: seen.content, pattern: "HOME=")
     && string_contains(s: concat("\n", seen.content), pattern: "\nPATH=") == false
 }
+
+// RETIREMENT REMOVES EXACTLY THE SUPERSEDED ENTRIES AND SAYS WHICH. A fixture base holds the current
+// recipe's tree, the archives, another converge's stage, a pre-recipe tree and an older recipe: after
+// retirement the last two are gone, the record names exactly them, and the rest -- the current tree's
+// content included -- is untouched.
+test fn retirement_removes_exactly_the_superseded_trees_and_records_them_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let others = run_ok_local(command: mkdir_parents_command(path: concat(d, "/archives")))
+    && run_ok_local(command: mkdir_parents_command(path: concat(d, "/staging.inflight")))
+    && run_ok_local(command: mkdir_parents_command(path: concat(d, "/playwright-1.62.1-node-v24.21.0-linux-arm64/node")))
+    && run_ok_local(command: mkdir_parents_command(path: concat(d, "/0123456789abcdef")))
+  let retired = retire_superseded_trees_wet(location: loc, unique: "witness")
+  let recorded = match retired { SiblingsRetired { removed: rs } => rs == ["0123456789abcdef", "playwright-1.62.1-node-v24.21.0-linux-arm64"]  _ => false }
+  let gone = exists(path: concat(d, "/playwright-1.62.1-node-v24.21.0-linux-arm64")) == false && exists(path: concat(d, "/0123456789abcdef")) == false
+  let kept = exists(path: concat(d, "/archives")) && exists(path: concat(d, "/staging.inflight")) && fixture_digest(dir: d) == pin
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && others && pin != "" && recorded && gone && kept
+}
+
+// RETIREMENT REFUSES, REMOVING NOTHING, WHEN THE CURRENT TREE IS NOT WHERE IT MUST BE: a base without
+// the current recipe's tree keeps every entry it had.
+test fn retirement_refuses_and_removes_nothing_without_the_current_tree_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let made = run_ok_local(command: mkdir_parents_command(path: concat(d, "/playwright-1.62.1-node-v24.21.0-linux-arm64")))
+  let refused = match retire_superseded_trees_wet(location: loc, unique: "witness") { SiblingRetirementRefused { cause: _ } => true  _ => false }
+  let kept = exists(path: concat(d, "/playwright-1.62.1-node-v24.21.0-linux-arm64"))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && made && refused && kept
+}
+
+fn run_ok_local(command: ArgvCommand) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+}
+

@@ -31,7 +31,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_owner_executable_files_command, find_symlink_targets_command }
-import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command, ls_one_per_line_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -1218,6 +1218,87 @@ fn stage_in_fresh_directory_wet(location: RunnerBrowserToolchainLocation, archiv
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// RETIREMENT OF SUPERSEDED TREES
+// ---------------------------------------------------------------------------------------------
+
+// A SUPERSEDED TREE IS RETIRED BY THE CONVERGE, NEVER BY HAND (eager-owl-205, 2026-09-28; the
+// "safe publication/retirement" of side-chat review 5334435195). It runs only AFTER the current
+// recipe's tree has been published and read back ready, so a host is never left with no admitted
+// tree. Every entry directly under the base is a superseded tree EXCEPT: the current recipe's tree,
+// the shared retained archives, and any staging.* directory (another converge's in-flight stage,
+// which that converge owns and removes). Each superseded entry is renamed aside to a name unique to
+// this invocation -- so it leaves its path in one atomic step -- and then removed, and the receipt
+// names every one.
+//
+// WHAT THIS MEANS FOR A CONSUMER AT ANOTHER REVISION: a job whose code pins a different recipe finds
+// its tree gone and reads back NotReady (tree absent) -- it refuses rather than running bytes its own
+// pins did not name. Only the current recipe's converge makes its tree again.
+type SiblingRetirement
+  = SiblingsRetired { removed: List<String> }
+  | SiblingRetirementRefused { cause: String }
+
+data runner_browser_toolchain_archives_entry: String = "archives"
+
+data runner_browser_toolchain_staging_prefix: String = "staging."
+
+fn superseded_entries_of(entries: List<String>, current: String) -> List<String> {
+  fold(entries, init: [], f: (acc, e) => {
+    let n = trim(s: e)
+    if n == "" || n == current || n == runner_browser_toolchain_archives_entry || starts_with(s: n, prefix: runner_browser_toolchain_staging_prefix) {
+      acc
+    } else {
+      list_append(left: acc, right: [n])
+    }
+  })
+}
+
+fn retire_entry_wet(base: String, entry: String, unique: String) -> Bool {
+  let aside = join([base, "/", runner_browser_toolchain_staging_prefix, "retiring-", unique, "-", entry], "")
+  run_ok(command: mv_exact_destination_command(source: join([base, "/", entry], ""), destination: aside))
+    && run_ok(command: rm_recursive_force_command(path: aside))
+}
+
+// THE CURRENT TREE IS NEVER A CANDIDATE, AND THAT IS CHECKED, NOT ASSUMED: if the list of entries to
+// retire names the current recipe, retirement refuses before removing anything.
+fn retire_superseded_trees_wet(location: RunnerBrowserToolchainLocation, unique: String) -> SiblingRetirement {
+  match run_shell_command_capture(command: ls_one_per_line_command(path: location.base as String), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      SiblingRetirementRefused { cause: join(["the toolchain base could not be listed (exit ", to_string(c), "): ", trim(s: e), "; nothing was retired"], "") }
+    ProcessOutputAbsent =>
+      SiblingRetirementRefused { cause: "the toolchain base listed empty, but the published tree must be in it; nothing was retired" }
+    ProcessOutputPresent { text: t } => {
+      let entries = split(t, "\n")
+      let current = location.recipe as String
+      let present = fold(entries, init: false, f: (acc, e) => acc || trim(s: e) == current)
+      let doomed = superseded_entries_of(entries: entries, current: current)
+      if present == false {
+        SiblingRetirementRefused { cause: join(["the current tree ", current, " is not listed under the base; nothing was retired"], "") }
+      } else if fold(doomed, init: false, f: (acc, d) => acc || d == current) {
+        SiblingRetirementRefused { cause: "the current tree was named as superseded; nothing was retired" }
+      } else {
+        let removed = fold(doomed, init: [], f: (acc, d) => if retire_entry_wet(base: location.base as String, entry: d, unique: unique) { list_append(left: acc, right: [d]) } else { acc })
+        if list_length(removed) == list_length(doomed) {
+          SiblingsRetired { removed: removed }
+        } else {
+          SiblingRetirementRefused { cause: join(["retired ", join(removed, ", "), " but could not retire every superseded entry of ", join(doomed, ", ")], "") }
+        }
+      }
+    }
+  }
+}
+
+fn sibling_retirement_text(r: SiblingRetirement) -> String {
+  match r {
+    SiblingsRetired { removed: rs } => concat("retired=", if list_length(rs) == 0 { "none" } else { join(rs, ",") })
+    SiblingRetirementRefused { cause: c } => concat("retirement=REFUSED ", c)
+  }
+}
+
+fn sibling_retirement_holds(r: SiblingRetirement) -> Bool {
+  match r { SiblingsRetired { removed: _ } => true  _ => false }
+}
+
 data runner_browser_toolchain_converge_attempt_raw: String = "runner-browser-toolchain-converge-ci"
 
 data runner_browser_toolchain_converge_receipt_path: String = "target/runner-browser-toolchain-converge-receipt.txt"
@@ -1263,6 +1344,16 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
+              let retirement = if ready {
+                Present { value: retire_superseded_trees_wet(location: location, unique: probed_at_word(reading: clock_now_probed_at()) as String) }
+              } else {
+                none
+              }
+              let retirement_ok = match retirement { Present { value: r } => sibling_retirement_holds(r: r)  Absent => false }
+              let retirement_text = match retirement {
+                Present { value: r } => sibling_retirement_text(r: r)
+                Absent => "retired=not-run (the current tree did not read back ready)"
+              }
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)
                 Absent => "readback=not-run (placement did not hold, so no candidate was executed)\nstanding=not-ready"
@@ -1275,11 +1366,12 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 "apt: ", join(map(apt, o => apt_outcome_text(o: o)), " "), "\n",
                 toolchain_placement_text(p: placement), "\n",
                 readback_text, "\n",
+                retirement_text, "\n",
               ], "")
               let w = Filesystem.Write(path: runner_browser_toolchain_converge_receipt_path, content: body)
               if w.success == false {
                 exit_failure(reason: join(["runner_browser_toolchain_converge: receipt write failed: ", w.error, "\n", body], ""))
-              } else if apt_ok && toolchain_placement_holds(p: placement) && ready {
+              } else if apt_ok && toolchain_placement_holds(p: placement) && ready && retirement_ok {
                 ExitSuccess
               } else {
                 exit_failure(reason: body)

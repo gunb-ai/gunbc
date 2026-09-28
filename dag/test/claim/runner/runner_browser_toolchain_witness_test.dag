@@ -20,7 +20,7 @@ import gunbc.runner_browser_toolchain {
   BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
   BrowserToolchainArchive, runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
-  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command,
+  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
 import extdeps.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
@@ -324,6 +324,16 @@ test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() ->
     loc.node_binary as String,
     "-e 0 a",
   ], " ")
+}
+
+// ONLY SUPERSEDED TREES ARE RETIRED: the current recipe's tree, the retained archives and any
+// staging.* directory (another converge's stage, or a retirement already in progress) are kept;
+// everything else under the base -- the pre-recipe tree, an older recipe -- is superseded.
+test fn only_superseded_trees_are_candidates_for_retirement() -> Bool {
+  superseded_entries_of(
+    entries: ["e4ad7f3f559ad5a8", "archives", "staging.Ab12Cd34", "staging.retiring-x-old", "playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef", ""],
+    current: "e4ad7f3f559ad5a8",
+  ) == ["playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef"]
 }
 
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install
