@@ -1,7 +1,7 @@
 module std.effect_grant
 
 import std.types { Bool, String, List }
-import v2.std.algebra { length }
+import v2.std.algebra { length, filter }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
 import std.access {
@@ -240,27 +240,24 @@ fn namespace_tree_label(tree: NamespaceTree) -> String {
   }
 }
 
-// THE LABELS' INVERSES, arm for arm, so a label written by effect_verb_label or namespace_tree_label
-// reads back as the value it was written from and nothing else reads as a value. A service tree
-// naming no service is refused rather than read as some default service.
+// THE LABELS' INVERSES, DERIVED FROM THE LABELS (review 72135): each inverse searches the closed
+// value set through the forward label function, so a label is spelled once, where it is written, and
+// a reader cannot drift from the writer. A service tree naming no service is refused rather than read
+// as some default service; its prefix is the one the writer uses.
+data verbs: List<Verb> = [Read, Write, Execute]
+
 fn verb_of_label(label: String) -> Verb? {
-  match label {
-    "read" => Present { value: Read }
-    "write" => Present { value: Write }
-    "execute" => Present { value: Execute }
-    _ => none
-  }
+  (filter(verbs, v => effect_verb_label(verb: v) == label)).first()
 }
 
 data service_tree_label_prefix: String = "service:"
 
+data unparameterized_trees: List<NamespaceTree> = [FilesystemPathTree, UriTree, ProcTree, CodeNameTree]
+
 fn namespace_tree_of_label(label: String) -> NamespaceTree? {
-  match label {
-    "filesystem" => Present { value: FilesystemPathTree }
-    "uri" => Present { value: UriTree }
-    "proc" => Present { value: ProcTree }
-    "code-name" => Present { value: CodeNameTree }
-    _ =>
+  match (filter(unparameterized_trees, t => namespace_tree_label(tree: t) == label)).first() {
+    Present { value: t } => Present { value: t }
+    Absent =>
       if starts_with(s: label, prefix: service_tree_label_prefix) && length(label) > length(service_tree_label_prefix) {
         Present { value: ServiceOpTree { service: substring(s: label, start: length(service_tree_label_prefix), end: length(label)) } }
       } else { none }
