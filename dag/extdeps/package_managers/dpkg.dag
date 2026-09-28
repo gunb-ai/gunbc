@@ -1,6 +1,6 @@
 module extdeps.dpkg
 
-import std.types { NonEmptyStr, Bool, List, Int }
+import std.types { NonEmptyStr, Bool, List, Int, Unit }
 import std.string_type { String }
 import std.algebra { trim }
 
