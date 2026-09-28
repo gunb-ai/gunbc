@@ -56,7 +56,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
-import v2.std.node { arrow_signature_order_label, edge_label_of }
+import v2.std.node { Ambiguous, Found, arrow_body_target_lookup, arrow_signature_order_label, edge_label_of }
 import v2.std.compilers.body_lowering {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
@@ -74,6 +74,7 @@ import v2.std.constraints {
 import v2.std.inhabitance {
   DeclaredType,
   DeclaredTypeObligation,
+  DeclaredTypePosition,
   DeclaredTypeVariable,
   TypeVariableInstance,
   inhabitance_formal_declaration,
@@ -89,6 +90,7 @@ import v2.std.inhabitance {
   declared_type_inhabitance,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_diagnostic,
+  position_declared_return,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
   undecidable_formal_unresolved
@@ -1793,16 +1795,41 @@ fn infer_judge_application_argument(
   application: Node,
   entries: List<InferredFactsEntry>,
   formal: InhabitanceFormal,
-  arg: Node
+  arg: Node,
+  type_params: List<Symbol>
 ) -> Outcome<Bool> {
-  match inhabitance_node_undecidable_reason(n: formal.declared) {
+  infer_judge_declared_position(
+    position: position_direct_call_argument(),
+    application: application,
+    entries: entries,
+    formal: formal,
+    produced_at: arg,
+    type_params: type_params
+  )
+}
+
+// ONE JUDGE FOR EVERY DECLARED POSITION. An argument at its formal and an Arrow body at its declared
+// return ask the same question -- does the type derived at `produced_at` inhabit `formal.declared`? --
+// so both build a DeclaredTypeObligation here and hand it to the one relation,
+// v2.std.inhabitance declared_type_inhabitance. Only the position differs, and it rides on the
+// obligation into the refusal. A position whose produced type is not derived stays the counted
+// frontier (UndecidableArgumentTypeNotDerived), never an admission.
+fn infer_judge_declared_position(
+  position: DeclaredTypePosition,
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  formal: InhabitanceFormal,
+  produced_at: Node,
+  type_params: List<Symbol>
+) -> Outcome<Bool> {
+  match inhabitance_node_undecidable_reason(n: formal.declared, type_variables: type_params) {
     Present { value: reason } =>
       infer_inhabitance_undecidable_accepted(
         application: application,
         reason: reason
       )
     Absent =>
-  match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+  match lookup_inferred_facts_in_entries(entries: entries, key: produced_at) {
     Absent =>
       infer_inhabitance_undecidable_accepted(
         application: application,
@@ -1817,11 +1844,12 @@ fn infer_judge_application_argument(
           )
         Holds { value: produced } =>
           let obligation = DeclaredTypeObligation {
-            position: position_direct_call_argument(),
+            position: position,
             parameter_identity: formal.parameter_identity,
             declared: formal.declared,
             produced: produced,
-            application: application
+            application: application,
+            type_variables: type_params
           }
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
@@ -1864,7 +1892,7 @@ fn infer_judge_application_argument_instantiating(
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: _ } =>
-      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg) {
+      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg, type_params: type_params) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
@@ -1875,7 +1903,8 @@ fn infer_judge_application_argument_instantiating(
             application: application,
             entries: entries,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
-            arg: arg
+            arg: arg,
+            type_params: type_params
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
@@ -3176,6 +3205,75 @@ fn infer_gather_settled_row(
         tree: tree
       )
     Absent =>
+      match infer_arrow_declared_return_check(node: acc.node, entries: merged_entries) {
+        Rejected { diagnostics: r } =>
+          infer_gather_fold_acc_failed(
+            node: acc.node,
+            pending: rejected_with_pending(pending: merged_pending, rejected: r),
+            await_branch_row: false,
+            await_match_row: false,
+            await_loop_row: false,
+            await_transform_row: false,
+            children_remaining: 0
+          )
+        Accepted { value: _, diagnostics: rd } =>
+          infer_gather_settled_unannotated_row(
+            acc: acc,
+            merged_entries: merged_entries,
+            merged_pending: diagnostics_merge(outer: merged_pending, inner: rd),
+            partials: partials
+          )
+      }
+  }
+}
+
+// AN ARROW'S BODY IS JUDGED AT ITS DECLARED RETURN. A fn lowers to an Arrow whose second positional
+// child is the declared return and whose ^arrow_body_edge is the body
+// (v2.compiler.body_lowering_fold body_lower_fn_decl_arrow). By the Arrow's settled row every child
+// has folded, so the body's derived type is in `entries`, and the body is judged at the declared
+// return through the same judge -- and so the same relation -- an argument meets at its formal. The
+// Arrow's own type parameters are the obligation's type variables: a return that mentions one stays
+// UndecidableGenericFormal, counted. An Arrow with no body is a signature (a fn type, a census-grade
+// declaration) and owes nothing here; one with two bodies, or a body but no declared return, is a
+// malformed Arrow and refuses.
+fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+  match node.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_body_target_lookup(children: node.children) {
+        Ambiguous => outcome_rejected(infer_arrow_declared_return_shape_diagnostic(node: node))
+        Found { target: body } =>
+          match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
+            Absent => outcome_rejected(infer_arrow_declared_return_shape_diagnostic(node: node))
+            Present { value: declared } =>
+              infer_judge_declared_position(
+                position: position_declared_return(),
+                application: node,
+                entries: entries,
+                formal: InhabitanceFormal { parameter_identity: ^declared_return, declared: declared },
+                produced_at: body,
+                type_params: type_param_names(n: node)
+              )
+          }
+        _ => outcome_accepted(true)
+      }
+    _ => outcome_accepted(true)
+  }
+}
+
+fn infer_arrow_declared_return_shape_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_arrow_declared_return_shape_invalid,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn infer_gather_settled_unannotated_row(
+  acc: InferGatherFoldAcc,
+  merged_entries: List<InferredFactsEntry>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+) -> InferGatherFoldAcc {
       if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
         infer_gather_product_row_on_entries(
           node: acc.node,
@@ -3195,7 +3293,6 @@ fn infer_gather_settled_row(
           children_remaining: 0
         )
       }
-  }
 }
 
 fn infer_gather_fold_algebra(partials: List<Node>, tree: Node) -> NodeFold<InferGatherFoldAcc> {

@@ -21,6 +21,8 @@ import v2.std.diagnostic {
   diagnostics_has_reason
 }
 import v2.std.logic { Bool }
+import std.algebra { list_snoc_item }
+import v2.std.type_binder { type_params_edge }
 import v2.std.optional { Absent, Present }
 import v2.std.node {
   ComputationNode,
@@ -76,8 +78,12 @@ fn inhabitance_call_tree(arg: Node) -> Node {
   )
 }
 
+// THE FORMAL MENTIONS A TYPE VARIABLE THE CALLEE DECLARES. `T` is bound by the Arrow's own type
+// parameter list (v2.std.type_binder type_params_edge), so the relation holds no instance for it and
+// the obligation is counted UndecidableGenericFormal. An Instantiation that mentions no declared type
+// variable is decided structurally instead (inhabitance_ground_instantiation_* below).
 fn inhabitance_generic_formal_tree() -> Node {
-  inhabitance_apply(
+  let arrow = dag_arrow_with_body_node(
     domain: inhabitance_named_conj_domain(
       parameter: ^inhabitance_param_t,
       declared: node_synthetic(
@@ -90,7 +96,34 @@ fn inhabitance_generic_formal_tree() -> Node {
         ]
       )
     ),
-    arg: dag_int_literal_fixture_one()
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_int_literal_fixture_one()
+  )
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(
+              conj: node_synthetic(
+                kind: TypeNode { connective: Conj },
+                children: [
+                  Edge {
+                    label: Named { name: ^inhabitance_type_param_t },
+                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+                  }
+                ]
+              )
+            )
+          )
+        )
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+    ]
   )
 }
 
@@ -199,7 +232,8 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
   match inhabitance_node_undecidable_reason(
     n: inhabitance_cardinality_type(
       inner: dag_type_atom_node(identity: ^dag_binding_type_int)
-    )
+    ),
+    type_variables: []
   ) {
     Absent => false
     Present { value: reason } =>
@@ -255,14 +289,15 @@ test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
 // product declared and the collection supplied as the argument, the argument is a type node with
 // no derived value type, so the obligation is counted as UndecidableArgumentTypeNotDerived
 // (alongside infer_grounding_not_derived) before the formal is classified. With the collection
-// declared, `inhabitance_node_undecidable_reason` classifies the Instantiation formal as
-// UndecidableGenericFormal. Either way this path does not silently answer Inhabits the way the
-// seed did -- it counts the obligation as undecidable and the route advances, which is exactly
-// the standing of gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances
-// and not a second class. The next-rung trigger is that row's: an argument whose value type is
-// derived as an APPLIED collection type, and a classifier that distinguishes an applied type whose
-// constructor and arguments are all established from a type variable, which it cannot do today
-// because both are Instantiation.
+// declared, the formal `List<Int>` mentions no declared type variable, so the classifier decides it
+// (inhabitance_node_undecidable_reason reads the declaring Arrow's type parameters since the
+// declared-return producer landed) and the obligation stops one boundary later, at the argument:
+// the product type node has no derived value type, UndecidableArgumentTypeNotDerived. Either way
+// this path does not silently answer Inhabits the way the seed did -- it counts the obligation as
+// undecidable and the route advances, which is exactly the standing of
+// gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances and not a
+// second class. The remaining next-rung trigger is that row's: an argument whose value type is
+// derived as an APPLIED collection type.
 fn inhabitance_collection_type_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
@@ -328,7 +363,7 @@ test fn inhabitance_product_produced_at_a_collection_formal_is_counted_frontier_
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
         d: d,
-        reason: ^inhabitance_undecidable_generic_formal
+        reason: ^inhabitance_undecidable_argument_type_not_derived
       )
   }
 }
