@@ -2,9 +2,10 @@ module test.claim.bmc_model_web_kvm_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
+import v2.std.optional { Present, Absent }
 import std.measure { second }
 import gunbc.bmc_model {
-  BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController,
+  BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, bmc_web_world_untouched, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController,
   BmcWebLoginAccepted, BmcWebLoginRefused,
   bmc_web_login, bmc_kvm_viewer_count, bmc_kvm_connect, bmc_web_logout, bmc_advance,
 }
@@ -17,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn web(other_viewers: Int, canvas_readable: Bool) -> BmcWebWorld {
   BmcWebWorld {
-    account: BmcWebAccount { username: "admin", password: "pw", privilege: 4 },
+    account: Present { value: BmcWebAccount { username: "admin", password: "pw", privilege: 4 } },
     sessions: [],
     next_session_id: 7,
     other_kvm_viewers: other_viewers,
@@ -33,6 +34,15 @@ fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
     fired: [],
     web: web(other_viewers: other_viewers, canvas_readable: canvas_readable),
   }
+}
+
+// A WORLD WITH NO ACCOUNT REFUSES EVERY LOGIN, empty credentials included: absence is a constructor,
+// not a sentinel a guard has to catch.
+test fn a_world_without_an_account_refuses_every_login() -> Bool {
+  let untouched = BmcWorld { power: BmcPowerOn, pending: [], fired: [], web: bmc_web_world_untouched }
+  let empty = bmc_web_login(world: untouched, username: "", password: "")
+  let named = bmc_web_login(world: untouched, username: "admin", password: "pw")
+  match empty.reply { BmcWebLoginRefused {} => true  _ => false } && match named.reply { BmcWebLoginRefused {} => true  _ => false }
 }
 
 // A MATCHING ACCOUNT OPENS A SESSION; ANY OTHER IS REFUSED AND CHANGES NOTHING.
@@ -112,6 +122,7 @@ test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool
     initial: world(other_viewers: 0, close_at: 3, canvas_readable: false),
     credentials: [MegaRacWebLogin { username: "admin", password: "pw" }],
     extended_privilege: 259,
+    depth: 3,
   )
   string_contains(s: table, pattern: "\"canvas_readable\": false")
     && string_contains(s: table, pattern: "\"key\": \"advance 3\", \"status\": 200, \"stream_open\": false")

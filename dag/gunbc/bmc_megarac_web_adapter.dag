@@ -172,6 +172,9 @@ fn megarac_web_explore(frontier: List<BmcWorld>, seen: List<String>, rows: List<
   }
 }
 
+// THE DEPTH A SERVED TABLE IS EXPLORED TO: long enough for a client's whole session (login, services,
+// connect, the controller's own events, logout) with room for a retry. A caller asking a narrower
+// question -- one transition -- names a smaller depth.
 data megarac_web_exploration_depth: Int = 6
 
 // CONSUMER (DESIGN §3c, declared frontier). megarac_web_transition_table is consumed by the loopback
@@ -182,9 +185,9 @@ data megarac_web_exploration_depth: Int = 6
 //
 // THE TABLE THE TRANSPORT ENFORCES, as one JSON document: the initial world, the canvas flag, the
 // /kvm path, and one row per (world, request): from, key, status, stream_open, to, body.
-fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebRequest>, extended_privilege: Int) -> String {
+fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebRequest>, extended_privilege: Int, depth: Int) -> String {
   let start = megarac_web_world_text(world: initial)
-  let rows = megarac_web_explore(frontier: [initial], seen: [start], rows: [], depth: megarac_web_exploration_depth, credentials: credentials, extended_privilege: extended_privilege)
+  let rows = megarac_web_explore(frontier: [initial], seen: [start], rows: [], depth: depth, credentials: credentials, extended_privilege: extended_privilege)
   serialize_json(v: json_object(members: [
     json_kv(key: "initial", value: json_string(s: start)),
     json_kv(key: "canvas_readable", value: json_bool(b: initial.web.canvas_readable)),
