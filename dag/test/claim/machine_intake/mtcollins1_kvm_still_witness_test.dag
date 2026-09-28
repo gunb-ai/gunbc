@@ -20,6 +20,7 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStanding, KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverPending,
   KvmObserverSubject, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission_of,
+  KvmObserverStopped, KvmObserverProcessNotRunning, KvmObserverJournalUnread, kvm_live_standing,
   KvmStillGap, KvmGapOverCadence, KvmClockStepBack, KvmFinalGapUnclosed,
   KvmStillHashed, KvmStillUnhashed, KvmInstant,
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
@@ -27,6 +28,9 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
   mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
+import gunbc.owned_process {
+  OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedUnreadable, OwnedUnparseable, OwnedForeign, owned_process_standing_of,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -134,6 +138,37 @@ test fn the_handoff_is_admitted_only_over_an_established_observer() -> Bool {
   let mismatch = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverMismatch { at: at, detail: "established for attempt 1, expected 2" }) { KvmHandoffRefused { cause: _ } => true  _ => false }
   let lost = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverLost { at: at, established_at: at }) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "LOST")  _ => false }
   admitted && not_started && pending && seat && mismatch && lost
+}
+
+// LIVE, NOT HISTORICAL (hold on gunbc#12492): an established journal counts only over a running owned
+// process. Quiet but live stays established; a writer that died without a line, one whose process is
+// unreadable, a stop, and an unread journal each have their own standing, and none of them admits the
+// handoff.
+test fn establishment_is_live_only_over_a_running_owned_process() -> Bool {
+  let text = "1790577669931 2026-09-28T06:41:09.931Z established host=\"127.0.0.1:45865\" session=7 attempt=wet gen=1\n"
+  let running = OwnedRunning { pid: "4242", start_time: "100" }
+  let quiet_live = match kvm_live_standing(journal: KvmJournalText { text: text }, subject: ok_subject(), process: running) { KvmObserverEstablished { at: _, host: _, session: _, attempt: _ } => true  _ => false }
+  let died = kvm_live_standing(journal: KvmJournalText { text: text }, subject: ok_subject(), process: OwnedGone { pid: "4242" })
+  let died_ok = match died { KvmObserverProcessNotRunning { process: p } => match p { OwnedGone { pid: _ } => true  _ => false }  _ => false }
+  let unreadable = match kvm_live_standing(journal: KvmJournalText { text: text }, subject: ok_subject(), process: OwnedUnreadable { pid: "4242", detail: "EACCES" }) { KvmObserverProcessNotRunning { process: _ } => true  _ => false }
+  let stopped = match kvm_live_standing(journal: KvmJournalText { text: concat(text, "1790577679461 2026-09-28T06:41:19.461Z stopped session=released browser=closed\n") }, subject: ok_subject(), process: running) { KvmObserverStopped { at: _ } => true  _ => false }
+  let unread = match kvm_live_standing(journal: KvmJournalUnread { cause: "EISDIR" }, subject: ok_subject(), process: running) { KvmObserverJournalUnread { cause: c } => c == "EISDIR"  _ => false }
+  let refuses = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: died) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "NOT RUNNING")  _ => false }
+  quiet_live && died_ok && unreadable && stopped && unread && refuses
+}
+
+// THE OWNED PROCESS'S READBACK KEEPS EACH OBSERVATION AS ITSELF: a missing stat is Gone, an unreadable
+// one is Unreadable, an unparseable one is Unparseable, a different start time is Foreign.
+test fn owned_process_observations_are_kept_distinct() -> Bool {
+  let rec = "4242 100\n"
+  let stat_100 = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 100 12345 67 18446744073709551615\n"
+  let stat_200 = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 200 12345 67 18446744073709551615\n"
+  let run = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: stat_100) { OwnedRunning { pid: _, start_time: _ } => true  _ => false }
+  let gone = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: false, stat_not_found: true, stat_error: "not found", stat: "") { OwnedGone { pid: _ } => true  _ => false }
+  let unread = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: false, stat_not_found: false, stat_error: "EACCES", stat: "") { OwnedUnreadable { pid: _, detail: d } => d == "EACCES"  _ => false }
+  let garbled = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "garbage") { OwnedUnparseable { pid: _, detail: _ } => true  _ => false }
+  let foreign = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: stat_200) { OwnedForeign { pid: _, observed_start: o } => o == "200"  _ => false }
+  run && gone && unread && garbled && foreign
 }
 
 // GAPS ARE RETAINED: an interval over two cadences, a clock that stepped back, and a final gap left

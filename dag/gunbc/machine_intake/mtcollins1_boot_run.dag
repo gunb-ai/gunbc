@@ -96,7 +96,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
-  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
+  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
+  KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
   mtcollins1_kvm_observer_start, mtcollins1_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
   mtcollins1_bmc_firmware, mtcollins1_kvm_still_allowance,
@@ -1719,7 +1720,8 @@ fn mtcollins1_boot_screen_boundary_report(screen: KvmObserverStart, already: Lis
   match screen {
     KvmObserverNotStarted { reason: _ } => already
     KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } => {
-      let lines: List<String> = map(kvm_boundary_events(events: kvm_journal_events_at(dir: d as String)), e => kvm_event_text(e: e))
+      let journalled: List<String> = map(kvm_boundary_events(events: kvm_journal_events_at(dir: d as String)), e => kvm_event_text(e: e))
+      let lines: List<String> = journalled.concat(mtcollins1_boot_screen_liveness_lines(standing: kvm_observer_standing_now(start: screen)))
       if count(lines) <= count(already) { already } else {
         let fresh = lines.skip(n: count(already))
         let path = concat(d as String, "/boundary-report")
@@ -1728,6 +1730,18 @@ fn mtcollins1_boot_screen_boundary_report(screen: KvmObserverStart, already: Lis
         if kept.success { lines } else { already }
       }
     }
+  }
+}
+
+// THE OBSERVER'S LIVENESS IS PART OF WHAT A TICK REPORTS: an observer whose process is no longer
+// running, whose journal cannot be read, or which has stopped writes no journal line saying so, so the
+// live standing itself is reported -- the same path, the same write check -- the tick it is seen.
+fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<String> {
+  match standing {
+    KvmObserverProcessNotRunning { process: _ } => [kvm_standing_text(s: standing)]
+    KvmObserverJournalUnread { cause: _ } => [kvm_standing_text(s: standing)]
+    KvmObserverStopped { at: _ } => [kvm_standing_text(s: standing)]
+    _ => []
   }
 }
 

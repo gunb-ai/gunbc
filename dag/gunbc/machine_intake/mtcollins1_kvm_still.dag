@@ -21,7 +21,7 @@ import extdeps.bmc.megarac {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.owned_process { OwnedRelease, owned_process_release, owned_release_text }
+import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import extdeps.shell
@@ -265,6 +265,9 @@ type KvmObserverStanding
   = KvmObserverEstablished { at: KvmInstant, host: String, session: String, attempt: String }
   | KvmObserverLost { at: KvmInstant, established_at: KvmInstant }
   | KvmObserverMismatch { at: KvmInstant, detail: String }
+  | KvmObserverStopped { at: KvmInstant }
+  | KvmObserverProcessNotRunning { process: OwnedProcessStanding }
+  | KvmObserverJournalUnread { cause: String }
   | KvmObserverRefused { at: KvmInstant, refusal: KvmObserverRefusal }
   | KvmObserverFailed { at: KvmInstant, detail: String }
   | KvmObserverPending
@@ -295,6 +298,8 @@ fn kvm_standing_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmO
       match e {
         KvmJournalConnectionLost { at: a, gen: _ } => KvmObserverLost { at: a, established_at: ea }
         KvmJournalConnectionError { at: a, gen: _, detail: _ } => KvmObserverLost { at: a, established_at: ea }
+        KvmJournalStopRequested { at: a, by: _ } => KvmObserverStopped { at: a }
+        KvmJournalStopped { at: a, session: _, browser: _ } => KvmObserverStopped { at: a }
         KvmJournalFailed { at: a, detail: d } => KvmObserverFailed { at: a, detail: d }
         _ => acc
       }
@@ -427,10 +432,33 @@ type KvmObserverStart
   = KvmObserverStarted { dir: NonEmptyStr, subject: KvmObserverSubject, standing: KvmObserverStanding, checked_at: NonEmptyStr }
   | KvmObserverNotStarted { reason: NonEmptyStr }
 
-// THE STANDING NOW: the journal re-read against the start's subject. What the handoff consumes.
+// THE STANDING NOW, LIVE (hold on gunbc#12492). A journal is history; an observer is only established
+// while the process that wrote it is still the one running. So the live standing joins three
+// observations: the journal read (an unread journal is its own standing, never an empty history), the
+// subject check over its events, and the owned process read from observer.pid (gunbc.owned_process).
+// An Established history over a process that is gone, foreign, unreadable or unrecorded is
+// ProcessNotRunning with that observation -- an observer that died without writing a line is not
+// established. A quiet journal over a running process stays established: no pixel or line heartbeat
+// is asked for.
+fn kvm_live_standing(journal: KvmJournalRead, subject: KvmObserverSubject, process: OwnedProcessStanding) -> KvmObserverStanding {
+  match journal {
+    KvmJournalUnread { cause: c } => KvmObserverJournalUnread { cause: c }
+    _ =>
+      match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
+        KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
+          match process {
+            OwnedRunning { pid: _, start_time: _ } => KvmObserverEstablished { at: a, host: h, session: s, attempt: t }
+            other => KvmObserverProcessNotRunning { process: other }
+          }
+        other => other
+      }
+  }
+}
+
 fn kvm_observer_standing_now(start: KvmObserverStart) -> KvmObserverStanding {
   match start {
-    KvmObserverStarted { dir: d, subject: sub, standing: _, checked_at: _ } => kvm_observer_standing(events: kvm_journal_events_at(dir: d as String), subject: sub)
+    KvmObserverStarted { dir: d, subject: sub, standing: _, checked_at: _ } =>
+      kvm_live_standing(journal: kvm_journal_read_at(dir: d as String), subject: sub, process: owned_process_standing(pid_path: concat(d as String, "/observer.pid")))
     KvmObserverNotStarted { reason: _ } => KvmObserverPending
   }
 }
@@ -550,10 +578,20 @@ fn kvm_observer_launch(base_url: String, host: String, username: NonEmptyStr, pa
   if !made.success {
     return KvmObserverNotStarted { reason: concat("the observer directory could not be made: ", dir) as NonEmptyStr }
   }
-  kvm_observer_launch_in(dir: dir, base_url: base_url, host: host, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt)
+  kvm_observer_launch_in(dir_given: dir, base_url: base_url, host: host, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt)
 }
 
-fn kvm_observer_launch_in(dir: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String) -> KvmObserverStart {
+// ONE ABSOLUTE LOCATION (hold on gunbc#12492): the directory is canonicalised once, here, and that
+// absolute path is the launch's working directory, the observer's own `dir` operand, and what the boot
+// reads the journal, stills and triggers from and writes the stop request to. A relative directory
+// passed as both working directory and operand would be resolved twice -- <dir>/<dir>/journal -- and the
+// boot and the observer would address different files.
+fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String) -> KvmObserverStart {
+  let resolved = shell.Path.Canonical(path: dir_given as FilePath)
+  if !resolved.success {
+    return KvmObserverNotStarted { reason: concat("the observer directory could not be resolved: ", concat(dir_given, concat(": ", trim(s: resolved.stderr)))) as NonEmptyStr }
+  }
+  let dir = trim(s: resolved.stdout)
   let node = runner_browser_toolchain_node_command(
     location: toolchain,
     directory: dir,
@@ -741,6 +779,9 @@ fn kvm_standing_text(s: KvmObserverStanding) -> String {
     KvmObserverEstablished { at: a, host: h, session: se, attempt: t } => concat("established at ", a.iso, " (host ", h, ", session ", se, ", attempt ", t, ")")
     KvmObserverLost { at: a, established_at: e } => concat("LOST at ", a.iso, " after establishment at ", e.iso)
     KvmObserverMismatch { at: a, detail: d } => concat("MISMATCHED at ", a.iso, ": ", d)
+    KvmObserverStopped { at: a } => concat("STOPPED at ", a.iso)
+    KvmObserverProcessNotRunning { process: p } => concat("the observer process is NOT RUNNING: ", owned_process_standing_text(s: p))
+    KvmObserverJournalUnread { cause: c } => concat("the observer journal is UNREAD: ", c)
     KvmObserverRefused { at: a, refusal: r } => concat("REFUSED at ", a.iso, ": ", kvm_refusal_text(r: r))
     KvmObserverFailed { at: a, detail: d } => concat("FAILED at ", a.iso, ": ", d)
     KvmObserverPending => "NOT ESTABLISHED within the establishment wait (no established or refused line)"

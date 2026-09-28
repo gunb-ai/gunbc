@@ -2031,6 +2031,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
+      function: "a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_relative_observer_directory_is_resolved_once" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
+      function: "a_relative_observer_directory_is_resolved_once",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_record_naming_another_process_is_foreign_and_not_released" },
       entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
       function: "a_record_naming_another_process_is_foreign_and_not_released",

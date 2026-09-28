@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
 import std.nat { Nat }
 import std.measure { second, millisecond_count }
 import v2.std.optional { Present, Absent }
@@ -98,7 +99,7 @@ fn rig(w: BmcWorld) -> Rig {
         TransportServing { port: port, pid: _ } => {
           let obs = concat(dir, "/observer")
           let _made = shell.Mkdir.Parents(path: obs as FilePath)
-          kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet")
+          kvm_observer_launch_in(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet")
         }
         TransportNotServing { cause: _ } => KvmObserverNotStarted { reason: "the loopback transport is not serving" }
       }
@@ -187,14 +188,14 @@ test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> 
 
 // ── THE TRANSPORT'S OWNED LIFECYCLE ─────────────────────────────────────────────────────────────
 //
-// READINESS IS BOUND TO THE INSTANCE: a listening line from another pid in the log is not readiness,
-// whatever it says. Pure over what the launch would have read.
+// READINESS IS BOUND TO THE WHOLE INSTANCE: a listening line from another pid, or from the SAME pid with
+// an earlier start time, is not readiness, whatever it says. Pure over what the launch would have read.
 test fn a_stale_listening_line_from_another_pid_is_not_readiness() -> Bool {
-  let stale = "1 pid=999 listening port=4242\n"
+  let stale = "1 pid=999 listening start=50 port=4242\n1 pid=4242 listening start=99 port=4343\n"
   let running = OwnedRunning { pid: "4242", start_time: "100" }
   let not_yet = match megarac_web_transport_readiness(standing: running, out: "", events: stale) { Absent => true  Present { value: _ } => false }
-  let mine = match megarac_web_transport_readiness(standing: running, out: "", events: concat(stale, "2 pid=4242 listening port=5151\n")) { Present { value: s } => match s { TransportServing { port: p, pid: q } => p == "5151" && q == "4242"  _ => false }  Absent => false }
-  let unpublished = match megarac_web_transport_readiness(standing: OwnedGone { pid: "" }, out: "gunbc-owned: pid not published; stopped\n", events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }  Absent => false }
+  let mine = match megarac_web_transport_readiness(standing: running, out: "", events: concat(stale, "2 pid=4242 listening start=100 port=5151\n")) { Present { value: s } => match s { TransportServing { port: p, pid: q } => p == "5151" && q == "4242"  _ => false }  Absent => false }
+  let unpublished = match megarac_web_transport_readiness(standing: OwnedGone { pid: "" }, out: "gunbc-owned: pid not published; child stopped (observed gone)\n", events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }  Absent => false }
   let exited = match megarac_web_transport_readiness(standing: OwnedGone { pid: "4242" }, out: "gunbc-owned: exited status=1 at=2026-09-28T00:00:00Z\n", events: "") { Present { value: s } => match s { TransportNotServing { cause: c } => match c { TransportExitedBeforeReady { exit_line: _ } => true  _ => false }  _ => false }  Absent => false }
   not_yet && mine && unpublished && exited
 }
@@ -224,6 +225,43 @@ test fn a_launch_that_cannot_publish_its_pid_stops_its_child() -> Bool {
   let s = megarac_web_transport_serve(dir: dir, table: empty_table, node_binary: "sleep")
   let _gone = shell.Remove.RecursiveForce(path: dir)
   match s { TransportNotServing { cause: c } => match c { TransportPidUnpublished => true  _ => false }  _ => false }
+}
+
+// A TERM-IGNORING CHILD WHOSE RECORD CANNOT BE PUBLISHED, EXECUTED THROUGH THE REAL LAUNCH: the launch
+// escalates to KILL and writes "stopped" only after observing the child gone -- the exit record shows
+// the KILL -- and nothing it started is left running.
+test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -> Bool {
+  let dir = scratch_dir()
+  let pid_path = concat(dir, "/child.pid")
+  let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
+  let _l = gunbc.owned_process.launch.LaunchOwned(pid_path: pid_path as NonEmptyStr, log_path: concat(dir, "/child.log") as NonEmptyStr, command: ["sh", "-c", "trap '' TERM; exec sleep 37"])
+  let _w = settle(seconds: 6)
+  let log = read_or_empty(path: concat(dir, "/child.log"))
+  let _gone = shell.Remove.RecursiveForce(path: dir)
+  string_contains(s: log, pattern: "child stopped (observed gone)") && string_contains(s: log, pattern: "exited status=137")
+}
+
+// THE PRODUCTION DIRECTORY SHAPE, EXECUTED: a RELATIVE observer directory (as the boot passes
+// artifacts/mtcollins1-boot-kvm-<attempt>) is resolved once. The observer is launched through the real
+// kvm_observer_launch_in with an unreadable credential, so it refuses before loading Playwright and
+// journals that refusal; the boot reads it from the one resolved location, and no doubled
+// <dir>/<dir> journal exists.
+test fn a_relative_observer_directory_is_resolved_once() -> Bool {
+  match toolchain() {
+    Absent => false
+    Present { value: loc } => {
+      let made = shell.Mktemp.DirWithTemplate(template: "target/gunbc_kvmrel.XXXXXX")
+      let dir = trim(s: made.path as String)
+      let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel")
+      let refused = match start {
+        KvmObserverStarted { dir: d, subject: _, standing: st, checked_at: _ } => starts_with(s: d as String, prefix: "/") && match st { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
+        _ => false
+      }
+      let doubled = Filesystem.Read(path: concat(dir, concat("/", concat(dir, "/journal")))).success
+      let _gone = shell.Remove.RecursiveForce(path: dir)
+      refused && !doubled
+    }
+  }
 }
 
 // WRONG IDENTITY, EXECUTED: a pid record whose start time does not match the live process of that pid
