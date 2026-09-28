@@ -324,7 +324,7 @@ test fn a_failed_summary_write_is_retried_not_marked_delivered() -> Bool {
 
 // AN INTERRUPTION BETWEEN A WRITE AND ITS MARKER YIELDS A DUPLICATE, NEVER A DROP. The marker of a
 // delivered annotation is removed, as a kill before the marker write would leave it; the next pass
-// delivers the annotation again.
+// delivers the annotation again (the ledger records both deliveries), and the pass after that does not.
 test fn an_interrupted_delivery_is_redelivered_not_dropped() -> Bool {
   let dir = scratch_dir()
   let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
@@ -333,12 +333,12 @@ test fn an_interrupted_delivery_is_redelivered_not_dropped() -> Bool {
   let _interrupted = shell.Remove.FileForce(path: sol_notice_marker_path(paths: paths, identity: "collector-exited-20260928T000000Z", channel: SolNoticeLiveLog))
   let second = sol_notice_pass(paths: paths)
   let third = sol_notice_pass(paths: paths)
-  let log = read_or_empty(path: concat(dir, "/log"))
+  let ledger = read_or_empty(path: concat(dir, "/capture.delivery"))
   let _removed = shell.Remove.RecursiveForce(path: dir)
   ok
     && delivered_on(ds: second, channel_key: "annotation") == 1
     && delivered_on(ds: third, channel_key: "annotation") == 0
-    && split(s: log, delimiter: "::warning::").length() == 3
+    && split(s: ledger, delimiter: "collector-exited-20260928T000000Z annotation delivered").length() == 3
 }
 
 // A RECORD IS PUBLISHED ONLY ONCE IT IS COMPLETE. The supervisor's exit line without its newline is

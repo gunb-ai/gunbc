@@ -87,6 +87,11 @@ data mtcollins1_sol_notice_file_infix: String = ".notice."
 
 data mtcollins1_sol_notice_stop_suffix: String = concat(mtcollins1_sol_notice_file_infix, "stop")
 
+// READINESS IS PUBLISHED, NOT ASSUMED. Resolving this entry takes minutes on a loaded host (measured
+// 340 s locally), so the step does not start the boot until this file exists: an exit that happened
+// before the watcher could poll would otherwise go unpublished until the trap.
+data mtcollins1_sol_notice_ready_suffix: String = concat(mtcollins1_sol_notice_file_infix, "ready")
+
 // A MARKER IS PER NOTICE IDENTITY, NOT PER KIND: an exit notice's identity carries its record's own
 // instant, so a second collector exit in the same step (an adopted or restarted collector) is a new
 // notice rather than one a stale marker suppresses.
@@ -120,7 +125,7 @@ fn line_instant(line: String) -> String {
 }
 
 fn instant_comparable(t: String) -> Bool {
-  t.length() == 20 && ends_with(s: t, suffix: "Z") && substring(t, 10, 11) == "T"
+  t.length() == 20 && substring(t, 19, 20) == "Z" && substring(t, 10, 11) == "T"
 }
 
 // THE EXIT IS ORDERED AGAINST THIS RUN'S RECORDED REQUESTS BY THEIR INSTANTS, never by which one was
@@ -326,6 +331,10 @@ fn mtcollins1_sol_notice_wet() -> ProcessExit
     return exit_failure(reason: concat("mtcollins1 SOL notice: ", concat(mtcollins1_boot_sol_capture_path_env as String, " is unset; nothing to watch")))
   }
   let paths = SolNoticePaths { capture: capture, summary: actions_variable_trimmed(name: github_step_summary_variable_name), live_log: mtcollins1_sol_notice_live_log }
+  let ready = Filesystem.Write(path: concat(capture, mtcollins1_sol_notice_ready_suffix), content: concat(clock_now_probed_at_or_unknown() as String, "\n"))
+  if !ready.success {
+    return exit_failure(reason: concat("mtcollins1 SOL notice: could not publish readiness: ", ready.error))
+  }
   if mtcollins1_sol_notice_watch(paths: paths, remaining: mtcollins1_sol_notice_watch_passes) {
     ExitSuccess
   } else {
