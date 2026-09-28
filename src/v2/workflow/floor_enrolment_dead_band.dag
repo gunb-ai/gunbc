@@ -1,7 +1,6 @@
 module v2.workflow.floor_enrolment_dead_band
 
-import v2.std.collection { List }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // THE ENROLMENT GATE'S DEAD BAND, AND THE EXACT IDENTITIES OBSERVED IN IT (gunbc#11989, side-chat
 // ruling on PR comment 5795659115, after the precedent `gunbc.rung_drop`

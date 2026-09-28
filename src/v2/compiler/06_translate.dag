@@ -1,5 +1,6 @@
 module v2.compiler.translate
 
+import std.types { List }
 import std.occurrence_identity {
   OccurrenceSynthetic
 }
@@ -157,9 +158,6 @@ import v2.std.compilers.target_model {
   WrapGateInapplicable,
   WrapGateDecided,
   target_reference_layer_apply_value_expression
-}
-import v2.std.collection {
-  List
 }
 import v2.std.qualified_name {
   declaration_reference_path_optional

@@ -1,4 +1,5 @@
 module v2.std.nat
+import std.types { List }
 import std.algebra {
   CommutativeMonoid,
   CommutativeSemiring,
@@ -8,7 +9,6 @@ import std.algebra {
   Greater,
 }
 import v2.std.node { Symbol }
-import v2.std.collection { List }
 
 type Nat
   = Zero

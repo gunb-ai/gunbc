@@ -1,9 +1,9 @@
 module gunbc.quarantine_probe_disposition
 
+import std.types { List }
 import gunbc.explicit_witness_admission { ExplicitWitnessAdmission }
 import std.witness_admission { WitnessConsumerCadence, QuarantineProbeExpectRed }
 import v2.std.algebra { Cons, Empty, fold_list }
-import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 

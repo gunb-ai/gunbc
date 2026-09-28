@@ -1,10 +1,8 @@
 module v2.std.timeseries_signal
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Optional,
   Absent,

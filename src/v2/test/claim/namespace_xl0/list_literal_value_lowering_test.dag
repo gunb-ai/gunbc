@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_xl0.list_literal_value_lowering
 
+import std.types { List }
 import v2.compiler.compile {
   NativeCensusModuleFileRefused,
   NativeCensusModuleOutcome,
@@ -24,7 +25,7 @@ import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }

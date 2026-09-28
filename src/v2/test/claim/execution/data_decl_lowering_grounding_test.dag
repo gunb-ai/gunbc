@@ -1,5 +1,6 @@
 module v2.test.execution.data_decl_lowering_grounding
 
+import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -18,7 +19,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
