@@ -17,6 +17,7 @@ import v2.extdeps.languages.dag {
   dag_kernel_type_declaration_binding_optional,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
+  dag_node_is_symbol_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
@@ -1050,6 +1051,8 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
 
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
+    Accepted { value: n, diagnostics: None }
+  } else if dag_node_is_symbol_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
   } else if dag_node_is_float_literal_atom(node: n) {
     Rejected {

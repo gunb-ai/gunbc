@@ -38,6 +38,8 @@ import v2.extdeps.languages.dag {
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
+  dag_node_is_symbol_literal_atom,
+  dag_symbol_literal_node,
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
@@ -538,6 +540,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
     ComputationNode { behavior: _ } => true
     _ =>
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+        || dag_node_is_symbol_literal_atom(node: node)
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
@@ -1235,15 +1238,16 @@ fn body_lower_is_block_delimiter_token(id: Symbol) -> Bool {
   (id == ^dag_token_lbrace) || (id == ^dag_token_rbrace)
 }
 
-// A CARET SYMBOL (`^name`) IS dag_grammar_caret_symbol_expr: seq(`^`, name), and body lowering has
-// no lowered form for it yet (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form). Every
-// value position -- argument, let value, body, data and field initializer, arm body, scrutinee,
-// if-branch, list item, condition operand -- reached body_lower_primary_expr's first-atom fallback,
-// which answered the caret with its `^` token: `if id == ^a {..} else if id == ^b {..}` accepted
-// with both conditions lowered to `id == ^`, two symbols made one node. The fallback now refuses a
-// caret shape, located at the `^` token, with its own cause, so the refused population is exactly
-// what the symbol-literal lowering must take over. Answers the `^` token node when the capture is one.
-fn body_lower_caret_symbol_token_optional(captured: Node) -> Optional<Node> {
+// A CARET SYMBOL (`^name`) IS dag_grammar_caret_symbol_expr: seq(`^`, name), whose name terminal is
+// lexeme-stamped. It lowers to a symbol literal (v2.extdeps.languages.dag dag_symbol_literal_node):
+// the caret atom, at the `^` token's occurrence, carrying the name terminal -- its own occurrence
+// kept -- as its one named payload. Before MQ-1 PR-2 every value position answered it with the bare
+// `^` token (two symbols, one node), then PR-1 refused it here; this is the lowered form both lacked.
+fn body_lower_symbol_literal_at_caret(caret: Node, name: Node) -> Node {
+  dag_symbol_literal_node(name: name, occurrence_id: caret.occurrence_id)
+}
+
+fn body_lower_caret_symbol_literal_optional(captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(
     node: body_lower_unwrap_surface_shell(node: captured)
   ) {
@@ -1254,7 +1258,12 @@ fn body_lower_caret_symbol_token_optional(captured: Node) -> Optional<Node> {
       ) {
         Present { value: id } =>
           if id == ^dag_token_caret {
-            optional_present(value: body_lower_deep_unwrap_optional(node: pair.left))
+            optional_present(
+              value: body_lower_symbol_literal_at_caret(
+                caret: body_lower_deep_unwrap_optional(node: pair.left),
+                name: body_lower_deep_unwrap_optional(node: pair.right)
+              )
+            )
           } else {
             optional_absent()
           }
@@ -7754,11 +7763,8 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       match body_lower_paren_group_inner_optional(node: captured) {
         Present { value: inner } => body_lower_paren_group_lowered(group: captured, inner: inner)
         Absent =>
-      match body_lower_caret_symbol_token_optional(captured: captured) {
-        Present { value: caret } =>
-          outcome_rejected(
-            d: body_lower_diagnostic(reason: ^body_lowering_reason_caret_symbol_not_lowered, n: caret)
-          )
+      match body_lower_caret_symbol_literal_optional(captured: captured) {
+        Present { value: literal } => outcome_accepted(value: literal)
         Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
