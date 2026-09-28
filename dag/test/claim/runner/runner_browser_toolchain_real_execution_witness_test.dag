@@ -1,0 +1,140 @@
+module test.claim.runner.runner_browser_toolchain_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.posix.test_utility { test_exists_command }
+import extdeps.automation.playwright { playwright_1_62_1_npm_tarball }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.verified_archive_install {
+  ArchiveSha256, ArchiveNpmIntegrity, ArchiveDigestPin,
+  verified_archive_install, verify_archive_digest,
+  ArchiveInstalled, ArchiveDigestMismatched, ArchiveDigestMatches, ArchiveDigestMismatch,
+}
+import gunbc.runner_browser_toolchain { library_readback_wet, HostLibrariesResolved }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SHARED FETCH-VERIFY-INSTALL FOLD, RUN FOR REAL. Every fn here creates a temporary directory,
+// writes a fixture, FETCHES it with curl over a file:// URL (the same curl_download_command the
+// converge uses against the CDN, so the fetch leg is the production argv), verifies it with the
+// real sha256sum or sha512sum, and runs a real install command only when the verdict allows it. No
+// network, no remote host, no Cargo: the local-repo wet lane's subject. The full-toolchain
+// converge-then-readback, including headless Chromium rendering a local page, is the
+// RunnerBrowserToolchainConverge dispatch on a pool host; these are its discriminating controls
+// on the fold every archive goes through.
+
+data fixture_content: String = "gunbc-browser-toolchain-archive-fixture\n"
+
+data wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000"
+
+fn exists(path: String) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+}
+
+fn install_fixture(dir: String, pin: ArchiveDigestPin) -> Bool {
+  let source = concat(dir, "/source")
+  let archive = concat(dir, "/archives/fixture")
+  let installed = concat(dir, "/installed")
+  let outcome = verified_archive_install(
+    fetch: [mkdir_parents_command(path: concat(dir, "/archives")), curl_download_command(url: concat("file://", source), destination: archive)],
+    archive: archive as NonEmptyStr,
+    pin: pin,
+    install: [mkdir_parents_command(path: installed)],
+  )
+  match outcome { ArchiveInstalled => true  _ => false }
+}
+
+// CONVERGE THEN READ BACK, GREEN: the pin is an INDEPENDENT reading of the source bytes (sha256sum
+// over the source file, before any fetch), the fold installs, the install's product exists, and a
+// readback of the RETAINED archive verifies against the same pin -- the readback the converge's
+// standing is built from.
+test fn a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let result = match sha256sum_file_digest_via_shell(path: concat(d, "/source") as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: dg } => {
+      let pin = ArchiveSha256 { hex: dg.hex }
+      install_fixture(dir: d, pin: pin)
+        && exists(path: concat(d, "/installed"))
+        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin) { ArchiveDigestMatches => true  _ => false })
+    }
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && result
+}
+
+// A DIGEST MISMATCH REFUSES AND INSTALLS NOTHING. The fetch succeeds -- the archive is on disk --
+// and the install command is never run: its product does not exist afterwards.
+test fn a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let outcome = verified_archive_install(
+    fetch: [mkdir_parents_command(path: concat(d, "/archives")), curl_download_command(url: concat("file://", concat(d, "/source")), destination: concat(d, "/archives/fixture"))],
+    archive: concat(d, "/archives/fixture") as NonEmptyStr,
+    pin: ArchiveSha256 { hex: wrong_sha256 },
+    install: [mkdir_parents_command(path: concat(d, "/installed"))],
+  )
+  let refused = match outcome { ArchiveDigestMismatched { archive: _ } => true  _ => false }
+  let fetched = exists(path: concat(d, "/archives/fixture"))
+  let installed = exists(path: concat(d, "/installed"))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && refused && fetched && installed == false
+}
+
+// THE NPM ARM: a well-formed SRI of OTHER bytes (Playwright's published integrity) against the
+// fixture is a MISMATCH, not unverifiable -- the decoder accepted the wire and sha512sum read the
+// file, so the answer is about the bytes. Nothing is installed.
+test fn an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let outcome = verified_archive_install(
+    fetch: [mkdir_parents_command(path: concat(d, "/archives")), curl_download_command(url: concat("file://", concat(d, "/source")), destination: concat(d, "/archives/fixture"))],
+    archive: concat(d, "/archives/fixture") as NonEmptyStr,
+    pin: ArchiveNpmIntegrity { wire: playwright_1_62_1_npm_tarball.integrity },
+    install: [mkdir_parents_command(path: concat(d, "/installed"))],
+  )
+  let refused = match outcome { ArchiveDigestMismatched { archive: _ } => true  _ => false }
+  let installed = exists(path: concat(d, "/installed"))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && refused && installed == false
+}
+
+// A RETAINED ARCHIVE WHOSE BYTES CHANGED AFTER IT VERIFIED READS BACK AS A MISMATCH -- the readback
+// hashes the bytes on disk now, it does not remember the check that passed.
+test fn a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let result = match sha256sum_file_digest_via_shell(path: concat(d, "/source") as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: dg } => {
+      let pin = ArchiveSha256 { hex: dg.hex }
+      let placed = install_fixture(dir: d, pin: pin)
+      let altered = Filesystem.Write(path: concat(d, "/archives/fixture"), content: "altered after verification\n")
+      placed && altered.success
+        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin) { ArchiveDigestMismatch => true  _ => false })
+    }
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && result
+}
+
+// THE LIBRARY READBACK'S ROUTE: real ldd over a real dynamically linked binary on the runner reads
+// back resolved. The refusal arm, with its location, is discriminated on measured ldd output in
+// test.claim.runner.runner_browser_toolchain_witness.
+test fn the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution() -> Bool {
+  match library_readback_wet(binary: "/bin/sh") {
+    HostLibrariesResolved { binary: b } => (b as String) == "/bin/sh"
+    _ => false
+  }
+}

@@ -1,0 +1,110 @@
+module gunbc.verified_archive_install
+
+import std.types { String, NonEmptyStr, List, FilePath, Bool }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import extdeps.npm { npm_decode_integrity, NpmSingleSha512Integrity }
+import gunbc.package_delivery {
+  admit_observed_archive_digest, observe_package_archive_at_path,
+  PackageArchiveDigestMatched, PackageArchiveDigestMismatch, PackageArchiveDigestObservationFailed,
+}
+import gunbc.command_runner { run_shell_commands, LocalExec }
+
+// FETCH, VERIFY, THEN INSTALL -- ONE FOLD FOR EVERY CONVERGE THAT PLACES A DOWNLOADED ARCHIVE ON A
+// HOST. gunbc.runner_microvm_host_ready wrote this sequence inline for the Firecracker release; the
+// browser toolchain (gunbc.runner_browser_toolchain) needs it five times over, and a second inline
+// copy would be two authorities for "an archive whose bytes were not verified is never unpacked"
+// (operator condition on the RunnerBrowserToolchainConverge ruling, 2026-09-28: extract, never
+// copy). Both converges now call this.
+//
+// THE PIN IS TYPED BY WHO PUBLISHED IT, because the two upstream forms verify through different
+// authorities and neither is a rendering of the other: a sha256 hex (a release's SHASUMS file, or a
+// receipt of this repository's own observation) goes through extdeps.tools.sha256sum, and an npm SRI
+// wire goes through extdeps.npm's decoder and gunbc.package_delivery's sha512 admission -- the route
+// the Codex package delivery already uses, so npm integrity has one verifier in this corpus.
+type ArchiveDigestPin
+  = ArchiveSha256 { hex: NonEmptyStr }
+  | ArchiveNpmIntegrity { wire: NonEmptyStr }
+
+// UNVERIFIABLE IS NOT MISMATCH. A broken mktemp, an unreadable file or a pin wire this decoder does
+// not accept establishes nothing about the archive's bytes; reporting it as a mismatch would send an
+// operator to distrust a download that may be fine, and reporting it as a match would be the
+// fabricated arm.
+type ArchiveDigestVerdict
+  = ArchiveDigestMatches
+  | ArchiveDigestMismatch
+  | ArchiveDigestUnverifiable { reason: String }
+
+fn verify_archive_digest(archive: NonEmptyStr, pin: ArchiveDigestPin) -> ArchiveDigestVerdict {
+  match pin {
+    ArchiveSha256 { hex: h } =>
+      match sha256sum_verify_via_shell(path: archive, expected_digest: h) {
+        Sha256Matches => ArchiveDigestMatches
+        Sha256Mismatch => ArchiveDigestMismatch
+        Sha256VerifyInfraFailure { reason: r } => ArchiveDigestUnverifiable { reason: r as String }
+      }
+    ArchiveNpmIntegrity { wire: w } =>
+      match npm_decode_integrity(wire: w as String) {
+        NpmSingleSha512Integrity { digest: expected } =>
+          match admit_observed_archive_digest(
+            expected: expected,
+            observation: observe_package_archive_at_path(locator: archive, path: (archive as String) as FilePath),
+          ) {
+            PackageArchiveDigestMatched { locator: _, digest: _ } => ArchiveDigestMatches
+            PackageArchiveDigestMismatch { locator: _, expected: _, observed: _ } => ArchiveDigestMismatch
+            PackageArchiveDigestObservationFailed { locator: _, cause: c } => ArchiveDigestUnverifiable { reason: c as String }
+          }
+        _ => ArchiveDigestUnverifiable { reason: "the pinned npm integrity wire does not decode to a single sha512 expression, so there is no digest to compare against" }
+      }
+  }
+}
+
+// FOUR REFUSALS, EACH A DIFFERENT PLACE TO LOOK. Only ArchiveInstalled ran the install commands, and
+// the two digest arms are reached having run NONE of them: the install sits in the Matches arm of a
+// match, so it is a branch rather than an argument and cannot be evaluated for an archive that did
+// not verify.
+type VerifiedArchiveInstallOutcome
+  = ArchiveInstalled
+  | ArchiveFetchRefused { archive: NonEmptyStr, reason: String }
+  | ArchiveDigestMismatched { archive: NonEmptyStr }
+  | ArchiveDigestUnverified { archive: NonEmptyStr, reason: String }
+  | ArchiveInstallRefused { archive: NonEmptyStr, reason: String }
+
+fn verified_archive_install(
+  fetch: List<ArgvCommand>,
+  archive: NonEmptyStr,
+  pin: ArchiveDigestPin,
+  install: List<ArgvCommand>,
+) -> VerifiedArchiveInstallOutcome {
+  match run_shell_commands(commands: fetch, transport: LocalExec) {
+    ExitFailure { code: _, reason: r } => ArchiveFetchRefused { archive: archive, reason: r }
+    ExitSuccess =>
+      match verify_archive_digest(archive: archive, pin: pin) {
+        ArchiveDigestMismatch => ArchiveDigestMismatched { archive: archive }
+        ArchiveDigestUnverifiable { reason: r } => ArchiveDigestUnverified { archive: archive, reason: r }
+        ArchiveDigestMatches =>
+          match run_shell_commands(commands: install, transport: LocalExec) {
+            ExitSuccess => ArchiveInstalled
+            ExitFailure { code: _, reason: r } => ArchiveInstallRefused { archive: archive, reason: r }
+          }
+      }
+  }
+}
+
+fn verified_archive_install_holds(outcome: VerifiedArchiveInstallOutcome) -> Bool {
+  match outcome {
+    ArchiveInstalled => true
+    _ => false
+  }
+}
+
+fn verified_archive_install_text(outcome: VerifiedArchiveInstallOutcome) -> String {
+  match outcome {
+    ArchiveInstalled => "installed"
+    ArchiveFetchRefused { archive: a, reason: r } => join(["ArchiveFetchRefused -- fetching ", a as String, " failed (", r, "); nothing was verified or installed"], "")
+    ArchiveDigestMismatched { archive: a } => join(["ArchiveDigestMismatched -- ", a as String, " does not hash to its pinned digest; installing NOTHING"], "")
+    ArchiveDigestUnverified { archive: a, reason: r } => join(["ArchiveDigestUnverified -- the digest of ", a as String, " could not be checked (", r, "); installing NOTHING"], "")
+    ArchiveInstallRefused { archive: a, reason: r } => join(["ArchiveInstallRefused -- ", a as String, " verified but its install commands failed (", r, ")"], "")
+  }
+}

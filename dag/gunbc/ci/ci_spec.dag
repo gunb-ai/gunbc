@@ -891,6 +891,11 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
   function: "runner_password_session_tool_converge_ci_wet",
 }
 
+data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_browser_toolchain.dag",
+  function: "runner_browser_toolchain_converge_ci_wet",
+}
+
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
@@ -1258,6 +1263,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
+    gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
@@ -2507,6 +2513,16 @@ fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
     function: gunbc_ci_site_pxe_edge_converge_target.function,
     claim_run: false,
     receipt_rel: site_pxe_edge_converge_receipt_path
+  )
+}
+
+fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_browser_toolchain_converge_target.entry,
+    function: gunbc_ci_runner_browser_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
   )
 }
 

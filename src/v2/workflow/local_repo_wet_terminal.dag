@@ -692,6 +692,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",

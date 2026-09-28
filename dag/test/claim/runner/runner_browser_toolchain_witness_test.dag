@@ -1,0 +1,191 @@
+module test.claim.runner.runner_browser_toolchain_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import extdeps.github.actions { SelfHosted }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
+import gunbc.runner_host_deploy { RunnerHostDeploy, fleet_runner_host_deploys }
+import product.placement_supply { HostIdentity }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainLocation, runner_browser_toolchain_location,
+  BrowserToolchainPool, BrowserToolchainPoolDerived, BrowserToolchainPoolUndefined,
+  runner_browser_toolchain_pool, runner_browser_toolchain_pool_of,
+  BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission_in,
+  HostLibraryReadback, HostLibrariesResolved, HostLibrariesMissing, HostLibrariesUnreadable,
+  host_library_readback_of, library_readback_text,
+  VersionMatches, VersionMismatch, VersionUnreadable, exact_version_readback_of, version_readback_of,
+  BrowserLaunchRendered, BrowserLaunchWrongPage, launch_readback_of,
+  runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
+}
+import extdeps.automation.playwright { PlaywrightHostLibraryPackage, playwright_chromium_install_deps_ubuntu2404_arm64 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------------------------
+// THE POOL
+// ---------------------------------------------------------------------------------------------
+
+fn floor_labels() -> List<String> {
+  match gunbc_ci_selected_runner_spec() {
+    SelfHosted { labels: ls } => ls
+    _ => []
+  }
+}
+
+fn covers(have: List<String>, want: List<String>) -> Bool {
+  fold(want, init: true, f: (acc, w) => acc && fold(have, init: false, f: (f2, h) => f2 || h == w))
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN 5). Every rostered runner host is in the
+// derived pool EXACTLY WHEN its own registration labels cover the floor job's runs-on labels -- in
+// both directions, over the roster independently enumerated by fleet_runner_host_deploys. A pool
+// that dropped a covering host, or admitted one that does not cover, reds here.
+test fn the_pool_is_exactly_the_rostered_hosts_that_register_the_floor_labels() -> Bool {
+  match runner_browser_toolchain_pool() {
+    BrowserToolchainPoolUndefined { cause: _ } => false
+    BrowserToolchainPoolDerived { hosts: pool } =>
+      list_length(floor_labels()) > 0
+        && fold(fleet_runner_host_deploys, init: true, f: (acc, d) => {
+          let covering = match runner_registration_labels(host: (d.host_label as String) as HostIdentity) {
+            RegistrationLabelsResolved { labels: ls } => covers(have: ls, want: floor_labels())
+            RegistrationLabelsRefused { host: _, cause: _ } => false
+          }
+          let member = fold(pool, init: false, f: (m, p) => m || (p.host_label as String) == (d.host_label as String))
+          acc && (covering == member)
+        })
+        && list_length(pool) > 0
+  }
+}
+
+// A ROSTER ROW WHOSE HOST HAS NO FLEET COMPUTE OFFER HAS NO REGISTRATION LABELS, SO IT IS NOT IN THE
+// POOL -- supplied rather than looked for in the live roster, so the discrimination does not depend
+// on the fleet happening to carry such a host today.
+test fn a_host_that_registers_no_floor_labels_is_not_in_the_pool() -> Bool {
+  match fleet_runner_host_deploys {
+    Empty => false
+    Cons { head: real, tail: _ } => {
+      let stranger = RunnerHostDeploy {
+        host_label: "no-such-runner-host",
+        ssh_target: real.ssh_target,
+        runner_user: real.runner_user,
+        unit_user: real.unit_user,
+        job_user: real.job_user,
+        app: real.app,
+        runner_count: 1,
+      }
+      match runner_browser_toolchain_pool_of(deploys: [real, stranger]) {
+        BrowserToolchainPoolDerived { hosts: hs } =>
+          fold(hs, init: true, f: (acc, h) => acc && (h.host_label as String) != "no-such-runner-host")
+        BrowserToolchainPoolUndefined { cause: _ } => false
+      }
+    }
+  }
+}
+
+test fn a_host_outside_the_pool_is_refused_by_name() -> Bool {
+  match runner_browser_toolchain_host_admission_in(pool: runner_browser_toolchain_pool(), host: "no-such-runner-host") {
+    BrowserToolchainHostRefused { host: h, cause: c } =>
+      (h as String) == "no-such-runner-host" && string_contains(s: c, pattern: "is not in the pool that runs the floor job")
+    BrowserToolchainHostAdmitted { deploy: _, location: _ } => false
+  }
+}
+
+test fn an_undefined_pool_refuses_every_host_rather_than_admitting_none_silently() -> Bool {
+  match runner_browser_toolchain_host_admission_in(pool: BrowserToolchainPoolUndefined { cause: "no fleet target" }, host: "srv1") {
+    BrowserToolchainHostRefused { host: _, cause: c } => c == "no fleet target"
+    BrowserToolchainHostAdmitted { deploy: _, location: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE LOCATION (the consumer seam)
+// ---------------------------------------------------------------------------------------------
+
+// THE LOCATION IS ABSOLUTE AND NAMES EVERY PIN, so a consumer under the floor job's isolated HOME
+// still reaches the converged tree, and a pin bump lands beside the old tree rather than in it.
+test fn the_location_is_absolute_under_the_job_users_home_and_names_its_pins() -> Bool {
+  let loc = runner_browser_toolchain_location(job_user: "ghrunner")
+  (loc.root as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/playwright-1.62.1-node-v24.21.0-linux-arm64"
+    && (loc.node_binary as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/playwright-1.62.1-node-v24.21.0-linux-arm64/node/bin/node"
+    && (loc.node_path as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/playwright-1.62.1-node-v24.21.0-linux-arm64/node_modules"
+    && (loc.headless_shell as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/playwright-1.62.1-node-v24.21.0-linux-arm64/ms-playwright/chromium_headless_shell-1234/chrome-linux/headless_shell"
+    && (loc.chromium as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/playwright-1.62.1-node-v24.21.0-linux-arm64/ms-playwright/chromium-1234/chrome-linux/chrome"
+}
+
+// ---------------------------------------------------------------------------------------------
+// MISSING HOST LIBRARY REFUSES WITH ITS LOCATION
+// ---------------------------------------------------------------------------------------------
+
+// MEASURED, NOT AUTHORED: an excerpt of `ldd chrome-linux/headless_shell` (revision 1234, arm64) on a
+// Debian 13 container with none of the install-deps set present, 2026-09-28.
+data measured_ldd_missing: String = "\tlinux-vdso.so.1 (0x0000ffff9b4b0000)\n\tlibdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000ffff9b440000)\n\tlibglib-2.0.so.0 => not found\n\tlibnss3.so => not found\n\tlibpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000ffff9b410000)\n\tlibXrandr.so.2 => not found\n"
+
+data measured_ldd_resolved: String = "\tlinux-vdso.so.1 (0x0000ffff9b4b0000)\n\tlibdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000ffff9b440000)\n\tlibc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff9b260000)\n"
+
+data witness_binary: NonEmptyStr = "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/ms-playwright/chromium_headless_shell-1234/chrome-linux/headless_shell"
+
+test fn a_missing_host_library_refuses_naming_the_binary_the_soname_and_its_package() -> Bool {
+  match host_library_readback_of(binary: witness_binary, ldd_output: measured_ldd_missing) {
+    HostLibrariesMissing { binary: b, missing: ms } => {
+      let text = library_readback_text(l: HostLibrariesMissing { binary: b, missing: ms })
+      (b as String) == (witness_binary as String)
+        && list_length(ms) == 3
+        && string_contains(s: text, pattern: witness_binary as String)
+        && string_contains(s: text, pattern: "libglib-2.0.so.0 (package libglib2.0-0t64)")
+        && string_contains(s: text, pattern: "libnss3.so (package libnss3)")
+        && string_contains(s: text, pattern: "libXrandr.so.2 (package libxrandr2)")
+    }
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL: the same reader over output with no unresolved line is resolved -- without
+// it the red above is satisfied by a reader that always reports missing.
+test fn a_binary_whose_libraries_all_resolve_reads_back_resolved() -> Bool {
+  match host_library_readback_of(binary: witness_binary, ldd_output: measured_ldd_resolved) {
+    HostLibrariesResolved { binary: b } => (b as String) == (witness_binary as String)
+    _ => false
+  }
+}
+
+// EVERY SONAME PLAYWRIGHT'S TABLE MAPS FOR THIS BUILD NAMES A PACKAGE THE CONVERGE INSTALLS, so a
+// library the readback reports missing is always one the converge was supposed to have provided.
+test fn every_install_deps_package_is_a_converge_requirement() -> Bool {
+  fold(playwright_chromium_install_deps_ubuntu2404_arm64, init: true, f: (acc, p) =>
+    acc && fold(runner_browser_toolchain_apt_requirements(), init: false, f: (found, r) =>
+      found || (r.package as String) == ((p as NonEmptyStr) as String)))
+}
+
+// ---------------------------------------------------------------------------------------------
+// VERSION AND LAUNCH READBACK
+// ---------------------------------------------------------------------------------------------
+
+test fn node_version_readback_is_exact() -> Bool {
+  (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v24.21.0\n") { VersionMatches { subject: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v24.21.01\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v18.19.1\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "") { VersionUnreadable { subject: _, reason: _ } => true  _ => false })
+}
+
+test fn chromium_version_readback_reads_the_version_on_its_line() -> Bool {
+  (match version_readback_of(subject: "chromium", expected: "151.0.7922.34", output: "Chromium 151.0.7922.34 \n") { VersionMatches { subject: _, observed: _ } => true  _ => false })
+    && (match version_readback_of(subject: "chromium", expected: "151.0.7922.34", output: "Chromium 150.0.7871.0\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+}
+
+test fn the_launch_readback_requires_the_probe_title_and_a_laid_out_width() -> Bool {
+  (match launch_readback_of(output: "{\"title\":\"gunbc-browser-toolchain-inhabitance\",\"width\":\"137\"}\n") {
+    BrowserLaunchRendered { title: _, rendered_width: w } => w == "137"
+    _ => false
+  })
+    && (match launch_readback_of(output: "{\"title\":\"gunbc-browser-toolchain-inhabitance\",\"width\":\"0\"}") { BrowserLaunchWrongPage { observed: _ } => true  _ => false })
+    && (match launch_readback_of(output: "{\"title\":\"about:blank\",\"width\":\"137\"}") { BrowserLaunchWrongPage { observed: _ } => true  _ => false })
+}
+
+// FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install
+// chromium` places, plus the runtime its engines floor requires.
+test fn the_toolchain_places_five_pinned_archives() -> Bool {
+  list_length(runner_browser_toolchain_archives) == 5
+}
