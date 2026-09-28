@@ -4040,8 +4040,8 @@ fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
 // THE DOMAIN AND ITS DECLARED ORDER COME OUT OF THE ONE PARAMETER-LIST MINT (v2.std.anonymous_binder
 // anonymous_binder_mint_parameter_list), exactly as a named fn's do: every binder the author spelled
 // `_` is relabelled `<anonymous-parameter-N>` by its slot, every other binder keeps its name, and the
-// labels' authored order is carried beside the domain, because the domain is a Conj sorted by label
-// and cannot carry it. The minted labels then key both the domain edge and its fresh type parameter.
+// labels' authored order is carried beside the domain, because the domain is a Conj -- a set of
+// labelled binders that canonicalization sorts by label -- and cannot carry it. The minted labels then key both the domain edge and its fresh type parameter.
 // The mint relabels Named edges and passes any other edge through unchanged, so every edge here is
 // Named; one that were not would be kept in the domain as is, where v2.std.node edges_conform refuses
 // a Positional edge in a record -- loudly.
