@@ -11139,6 +11139,7 @@ pub enum WitnessRuntimeCause {
     TypeError,
     CrossRepresentationEquality,
     StringRealizationStraddle,
+    VariantRealizationRefused,
     PoolRootContributesNothing,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
@@ -11177,6 +11178,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::TypeError => "type-error",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
+            WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
@@ -11213,6 +11215,7 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
+            E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             E::RestResponseUndecodable { .. } => WitnessRuntimeCause::RestResponseUndecodable,
