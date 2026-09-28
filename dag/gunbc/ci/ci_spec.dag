@@ -2024,6 +2024,10 @@ fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
 // tests in the clippy lane (gunbc.compiler_gate_workflow). The callers differ in the leaf's name and
 // its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
 // afterwards inherits a memory.max that gunbc.host_budget_source reads as an ordinary observation.
+// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
+// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
+data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings shared by the heal publisher prelude and the clippy lane's rust_unit_tests step (gunbc.compiler_gate_workflow compiler_gate_unit_test_command) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; both callers then consume that op and this function is deleted")
+
 fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
   [
     concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
