@@ -1,0 +1,5 @@
+fabric_writer_identity host=srv2
+observed_at=2026-09-28T20:02:52Z
+binding=served https://srv1.tailecbe08.ts.net:10000/fabric-storage
+identity=absent
+ground=principal-unavailable the proxy presented no login for this host (a tagged device, or no proxy on the route); a login roster cannot admit it and its wall needs another principal

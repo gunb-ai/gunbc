@@ -1,0 +1,129 @@
+resolved 549 sources
+✓ typecheck v2.std.compilers.target_model done in 20 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 88ms
+✓ compile.normalize done in 9ms
+✓ compile.reconcile done in 159ms
+✓ compile.analyses done in 7ms
+gunbc serve listening on unix:/tmp/gunbc-hold-storage-8jqzatb8/door.sock:0 -> served_storage_socket_hold_handler() release_revision=42d676c533aa5f61fd0821e2db4850a090e82cff eval_budget_cpu_ms=unset eval_budget_wall_ms=unset
+serve: write error: Broken pipe (os error 32)
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-8jqzatb8/heads
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-8jqzatb8/heads
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] write_create_new /tmp/gunbc-hold-storage-8jqzatb8/objects/7a24d5eacfb72b70 (264 bytes)
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] write_create_new /tmp/gunbc-hold-storage-8jqzatb8/objects/f855659bc1986311 (64 bytes)
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-8jqzatb8/heads
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-8jqzatb8/heads
+[file] write_create_new /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1 (16 bytes)
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.2
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.2
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/7a24d5eacfb72b70
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.2
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/7a24d5eacfb72b70
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.2
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/7a24d5eacfb72b70

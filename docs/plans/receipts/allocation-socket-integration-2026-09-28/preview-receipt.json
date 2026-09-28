@@ -1,0 +1,32 @@
+{
+  "revision": "82c8bf43f81ac660ed74ff356b82e7e4bfe7fa0b",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "binary_sha256": "bf9fae33a19042737978cd913c77f7aab3548a83ab4d58c59f34b6c6404ead9f",
+  "command": [
+    "/home/briansrls/scratch-wt/allocation-vertical-resume/target/release/gunbc",
+    "serve",
+    "--source-root",
+    "dag",
+    "--source-root",
+    "src/v2",
+    "--entry",
+    "dag/gunbc/roadmap/roadmap_serve.dag",
+    "--function",
+    "roadmap_serve_handle_srv2_preview",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--release-revision",
+    "82c8bf43f81ac660ed74ff356b82e7e4bfe7fa0b"
+  ],
+  "ready": true,
+  "port": 42293,
+  "duration_seconds": 297.21,
+  "memory": {
+    "memory.max": "56908316672",
+    "memory.swap.max": "0",
+    "memory.peak": "12018429952",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  }
+}

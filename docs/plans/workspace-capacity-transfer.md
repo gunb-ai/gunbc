@@ -79,3 +79,35 @@ memory values. Credential/allocation/readiness paths were absent or inaccessible
 to the current account; this does not distinguish absence from denied traversal.
 The HTTPS listener returned 405 to GET; that is reachability, not authenticated
 protected-state acceptance.
+
+
+## Protected-state commissioning readback and credential boundary
+
+Subsequent root metadata readback on srv1 establishes that these paths are absent,
+not merely inaccessible to the login account:
+
+- `/etc/gunbc-fabric-storage/state-writer-mac-key`
+- `/var/lib/gunbc/fabric/allocation`
+- `/var/lib/gunbc/microvm-cell-readiness`
+
+No secret contents were read and no paths were created. The absent key file does
+not establish absence of the version-pinned GCP secret.
+
+`fabric_storage_state_provision` contains an app approval request and apply helper,
+but repository search found no workflow invoking them. The apply helper currently
+expects one credential for both initial secret material and accessor policy
+reconciliation. That is not the existing fleet principal split: the convergence
+principal cannot modify policy, while `iam-converge` explicitly denies secret
+version creation and access. Do not widen either identity or substitute an
+operator bearer token to make this helper run.
+
+Before commissioning, connect the existing secret actuator and accessor policy
+convergence under their respective admitted authorities, with approval over the
+concrete effects and independent readback. First observe whether the pinned secret
+already exists; a missing host file is not permission to create replacement
+material. This credential connection is part of the allocation vertical, not a
+claim that the broader GCP consumer migration has been completed.
+
+The restricted socket dependency #12482 remains open. Its transport was integrated
+and locally qualified in #12505, but neither the dependency nor the allocation
+controller has been installed by this work. Preserve the review/commissioning gate.

@@ -1,0 +1,22 @@
+resolved 549 sources
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+◐ started compile.frontend
+✓ compile.frontend done in 97ms
+✓ compile.normalize done in 10ms
+✓ compile.reconcile done in 181ms
+✓ compile.analyses done in 8ms
+gunbc serve listening on unix:/tmp/gunbc-hold-storage-8jqzatb8/door.sock:0 -> served_storage_socket_hold_handler() release_revision=42d676c533aa5f61fd0821e2db4850a090e82cff eval_budget_cpu_ms=unset eval_budget_wall_ms=unset
+serve: write error: Broken pipe (os error 32)
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-writer
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/heads/roadmap-events-v1.2
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-8jqzatb8/objects/7a24d5eacfb72b70

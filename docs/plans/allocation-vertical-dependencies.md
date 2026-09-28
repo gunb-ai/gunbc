@@ -397,3 +397,30 @@ The sibling socket transport remains the next integration boundary. Its source a
 serve transport. It must preserve this branch's protected-state route, and both
 local and remote protected writers must traverse the admitted socket path.
 Socket availability alone does not establish queued-acquisition fencing/drainage.
+
+
+## Restricted socket integrated and exercised
+
+The transport changes from open sibling #12482 at `6c6a238c9` are integrated at
+`82c8bf43f`, with protected-service admission corrected at `42d676c53`.
+The branch's cookie/response-header support and separate protected-state protocol
+are preserved. Public writes use peer/login roster admission. Protected traffic
+from the trusted proxy requires its service signature, including tagged hosts
+with no login principal; local peers still require their account admission.
+
+The rebuilt branch binary reaches full preview listening readiness (850 modules,
+297.21 seconds, 11.19 GiB peak). The protected route passes actual Unix-socket
+append/read, exact refusal controls, cookie/header transport and restart tests.
+An injected proxy-without-login fixture also passes valid service authentication
+and rejects the wrong signing key. It is not a live proxy acceptance claim.
+Receipts and qualification limits are in
+`receipts/allocation-socket-integration-2026-09-28/`.
+
+Read-only live observation establishes that srv2 presents no proxy login. Root
+metadata readback on srv1 establishes absence of the configured state-key file,
+allocation directory and readiness directory. This does not prove a missing GCP
+secret or establish free capacity. No live service or capacity was changed.
+
+The socket dependency is still open and overall HOLD remains. Commissioning,
+queued-operation recovery guarantees, current preparation evidence, remote
+convergence, maintained observations and VM lifecycle acceptance remain required.
