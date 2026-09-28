@@ -1350,7 +1350,8 @@ fn report_pre_entry_phases(
     // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
     // grew or because its work per input changed: the indexed pool (every module under every
     // --source-root) against the files of the entry's resolved closure.
-    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots);
+    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
     let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
     eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
     // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.

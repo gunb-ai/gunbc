@@ -82,7 +82,10 @@ pub fn take_lines() -> Vec<String> {
 }
 
 /// The indexed pool's module count for `source_roots` (the population the `tree` rows scale
-/// with). Reads the process-shared index the resolve already built, so it adds no walk.
-pub fn pool_module_count(source_roots: &[String]) -> usize {
-    super::process_shared_index(source_roots).source_files.len()
+/// with), or `None` when no index exists for them. Reads ONLY the index a resolve already
+/// memoized: it never builds one, so a resolve that refused on pool discovery is reported as
+/// such rather than re-walked -- or, through the panicking `process_shared_index`, turned from a
+/// typed refusal into a panic.
+pub fn pool_module_count(source_roots: &[String]) -> Option<usize> {
+    super::memoized_process_shared_index(source_roots).map(|index| index.source_files.len())
 }

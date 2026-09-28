@@ -703,6 +703,20 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// The strict-pool shared index for `source_roots` IF this thread already built it; never builds
+/// one. For readers that report on a resolve after the fact (`pre_entry_phase`), where building
+/// would repeat the discovery a refused resolve just failed.
+pub(crate) fn memoized_process_shared_index(
+    source_roots: &[String],
+) -> Option<Rc<MultiEntryIndex>> {
+    let roots_key = canonical_shared_index_roots(source_roots).join("\u{1f}");
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        s.borrow()[0]
+            .as_ref()
+            .and_then(|(k, idx)| (*k == roots_key).then(|| idx.clone()))
+    })
+}
+
 /// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
