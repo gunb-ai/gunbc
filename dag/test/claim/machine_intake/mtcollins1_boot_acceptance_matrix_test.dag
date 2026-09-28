@@ -116,6 +116,8 @@ fn healthy_media() -> MegaRacMediaWorld {
     ready_after: second(count: 12),
     withdraw_at: none,
     withdraw_after_ready: none,
+    error_after_ready: none,
+    error_clears_on_stop: false,
   }
 }
 
@@ -140,7 +142,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     ],
     agent: ModeledSshAgent { socket: "/run/ssh-agent.sock", holds_fleet_key: true },
     remote_hosts: [healthy_srv2()],
-    clock: ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0) },
+    clock: ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] },
     worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400 },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
     media: healthy_media(),
@@ -292,7 +294,7 @@ fn media_varied(media: MegaRacMediaWorld) -> MtCollins1BootWorld {
 fn media_with(images: List<MegaRacImage>, share: MegaRacShare, cd: MegaRacCdRow, ready_after: Int, withdraw_after_ready: Second?) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: [], next_session: 1, share: share, mount_cd: 1, cd_error_code: 0, images: images, cd: cd,
-    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready,
+    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false,
   }
 }
 
