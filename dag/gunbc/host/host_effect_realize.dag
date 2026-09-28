@@ -1,7 +1,7 @@
 module gunbc.host_effect_realize
 
 import std.algebra { trim, list_snoc_item, list_append }
-import v2.std.operation_argv { operation_argv_bind_text, operation_argv_cause_label, ArgvMaterialized, ArgvMaterializationRefused }
+import extdeps.dpkg { dpkg_query_status_argv, dpkg_installed_state_of, DpkgPackageInstalled, DpkgPackageNotInstalled }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -1596,7 +1596,6 @@ fn srv3_transport_witness_bin_success(
     decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
     decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_download"),
     decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_argv_success"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_dpkg_package_installed"),
   ]
 {
   match transport {
@@ -1805,6 +1804,7 @@ type Srv3TokenSubject
   | Srv3PathOwnerUser { path: String }
   | Srv3PathOwnerGroup { path: String }
   | Srv3PathMode { path: String }
+  | Srv3DpkgStatusRecord { package: NonEmptyStr }
 
 // The single public token read. The argv never crosses this boundary in either direction: callers
 // hand in a subject and receive a typed observation.
@@ -1831,6 +1831,7 @@ fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
     Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
     Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
     Srv3PathMode { path: p } => stat_mode_argv(path: p)
+    Srv3DpkgStatusRecord { package: p } => dpkg_query_status_argv(package: p)
   }
 }
 
@@ -2282,26 +2283,20 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
   }
 }
 
-// THE PACKAGE READ IS DERIVED FROM extdeps.dpkg's OWN DECLARATION, dpkg.Package.Status, through
-// v2.std.operation_argv -- the route gunbc.live_deploy already uses -- so `dpkg -s` is not spelled a
-// second time here. Exit 0 is installed and exit 1 is not-installed (the operation's own exit rows);
-// a transport that cannot run it answers Unobserved, never absent.
-data srv3_dpkg_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
-
+// THE PACKAGE READ ASKS FOR THE INSTALLED STATE, NOT FOR A STATUS RECORD. `dpkg -s` exits zero for a
+// package removed with its configuration kept, so a converge built on it would read a removed
+// library as present and install nothing (side-chat review of gunbc#12500). The read is dpkg-query's
+// status record through the sealed token surface, classified by extdeps.dpkg
+// dpkg_installed_state_of: only "Status: install ok installed" holds. No output (dpkg-query exits 1 for a package it has never
+// seen) is absent; a transport that cannot run it is Unobserved, never absent.
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
-  match shell_materialize_operation_argv(
-    srv3_dpkg_operation_path,
-    "dpkg.Package",
-    "Status",
-    [operation_argv_bind_text(name: "package", text: package as String)],
-  ) {
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      Srv3PredicateUnobserved { reason: concat("dpkg.Package.Status did not materialize an argv: ", operation_argv_cause_label(cause: c)) }
-    ArgvMaterialized { argv: argv } =>
-      match argv {
-        Empty => Srv3PredicateUnobserved { reason: "dpkg.Package.Status materialized an empty argv" }
-        Cons { head: bin, tail: rest } =>
-          srv3_transport_witness_bin_success(transport: transport, workdir: "/", bin_path: bin, args: rest)
+  match srv3_read_token(subject: Srv3DpkgStatusRecord { package: package }, transport: transport) {
+    Srv3TokenUnobserved { reason: why } => Srv3PredicateUnobserved { reason: why }
+    Srv3TokenAbsent => Srv3PredicateFails
+    Srv3TokenObserved { value: v } =>
+      match dpkg_installed_state_of(record: v) {
+        DpkgPackageInstalled => Srv3PredicateHolds
+        DpkgPackageNotInstalled { status: _ } => Srv3PredicateFails
       }
   }
 }

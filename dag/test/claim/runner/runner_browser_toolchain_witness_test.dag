@@ -17,9 +17,10 @@ import gunbc.runner_browser_toolchain {
   HostLibraryReadback, HostLibrariesResolved, HostLibrariesMissing, HostLibrariesUnreadable,
   host_library_readback_of, library_readback_text,
   VersionMatches, VersionMismatch, VersionUnreadable, exact_version_readback_of, version_readback_of,
-  BrowserLaunchRendered, BrowserLaunchWrongPage, launch_readback_of,
+  BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
+import extdeps.dpkg { dpkg_installed_state_of, dpkg_query_status_argv, DpkgPackageInstalled, DpkgPackageNotInstalled }
 import extdeps.automation.playwright { PlaywrightHostLibraryPackage, playwright_chromium_install_deps_ubuntu2404_arm64 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -175,13 +176,52 @@ test fn chromium_version_readback_reads_the_version_on_its_line() -> Bool {
     && (match version_readback_of(subject: "chromium", expected: "151.0.7922.34", output: "Chromium 150.0.7871.0\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
 }
 
+data witness_module_dir: String = "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright"
+
 test fn the_launch_readback_requires_the_probe_title_and_a_laid_out_width() -> Bool {
-  (match launch_readback_of(output: "{\"title\":\"gunbc-browser-toolchain-inhabitance\",\"width\":\"137\"}\n") {
-    BrowserLaunchRendered { title: _, rendered_width: w } => w == "137"
+  (match launch_readback_of(output: "gunbc-browser-toolchain-inhabitance\n137\n/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright/index.js\n", expected_module_dir: witness_module_dir) {
+    BrowserLaunchRendered { title: _, rendered_width: w, resolved_module: _ } => w == "137"
     _ => false
   })
-    && (match launch_readback_of(output: "{\"title\":\"gunbc-browser-toolchain-inhabitance\",\"width\":\"0\"}") { BrowserLaunchWrongPage { observed: _ } => true  _ => false })
-    && (match launch_readback_of(output: "{\"title\":\"about:blank\",\"width\":\"137\"}") { BrowserLaunchWrongPage { observed: _ } => true  _ => false })
+    && (match launch_readback_of(output: "gunbc-browser-toolchain-inhabitance\n0\n/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright/index.js", expected_module_dir: witness_module_dir) { BrowserLaunchWrongPage { observed: _ } => true  _ => false })
+    && (match launch_readback_of(output: "about:blank\n137\n/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright/index.js", expected_module_dir: witness_module_dir) { BrowserLaunchWrongPage { observed: _ } => true  _ => false })
+}
+
+// THE ROUTE, NOT ONLY THE RENDER: a launch that rendered the right page through a Playwright resolved
+// from a workspace node_modules is refused, naming what was resolved. A sibling directory whose name
+// merely starts with the expected one (playwright-decoy) is not under it.
+test fn a_render_through_a_shadowing_playwright_is_refused_as_the_wrong_module() -> Bool {
+  (match launch_readback_of(output: "gunbc-browser-toolchain-inhabitance\n137\n/home/ghrunner/work/gunbc/gunbc/node_modules/playwright/index.js", expected_module_dir: witness_module_dir) {
+    BrowserLaunchWrongModule { resolved: r, expected_under: _ } => r == "/home/ghrunner/work/gunbc/gunbc/node_modules/playwright/index.js"
+    _ => false
+  })
+    && (match launch_readback_of(output: "gunbc-browser-toolchain-inhabitance\n137\n/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright-decoy/index.js", expected_module_dir: witness_module_dir) {
+      BrowserLaunchWrongModule { resolved: _, expected_under: _ } => true
+      _ => false
+    })
+}
+
+// A PACKAGE REMOVED WITH ITS CONFIGURATION KEPT IS NOT INSTALLED. `dpkg -s` exits zero for it; the
+// converge reads the record's Status line and only "install ok installed" holds. The records are
+// dpkg's own shape (Package, Status, then the rest), so the reader is exercised on a Status line
+// that is not the first line.
+data witness_record_installed: String = "Package: libnss3\nStatus: install ok installed\nPriority: optional\n"
+
+data witness_record_config_remaining: String = "Package: libnss3\nStatus: deinstall ok config-files\nPriority: optional\n"
+
+data witness_record_unpacked: String = "Package: libnss3\nStatus: install ok unpacked\n"
+
+test fn a_removed_package_with_config_remaining_is_not_installed() -> Bool {
+  (match dpkg_installed_state_of(record: witness_record_config_remaining) { DpkgPackageNotInstalled { status: st } => st == "Status: deinstall ok config-files"  _ => false })
+    && (match dpkg_installed_state_of(record: witness_record_unpacked) { DpkgPackageNotInstalled { status: _ } => true  _ => false })
+    && (match dpkg_installed_state_of(record: "") { DpkgPackageNotInstalled { status: _ } => true  _ => false })
+    && (match dpkg_installed_state_of(record: witness_record_installed) { DpkgPackageInstalled => true  _ => false })
+}
+
+// THE PROBE ARGV CARRIES NO SHELL METACHARACTER, which is what the fleet SSH edge requires of every
+// remote word (run 36375956111 refused the ${...} format form on every package).
+test fn the_package_probe_is_a_plain_dpkg_query_status_read() -> Bool {
+  join(dpkg_query_status_argv(package: "libnss3"), " ") == "dpkg-query -s libnss3"
 }
 
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install

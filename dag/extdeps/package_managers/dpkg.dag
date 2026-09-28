@@ -1,6 +1,7 @@
 module extdeps.dpkg
 
 import std.types { NonEmptyStr, String, Bool, List }
+import std.algebra { trim }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -29,4 +30,37 @@ service dpkg.Package {
       nonzero => String "dpkg -s failed"
     }
   }
+}
+
+// THE INSTALLED STATE, NOT MERE KNOWLEDGE OF THE PACKAGE. `dpkg -s` above exits zero for any package
+// the database has a status record for -- including one REMOVED with its configuration files kept --
+// so its exit status cannot answer "is this package installed". The answer is the record's Status
+// field (dpkg-query(1), --status): "install ok installed" is installed; "deinstall ok config-files"
+// is removed with config remaining; "install ok unpacked", "half-configured" and the rest are not
+// installed. An unknown package makes dpkg-query exit 1.
+//
+// THE ARGV CARRIES NO FORMAT STRING, and that is measured rather than stylistic: the ${db:Status-Abbrev}
+// --showformat form was refused on the fleet SSH edge on every package (fleet-converge run
+// 36375956111, srv1: "remote words are not portable under the far-side shell re-parse"), because the
+// word carries shell metacharacters. The Status line of the plain record is the same fact.
+data dpkg_query_program: NonEmptyStr = "dpkg-query"
+
+fn dpkg_query_status_argv(package: NonEmptyStr) -> List<String> {
+  [dpkg_query_program as String, "-s", package as String]
+}
+
+data dpkg_status_installed_line: String = "Status: install ok installed"
+
+type DpkgInstalledState
+  = DpkgPackageInstalled
+  | DpkgPackageNotInstalled { status: String }
+
+fn dpkg_status_line_of(record: String) -> String {
+  fold(split(record, "\n"), init: "", f: (acc, line) =>
+    if acc == "" && starts_with(s: trim(s: line), prefix: "Status:") { trim(s: line) } else { acc })
+}
+
+fn dpkg_installed_state_of(record: String) -> DpkgInstalledState {
+  let status = dpkg_status_line_of(record: record)
+  if status == dpkg_status_installed_line { DpkgPackageInstalled } else { DpkgPackageNotInstalled { status: status } }
 }
