@@ -1,6 +1,6 @@
 module test.claim.spark.fabric_capacity_standing_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
@@ -21,7 +21,7 @@ import gunbc.instruments.fabric_capacity_standing {
   GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing_current,
   standing_for_authority,
 }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, AuthorityTransitionRecord }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord, current_pair_serving_authorities }
 import product.capacity.event_chain { HeadAbsent }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
@@ -315,8 +315,7 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // THE ROSTER IS SUPPLIED AT GENERATION 0 -- every claimed group's resting row, which is what the
 // authority log folds to when no transition is recorded -- so the claim stays hermetic while the
 // real group_report producer and the binding that maps it over the roster both execute. The
-// live entry, which reads that roster from the event log first, is executed by
-// test.claim.spark.fabric_capacity_standing_wet_witness on the local-repo wet lane.
+// roster READ is exercised below with a supplied executor.
 fn w_resting_current() -> List<CurrentAuthority> {
   map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
@@ -329,6 +328,38 @@ test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_t
       (live.admitting == false)
         && string_contains(s: reason, pattern: live.text)
   }
+}
+
+// THE ROSTER IS READ BEFORE ANY STANDING IS JUDGED, WITH THE EXECUTOR SUPPLIED. The live entry
+// differs from the claim above only in where the executor's name and the instant come from (the
+// host's `hostname` and clock); both are supplied here, so the verdict does not depend on which
+// runner executes it. The executor is under the RFC 2606 reserved `.invalid` TLD, so no declared
+// dashboard instance can answer for it: the real read route refuses at its store step, once per
+// claimed group, and the verdict names that read for every group. Letting an unreadable log fall
+// back to the resting row, or dropping a group from the unread population, turns this red.
+data w_off_fleet_executor: String = "off-fleet.invalid"
+data w_supplied_instant: EpochSecs = 1788000000
+
+fn w_unread_at_store(c: CurrentAuthority) -> Bool {
+  match c {
+    CurrentAuthorityUnread { group: _, step: step, reason: why } => step == "store" && string_contains(s: why, pattern: w_off_fleet_executor)
+    CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => false
+  }
+}
+
+fn w_verdict_names_the_store_read(current: List<CurrentAuthority>) -> Bool {
+  match fabric_capacity_standing_current(current: current) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      string_contains(s: reason, pattern: "group-a: serving authority could not be read at store: ")
+  }
+}
+
+test fn the_verdict_reads_the_roster_first_and_names_an_unreadable_store_for_every_group() -> Bool {
+  let current = current_pair_serving_authorities(short_hostname: w_off_fleet_executor, at: w_supplied_instant)
+  length(current) > 0 && length(current) == length(spark_pair_serving_authorities)
+    && all(current, c => w_unread_at_store(c: c))
+    && w_verdict_names_the_store_read(current: current)
 }
 
 // A SUSPENDED GROUP PRODUCES A STANDING THAT DOES NOT ADMIT, AND A RELEASED ONE TOO -- but neither
