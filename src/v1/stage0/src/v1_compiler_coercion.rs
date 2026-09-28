@@ -163,7 +163,10 @@ pub fn type_reference_identity_note() -> String {
 pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
     match dag_name.clone().as_str() {
         "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
-        "String" => Rc::new(vec!["src/v2/std/text.dag".to_string()]),
+        "String" => Rc::new(vec![
+            "src/v2/std/text.dag".to_string(),
+            "dag/std/string_type.dag".to_string(),
+        ]),
         "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
         _ => Rc::new(vec![]),
     }
@@ -268,9 +271,8 @@ pub fn text_representation_of_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> TextRepresentation {
     {
-        let authored = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
-        );
+        let authored_full = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let authored = crate::v1_std_core::qualified_last_segment(authored_full.clone());
         let resolved_name = crate::v1_std_core::qualified_last_segment(n.name.clone());
         let element = crate::v1_std_core::qualified_last_segment(text_carrier_element_name(
             n.clone(),
@@ -302,24 +304,35 @@ pub fn text_representation_of_type(
                     TextRepresentation::NotText
                 }
             } else {
-                if (authored.clone() == "String".to_string()) {
-                    if ((element.clone() == "Char".to_string())
-                        && provenance_is_corpus_declared(p.clone()))
-                    {
+                if ((authored.clone() == "String".to_string())
+                    && v1_rt::contains(authored_full.clone(), ".".to_string()))
+                {
+                    if qualified_string_names_structural_declaration(authored_full.clone()) {
                         TextRepresentation::CodePointSequence
                     } else {
-                        if (element.clone() != "".to_string()) {
-                            TextRepresentation::NotText
-                        } else {
-                            if provenance_declares_structurally("String".to_string(), p.clone()) {
-                                TextRepresentation::CodePointSequence
-                            } else {
-                                TextRepresentation::HostText
-                            }
-                        }
+                        TextRepresentation::NotText
                     }
                 } else {
-                    TextRepresentation::NotText
+                    if (authored.clone() == "String".to_string()) {
+                        if ((element.clone() == "Char".to_string())
+                            && provenance_is_corpus_declared(p.clone()))
+                        {
+                            TextRepresentation::CodePointSequence
+                        } else {
+                            if (element.clone() != "".to_string()) {
+                                TextRepresentation::NotText
+                            } else {
+                                if provenance_declares_structurally("String".to_string(), p.clone())
+                                {
+                                    TextRepresentation::CodePointSequence
+                                } else {
+                                    TextRepresentation::HostText
+                                }
+                            }
+                        }
+                    } else {
+                        TextRepresentation::NotText
+                    }
                 }
             }
         }

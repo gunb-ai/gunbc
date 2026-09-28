@@ -10493,6 +10493,19 @@ pub fn formal_code_point_view(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match crate::v1_compiler_coercion::text_representation_of_type(
+        formal.declared_type.clone(),
+        source_indices.clone(),
+    ) {
+        TextRepresentation::HostText => std::option::Option::None,
+        _ => formal_code_point_view_peeled(formal.clone(), source_indices.clone()),
+    }
+}
+
+pub fn formal_code_point_view_peeled(
+    formal: Rc<ResolvedFormal>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match crate::v1_compiler_coercion::text_representation_of_type(
         formal.declaration_bound_conformance.clone(),
         source_indices.clone(),
     ) {

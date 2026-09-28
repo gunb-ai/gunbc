@@ -136,7 +136,7 @@ data type_reference_identity_note: String = "A realization decision is made at R
 fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
     "Hash" => ["src/v2/std/node.dag"]
-    "String" => ["src/v2/std/text.dag"]
+    "String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]
     "Bool" => ["src/v2/std/logic.dag"]
     _ => []
   }
@@ -224,9 +224,10 @@ fn provenance_is_corpus_declared(p: TypeDeclarationProvenance) -> Bool {
   }
 }
 
-// A LOCAL ALIAS OF A QUALIFIED TEXT REFERENCE (`type LocalText = v2.std.text.String`) resolves to a
+// A QUALIFIED `...String` SPELLING, written directly or reached through a local alias (`type
+// LocalText = v2.std.text.String`, which resolves to a
 // childless leaf that keeps its authored spelling and carries the qualified target only as its
-// name. That target is a code-point sequence exactly when its module is on the structural roster.
+// name) names its target module. That target is a code-point sequence exactly when its module is on the structural roster.
 // The roster is keyed by file path, so the module path is mapped onto that path here -- the same
 // positional residue structural_declaration_modules_for already declares, not a second authority.
 fn qualified_string_names_structural_declaration(qualified: String) -> Bool {
@@ -236,7 +237,8 @@ fn qualified_string_names_structural_declaration(qualified: String) -> Bool {
 }
 
 fn text_representation_of_type(n: Node, source_indices: Map<String, NewlineIndex>) -> TextRepresentation {
-  let authored = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
+  let authored_full = authored_name_at(source_indices: source_indices, node: n)
+  let authored = qualified_last_segment(name: authored_full)
   let resolved_name = qualified_last_segment(name: n.name)
   let element = qualified_last_segment(name: text_carrier_element_name(n: n, source_indices: source_indices))
   let p = type_reference_provenance(n: n)
@@ -247,6 +249,8 @@ fn text_representation_of_type(n: Node, source_indices: Map<String, NewlineIndex
     else { HostText }
   } else if resolved_name == "String" && authored != "String" && contains(n.name, ".") {
     if qualified_string_names_structural_declaration(qualified: n.name) { CodePointSequence } else { NotText }
+  } else if authored == "String" && contains(authored_full, ".") {
+    if qualified_string_names_structural_declaration(qualified: authored_full) { CodePointSequence } else { NotText }
   } else if authored == "String" {
     if element == "Char" && provenance_is_corpus_declared(p: p) { CodePointSequence }
     else if element != "" { NotText }

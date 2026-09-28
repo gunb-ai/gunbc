@@ -41,7 +41,7 @@ fn admitted(source: String) -> Bool {
 
 // THE SHAPE std.string_type HAD: a local `type String = FreeMonoid<Char>` whose own body hands the
 // value to a kernel host-text primitive. The checker admitted it and rustc refused the emission
-// (eight E0308 in string_lex_compare).
+// (eight E0308 in the since-deleted string_lex_compare).
 test fn r_local_string_alias_into_kernel_primitive_refuses() -> Bool {
   refuses(source: "module probe_local_string_alias\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\ntype String = FreeMonoid<Char>\nfn text_len(t: String) -> Int { string_length(s: t) }\n")
 }
@@ -148,4 +148,29 @@ test fn c_kernel_literal_at_qualified_text_parameter_is_admitted() -> Bool {
 // String now that its std.string_type import is deleted -- the crossing is gone, not exempted.
 test fn c_markup_attribute_value_if_join_is_admitted() -> Bool {
   admitted(source: "module probe_script_src_attr\nimport std.markup { Attribute }\nfn script_src_attr(attributes: List<Attribute>) -> String {\n  fold(attributes, init: \"\", f: (acc, a) => if a.name == \"src\" { a.value } else { acc })\n}\n")
+}
+
+// EMISSION CONTROLS FOR THE ONE CLASSIFIER, one per defect it had on the way (each found as E0308 in
+// the emitted self-host compiler, v2_compiler_tokenize.rs). A QUALIFIED `v2.std.text.String` field is
+// the code-point carrier, not host text: taking the last segment of the qualified spelling made the
+// renderer emit `String` for it.
+test fn e_qualified_text_field_renders_the_code_point_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_qualified_field_probe\nimport v2.std.text { string_is_empty }\ntype Carrier { t: v2.std.text.String }\nfn probe(c: Carrier) -> Int { 0 }\n",
+    "src/test_claim_text_qualified_field_probe.rs",
+    ["pub t: Rc<Vec<"],
+    ["pub t: String"]
+  )
+}
+
+// A BARE String parameter in a module that imports v2.std.text { String } is the KERNEL String
+// (kernel precedence), so a literal handed to it stays host text. The by-name peel in that module
+// finds the imported structural alias; letting that view win unfolded the literal into a host field.
+test fn e_bare_string_parameter_beside_a_text_import_takes_a_host_literal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_bare_param_probe\nimport v2.std.text { String }\nfn takes(text: String) -> Int { 0 }\nfn probe() -> Int { takes(text: \".\") }\n",
+    "src/test_claim_text_bare_param_probe.rs",
+    ["\".\".to_string()"],
+    ["vec![46]"]
+  )
 }
