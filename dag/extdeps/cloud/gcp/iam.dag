@@ -306,6 +306,8 @@ fn reconcile_faithful_policy(
 // There is deliberately no hand-authored permission roster in this module: a
 // role->permission table written from memory is authored data wearing a citation,
 // and it decays silently as Google edits the role.
+type GcpPermissionProbeWire { permissions: List<String>? }
+
 type GcpPredefinedRole {
   name: String
   title: String
@@ -505,6 +507,20 @@ type GcpProjectResourceV3 {
 service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 
+  operation TestIamPermissions {
+    input { access_token: Secret, project_id: GcpProjectId, permissions: List<String> }
+    output { permissions: List<String>?, outcome: RestOutcome }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
   operation GetProject {
     input { access_token: Secret, project_id: GcpProjectId }
     output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", outcome: RestOutcome }
@@ -546,9 +562,9 @@ service gcp.ResourceManager {
 
   operation GetIamPolicy {
     input { access_token: Secret, project_id: GcpProjectId }
-    output { bindings: Json, etag: String }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
     readonly
-    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy", body: { options: { requestedPolicyVersion: 3 } } }
     response {
       200 => GcpPolicy
       401 => GcpErrorShape
@@ -562,11 +578,10 @@ service gcp.ResourceManager {
     input {
       access_token: Secret
       project_id: GcpProjectId
-      bindings: Json
-      etag: NonEmptyStr
+      policy: GcpPolicy
     }
-    output { ok: Bool }
-    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy", body: { policy: policy, updateMask: "bindings,etag" } }
     response {
       200 => GcpPolicy
       401 => GcpErrorShape

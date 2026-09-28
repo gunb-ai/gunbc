@@ -1,0 +1,48 @@
+module test.claim.auth.gcp_iam_bootstrap_witness_test
+
+import std.types { Bool }
+import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
+  iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
+}
+import gunbc.auth.gcp_iam_bootstrap {
+  iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
+  BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust,
+}
+
+test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
+  all(iam_bootstrap_roles, role => {
+    let name = iam_bootstrap_role_name(role: role)
+    let permissions = iam_bootstrap_role_permissions(role: role)
+    iam_bootstrap_role_matches(role: role, name: name, permissions: Present { value: permissions }, stage: Present { value: "GA" }, deleted: none)
+      && !iam_bootstrap_role_matches(role: role, name: name, permissions: Present { value: permissions + ["resourcemanager.projects.setIamPolicy"] }, stage: Present { value: "GA" }, deleted: none)
+      && !iam_bootstrap_role_matches(role: role, name: name, permissions: Absent, stage: Present { value: "GA" }, deleted: none)
+      && !iam_bootstrap_role_matches(role: role, name: name, permissions: Present { value: permissions }, stage: Present { value: "GA" }, deleted: Present { value: true })
+      && !iam_bootstrap_role_matches(role: role, name: "projects/other/roles/foreign", permissions: Present { value: permissions }, stage: Present { value: "GA" }, deleted: none)
+  })
+}
+
+test fn deny_exceptions_and_incomplete_readback_withhold_trust() -> Bool {
+  let rows = iam_bootstrap_deny_rules()
+  iam_bootstrap_deny_matches(rules: Present { value: rows })
+    && !iam_bootstrap_deny_matches(rules: Absent)
+    && !iam_bootstrap_deny_matches(rules: Present { value: [] })
+    && !iam_bootstrap_deny_matches(rules: Present { value: rows + rows })
+    && all(rows, row => match row.deny_rule {
+      Absent => false
+      Present { value: r } => !iam_bootstrap_deny_matches(rules: Present { value: [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule {
+        denied_principals: r.denied_principals, denied_permissions: r.denied_permissions,
+        exception_principals: Present { value: r.denied_principals }, exception_permissions: none, denial_condition: none,
+      } } }] })
+    })
+}
+
+test fn workflow_trust_requires_completed_deny_and_privilege_readback() -> Bool {
+  iam_bootstrap_model_admitted()
+    && iam_bootstrap_stage_admitted(stage: BootstrapIdentities, completed: [])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapPrivilegeReadback])
+    && iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities, BootstrapPrivilegeReadback])
+}
