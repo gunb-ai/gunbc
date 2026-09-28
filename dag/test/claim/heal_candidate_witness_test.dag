@@ -14,7 +14,7 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary {
   CandidateEntry, PublisherPathPolicy, publisher_path_admission, PathAdmitted, PathAdmissionRefused
 }
-import gunbc.generated_artifact { committed_generated_artifact_paths }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
 import gunbc.heal_candidate { candidate_proposable_paths }
 

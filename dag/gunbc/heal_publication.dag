@@ -17,7 +17,8 @@ import extdeps.github.workflow_run_event {
 }
 import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type }
 import gunbc.repository { gunbc_repository }
-import gunbc.generated_artifact { committed_generated_artifact_paths, artifact_path, WitnessFloorYamlArtifact }
+import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.heal_candidate { blob_id_of, BlobIdComputed, BlobIdRefused }
 import gunbc.heal_publication_boundary {
   HealRepairCandidate, candidate_names_no_paths, decode_heal_repair_candidate, CandidateDecoded, CandidateUndecodable,
