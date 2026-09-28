@@ -158,3 +158,8 @@ The consumer closure similarly refused its byte-identical copy of that module
 before witness execution. Neither suite is claimed green. Four consumer controls
 are authored for unreadable discovery, expired/unplanned retirement, explicit
 retirement without supply/clock, and preserving the live request's lease.
+
+Draft publication hit pre-existing rustfmt drift in the unchanged
+`src/v1/stage0/src/cli_run.rs`. The pre-push hook explicitly documents
+`git push --no-verify`; that override is used only to publish this review branch,
+not as a passing qualification or authorization to land.
