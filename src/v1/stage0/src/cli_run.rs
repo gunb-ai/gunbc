@@ -17174,6 +17174,10 @@ fn closure_name_census(
         return Ok(hit.clone());
     }
     let pool = pool_parse(index)?;
+    // Timed NET of `pool_parse`, which is forced above and carries its own row: this is the
+    // name-census construction over pool heads -- global name information every bare-reference
+    // judgment reads, so it scales with the pool, not the closure.
+    let census_started = std::time::Instant::now();
     let nodes = match root {
         Some(root) => tree_census_nodes(index, root)?,
         None => Rc::new(
@@ -17185,6 +17189,11 @@ fn closure_name_census(
     };
     let census =
         v1_compiler_infer::build_symbol_index_census_raw_nodes(nodes, pool.combined_si.clone());
+    pre_entry_phase::record(
+        "closure_name_census_build",
+        pre_entry_phase::PhaseScale::Tree,
+        census_started.elapsed(),
+    );
     index
         .closure_name_censuses
         .borrow_mut()
