@@ -609,6 +609,11 @@ import v2.std.collection { List }
 // v2.test.claim.fold_lowering flp_outcomes ingests the positional, positional-named-step,
 // non-fold and well-formed snippets once and stores four Bool verdicts; MQ-1's first floor run refused each claim
 // that paid its own ingest against the new-witness budget. Portable for the same reason.
+// THE FOLD-ENCODING ROW IS THE SAME GROUND AT SEVEN SPECIMENS: v2.test.claim.fold_encoding
+// fe_outcomes drives the front end over its inline modules (the exact-shape fixture, three planted
+// drops measured by reference conservation, the canary, a user-declared fold and fold_x) and stores
+// seven Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
+// over the new-witness budget. Portable for the same reason.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -699,6 +704,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.caret_symbol_value_refusal.csv_verdicts",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
   "v2.test.claim.fold_lowering.flp_outcomes",
+  "v2.test.claim.fold_encoding.fe_outcomes",
   "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",

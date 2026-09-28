@@ -133,7 +133,7 @@ test fn fold_collection_name_survives_parse() -> Bool {
   symbol_in(needle: ^xs, xs: fold_snippet_identities())
 }
 
-test fn fold_call_lowers_to_terminating_loop() -> Bool {
+fn fold_call_lowers_to_terminating_loop_verdict() -> Bool {
   match ingest_and_locate(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: call } =>
@@ -220,7 +220,7 @@ test fn duplicate_carrier_edge_is_malformed() -> Bool {
   }
 }
 
-test fn non_fold_call_refuses() -> Bool {
+fn non_fold_call_refuses_verdict() -> Bool {
   match ingest_and_locate(source_text: non_fold_snippet, file: ^g_probe_file) {
     Absent => false
     Present { value: call } =>
@@ -228,7 +228,7 @@ test fn non_fold_call_refuses() -> Bool {
   }
 }
 
-test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
+fn bodyless_fold_call_refuses_no_loop_fabricated_verdict() -> Bool {
   match ingest_and_locate(source_text: bodyless_fold_snippet, file: ^bodyless_probe_file) {
     Absent => false
     Present { value: call } =>
@@ -317,7 +317,7 @@ test fn bodyless_fold_is_step_form_unresolved() -> Bool {
 // stage lacks, so it stays shape_invalid. This claim is what keeps the split
 // from being a deletion: it goes red if the not-applicable arm ever widens to
 // swallow a form the stage can actually judge.
-test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
+fn paramless_step_fold_is_step_shape_invalid_verdict() -> Bool {
   is_step_shape_invalid(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }
 
@@ -450,13 +450,19 @@ fn non_fold_call_selects_not_a_fold() -> Bool {
 // ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Each claim below
 // inspects one verdict of a front end over a supplied snippet, and the front end alone is more than
 // one claim's new-witness budget -- the ingest is the expense, not the assertion (DESIGN section 3,
-// a witness discriminates at one interface). The stored value is four Bools: no Node, no context,
+// a witness discriminates at one interface). MQ-5's floor run 36490720680 found four more claims here
+// paying their own ingest over the new-witness budget once the fold encoding changed their callee, so
+// they read this record too. The stored value is eight Bools: no Node, no context,
 // no closure, so it is portable.
 type FlpOutcomes {
   positional_matches_named: Bool
   positional_named_step_unresolved: Bool
   non_fold_is_not_a_fold: Bool
   well_formed_still_lowers: Bool
+  lowers_to_terminating_loop: Bool
+  non_fold_refuses: Bool
+  bodyless_refuses_no_loop: Bool
+  paramless_step_shape_invalid: Bool
 }
 
 fn flp_outcomes() -> FlpOutcomes {
@@ -467,7 +473,11 @@ fn flp_outcomes() -> FlpOutcomes {
       file: ^positional_named_step_probe_file
     ),
     non_fold_is_not_a_fold: non_fold_call_selects_not_a_fold(),
-    well_formed_still_lowers: well_formed_fold_lowers_through_the_split()
+    well_formed_still_lowers: well_formed_fold_lowers_through_the_split(),
+    lowers_to_terminating_loop: fold_call_lowers_to_terminating_loop_verdict(),
+    non_fold_refuses: non_fold_call_refuses_verdict(),
+    bodyless_refuses_no_loop: bodyless_fold_call_refuses_no_loop_fabricated_verdict(),
+    paramless_step_shape_invalid: paramless_step_fold_is_step_shape_invalid_verdict()
   }
 }
 
@@ -481,4 +491,20 @@ test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
 // into accepting whatever sits in the slot.
 test fn positional_named_step_fold_is_step_form_unresolved() -> Bool {
   flp_outcomes().positional_named_step_unresolved
+}
+
+test fn fold_call_lowers_to_terminating_loop() -> Bool {
+  flp_outcomes().lowers_to_terminating_loop
+}
+
+test fn non_fold_call_refuses() -> Bool {
+  flp_outcomes().non_fold_refuses
+}
+
+test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
+  flp_outcomes().bodyless_refuses_no_loop
+}
+
+test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
+  flp_outcomes().paramless_step_shape_invalid
 }

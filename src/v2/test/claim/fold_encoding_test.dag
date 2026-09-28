@@ -143,7 +143,7 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
   }
 }
 
-test fn fold_encoding_carries_each_operand_at_its_authored_occurrence() -> Bool {
+fn fold_encoding_carries_each_operand_at_its_authored_occurrence_verdict() -> Bool {
   match fe_normalized(source: fe_distinct_operands_source) {
     Absent => false
     Present { value: tree } =>
@@ -240,15 +240,15 @@ fn fe_is_exactly(xs: FreeMonoid<Symbol>, sym: Symbol) -> Bool {
   }
 }
 
-test fn dropping_the_collection_turns_conservation_red_at_it() -> Bool {
+fn dropping_the_collection_turns_conservation_red_at_it_verdict() -> Bool {
   fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropCollection), sym: ^xs)
 }
 
-test fn dropping_init_turns_conservation_red_at_it() -> Bool {
+fn dropping_init_turns_conservation_red_at_it_verdict() -> Bool {
   fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropInit), sym: ^seed)
 }
 
-test fn dropping_the_head_edge_turns_conservation_red_at_it() -> Bool {
+fn dropping_the_head_edge_turns_conservation_red_at_it_verdict() -> Bool {
   fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropHead), sym: ^fold)
 }
 
@@ -273,7 +273,7 @@ fn fe_resolved(source: String) -> Outcome<Node> {
   }
 }
 
-test fn canary_fold_head_binds_to_the_collection_fold_row() -> Bool {
+fn canary_fold_head_binds_to_the_collection_fold_row_verdict() -> Bool {
   match fe_resolved(source: fe_canary_source) {
     Rejected { diagnostics: _ } => false
     Accepted { value: resolved, diagnostics: _ } =>
@@ -304,11 +304,11 @@ fn fe_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
   }
 }
 
-test fn user_declared_fold_refuses_at_the_head() -> Bool {
+fn user_declared_fold_refuses_at_the_head_verdict() -> Bool {
   fe_refuses_with(o: fe_resolved(source: fe_user_fold_source), reason: ^resolve_reason_realized_declaration_shadowed)
 }
 
-test fn fold_like_name_outside_the_roster_is_not_desugared() -> Bool {
+fn fold_like_name_outside_the_roster_is_not_desugared_verdict() -> Bool {
   match fe_normalized(source: fe_fold_x_source) {
     Absent => false
     Present { value: tree } =>
@@ -317,4 +317,60 @@ test fn fold_like_name_outside_the_roster_is_not_desugared() -> Bool {
         Present { value: _ } => false
       }
   }
+}
+
+// ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Every claim above
+// drives the front end over a supplied snippet and inspects one verdict; the front end, not the
+// assertion, is the expense, and MQ-5's floor run 36490720680 measured each claim over the
+// new-witness budget for exactly that reason (DESIGN section 3, a witness discriminates at one
+// interface). The claims below read one field each of this record. The stored value is seven Bools:
+// no Node, no context, no closure, so it is portable.
+type FeOutcomes {
+  fold_encoding_carries_each_operand_at_its_authored_occurrence: Bool
+  dropping_the_collection_turns_conservation_red_at_it: Bool
+  dropping_init_turns_conservation_red_at_it: Bool
+  dropping_the_head_edge_turns_conservation_red_at_it: Bool
+  canary_fold_head_binds_to_the_collection_fold_row: Bool
+  user_declared_fold_refuses_at_the_head: Bool
+  fold_like_name_outside_the_roster_is_not_desugared: Bool
+}
+
+fn fe_outcomes() -> FeOutcomes {
+  FeOutcomes {
+    fold_encoding_carries_each_operand_at_its_authored_occurrence: fold_encoding_carries_each_operand_at_its_authored_occurrence_verdict(),
+    dropping_the_collection_turns_conservation_red_at_it: dropping_the_collection_turns_conservation_red_at_it_verdict(),
+    dropping_init_turns_conservation_red_at_it: dropping_init_turns_conservation_red_at_it_verdict(),
+    dropping_the_head_edge_turns_conservation_red_at_it: dropping_the_head_edge_turns_conservation_red_at_it_verdict(),
+    canary_fold_head_binds_to_the_collection_fold_row: canary_fold_head_binds_to_the_collection_fold_row_verdict(),
+    user_declared_fold_refuses_at_the_head: user_declared_fold_refuses_at_the_head_verdict(),
+    fold_like_name_outside_the_roster_is_not_desugared: fold_like_name_outside_the_roster_is_not_desugared_verdict()
+  }
+}
+
+test fn fold_encoding_carries_each_operand_at_its_authored_occurrence() -> Bool {
+  fe_outcomes().fold_encoding_carries_each_operand_at_its_authored_occurrence
+}
+
+test fn dropping_the_collection_turns_conservation_red_at_it() -> Bool {
+  fe_outcomes().dropping_the_collection_turns_conservation_red_at_it
+}
+
+test fn dropping_init_turns_conservation_red_at_it() -> Bool {
+  fe_outcomes().dropping_init_turns_conservation_red_at_it
+}
+
+test fn dropping_the_head_edge_turns_conservation_red_at_it() -> Bool {
+  fe_outcomes().dropping_the_head_edge_turns_conservation_red_at_it
+}
+
+test fn canary_fold_head_binds_to_the_collection_fold_row() -> Bool {
+  fe_outcomes().canary_fold_head_binds_to_the_collection_fold_row
+}
+
+test fn user_declared_fold_refuses_at_the_head() -> Bool {
+  fe_outcomes().user_declared_fold_refuses_at_the_head
+}
+
+test fn fold_like_name_outside_the_roster_is_not_desugared() -> Bool {
+  fe_outcomes().fold_like_name_outside_the_roster_is_not_desugared
 }
