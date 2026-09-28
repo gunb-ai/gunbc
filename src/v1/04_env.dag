@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v1.std.core { Unmarked, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
-import std.types { SourceSpan, is_kernel_type }
+import std.types { SourceSpan, is_kernel_type, is_container_type }
 import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent }
 import std.decl_ref { decl_ref, DeclarationRef }
 import std.operator_realization { OperandDeclaration }
@@ -899,6 +899,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
     && name != ""
     && !contains(name, ".")
     && !is_kernel_type(name: name)
+    && !is_container_type(name: name)
     && !map_has(excluded, name)
     && !is_type_var
   let owner_hit = if rewrite {

@@ -1490,10 +1490,11 @@ pub fn qualify_borrowed_type_names(
             Some(InferredNode::TypeVariable { id: _, .. }) => true,
             _ => false,
         };
-        let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
+        let rewrite = (((((((n.connective.clone() == Connective::NoConnective)
             && (name.clone() != "".to_string()))
             && !v1_rt::contains(name.clone(), ".".to_string()))
             && !crate::std_types::is_kernel_type(name.clone()))
+            && !crate::std_types::is_container_type(name.clone()))
             && !v1_rt::map_has(&excluded, name.clone()))
             && !is_type_var.clone());
         let owner_hit = if rewrite.clone() {
