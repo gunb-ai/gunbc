@@ -15,6 +15,7 @@ import gunbc.host_operation_exec {
   host_operation_materialize_argv, host_operation_label,
 }
 import extdeps.systemd {
+  SystemctlIsActiveExit, IsActiveStateReported, IsActiveNoSuchUnit, systemctl_is_active_exit,
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed,
   parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
 }
@@ -79,37 +80,64 @@ type HostOperationLeg
   = HostOperationLegRead { stdout: String }
   | HostOperationLegUnread { cause: String }
 
-// is-active exits 3 for a unit that is not active, and that is an answer, not a failed read -- which
-// is why the exit codes a read accepts are the caller's to state.
-fn host_operation_leg(run: fn(List<String>) -> ArgvRun, operation: HostOperation, accepted_exits: List<Int>) -> HostOperationLeg {
+// THE OPERATION RAN, WITH WHATEVER CODE IT EXITED -- or it did not. Materialization and the leg are
+// shared; what an exit code MEANS is the caller's, because it is the operation's upstream table.
+type HostOperationRan
+  = HostOperationExited { exit_code: Int, stdout: String, stderr: String }
+  | HostOperationNotRun { cause: String }
+
+fn host_operation_ran(run: fn(List<String>) -> ArgvRun, operation: HostOperation) -> HostOperationRan {
   match host_operation_materialize_argv(operation: operation) {
-    ArgvMaterializationRefused { at: _, cause: _ } => HostOperationLegUnread { cause: join([host_operation_label(operation: operation), " could not be materialized as an argv"], "") }
+    ArgvMaterializationRefused { at: _, cause: _ } => HostOperationNotRun { cause: join([host_operation_label(operation: operation), " could not be materialized as an argv"], "") }
     ArgvMaterialized { argv: argv } =>
       match run(argv) {
-        ArgvLegDidNotRun { cause: c } => HostOperationLegUnread { cause: join([host_operation_label(operation: operation), " did not run: ", c], "") }
-        ArgvRan { exit_code: code, stdout: out, stderr: err } =>
-          if any(accepted_exits, e => e == code) { HostOperationLegRead { stdout: out } }
-          else { HostOperationLegUnread { cause: join([host_operation_label(operation: operation), " exited ", to_string(code), ": ", trim(s: err)], "") } }
+        ArgvLegDidNotRun { cause: c } => HostOperationNotRun { cause: join([host_operation_label(operation: operation), " did not run: ", c], "") }
+        ArgvRan { exit_code: code, stdout: out, stderr: err } => HostOperationExited { exit_code: code, stdout: out, stderr: err }
       }
   }
 }
 
+fn host_operation_exit_unread(operation: HostOperation, code: Int, err: String) -> String {
+  join([host_operation_label(operation: operation), " exited ", to_string(code), ": ", trim(s: err)], "")
+}
+
+fn host_operation_leg(run: fn(List<String>) -> ArgvRun, operation: HostOperation, accepted_exits: List<Int>) -> HostOperationLeg {
+  match host_operation_ran(run: run, operation: operation) {
+    HostOperationNotRun { cause: c } => HostOperationLegUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
+      if any(accepted_exits, e => e == code) { HostOperationLegRead { stdout: out } }
+      else { HostOperationLegUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+  }
+}
+
+// UnitAbsent is its own arm, not UnitVacant: for occupancy both hold nothing, but a unit that was just
+// STARTED and reads back absent was not restored, and only a distinct arm lets the restore say so.
 type UnitActivity
   = UnitOccupies { occupant: HostOccupant }
   | UnitVacant
+  | UnitAbsent
   | UnitUnread { cause: String }
 
+// THE EXIT CODE IS DECODED BY extdeps.systemd `systemctl_is_active_exit` (systemctl(1) v255): 0 and 3
+// report a state word, 4 is no such unit. Anything else -- a lost connection, a refused privilege, a
+// code the table does not assign -- stays unread and refuses.
 fn read_unit_activity(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> UnitActivity {
-  match host_operation_leg(run: run, operation: SystemctlIsActive { unit: unit }, accepted_exits: [0, 3]) {
-    HostOperationLegUnread { cause: c } => UnitUnread { cause: c }
-    HostOperationLegRead { stdout: out } => {
-      let word = trim(s: out)
-      match parse_systemd_unit_active_state(raw: word) {
-        Absent => UnitUnread { cause: join(["systemctl is-active ", unit as String, " answered a state extdeps.systemd does not model: `", word, "`"], "") }
-        Present { value: state } =>
-          if unit_state_occupies(state: state) { UnitOccupies { occupant: ServingUnitActive { unit: unit, state: state } } } else { UnitVacant }
+  let operation = SystemctlIsActive { unit: unit }
+  match host_operation_ran(run: run, operation: operation) {
+    HostOperationNotRun { cause: c } => UnitUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
+      match systemctl_is_active_exit(code: code) {
+        Absent => UnitUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) }
+        Present { value: IsActiveNoSuchUnit } => UnitAbsent
+        Present { value: IsActiveStateReported } => {
+          let word = trim(s: out)
+          match parse_systemd_unit_active_state(raw: word) {
+            Absent => UnitUnread { cause: join(["systemctl is-active ", unit as String, " answered a state extdeps.systemd does not model: `", word, "`"], "") }
+            Present { value: state } =>
+              if unit_state_occupies(state: state) { UnitOccupies { occupant: ServingUnitActive { unit: unit, state: state } } } else { UnitVacant }
+          }
+        }
       }
-    }
   }
 }
 

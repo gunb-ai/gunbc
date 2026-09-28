@@ -22,6 +22,7 @@ import extdeps.git {
   git_worktree_add_detached_command, git_worktree_remove_force_command, git_worktree_prune_command,
 }
 import extdeps.git
+import extdeps.shell
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import gunbc.file_access { FileTreeScope }
@@ -408,18 +409,27 @@ fn v41_known_patch_set_revisions(patches: List<V41EnginePatch>) -> List<String> 
     if any(acc, a => a == c) { acc } else { concat(acc, [c]) })
 }
 
-fn v41_known_patch_set_at(revision: String, patches: List<V41EnginePatch>) -> V41KnownPatchSet? {
-  let shown = map(patches, p => {
-    let r = git.Core.Show(ref: revision as GitRef, path: p.path as FilePath)
-    if r.success {
-      Present { value: V41KnownPatchMember {
-        basename: v41_patch_basename(path: p.path),
-        bytes: if r.content.ends_with(suffix: "\n") { r.content } else { join([r.content, "\n"], "") },
-      } }
-    } else {
-      none
+// P' IS READ BYTE-EXACTLY. git.Core.Show carries the blob through the shell stdout channel, whose
+// retained text is trailing-whitespace trimmed; a patch ending in blank context lines (" \n \n")
+// comes back short, git apply refuses it as corrupt, and the set silently contributes no digest --
+// which is how srv8's arm A tree (pin + the 034aef01 set, the set main 77193e6a carried; diff
+// digest 0f979787...) was refused as not ours. Each member is instead restored to a scratch work
+// tree (index untouched) and read with Filesystem.Read, the same read the declared patch takes.
+fn v41_known_patch_member_at(revision: String, path: NonEmptyStr, work_tree: String) -> V41KnownPatchMember? {
+  let restored = git.Core.RestoreBlobTo(ref: revision as GitRef, path: path as FilePath, work_tree: work_tree as FilePath)
+  if !restored.success {
+    none
+  } else {
+    let read = Filesystem.Read(path: join([work_tree, "/", path as String], ""))
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error: _ } => none
+      FilesystemReadSucceeded { content: bytes } => Present { value: V41KnownPatchMember { basename: v41_patch_basename(path: path), bytes: bytes } }
     }
-  })
+  }
+}
+
+fn v41_known_patch_set_at(revision: String, patches: List<V41EnginePatch>, work_tree: String) -> V41KnownPatchSet? {
+  let shown = map(patches, p => v41_known_patch_member_at(revision: revision, path: p.path, work_tree: work_tree))
   if length(patches) == 0 || any(shown, m => match m { Absent => true Present { value: _ } => false }) {
     none
   } else {
@@ -430,11 +440,19 @@ fn v41_known_patch_set_at(revision: String, patches: List<V41EnginePatch>) -> V4
   }
 }
 
+// A scratch work tree that cannot be made derives no set: fewer sets can only refuse more.
 fn v41_known_patch_sets(patches: List<V41EnginePatch>) -> List<V41KnownPatchSet> {
-  flat_map(v41_known_patch_set_revisions(patches: patches), c => match v41_known_patch_set_at(revision: c, patches: patches) {
-    Absent => [] as List<V41KnownPatchSet>
-    Present { value: k } => [k]
-  })
+  let scratch = shell.Mktemp.Dir()
+  if !scratch.success {
+    [] as List<V41KnownPatchSet>
+  } else {
+    let sets = flat_map(v41_known_patch_set_revisions(patches: patches), c => match v41_known_patch_set_at(revision: c, patches: patches, work_tree: scratch.path as String) {
+      Absent => [] as List<V41KnownPatchSet>
+      Present { value: k } => [k]
+    })
+    let _cleaned = shell.Remove.RecursiveForce(path: scratch.path)
+    sets
+  }
 }
 
 fn v41_known_set_scratch_dir() -> String {

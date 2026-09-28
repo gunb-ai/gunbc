@@ -1717,7 +1717,9 @@ fn floor_route_gap_expectation_chunk_26() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.an_authentic_client_exit_is_classified_by_its_own_words", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
