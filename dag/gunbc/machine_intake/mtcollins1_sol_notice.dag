@@ -215,6 +215,8 @@ fn sol_notice_record(paths: SolNoticePaths, delivery: SolNoticeDelivery) -> SolN
   delivery
 }
 
+// The step summary is read-modified-written; a read that failed for any reason but absence refuses,
+// so an unreadable summary is never overwritten with this block alone.
 fn sol_notice_channel_write(paths: SolNoticePaths, notice: SolNotice, channel: SolNoticeChannel) -> SolNoticeDelivery {
   match channel {
     SolNoticeLiveLog => match log_annotation_message_line(annotation: sol_notice_annotation(notice: notice)) {
@@ -228,8 +230,6 @@ fn sol_notice_channel_write(paths: SolNoticePaths, notice: SolNotice, channel: S
       if paths.summary == "" {
         return SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: "GITHUB_STEP_SUMMARY is unset" }
       }
-      // The summary is read-modified-written; a read that failed for any reason but absence refuses,
-      // so an unreadable summary is never overwritten with this block alone.
       let prior = Filesystem.Read(path: paths.summary)
       if !prior.success && prior.error_kind != "not_found" {
         return SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: concat("the step summary could not be read: ", prior.error) }
