@@ -22,9 +22,10 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secret
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
-  heal_publisher_dedicated_federation, impersonation_cell, observe_and_classify,
+  heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cell, observe_and_classify,
   rest_ok, rest_refusal_text, outcome_is_not_found,
 }
+import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.auth.mtcollins1_boot_federation_provision { mtcollins1_boot_dedicated_federation }
 import gunbc.auth.mtcollins1_boot_federation { pinned_version_accessor_grant_for }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
@@ -204,9 +205,15 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
   }
 }
 
+// gunbc-private's publisher is a target so that it is created and granted under one operator
+// approval, never by a supplied token (operator 2026-09-27). Its resource-local bindings for
+// iam-converge -- the provider role on its pool, the account-policy role on its account -- are the
+// bootstrap's, like every other target's.
 data gcp_iam_converge_targets: List<DedicatedFederation> = [
   heal_publisher_dedicated_federation(),
+  private_heal_publisher_dedicated_federation(),
   mtcollins1_boot_dedicated_federation(),
+  namecheap_dedicated_federation(),
 ]
 
 fn service_account_resource(email: ServiceAccountEmail) -> String {
