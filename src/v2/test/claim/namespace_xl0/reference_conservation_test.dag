@@ -9,9 +9,12 @@ import v2.compiler.reference_conservation {
   reference_conservation_admitted,
   reference_conservation_holds,
   reference_conservation_of_subject,
-  reference_conservation_subject_of_read
+  reference_conservation_subject_of_read,
+  reference_conservation_of_subject_admitted,
+  OccurrenceRoleTableUnadmitted
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -105,11 +108,20 @@ test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
   reference_conservation_admitted(report: clean_control_report())
 }
 
-// The three numbers are separate and together account for the whole population: a check that
-// found nothing to conserve, or that summed locus-erased into conserved, cannot pass this.
+// The numbers are separate and together account for the whole population: a check that found
+// nothing to conserve, or that summed one disposition into another, cannot pass this. The clean
+// control has an atom in every one: conserved references, locus-erased binders the role producer
+// does not read yet (its parameters), role-excluded declarations and labels, and the header.
 test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
   let r = clean_control_report()
-  r.conserved > 0 && r.locus_erased > 0 && r.conserved + r.locus_erased == r.authored
+  r.conserved > 0 && r.locus_erased > 0 && r.role_excluded > 0 && r.header_channel > 0
+    && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
+}
+
+// THE HEADER IS ITS OWN CHANNEL (HeaderSegmentsNotRefusalSites): the clean control's header
+// `v2.test.reference_conservation_clean` is exactly three segments, all counted there.
+test fn the_clean_control_counts_its_header_segments_in_the_header_channel_holds() -> Bool {
+  clean_control_report().header_channel == 3
 }
 
 test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
@@ -307,14 +319,19 @@ test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
 // ---- measured drops found by admission: a later match arm, a statement-let binder -------------
 
 // Found when v2.test.claim.body_lowering.single_arm_match was routed through the admitted
-// normalize (MQ-6): normalize ACCEPTS a three-arm match and the THIRD arm -- its pattern and its
-// body -- reaches no node of the normalized tree. A two-arm match keeps both arms. The arm's body
-// spelling is used nowhere else in the declaration, so the red names it.
+// normalize (MQ-6): normalize ACCEPTED a three-arm match and the THIRD arm -- its pattern and its
+// body -- reached no node of the normalized tree, because the arm collector took the repeat's whole
+// spine as one arm. Match arms are now read through v2.compiler.body_lowering_fold
+// body_lower_match_arms_from_list (the one comma-list reader), the MatchLaterArm drop shape is
+// retired, and this claim flips from reporting the drop to asserting its absence: it stays enrolled
+// as the regression control (DESIGN section 4b(4)). It keeps the ACCEPTED conjunct, so a module that
+// refused outright cannot satisfy "rc_third is not dropped" vacuously. The arm's body spelling is
+// used nowhere else in the declaration, so a returning drop reds at it.
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
 
-test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
+test fn the_third_match_arm_is_conserved_holds() -> Bool {
   let r = conservation_report_of(subject: match_later_arm_subject())
-  reference_conservation_accepted(report: r) && report_drops_identity(report: r, wanted: ^rc_third)
+  reference_conservation_accepted(report: r) && (report_drops_identity(report: r, wanted: ^rc_third) == false)
 }
 
 // Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
@@ -351,7 +368,17 @@ fn construct_tags_subject() -> ReferenceConservationSubject {
 
 test fn constructor_tags_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: construct_tags_subject())
-  r.authored == 22 && r.conserved == 11 && r.locus_erased == 11 && length(xs: r.dropped) == 0
+  r.authored == 22 && r.conserved == 11 && r.locus_erased + r.role_excluded + r.header_channel == 11 && length(xs: r.dropped) == 0
+}
+
+// BINDERS AND LABELS ARE COUNTED OUTSIDE THE XL-2 POPULATION, NOT AS LOST REFERENCES. Of the
+// fixture's erased atoms, five have a recorded role that is a declaration or a non-module-scope
+// reference (the RcRow type, the two fn names, the `v:` record-literal label and the `v:` pattern
+// label); three are the header; the three left in locus_erased are the parameter and field-
+// declaration binders whose producer rows are not read yet, which role_not_yet_read counts.
+test fn binders_and_labels_are_role_excluded_not_locus_erased_holds() -> Bool {
+  let r = conservation_report_of(subject: construct_tags_subject())
+  r.role_excluded == 5 && r.header_channel == 3 && r.locus_erased == 3 && r.role_not_yet_read == 3 && r.role_reader_refused == 0
 }
 
 // ---- dotted-spine segments keep their own occurrence (XL-2 LoweringOccurrenceProjection, rank 4) --
@@ -370,7 +397,7 @@ fn dotted_spine_subject() -> ReferenceConservationSubject {
 
 test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: dotted_spine_subject())
-  r.authored == 18 && r.conserved == 10 && r.locus_erased == 8 && length(xs: r.dropped) == 0
+  r.authored == 18 && r.conserved == 10 && r.locus_erased + r.role_excluded + r.header_channel == 8 && length(xs: r.dropped) == 0
 }
 
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------
@@ -390,4 +417,43 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "_")) == 0
     && r.authored > 0
+}
+
+// ---- roles are observed whatever normalization does (review 5330814496) -----------------------
+
+// A module that parses and whose normalization refuses (an else-less `if` statement). Its one fn
+// has a parameter list, a binder production the role producer does not read yet, so an observed
+// role pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the
+// role producer and reported zero, a gap nobody had observed.
+data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n"
+
+fn normalization_refused_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)
+}
+
+fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
+  r.authored > 0 && r.refused + length(xs: r.dropped) == r.authored
+}
+
+test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
+  let r = conservation_report_of(subject: normalization_refused_subject())
+  refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
+}
+
+// A ROLE TABLE THE GRAMMAR REFUSES, ON A MODULE WHOSE NORMALIZATION ALSO REFUSES: the report keeps
+// normalization's refusal accounting AND records the unadmitted table. Planted at the interface by
+// supplying a refused admission.
+fn planted_refused_admission() -> NameProductionTableAdmission {
+  NameProductionTableRefused { unlisted: [^reference_conservation_planted_unlisted], unknown: [], unkeyed: [] }
+}
+
+test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds() -> Bool {
+  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_refused_admission())
+  refusal_accounts_for_population(r: r)
+    && fold_list(xs: r.unmeasured, empty: false, cons: fn(acc, u) {
+      acc || match u {
+        OccurrenceRoleTableUnadmitted { unlisted: l, unknown: _, unkeyed: _ } => l == [^reference_conservation_planted_unlisted]
+        _ => false
+      }
+    })
 }

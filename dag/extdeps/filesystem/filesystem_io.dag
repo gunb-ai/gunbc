@@ -37,7 +37,7 @@ fn filesystem_read_outcome(
 
 // THE HOST'S OWN FAILURE CLASSIFICATION, AS A CHANNEL RATHER THAN AS TEXT. The file transport
 // answers `error_kind` beside `error`: the realization projects the host error's kind
-// (std::io::ErrorKind on the Rust realizations) into one of the four closed names below, and
+// (std::io::ErrorKind on the Rust realizations) into one of the closed names below, and
 // answers the empty string when the operation succeeded. It is the next-rung trigger the
 // WriteCreateNew annotation names -- "a modeled already-exists channel on the file transport" --
 // and it discharges it without the heuristic that annotation refused: nothing here reads the error
@@ -51,6 +51,7 @@ type FilesystemFailureKind
   = FilesystemNotFound
   | FilesystemAlreadyExists
   | FilesystemPermissionDenied
+  | FilesystemNotDirectory
   | FilesystemOtherFailure
 
 type FilesystemFailureKindAdmission
@@ -64,6 +65,8 @@ fn admit_filesystem_failure_kind(observed: String) -> FilesystemFailureKindAdmis
     FilesystemFailureKindAdmitted { kind: FilesystemAlreadyExists }
   } else if observed == "permission_denied" {
     FilesystemFailureKindAdmitted { kind: FilesystemPermissionDenied }
+  } else if observed == "not_a_directory" {
+    FilesystemFailureKindAdmitted { kind: FilesystemNotDirectory }
   } else if observed == "other" {
     FilesystemFailureKindAdmitted { kind: FilesystemOtherFailure }
   } else {
@@ -76,6 +79,7 @@ fn filesystem_failure_kind_name(kind: FilesystemFailureKind) -> String {
     FilesystemNotFound => "not_found"
     FilesystemAlreadyExists => "already_exists"
     FilesystemPermissionDenied => "permission_denied"
+    FilesystemNotDirectory => "not_a_directory"
     FilesystemOtherFailure => "other"
   }
 }
@@ -112,6 +116,7 @@ fn filesystem_exact_read(
           FilesystemNotFound => FilesystemExactPathAbsent { path: path }
           FilesystemAlreadyExists => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
           FilesystemPermissionDenied => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
+          FilesystemNotDirectory => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
           FilesystemOtherFailure => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
         }
     }
@@ -145,6 +150,7 @@ fn filesystem_create_new(
           FilesystemAlreadyExists => FilesystemCreateTargetOccupied { path: path }
           FilesystemNotFound => FilesystemCreateRefused { path: path, kind: k, error: error }
           FilesystemPermissionDenied => FilesystemCreateRefused { path: path, kind: k, error: error }
+          FilesystemNotDirectory => FilesystemCreateRefused { path: path, kind: k, error: error }
           FilesystemOtherFailure => FilesystemCreateRefused { path: path, kind: k, error: error }
         }
     }
@@ -418,7 +424,7 @@ type FilesystemDirectoryListing sole_constructor {
 // decoder of one wire format (review 69704 of gunbc#12000 found one; extdeps.realization
 // artifact_store_fs carries an older one under filesystem_absence_establishment_adoption_standing).
 fn filesystem_listing_entry_names(listing: FilesystemDirectoryListing) -> List<String> {
-  filter(listing.entries.split(delimiter: "\n"), n => n != "")
+  listing.entries.split(delimiter: "\n").filter(n => n != "")
 }
 
 type FilesystemEstablishedAbsence sole_constructor {
@@ -666,8 +672,9 @@ data filesystem_absence_establishment_adoption_standing: String = "RUNG: structu
 // anything matching on the message. Deciding it from the TEXT would have been a heuristic standing in
 // for an observation -- the smuggled-confidence shape section 5 names -- which is why this annotation
 // used to leave the refusal unclassified and named the channel as its next-rung trigger. The channel
-// is declared on the two operations that have a consumer for it (Read and WriteCreateNew, both
-// consumed by extdeps.realization.materialization_store_local); an operation gains it when a
+// is declared on the operations that have a consumer for it (Read and WriteCreateNew, both
+// consumed by extdeps.realization.materialization_store_local, and List, consumed by
+// gunbc.source_root_read); an operation gains it when a
 // consumer needs it, since the transport answers it for every verb.
 //
 // WriteCreateNewWithMode: WriteCreateNew with the PUBLISHED MODE DECLARED rather than left to the process umask. The
@@ -750,6 +757,7 @@ service Filesystem {
       entries: String from "entries"
       success: Bool from "list_success"
       error: String from "error"
+      error_kind: String from "error_kind"
     }
     readonly
     transport file { path: "{path}", verb: "list" }

@@ -2019,6 +2019,48 @@ fn walk_cli_door(
             refused.stderr.trim()
         ));
     }
+    // Permanent filesystem controls execute the same built CLI as the emission control.
+    // A panic is not a typed refusal: require the declared usage status, empty stdout,
+    // and the located acquisition diagnostic, including the host's kind.
+    let filesystem_probe = scratch.join("filesystem-door-controls");
+    std::fs::create_dir_all(&filesystem_probe)
+        .map_err(|e| format!("create filesystem controls: {e}"))?;
+    for (name, bytes, expected_kind) in [
+        ("invalid-utf8", Some(&[0xff_u8][..]), "other"),
+        ("absent-root", None, "not_found"),
+    ] {
+        let subject = filesystem_probe.join(name);
+        if let Some(bytes) = bytes {
+            std::fs::create_dir(&subject)
+                .map_err(|e| format!("create {}: {e}", subject.display()))?;
+            std::fs::write(subject.join("unreadable.dag"), bytes)
+                .map_err(|e| format!("write unreadable source: {e}"))?;
+        }
+        let observation = run_cli_door(
+            binary,
+            &[
+                "emit".into(),
+                "--entry".into(),
+                CLI_DOOR_ENTRY_MODULE.into(),
+                "--source-root".into(),
+                subject.display().to_string(),
+            ],
+        )?;
+        let expected = format!("[{expected_kind}]");
+        if observation.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+            || !observation.stdout.is_empty()
+            || !observation.stderr.lines().any(|line| {
+                line.starts_with("REFUSED: could not read source root at ")
+                    && line.contains(&subject.display().to_string())
+                    && line.contains(&expected)
+            })
+        {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeFilesystemControlFailed — {name}: status={:?} stderr={}",
+                observation.status, observation.stderr));
+        }
+    }
+    eprintln!("v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes");
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
