@@ -85,39 +85,3 @@ test fn the_match_names_the_kind_that_admitted() -> Bool {
         }
     }
 }
-
-// THE SPARK AUTHORITY-READ ROUTE CLAIMS ARE PLANNED ON A RUN WHERE THEY DID NOT CHANGE
-// (gunbc#12461, parent ruling msg_fe97729b). Supplying their executor and instant made them pure,
-// so they left the local-repo wet schedule; this establishes that their real identities are
-// PLANNED by the gate itself -- not PlannedAsChangedWitness, not declined as cost debt -- so the
-// pairing obligation's real-path half keeps executing where merges are decided. Deleting either
-// row from required_gate_authored_modules turns this red on every required run, which a claim
-// inside those modules could not do: it would run only when it changed.
-test fn the_spark_authority_read_route_claims_are_planned_without_changing() -> Bool {
-  match required_floor_site_disposition(
-    module_path: "test.claim.spark.fabric_capacity_standing_wet_witness",
-    identity: "test.claim.spark.fabric_capacity_standing_wet_witness.the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet"
-  ) {
-    Planned => true
-    DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedOutsideRequiredGate => false
-    DeclinedCostDebt => false
-    DeclinedOutsideGateClosure => false
-    DeclinedDiscoveryExcluded { matched_substring: _ } => false
-    PlannedAsChangedWitness => false
-  }
-    && match required_floor_site_disposition(
-      module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness",
-      identity: "test.claim.spark.spark_pair_serving_apply_wet_witness.the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet"
-    ) {
-      Planned => true
-      DeclinedLongModule { matched_prefix: _ } => false
-      DeclinedFixtureMember { matched_prefix: _ } => false
-      DeclinedOutsideRequiredGate => false
-      DeclinedCostDebt => false
-      DeclinedOutsideGateClosure => false
-      DeclinedDiscoveryExcluded { matched_substring: _ } => false
-      PlannedAsChangedWitness => false
-    }
-}

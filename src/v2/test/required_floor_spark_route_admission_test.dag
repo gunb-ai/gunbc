@@ -1,0 +1,47 @@
+module v2.test.required_floor_spark_route_admission
+
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedCostDebt,
+  required_floor_site_disposition,
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn identity_is_planned(module_path: String, identity: String) -> Bool {
+  match required_floor_site_disposition(module_path: module_path, identity: identity) {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+// THE SPARK AUTHORITY-READ ROUTE CLAIMS ARE PLANNED BY THE GATE, NOT ONLY WHEN THEY CHANGE
+// (gunbc#12461, lane ruling msg_fe97729b). Supplying their executor and instant made them pure, so
+// they left the local-repo wet schedule and were admitted by name in required_gate_authored_modules.
+// This asserts their real identities are Planned -- not PlannedAsChangedWitness, not cost debt --
+// and it is red with either row removed. WHERE THIS CLAIM ITSELF RUNS: this module is not in the
+// required gate, so it executes when it or its closure's owning module changes, not on every
+// required run; enrolling it is the follow-up named in gunbc#12461. It is its own module because
+// v2.test.required_floor_gate_selector carries sibling claims that assume the withdrawn v2.test.
+// prefix and go red whenever that file is selected as changed.
+test fn the_spark_authority_read_route_claims_are_planned_without_changing() -> Bool {
+  identity_is_planned(
+    module_path: "test.claim.spark.fabric_capacity_standing_wet_witness",
+    identity: "test.claim.spark.fabric_capacity_standing_wet_witness.the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet"
+  )
+    && identity_is_planned(
+      module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness",
+      identity: "test.claim.spark.spark_pair_serving_apply_wet_witness.the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet"
+    )
+}
