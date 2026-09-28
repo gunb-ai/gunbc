@@ -2,7 +2,6 @@ module v2.std.lens_verdict
 
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.algebra { fold_list }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
   ByteRange,
   CorrectionNotModeled,
@@ -20,7 +19,7 @@ import v2.std.diagnostic {
 }
 import v2.std.integer { integer_int_to_decimal_string }
 import extdeps.languages.json.emit { quote_json_string }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }

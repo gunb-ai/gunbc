@@ -43,6 +43,7 @@ fn transport_script_seal(body: String) -> TransportScript
   admit_callers: [
     decl_ref(module_path: "gunbc.retained_shell_script", decl_name: "retained_shell_script_to_transport"),
     decl_ref(module_path: "gunbc.bash_materialized_transport", decl_name: "bash_materialized_transport"),
+    decl_ref(module_path: "gunbc.fleet_release_bins_key", decl_name: "release_bins_transport"),
   ]
   = TransportScript { body: body }
 
