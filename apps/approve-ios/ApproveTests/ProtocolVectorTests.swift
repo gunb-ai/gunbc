@@ -1,7 +1,7 @@
 // The Swift byte builders against the vectors the .dag witness EMITS from device_redemption_signing_input
 // and enrolment_transcript (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte
 // is written here: a hand-copied expectation would be a second authority for the join.
-// GENERATED from gunbc.approve_ios_swift_protocol_vector_tests by v2.extdeps.languages.swift.print; do not edit.
+// GENERATED from gunbc.approve_ios_swift_protocol_vector_tests from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.
 import XCTest
 @testable import Approve
 

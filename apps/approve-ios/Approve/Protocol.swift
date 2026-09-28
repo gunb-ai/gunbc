@@ -2,7 +2,7 @@
 // here is a transcription of that module; the .dag is the authority and this file invents nothing.
 // The bytes the builders produce are checked against vectors the .dag witness emits (ApproveTests).
 // The HTTP spelling of these records (JSON bodies, headers, paths) is Wire.swift.
-// GENERATED from gunbc.approve_ios_swift_protocol by v2.extdeps.languages.swift.print; do not edit.
+// GENERATED from gunbc.approve_ios_swift_protocol from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.
 import Foundation
 
 enum Protocol {

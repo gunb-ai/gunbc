@@ -5,7 +5,7 @@
 // the envelope fixtures can be matched as bytes. Decoding mirrors wire_object / wire_string: an
 // unknown member, a missing member, an empty string or an unadmitted kind is refused at its path.
 // Nothing outside this file spells a path, a header or a JSON key.
-// GENERATED from gunbc.approve_ios_swift_wire by v2.extdeps.languages.swift.print; do not edit.
+// GENERATED from gunbc.approve_ios_swift_wire from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.
 import Foundation
 
 // ── serialize_json ───────────────────────────────────────────────────────────────────────────

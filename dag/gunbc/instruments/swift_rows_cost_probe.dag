@@ -1,0 +1,72 @@
+module tools.swift_rows_cost_probe
+
+import std.types { Bool, Int, List }
+import v2.std.algebra { list_snoc_item }
+import v2.std.witness { Holds, Violates }
+import v2.std.grammar { derive_grammar_relation_row_node, formal_production_for_lhs_exact }
+import v2.extdeps.languages.swift.syntax { SwiftSourceFile, SwiftDecl, sw_field, sw_t, sw_struct }
+import v2.extdeps.languages.swift.rows { swift_rows_emit_source_file, SwiftRowEmitted, SwiftRowEmissionRefused, swl_file, swift_row_productions }
+import gunbc.approve_ios_swift_wire { approve_ios_wire_swift_file }
+import gunbc.approve_ios_swift_protocol { approve_ios_protocol_swift_file }
+
+// THE COST OF EMITTING SWIFT THROUGH THE GRAMMAR ROWS, by stage and by size. Each function returns
+// whether its stage completed; the measurement is the eval steps and CPU claim_batch reports for it
+// (`[witness] <name>: cpu=... eval_steps=...`), the quantity the required floor enforces. These are
+// deliberately not `test` claims: a whole-file emission is far above the floor's new-witness budget,
+// and what they measure is a cost, which .dag code cannot observe about itself. Registering them as a
+// `gunbc test` instrument row needs a host arm that reads the evaluator's step count -- not built.
+//
+// Run: claim_batch --source-root dag --source-root src/v2
+//   --entry dag/gunbc/instruments/swift_rows_cost_probe.dag
+//   --functions wire_emits,protocol_emits,wire_lower,wire_select,wire_select_derive,emit_100,emit_200
+//
+// The approve-ios files: whole emission, then the stages (lowering; production selection; selection
+// plus row derivation -- serialization is the remainder of wire_emits).
+fn wire_emits() -> Bool { emitted(f: approve_ios_wire_swift_file()) }
+fn protocol_emits() -> Bool { emitted(f: approve_ios_protocol_swift_file()) }
+fn wire_lower() -> Bool { swl_file(f: approve_ios_wire_swift_file()) != swl_file(f: SwiftSourceFile { declarations: [] }) }
+fn wire_select() -> Bool { selects(f: approve_ios_wire_swift_file()) }
+fn wire_select_derive() -> Bool { derives(f: approve_ios_wire_swift_file()) }
+
+// One struct with N stored properties: one long member list in one nested block. Serialization CPU
+// grows faster than its eval steps here (the residual recorded on #12338); emit_100 vs emit_200
+// reproduces it.
+fn emit_100() -> Bool { emitted(f: fields_struct(n: 100)) }
+fn emit_200() -> Bool { emitted(f: fields_struct(n: 200)) }
+
+fn emitted(f: SwiftSourceFile) -> Bool {
+  match swift_rows_emit_source_file(f: f) { SwiftRowEmitted { source: _ } => true  SwiftRowEmissionRefused { reason: _ } => false }
+}
+
+fn selects(f: SwiftSourceFile) -> Bool {
+  match formal_production_for_lhs_exact(productions: swift_row_productions(), lhs: ^swr_file, child: swl_file(f: f)) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn derives(f: SwiftSourceFile) -> Bool {
+  let program = swl_file(f: f)
+  let productions = swift_row_productions()
+  match formal_production_for_lhs_exact(productions: productions, lhs: ^swr_file, child: program) {
+    Holds { value: production } =>
+      match derive_grammar_relation_row_node(production: production, productions: productions, emitted: program) {
+        Holds { value: _ } => true
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn fields(n: Int, acc: List<SwiftDecl>) -> List<SwiftDecl> {
+  if n <= 0 { acc } else { fields(n: n - 1, acc: list_snoc_item(xs: acc, item: sw_field(n: concat("f", to_string(n)), t: sw_t(n: "String")))) }
+}
+
+fn fields_struct(n: Int) -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [sw_struct(n: "S", i: [], m: fields(n: n, acc: []))] }
+}
+
+fn fixed_productions() -> Bool { swift_row_productions() != [] }
+fn fixed_catalog() -> Bool { v2.std.grammar.formal_productions_catalog_to_node(productions: swift_row_productions()) != v2.extdeps.languages.swift.rows.swl_file(f: SwiftSourceFile { declarations: [] }) }
+fn tiny_emits() -> Bool { emitted(f: fields_struct(n: 1)) }
+fn tiny_derives() -> Bool { derives(f: fields_struct(n: 1)) }
