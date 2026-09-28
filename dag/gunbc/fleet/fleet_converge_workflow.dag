@@ -65,7 +65,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_fleet_converge_plan_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
   gunbc_ci_mtcollins1_census_image_step_timeout_minutes,
-  gunbc_ci_runner_host_file_step_timeout_minutes,
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_spark_runtime_image_build_step_timeout_minutes,
   gunbc_ci_spark_runtime_image_distribute_step_timeout_minutes,
@@ -880,6 +880,12 @@ fn fleet_converge_build_job_capability_closure_holds() -> Bool {
 // therefore wastes one build. The safety property is unchanged -- the reset job needs `build` either
 // way, so it is never scheduled in the state this refuses.
 //
+// GATED ON ITS OWN MODE, DERIVED FROM THE ONE ROSTER. The step once carried no if:, so every
+// dispatch of every mode paid a full `gunbc run` (minutes) to be told ResetDispatchNotThisMode. The
+// gate is fleet_converge_host_reset_return_step_if -- the same roster-derived condition the reset
+// job's own steps carry -- so a skip here is exactly the NotThisMode arm, decided by the runner
+// instead of by a process.
+//
 // WHY NOT A DEFAULT ON THE INPUT, which was the review's other arm. Defaulting the observer would
 // make an omitted field silently select a machine and POWER-CYCLE ITS PAIRED SUBJECT. A default is
 // the right shape for a preference and the wrong one for an effect nobody asked for. Refusing costs
@@ -897,7 +903,7 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_host_reset_return_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -1520,7 +1526,7 @@ fn fleet_converge_runner_host_file_step(id: String, name: String, invoke: String
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
@@ -1579,7 +1585,7 @@ fn fleet_converge_host_credential_custody_converge_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_host_credential_custody_converge_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_runner_host_file_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
@@ -2327,7 +2333,7 @@ fn fleet_converge_pair_serving_d0_admit_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_pair_serving_d0_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 

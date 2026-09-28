@@ -156,6 +156,7 @@ jobs:
         env:
           GUNBC_HOST_RESET_DISPATCH_MODE: ${{ github.event.inputs.mode }}
           GUNBC_HOST_RESET_OBSERVER: ${{ github.event.inputs.reset_observer }}
+        if: github.event.inputs.mode == 'host_reset_return'
         timeout-minutes: 5
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
@@ -215,7 +216,7 @@ jobs:
           GUNBC_D0_CONSENT: ${{ github.event.inputs.d0_consent }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'pair_serving_d0'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
