@@ -272,7 +272,15 @@ fn spark_seat_window_tokens(context_window: Nat) -> Nat? {
 // the engine, whose per-seat driver timing (the seats.timing.tsv the bracket now captures for
 // every variant) and /metrics pre/post deltas answer what one 262K prefill costs with nothing
 // else admitted — the reading the variant-e capture left open (steady progress at ~874 tok/s
-// aggregate, zero preemptions; efficiency unattributed). WHICH VARIANT RUNS is the operator's
+// aggregate, zero preemptions; efficiency unattributed). W1's answer (2026-09-28): 323.16s for
+// one cold 262K, ~805 tok/s — within noise of variant e's six-seat AGGREGATE (~874 tok/s), so
+// the engine is one saturated compute pool at this length, not six lanes. W2 is the warm-
+// continuation question: two sequential full-window seats whose bodies differ ONLY in the
+// header token (seat1/seat2 — the token-exact construction's per-seat variation), so the second
+// seat's latency measures ACTUAL prefix/state reuse from the engine's own accounting, never
+// "prefix caching enabled" as a proxy — a near-instant seat 2 means warm follow-ups are nearly
+// free; ~323s again means every full-window request pays the cold price regardless of history.
+// WHICH VARIANT RUNS is the operator's
 // per-run call, spelled as one named row the parent flips between wet runs; the default is
 // variant a, the deterministic repro the parent runs
 // on landing. The budget arithmetic never reads the variant: window, cadence, and bounds are the
@@ -328,6 +336,13 @@ data spark_workload_variants: List<SparkWorkloadVariant> = [
   SparkWorkloadVariant {
     name: "w1-cold-single-full-window" as NonEmptyStr,
     seat_count: 1,
+    window_tokens: 262144,
+    mode: SparkSeatsSequential,
+    watchdog: false,
+  },
+  SparkWorkloadVariant {
+    name: "w2-warm-continuation-full-window" as NonEmptyStr,
+    seat_count: 2,
     window_tokens: 262144,
     mode: SparkSeatsSequential,
     watchdog: false,
