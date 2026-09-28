@@ -132,6 +132,18 @@ test fn credentials_that_join_alike_stay_distinct_requests() -> Bool {
     && string_contains(s: table, pattern: "\"args\": [\"admin pw\", \"secret\"]}, \"status\": 401")
 }
 
+// A WORLD'S TABLE KEY IS COMPLETE: two worlds that differ only in their pending schedule, or only in
+// which events have fired, are different table states.
+test fn world_keys_distinguish_pending_and_fired_events() -> Bool {
+  let a = world(other_viewers: 0, close_at: 3, canvas_readable: true)
+  let b = world(other_viewers: 0, close_at: 5, canvas_readable: true)
+  let c = world(other_viewers: 0, close_at: -1, canvas_readable: true)
+  let fired = bmc_advance(world: a, now: second(count: 3))
+  megarac_web_world_text(world: a) != megarac_web_world_text(world: b)
+    && megarac_web_world_text(world: a) != megarac_web_world_text(world: c)
+    && megarac_web_world_text(world: fired) != megarac_web_world_text(world: c)
+}
+
 // THE TABLE CARRIES THE ABSOLUTE INSTANT: the only advance row is at the event's own second, and at
 // it a held stream closes.
 test fn the_table_advances_at_the_events_instant_and_closes_the_stream() -> Bool {
