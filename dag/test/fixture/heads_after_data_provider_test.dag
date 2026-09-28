@@ -1,4 +1,4 @@
-module test.fixture.heads_after_data_provider
+module test.fixture.heads_after_data_provider_test
 
 // THE SHAPE UNDER TEST, and every line is load-bearing: a test-marked item whose declaration
 // directly follows a top-level data value. The heads reading ended a data value only at a
