@@ -1,5 +1,7 @@
 module test.claim.json_emit_witness
 
+import extdeps.languages.json.emit { json_string }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_json_cites_rfc8259() -> Bool {

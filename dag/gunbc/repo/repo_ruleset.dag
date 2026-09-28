@@ -729,11 +729,15 @@ fn projected_queue_drift(policy: MergeQueuePolicy, rules: List<RulesetRuleWire>)
       [ProjectedQueueAmbiguous { count: length(matched) }]
     } else {
       fold(matched, init: [], f: fn(_, rule) {
-        let missing = merge_queue_missing_fields(p: rule.parameters)
-        if length(missing) > 0 {
-          [ProjectedQueueParametersIncomplete { missing: missing }]
-        } else {
-          projected_queue_field_drift(policy: policy, p: rule.parameters)
+        match rule.parameters {
+          Absent => [ProjectedQueueParametersIncomplete { missing: ["parameters"] }]
+          Present { value: params } =>
+            let missing = merge_queue_missing_fields(p: params)
+            if length(missing) > 0 {
+              [ProjectedQueueParametersIncomplete { missing: missing }]
+            } else {
+              projected_queue_field_drift(policy: policy, p: params)
+            }
         }
       })
     }

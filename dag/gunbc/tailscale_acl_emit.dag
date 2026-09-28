@@ -1,5 +1,7 @@
 module gunbc.tailscale_acl_emit
 
+import extdeps.languages.json.emit { json_string }
+
 
 fn selector_array_json(items: List<TailscaleAclSelector>) -> JsonValue {
   json_array(elements: items |> map(s => json_string(s: render_tailscale_acl_selector(s: s))))

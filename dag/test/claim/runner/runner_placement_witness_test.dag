@@ -1,5 +1,7 @@
 module test.claim.runner_placement_witness
 
+import std.layout { render }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_plan() -> RunnerDeploymentPlan {

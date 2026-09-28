@@ -1,5 +1,7 @@
 module test.claim.layout_render_witness
 
+import std.layout { render }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }

@@ -1,5 +1,7 @@
 module test.claim.host_network_diagnosis
 
+import extdeps.netplan.netplan { InterfaceObservation }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE conjunct, and it is the srv4 outage of 2026-07-25 replayed on the readings taken live from

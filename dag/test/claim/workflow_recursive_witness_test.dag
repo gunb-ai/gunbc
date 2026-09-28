@@ -1,5 +1,7 @@
 module test.claim.workflow_recursive_witness
 
+import gunbc.idea_pr_spine { settle }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn linearize_steps(steps: List<StageStep>) -> VerdictTree {
