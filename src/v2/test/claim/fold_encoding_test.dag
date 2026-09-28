@@ -163,15 +163,18 @@ test fn fold_encoding_carries_each_operand_at_its_authored_occurrence() -> Bool 
 type FeDrop
   = FeDropCollection
   | FeDropInit
+  | FeDropHead
 
 // Rebuilds the tree with one operand cut out of every fold encoding: the collection by removing the
-// Loop's domain edge, init by replacing the Bind with its Loop (so the Bind's value is gone).
+// Loop's domain edge, the head by removing its realized-declaration edge, init by replacing the Bind
+// with its Loop (so the Bind's value is gone).
 fn fe_mutated(n: Node, drop: FeDrop) -> Node {
   match fold_recurrence_loop(encoding: n) {
     Present { value: loop } =>
       match drop {
         FeDropInit => fe_mutated(n: loop, drop: drop)
         FeDropCollection => fe_rebuilt(n: n, drop: drop)
+        FeDropHead => fe_rebuilt(n: n, drop: drop)
       }
     Absent => fe_rebuilt(n: n, drop: drop)
   }
@@ -185,6 +188,15 @@ fn fe_rebuilt(n: Node, drop: FeDrop) -> Node {
           ComputationNode { behavior: Loop } =>
             match loop_edge_role(e: e) {
               LoopDomainValue => true
+              _ => false
+            }
+          _ => false
+        }
+      FeDropHead =>
+        match n.kind {
+          ComputationNode { behavior: Loop } =>
+            match loop_edge_role(e: e) {
+              LoopRealizedDeclaration => true
               _ => false
             }
           _ => false
@@ -234,6 +246,10 @@ test fn dropping_the_collection_turns_conservation_red_at_it() -> Bool {
 
 test fn dropping_init_turns_conservation_red_at_it() -> Bool {
   fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropInit), sym: ^seed)
+}
+
+test fn dropping_the_head_edge_turns_conservation_red_at_it() -> Bool {
+  fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropHead), sym: ^fold)
 }
 
 // ---- resolve: the head binds the one realization, or refuses at the head --------------------------
