@@ -26,7 +26,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the SAME runner statements the fleet-converge workflow runs -- emitted by v2.workflow.bash_emit and
 // handed to bash through release_bins_transport -- after a hermetic fixture: a temporary git checkout,
 // fake rustc/cargo/cc/ld/ldd on PATH, and fake pack members. Nothing downloaded is executed and
-// nothing outside the fixture's temporary directory is written. Each refusal claim is paired with a
+// nothing outside the fixture's temporary directory is written; an EXIT trap removes that directory
+// on every path, including the refusals. Each refusal claim is paired with a
 // positive over the same fixture, and asserts the refusal BY NAME, so a claim cannot go green through
 // a different refusal than the one it exists to exercise. Offline-local (test/claim/long), not the
 // per-PR floor: the claims execute bash, tar, git, jq and sha256sum on the host.
@@ -52,6 +53,7 @@ fn fixture() -> List<Node> {
   seq(parts: [
     [
       assign_sub(name: "T", body: cmdl(ls: ["mktemp", "-d"])),
+      cmdl(ls: ["trap", "rm -rf \"$T\"", "EXIT"]),
       cmdl(ls: ["unset", "RUSTC", "RUSTC_WORKSPACE_WRAPPER", "RUSTC_WRAPPER", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET", "CARGO_BUILD_TARGET_DIR", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER"]),
       cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/bin"), in_t(path: "/rt"), in_t(path: "/ws/target/release")]),
       cmd(ws: [fx(t: "export"), words(ws: [fx(t: "RUNNER_TEMP="), in_t(path: "/rt")])]),

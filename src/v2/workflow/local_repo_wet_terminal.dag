@@ -1794,6 +1794,132 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
       function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_restore_positive_promotes_verified_members" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_restore_positive_promotes_verified_members",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_consumer_positive_promotes_verified_members" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_consumer_positive_promotes_verified_members",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_altered_member_with_valid_manifest_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_altered_member_with_valid_manifest_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_symlink_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_symlink_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_symlink_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_symlink_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_extra_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_extra_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_extra_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_extra_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_duplicate_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_duplicate_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_duplicate_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_duplicate_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_lookup_valid_empty_answer_is_absence" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_lookup_valid_empty_answer_is_absence",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_count_without_rows_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_count_without_rows_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_truncated_answer_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_truncated_answer_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_count_disagreeing_with_rows_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_count_disagreeing_with_rows_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_wrong_shape_row_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_wrong_shape_row_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_unchanged_inputs_key_equally" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_unchanged_inputs_key_equally",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_release_opt_level_override_changes_the_key" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_release_opt_level_override_changes_the_key",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_compiler_override_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_compiler_override_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_ancestor_cargo_config_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_ancestor_cargo_config_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_partial_print_then_failing_producer_publishes_no_key" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_partial_print_then_failing_producer_publishes_no_key",
+      expectation: ExpectedToHold {}
     }
   ]
 }
