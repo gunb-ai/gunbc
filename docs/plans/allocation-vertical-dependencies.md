@@ -370,3 +370,30 @@ This is not integrated-floor qualification, deployment, protected-storage
 commissioning, or VM acceptance. Capacity transfer, authoritative preparation,
 remote convergence, maintained observations and recovery/expiry/reuse acceptance
 remain required. The overall allocation HOLD remains.
+
+
+## Shared writer admission integrated
+
+Merged upstream #12451 is now integrated, preserving the allocation branch's
+separate protocol authority and signed protected-state route. The public handler
+refuses unrostered writes before invoking that protocol; no second copy of its
+closure cap or storage operations was introduced. The writer roster imports the
+branch's extracted storage-binding authority.
+
+At `b6a2c887b731afe480f47515626edb4992360fc1`, 31 controls pass under 6 GiB/no swap:
+15 real-file/handler controls, 12 wire controls, and four roster controls. The real
+authenticated served route also passes empty history, append/read, exact above-cap
+refusal, reread after restart, and the stopped-server negative control. These use
+temporary local fixtures, not production protected storage.
+
+The complete page server again reaches listening readiness from normal source
+roots under the existing serving budget. Exact duration, peak memory, source and
+binary identity are in `receipts/allocation-writer-integration-2026-09-28/`.
+No deployment or commissioning occurred. The direct-controller withdrawal repair
+is separately recorded in `receipts/allocation-purpose-2026-09-28/`.
+
+The sibling socket transport remains the next integration boundary. Its source at
+`6c6a238c9d7607b4f596ab814d84866c024ed791` changes the public handler/client and seed
+serve transport. It must preserve this branch's protected-state route, and both
+local and remote protected writers must traverse the admitted socket path.
+Socket availability alone does not establish queued-acquisition fencing/drainage.

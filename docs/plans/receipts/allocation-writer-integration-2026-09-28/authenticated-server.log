@@ -1,0 +1,78 @@
+resolved 107 sources
+◐ started compile.frontend
+✓ compile.frontend done in 90ms
+✓ compile.normalize done in 9ms
+✓ compile.reconcile done in 161ms
+✓ compile.analyses done in 7ms
+gunbc serve listening on 127.0.0.1:54005 -> served_storage_hold_handler() release_revision=b6a2c887b731afe480f47515626edb4992360fc1 eval_budget_cpu_ms=unset eval_budget_wall_ms=unset
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 3ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-si8xrmf_/heads
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-si8xrmf_/heads
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+[file] write_create_new /tmp/gunbc-hold-storage-si8xrmf_/objects/7a24d5eacfb72b70 (264 bytes)
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] write_create_new /tmp/gunbc-hold-storage-si8xrmf_/objects/f855659bc1986311 (64 bytes)
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-si8xrmf_/heads
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1
+[file] list /tmp/gunbc-hold-storage-si8xrmf_/heads
+[file] write_create_new /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1 (16 bytes)
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.2
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.1
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/heads/roadmap-events-v1.2
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/objects/f855659bc1986311
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/objects/7a24d5eacfb72b70
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms

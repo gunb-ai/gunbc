@@ -1,0 +1,7 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+PASS the_served_roster_holds_exactly_the_observed_logins_once
+PASS the_admission_admits_a_rostered_login_and_refuses_an_outsider_and_an_absent_login
+PASS the_production_served_door_refuses_a_login_no_reading_observed
+PASS the_placed_store_areas_admit_writes_from_the_operator_and_the_ci_runner_and_no_one_else

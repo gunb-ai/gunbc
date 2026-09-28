@@ -1,0 +1,21 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+◐ started http.Client.PostStdinWithin
+✓ http.Client.PostStdinWithin done in 42ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+◐ started http.Client.PostStdinWithin
+✓ http.Client.PostStdinWithin done in 70ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+◐ started http.Client.PostStdinWithin
+✓ http.Client.PostStdinWithin done in 46ms
+[file] read /tmp/gunbc-hold-storage-si8xrmf_/fixture-key
+◐ started Clock.Now
+✓ Clock.Now done in 1ms
+◐ started http.Client.PostStdinWithin
+✓ http.Client.PostStdinWithin done in 43ms
