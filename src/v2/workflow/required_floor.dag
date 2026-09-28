@@ -769,6 +769,16 @@ fn required_gate_prefixes() -> List<String> {
 // declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
 // its identity-grained disposition.
 //
+// THE EIGHTH ROW IS THE ADMITTED-IDENTITY-CAST ROUTE'S CLAIMS (gunbc#12443; operator escalation
+// msg_a5787a77). They drive the real source route -- v2.compiler.self_host.closure_emission
+// emit_closure_from_ingest_located under the production Rust model -- and assert that an Int
+// identity cast emits as the closure's only member and that a cast with no witness is refused at the
+// entry member by coercion's own mismatch. Outside the gate they ran only as changed witnesses, so a
+// regression that admitted a witness-less cast, or stopped emitting the admitted one, would stay
+// green. Both producers are WARM in v2.workflow.floor_pure_producer_share and the claims measured
+// 0ms on the floor; the module declares SubstrateInputsOnly. Its native partner,
+// v2.test.execution.emit_host_identity_cast_native, is deliberately NOT a row: every one of its runs
+// spawns the host build tool, so it executes only as a changed witness, as that module states.
 // THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
@@ -792,6 +802,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
     "test.claim.host_allocation_conservation",
+    "v2.test.claim.coercion.identity_cast_emission_route",
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.manual.cross_language_add_python_to_typescript",
   ]

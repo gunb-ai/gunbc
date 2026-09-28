@@ -221,7 +221,7 @@ pub mod floor_memory_supervisor;
 pub mod target_invocation_host;
 
 #[path = "generated_artifact_boundary_host.rs"]
-mod generated_artifact_boundary_host;
+pub(crate) mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
 

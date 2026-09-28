@@ -71,7 +71,8 @@ import gunbc.witness_v2_native_route {
 // CONSUMED SINCE 2026-09-23, PER ROW. gunbc.native_frontier_ratchet calls this module's row, disposition
 // and cause-transition folds (`native_progress_row_findings`, `native_progress_disposition_row_findings`,
 // `native_cause_transition_row_findings`) and `native_progress_finding_text` from inside the emitted
-// binary's adjudicate mode, run nightly by `//gunbc/instruments:v2-native-frontier`. What it does
+// binary's adjudicate mode, run by `//gunbc/instruments:v2-native-frontier` (bound to the native
+// route's required lane since the nightly's deletion, 2026-09-27). What it does
 // NOT consume is `native_progress_report` as a whole (its whole-baseline adjudication clause cannot
 // hold for a roster compiled into the binary that judges it; the ratchet states why), nor the
 // provenance and advance vocabulary, which stays the frontier described below. The paragraphs

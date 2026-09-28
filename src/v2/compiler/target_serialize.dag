@@ -1048,6 +1048,47 @@ fn target_serialize_source_from_model(
     }
   )
 }
+
+// THE ROW A PRODUCER ALREADY SELECTED IS SERIALIZED, NOT SELECTED AGAIN. A fold that derives the
+// relation row for its emitted node from the production catalog (v2.extdeps.languages.bash_command_fold
+// bash_fold_relation_row_witness) and then builds its target model FROM that row holds the row the
+// generic entry above would re-select from the same rules, and a serialize source spelled from the
+// same row's tokens, so grammar_inverse_source_validated would compare a row with itself. This entry
+// keeps what the generic path owes a caller -- the same recursion budget, the same refusal when it is
+// exhausted, and nonterminal items selected through the generic path -- and drops only that second
+// selection of a row the caller established. The caller supplies the rules' subtree count
+// (translate_serialize_measure's rules budget) because it built the rules node and can count it
+// without walking a constant catalog once per leaf.
+fn target_serialize_source_from_selected_row(
+  target: TargetModel,
+  emitted: Node,
+  row: Node,
+  rules_budget: Int
+) -> Outcome<Medium<String>> {
+  let measure = node_subtree_count(n: emitted) + rules_budget + 1
+  if measure - 1 <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: grammar_relation_row_tokens_root(row: row),
+      f: fn(tokens_root) {
+        bind_outcome(
+          o: grammar_tokens_node_targets(tokens_node: tokens_root),
+          f: fn(tokens) {
+            bind_outcome(
+              o: serialize_relation_row_tokens_bounded(remaining: measure - 1, target: target, tokens: tokens),
+              f: fn(text) {
+                target_source_medium(text: render_target_text(t: text), target: target)
+              }
+            )
+          }
+        )
+      }
+    )
+  }
+}
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
