@@ -86,6 +86,7 @@ import gunbc.runner_microvm_lifecycle_realize {
   ControllerRefusedAdmission, ControllerRefusedBinding, ControllerQuarantinedUnattributedResidue,
   ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 data runner_microvm_slot_controller_disposition: ConstructionMechanism = SingleAuthority
 

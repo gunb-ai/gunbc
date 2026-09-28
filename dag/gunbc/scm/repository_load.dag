@@ -48,6 +48,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   FilesystemReadRefused,
   filesystem_read_outcome,
+  Filesystem
 }
 import extdeps.languages.json.parse {
   parse_json_document,

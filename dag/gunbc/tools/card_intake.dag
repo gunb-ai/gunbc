@@ -1,4 +1,12 @@
 module gunbc.tools.card_intake
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.llm.anthropic_messages_api { AnthropicImageBlock, Base64Image, ImageJpeg, UserMessage, UserTextBlock }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import extdeps.llm.anthropic_rest
+import extdeps.tcgplayer.catalog
+import extdeps.tcgplayer.pricing
+import extdeps.tcgplayer.store
+import extdeps.tcgplayer.tcgplayer
 
 
 data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }

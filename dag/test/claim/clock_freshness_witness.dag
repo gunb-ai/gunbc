@@ -1,4 +1,5 @@
 module test.claim.clock_freshness_witness
+import extdeps.clock { Clock }
 
 
 fn witness_clock_now_positive_epoch() -> Bool {

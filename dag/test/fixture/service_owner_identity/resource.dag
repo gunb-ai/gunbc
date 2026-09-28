@@ -1,0 +1,11 @@
+module test.fixture.service_owner_identity.resource
+
+// A resource named OwnerIdentityProbe, beside the fixture services and the fixture data value of the
+// same name: a resource occupies a type or `uses` position, so it is never a rival to a service in
+// receiver position, while a data value is.
+resource OwnerIdentityProbe {
+  kind: Capability
+  mode: Read
+  acquire {}
+  release {}
+}

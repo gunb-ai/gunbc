@@ -1,0 +1,23 @@
+module test.fixture.service_owner_identity.service_b
+
+import std.types { String, Unit }
+
+// The SECOND bare-declared service named OwnerIdentityProbe: two modules declaring one service name is
+// the plural homonym test.claim.service_owner_identity_witness must decide over the whole candidate
+// set, never by import or census order.
+// Designed, not real: no two real modules declare one service name today.
+service OwnerIdentityProbe {
+  operation OwnerIdentityPing {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable: hermetic never dispatches wet"
+    }
+    mock_response {
+      0 => { ok: "pong-b" } "fixture op realizes hermetically"
+    }
+  }
+}

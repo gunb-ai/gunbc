@@ -1,4 +1,5 @@
 module test.fixture.effect_reach_conjunction.host_sink_provider
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The host-effect half of the fixture, and it carries no path literal of its own. The two
 // terms the derivation conjoins are deliberately split across separate modules here because

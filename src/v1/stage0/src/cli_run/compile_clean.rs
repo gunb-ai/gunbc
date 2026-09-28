@@ -1097,6 +1097,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ReferenceDerivedImportExportUnproven { name: s(), referencing_module: s(), provider_module: s(), span: no_span() },
         UnlistedVariantValueUse { name: s(), span: no_span() },
         AmbiguousReference { name: s(), candidates: istrings(), span: no_span() },
+        ServiceOwnerMismatch { name: s(), service_owner: s(), bound_owner: s(), span: no_span() },
         AmbiguousAnonymousRecordLiteral { candidates: istrings(), span: no_span() },
         EffectfulSelfRecursionUnrealized { name: s(), span: no_span() },
         ModuleFilenameCollision { filename: s(), modules: istrings(), span: no_span() },
@@ -1577,6 +1578,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::ServiceOwnerMismatch { .. } => "ServiceOwnerMismatch",
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
@@ -1690,6 +1692,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::ServiceOwnerMismatch { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }

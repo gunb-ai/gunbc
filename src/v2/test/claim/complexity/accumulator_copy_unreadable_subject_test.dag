@@ -3,7 +3,8 @@ module v2.test.claim.complexity.accumulator_copy_unreadable_subject
 import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
   FilesystemReadSucceeded,
-  filesystem_read_outcome
+  filesystem_read_outcome,
+  Filesystem
 }
 import v2.lens.common.source_analysis_standing { SourceUnreadable }
 import v2.lens.complexity_accumulator_copy.roster_gate {
