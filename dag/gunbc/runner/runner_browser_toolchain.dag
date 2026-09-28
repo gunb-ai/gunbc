@@ -586,10 +586,14 @@ fn browser_toolchain_decoy_package_dir(location: RunnerBrowserToolchainLocation)
 }
 
 fn launch_readback_of(output: String, expected_module_dir: String) -> BrowserLaunchReadback {
-  let lines = split(trim(s: output), "\n")
-  let title = match get(xs: lines, index: 0) { Present { value: l } => trim(s: l)  Absent => "" }
-  let width = match get(xs: lines, index: 1) { Present { value: l } => trim(s: l)  Absent => "" }
-  let resolved = match get(xs: lines, index: 2) { Present { value: l } => trim(s: l)  Absent => "" }
+  match split(trim(s: output), "\n") {
+    Cons { head: t, tail: Cons { head: w, tail: Cons { head: r, tail: _ } } } =>
+      launch_readback_of_lines(output: output, title: trim(s: t), width: trim(s: w), resolved: trim(s: r), expected_module_dir: expected_module_dir)
+    _ => BrowserLaunchWrongPage { observed: trim(s: output) }
+  }
+}
+
+fn launch_readback_of_lines(output: String, title: String, width: String, resolved: String, expected_module_dir: String) -> BrowserLaunchReadback {
   if title != browser_toolchain_probe_title || width == "" || width == "0" {
     BrowserLaunchWrongPage { observed: trim(s: output) }
   } else if starts_with(s: resolved, prefix: concat(expected_module_dir, "/")) == false {
