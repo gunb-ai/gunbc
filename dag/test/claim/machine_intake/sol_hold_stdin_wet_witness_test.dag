@@ -405,7 +405,7 @@ test fn an_adopted_collector_needs_a_receipt_naming_its_instance() -> Bool {
   let _published = settle(seconds: 1)
   let identity = read_or_empty(path: pid_path)
   let receipt = concat(pid_path, ".activated")
-  let none = mtcollins1_sol_adopted_activation(pid_path: pid_path)
+  let unreceipted = mtcollins1_sol_adopted_activation(pid_path: pid_path)
   let _foreign = Filesystem.Write(path: receipt, content: "1 1 at=2026-09-28T00:00:00Z\n").success
   let foreign = mtcollins1_sol_adopted_activation(pid_path: pid_path)
   let _own = Filesystem.Write(path: receipt, content: concat(trim(s: identity), " at=2026-09-28T00:00:00Z\n")).success
@@ -413,7 +413,7 @@ test fn an_adopted_collector_needs_a_receipt_naming_its_instance() -> Bool {
   let _waited = settle(seconds: 8)
   let _removed = shell.Remove.RecursiveForce(path: dir)
   run.launched && identity != ""
-    && (match none { SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: _, receipt: _ } } => true  _ => false })
+    && (match unreceipted { SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: _, receipt: _ } } => true  _ => false })
     && (match foreign { SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: _, receipt: _ } } => true  _ => false })
     && (match own { SolEstablished { at: _ } => true  _ => false })
 }
