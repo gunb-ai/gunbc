@@ -7,7 +7,6 @@ import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.collection {
   Map,
   empty_map,
-  list_at_optional,
   map_insert
 }
 import v2.std.optional {
@@ -24,11 +23,14 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  FirstPositionalAbsent,
+  FirstPositionalFound,
   Named,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  arrow_first_positional_target,
   node_subtree_nodes
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
@@ -193,14 +195,14 @@ fn symbol_index_fill_containment_node(
         }
       })
     TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node.children, index: 0) {
-        Present { value: domain_edge } =>
+      match arrow_first_positional_target(children: node.children) {
+        FirstPositionalFound { target: domain } =>
           symbol_index_fill_containment_node(
             index: index,
             path: path,
-            node: domain_edge.target
+            node: domain
           )
-        Absent => index
+        FirstPositionalAbsent => index
       }
     _ =>
       fold(node.children, init: index, f: fn(acc, edge) {
