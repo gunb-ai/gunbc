@@ -18,10 +18,10 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node,
   bash_fold_serialize_program
 }
-import v2.std.algebra { fold_list, list_reverse }
+import v2.std.algebra { fold_list }
 import v2.std.text { CharAbsent, CharFound, CharResult, char_eq, string_head }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused }
-import std.algebra { list_append, list_snoc_item }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
@@ -180,10 +180,13 @@ fn bash_emit_wrong_spelling_oracle_holds(emit_o: Outcome<String>, golden: String
 // dissolve-on: a PipelineStep arm carrying a bash_build statement Node lands in
 // v2.compiler emit_orchestration, so a prelude joins the orchestration pipeline as nodes and this
 // text-level join has no remaining consumer.
-// The part list is validated in one pass that builds no text, and the text is then built once:
-// the parts are reversed (a list of a handful of programs) and each is prepended onto the result,
-// so every part is copied exactly once. Appending onto a growing accumulator instead re-copies the
-// joined prefix at every step (DESIGN §6: a copied accumulator is fixed regardless of n).
+// The part list is validated in one pass that builds no text, and the validated parts are then
+// materialized by ONE join, which copies each part exactly once. A fold that appends parts onto a
+// growing result copies that result again at every step in the String realization, which pushes
+// the RIGHT operand -- whichever side the accumulator sits on (review 5333525589; DESIGN §6: a
+// copied accumulator is fixed regardless of n). The accumulator-copy roster gate over this file
+// (v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash) is the control that tells the
+// two apart; equal output bytes cannot.
 type BashProgramSequenceCheck
   = BashProgramSequenceOpen { line_open: Bool }
   | BashProgramSequenceFused
@@ -224,14 +227,7 @@ fn bash_emit_program_sequence_check(programs: List<String>) -> BashProgramSequen
 fn bash_emit_program_sequence(programs: List<String>) -> Outcome<String> {
   match bash_emit_program_sequence_check(programs: programs) {
     BashProgramSequenceOpen { line_open: _ } =>
-      Accepted {
-        value: fold_list(
-          xs: list_reverse(xs: programs),
-          empty: "",
-          cons: fn(acc, program) { list_append(left: program, right: acc) }
-        ),
-        diagnostics: None
-      }
+      Accepted { value: join(programs, ""), diagnostics: None }
     BashProgramSequenceFused => bash_fold_serialize_refused(variant: ^bash_emit_program_sequence_fuses_lines)
   }
 }
