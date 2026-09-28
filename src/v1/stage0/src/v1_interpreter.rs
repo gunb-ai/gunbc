@@ -7842,8 +7842,8 @@ fn current_witness_evaluation_frame() -> Option<Value> {
     WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
 }
 
-// HAND-RUST GATE, seed-retained, admitted by `gunbc.v1_maintenance_standing`
-// `v1_maintenance_modeled_operation_realization_admission_note` (gunbc#12486, #12423 decision
+// HAND-RUST GATE, seed-retained, admitted by `gunbc.modeled_operation_realization_seed_growth`
+// `modeled_operation_realization_seed_growth_justification` (gunbc#12486, #12423 decision
 // 5858742863). This is the seed realization of a .dag contract: selection
 // (`operation_handler_selection`), duplicate admission, the virtual clock and every scenario
 // transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
@@ -7956,8 +7956,22 @@ fn variant_value(
 /// identity resolves to no declared operation.
 fn admit_modeled_realization(
     frame: &Value,
+    env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Option<ModeledRealizationSlot>> {
+    // FRAME COMPOSITION: while a modeled realization is active, NO further witness frame may open
+    // inside it -- not one without a realization, not one with another realization, not one with
+    // the same. Any nested frame would sit above the active slot and could only weaken it (a
+    // realization-less frame would let the dispatcher fall through to ordinary dispatch while the
+    // parent is still in force). The refusal is independent of what the nested frame carries.
+    let enclosing_modeled =
+        MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow().iter().any(|slot| slot.is_some()));
+    if enclosing_modeled {
+        return Err(modeled_refused(
+            "(frame)",
+            "a witness frame cannot open while a modeled operation realization is active; nested frames are refused whatever they carry",
+        ));
+    }
     let realization = match record_field(ctx, frame, "realization") {
         None | Some(Value::Null) => return Ok(None),
         Some(Value::Variant {
@@ -7977,7 +7991,23 @@ fn admit_modeled_realization(
         }
         Some(other) => other,
     };
-    if !ctx.execution_mode.is_hermetic() {
+    let mode = variant_value(
+        ctx,
+        "ExecutionMode",
+        match ctx.execution_mode {
+            ExecutionMode::Hermetic => "Hermetic",
+            ExecutionMode::Wet => "Wet",
+            ExecutionMode::Record => "Record",
+        },
+        vec![],
+    );
+    let admitted = run_in_context_with_args(
+        ctx,
+        "modeled_realization_admitted_in",
+        &[(Some("mode".to_string()), mode)],
+        false,
+    )?;
+    if !matches!(admitted, Value::Bool(true)) {
         return Err(modeled_refused(
             "(frame)",
             "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
@@ -8044,9 +8074,16 @@ fn admit_modeled_realization(
             ));
         }
     }
-    let state = record_field(ctx, &realization, "initial")
+    let initial = record_field(ctx, &realization, "initial")
         .ok_or_else(|| modeled_refused("(frame)", "the realization carries no initial state"))?;
-    let now = run_in_context_with_args(ctx, "virtual_clock_origin", &[], false)?;
+    // The realization's clock starts at its declared epoch -- the origin for a fresh scenario, the
+    // interrupted attempt's clock (plus any absence the supervisor declares) for a resume -- and
+    // every event due by then fires before the subject issues anything.
+    let now = record_field(ctx, &realization, "epoch")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no epoch"))?;
+    let advance = record_field(ctx, &realization, "advance")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
+    let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
     Ok(Some(ModeledRealizationSlot {
         envelope,
         realization,
@@ -8252,7 +8289,33 @@ fn dispatch_modeled_operation(
         "OperationCall",
         vec![("invocation", invocation.clone()), ("now", now.clone())],
     );
-    let step = apply_modeled_handler(&handler, &[state, call], env, ctx)?;
+    // A HANDLER OR advance THAT FAILS STILL LEAVES A RECORD. The dispatch happened -- this operation,
+    // at this ordinal -- so its record is finalized with the original cause, the last established
+    // state and the unadvanced clock, and the cause then propagates unchanged. No completion is
+    // manufactured: the outcome is a callback failure, never an observation.
+    let callback_failed = |stage: &str, error: &InterpError, state: Option<Value>| {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchCallbackFailed",
+                vec![
+                    ("stage", variant_value(ctx, "CallbackStage", stage, vec![])),
+                    ("cause", str_value(error.to_string())),
+                ],
+            ),
+            now.clone(),
+            state,
+            false,
+        );
+    };
+    let step = match apply_modeled_handler(&handler, &[state, call], env, ctx) {
+        Ok(step) => step,
+        Err(error) => {
+            callback_failed("HandlerFailed", &error, None);
+            return Err(error);
+        }
+    };
     let (step_arm, step_fields) = variant_parts(ctx, &step)
         .ok_or_else(|| harness_fault("the handler returned a malformed step".to_string()))?;
     match step_arm.as_str() {
@@ -8282,8 +8345,18 @@ fn dispatch_modeled_operation(
             let advance = record_field(ctx, &realization, "advance").ok_or_else(|| {
                 harness_fault("the realization carries no advance function".to_string())
             })?;
-            let advanced =
-                apply_modeled_handler(&advance, &[stepped, completed.clone()], env, ctx)?;
+            let advanced = match apply_modeled_handler(
+                &advance,
+                &[stepped.clone(), completed.clone()],
+                env,
+                ctx,
+            ) {
+                Ok(advanced) => advanced,
+                Err(error) => {
+                    callback_failed("AdvanceFailed", &error, Some(stepped));
+                    return Err(error);
+                }
+            };
             let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
             log(
                 variant_value(
@@ -8425,7 +8498,7 @@ fn try_witness_evaluation_dispatch(
             };
             let empty_route = || list_value(Vec::<Value>::new());
             let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
-            let admitted = match admit_modeled_realization(&frame, ctx) {
+            let admitted = match admit_modeled_realization(&frame, env, ctx) {
                 Ok(slot) => slot,
                 Err(error) => {
                     return Some(Ok(variant_value(
@@ -8452,21 +8525,29 @@ fn try_witness_evaluation_dispatch(
                     .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
                 (evaluated, slot)
             };
-            let (route, state, interrupted) = match slot {
-                Some(slot) => (list_value(slot.route), Some(slot.state), slot.interrupted),
-                None => (empty_route(), None, None),
+            let (route, state, interrupted, clock) = match slot {
+                Some(slot) => (
+                    list_value(slot.route),
+                    Some(slot.state),
+                    slot.interrupted,
+                    Some(slot.now),
+                ),
+                None => (empty_route(), None, None, None),
             };
             let present = |v: Value| variant_value(ctx, "Optional", "Present", vec![("value", v)]);
-            Some(Ok(match (evaluated, interrupted, state) {
-                (Err(InterpError::ModeledWorkerKilled { .. }), Some(at), Some(state)) => {
-                    variant_value(
-                        ctx,
-                        "WitnessEvaluation",
-                        "WitnessInterrupted",
-                        vec![("at", at), ("route", route), ("state", state)],
-                    )
-                }
-                (Ok(value), _, state) => variant_value(
+            Some(Ok(match (evaluated, interrupted, state, clock) {
+                (
+                    Err(InterpError::ModeledWorkerKilled { .. }),
+                    Some(at),
+                    Some(state),
+                    Some(now),
+                ) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
+                    "WitnessInterrupted",
+                    vec![("at", at), ("route", route), ("state", state), ("now", now)],
+                ),
+                (Ok(value), _, state, _) => variant_value(
                     ctx,
                     "WitnessEvaluation",
                     "WitnessReturned",
@@ -8476,7 +8557,7 @@ fn try_witness_evaluation_dispatch(
                         ("state", state.map(present).unwrap_or_else(absent_state)),
                     ],
                 ),
-                (Err(error), _, state) => variant_value(
+                (Err(error), _, state, _) => variant_value(
                     ctx,
                     "WitnessEvaluation",
                     "WitnessRefused",
