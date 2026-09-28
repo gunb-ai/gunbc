@@ -100,7 +100,16 @@ data mtcollins1_sol_hold_activate_script: String = "h=\"$1\"; u=\"$2\"; pw=\"$3\
 // with no single quote so a trap may carry it single-quoted.
 // It is hand-shell under the same scaffold as ActivateHeld (mtcollins1_sol_hold_shell_emit_scaffold),
 // whose trigger names release by identity as part of the capability that dissolves it.
-data mtcollins1_sol_hold_release_script: String = "f=\"$1\"; owned() \{ st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=$\{st##*) \}; set -f; set -- $st; [ \"$1\" != Z ] && [ \"$\{20\}\" = \"$s\" ]; \}; [ -f \"$f\" ] || exit 0; read -r p s < \"$f\"; [ -n \"$p\" ] && [ -n \"$s\" ] || exit 0; owned || exit 0; kill \"$p\"; for i in 1 2 3 4 5 6 7 8 9 10; do owned || exit 0; sleep 0.2; done; owned && kill -9 \"$p\"; for i in 1 2 3 4 5; do owned || exit 0; sleep 0.2; done; exit 1"
+// THE IDENTITY PREDICATE, one definition: `owned` is true while the recorded "<pid> <starttime>" names a
+// live, non-zombie process with that start time. The release below and the owned check after it both
+// consume it, so the watcher's teardown and the collector's release decide ownership the same way.
+data sol_hold_owned_predicate: String = "owned() \{ st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=$\{st##*) \}; set -f; set -- $st; [ \"$1\" != Z ] && [ \"$\{20\}\" = \"$s\" ]; \}"
+
+data mtcollins1_sol_hold_release_script: String = concat("f=\"$1\"; ", concat(sol_hold_owned_predicate, "; [ -f \"$f\" ] || exit 0; read -r p s < \"$f\"; [ -n \"$p\" ] && [ -n \"$s\" ] || exit 0; owned || exit 0; kill \"$p\"; for i in 1 2 3 4 5 6 7 8 9 10; do owned || exit 0; sleep 0.2; done; owned && kill -9 \"$p\"; for i in 1 2 3 4 5; do owned || exit 0; sleep 0.2; done; exit 1"))
+
+// THE OWNED CHECK: exits 0 while the record at $1 names its live instance, 1 otherwise (no record, a
+// gone or replaced process). Signals nothing. Written with no single quote, like the release.
+data mtcollins1_sol_hold_owned_check_script: String = concat("f=\"$1\"; ", concat(sol_hold_owned_predicate, "; [ -f \"$f\" ] || exit 1; read -r p s < \"$f\"; [ -n \"$p\" ] && [ -n \"$s\" ] || exit 1; owned"))
 
 service gunbc.machine_intake.sol_hold {
   operation ActivateHeld {

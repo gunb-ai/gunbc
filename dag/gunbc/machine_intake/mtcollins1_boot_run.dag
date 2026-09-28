@@ -1622,7 +1622,11 @@ fn mtcollins1_boot_await_capture_terminal(
       )
       TerminalWatch { outcome: exit_failure(reason: observation_channel_lost_text(lost: lost)), census_ended: ended, smpro_census: smpro_census }
     }
-    WatchContinue { reason: why } =>
+    WatchContinue { reason: why } => {
+      match mtcollins1_sol_observer_refusal(capture_path: capture_path) {
+        Present { value: gone } => return TerminalWatch { outcome: exit_failure(reason: concat(gone, "; observed during the capture watch, so the watch stops rather than continuing unreported")), census_ended: ended, smpro_census: smpro_census }
+        _ => {}
+      }
       if remaining <= 0 {
         TerminalWatch { outcome: exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete")), census_ended: ended, smpro_census: smpro_census }
       } else {
@@ -1644,6 +1648,7 @@ fn mtcollins1_boot_await_capture_terminal(
           last_live_at: seen.at as String,
         )
       }
+    }
   }
 }
 
@@ -1976,8 +1981,14 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
 type MediaGatedHandoff {
   result: MtCollins1HandoffResult
   media: MtCollins1HandoffMedia
+  live_at: String
 }
 
+// THE SOL SUPERVISION CHECK SITS AFTER THE BLOCKING PRESENTATION RECHECK and immediately before the
+// handoff it guards, so no network read separates the observation of the collector and its notice
+// watcher from the boot-device and power writes. A loss there withholds the handoff (HandoffMediaNotReached
+// with the frozen incident's reason). live_at is the last instant the collector was observed held, which
+// the capture watch measures its detection bound from.
 fn mtcollins1_boot_handoff_when_media_ready(
   proof: UnitHoldProof,
   media: MtCollins1MediaAttachRecord,
@@ -1985,6 +1996,9 @@ fn mtcollins1_boot_handoff_when_media_ready(
   password_file: String,
   attempt: String,
   selection: IpmiBootSelection,
+  pid_path: String,
+  capture_path: String,
+  last_live_at: String,
 ) -> MediaGatedHandoff
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
@@ -1992,11 +2006,19 @@ fn mtcollins1_boot_handoff_when_media_ready(
 {
   match mtcollins1_media_gate(record: media) {
     MediaGateWithheld { reason: why } =>
-      MediaGatedHandoff { result: handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why } }
+      MediaGatedHandoff { result: handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
       let before = mtcollins1_observe_presentation(proof: proof, image_name: image_name, password_file: password_file, attempt: attempt, look: "before-handoff")
       match presentation_still_served(result: before) {
         PresentationStillReady => {
+          let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
+            SolLostAt { outcome: o } => return MediaGatedHandoff {
+              result: handoff_not_issued(outcome: o),
+              media: HandoffMediaNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
+              live_at: last_live_at,
+            }
+            SolHeldAt { at: a } => a as String
+          }
           let handed = mtcollins1_drive_handoff(
             proof: proof,
             label: "mtcollins1 cdrom handoff",
@@ -2012,12 +2034,14 @@ fn mtcollins1_boot_handoff_when_media_ready(
               handoff: match handed.outcome { ExitSuccess => HandoffConfirmed  ExitFailure { code: _, reason: r } => HandoffAttemptedUnconfirmed { reason: r } },
               after: after,
             },
+            live_at: supervised_at,
           }
         }
         _ =>
           MediaGatedHandoff {
             result: handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
             media: HandoffMediaWithheldAtRecheck { before: before },
+            live_at: last_live_at,
           }
       }
     }
@@ -2087,28 +2111,18 @@ fn mtcollins1_boot_actuate(
         MediaGateWithheld { reason: why } => exit_failure(reason: why as String)
       }
       let attach_verified = proc_uptime_read()
-      let before_handoff = match attached {
-        ExitSuccess => mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: attach_live_at)
-        _ => SolHeldAt { at: attach_live_at as NonEmptyStr }
-      }
-      let gated = match before_handoff {
-        SolLostAt { outcome: o } => MediaGatedHandoff {
-          result: MtCollins1HandoffResult { outcome: o, start: BootStartUnobserved { reason: "the SOL collector or its observer was lost before the handoff, so none was issued" } },
-          media: HandoffMediaNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
-        }
-        SolHeldAt { at: _ } => mtcollins1_boot_handoff_when_media_ready(
-          proof: proof,
-          media: media,
-          image_name: subject.image_name,
-          password_file: password_file,
-          attempt: attempt,
-          selection: subject.selection,
-        )
-      }
-      let handoff_live_at = match before_handoff {
-        SolHeldAt { at: a } => a as String
-        SolLostAt { outcome: _ } => attach_live_at
-      }
+      let gated = mtcollins1_boot_handoff_when_media_ready(
+        proof: proof,
+        media: media,
+        image_name: subject.image_name,
+        password_file: password_file,
+        attempt: attempt,
+        selection: subject.selection,
+        pid_path: sol_pid_path,
+        capture_path: sol_capture_path,
+        last_live_at: attach_live_at,
+      )
+      let handoff_live_at = gated.live_at
       let handoff = match gated.media {
         HandoffMediaAttempted { before: _, handoff: _, after: _ } =>
           HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() }, live_at: handoff_live_at }

@@ -15,7 +15,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_await_establishment, SolEstablishment, SolEstablished, SolNotEstablished,
   SolActivationUnconfirmed, SolActivateRefused, SolAdoptedActivationUnproven, mtcollins1_sol_adopted_activation,
   mtcollins1_sol_release_owned, SolReleaseOutcome, SolReleased, SolReleaseForeignRecord, SolReleaseNoRecord,
-  mtcollins1_sol_collector_observe, SolCollectorHeld,
+  mtcollins1_sol_collector_observe, SolCollectorHeld, mtcollins1_sol_notice_watcher_path,
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -113,7 +113,18 @@ fn settle(seconds: Int) -> Bool {
   sleep_delay_seconds_second_carrier_projection(duration: second(count: seconds))
 }
 
+// The capture watch requires its notice watcher alive (mtcollins1_sol_observer_refusal). These
+// controls are about the collector, so the observer record names a process that outlives the watch:
+// a separate silent probe launched through the same hold, recorded as "<pid> <starttime>".
+fn observer_alive(run: ProbeLaunch) -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_solstdin.XXXXXX").path as String
+  let observer = probe_launch(dir: dir, script: "#!/bin/sh\nsleep 40\n", pid_path: concat(dir, "/observer.pid"))
+  let _published = settle(seconds: 1)
+  observer.launched && Filesystem.Write(path: mtcollins1_sol_notice_watcher_path(capture_path: run.capture_path), content: read_or_empty(path: concat(dir, "/observer.pid"))).success
+}
+
 fn watch(run: ProbeLaunch) -> TerminalWatch {
+  let _observed = observer_alive(run: run)
   mtcollins1_boot_await_capture_terminal(
     remaining: 4,
     capture_path: run.capture_path,
@@ -561,4 +572,31 @@ test fn a_record_this_attempt_did_not_establish_is_not_released() -> Bool {
   let none_ok = match mtcollins1_sol_release_owned(pid_path: concat(dir, "/absent.pid")) { SolReleaseNoRecord => true  _ => false }
   let _removed = shell.Remove.RecursiveForce(path: dir)
   none_ok && owned_release(script: silent_probe(), receipt_of_own: false)
+}
+
+// THE WATCH NOTICES ITS OBSERVER'S DEATH. With the collector alive and quiet (pending), a watcher record
+// naming a process that has exited stops the watch at its next tick with the observer as the cause;
+// the same quiet collector with a live observer stays pending until the watch's own budget ends.
+test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: "#!/bin/sh\nsleep 30\n", pid_path: concat(dir, "/collector.pid"))
+  let _published = settle(seconds: 1)
+  let dead = Filesystem.Write(path: mtcollins1_sol_notice_watcher_path(capture_path: run.capture_path), content: "999999 1\n").success
+  let stopped = mtcollins1_boot_await_capture_terminal(
+    remaining: 3, capture_path: run.capture_path, pid_path: run.pid_path,
+    subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
+    password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+  )
+  let live_ok = observer_alive(run: run)
+  let pending = mtcollins1_boot_await_capture_terminal(
+    remaining: 0, capture_path: run.capture_path, pid_path: run.pid_path,
+    subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
+    password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+  )
+  let _stop = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: run.pid_path as NonEmptyStr).success
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && dead && live_ok
+    && string_contains(s: outcome_reason(w: stopped), pattern: "the SOL notice watcher is required before a further BMC effect")
+    && string_contains(s: outcome_reason(w: stopped), pattern: "observed during the capture watch")
+    && string_contains(s: outcome_reason(w: pending), pattern: "deadline reached without a host-capture terminal")
 }

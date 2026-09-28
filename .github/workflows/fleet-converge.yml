@@ -1511,16 +1511,22 @@ jobs:
           SOL_PID_FILE="$RUNNER_TEMP"'/mtcollins1-sol.pid'
           SOL_OUT="$GITHUB_WORKSPACE"'/artifacts/mtcollins1-boot-sol.capture'
           SOL_RELEASE='f="$1"; owned() { st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=${st##*) }; set -f; set -- $st; [ "$1" != Z ] && [ "${20}" = "$s" ]; }; [ -f "$f" ] || exit 0; read -r p s < "$f"; [ -n "$p" ] && [ -n "$s" ] || exit 0; owned || exit 0; kill "$p"; for i in 1 2 3 4 5 6 7 8 9 10; do owned || exit 0; sleep 0.2; done; owned && kill -9 "$p"; for i in 1 2 3 4 5; do owned || exit 0; sleep 0.2; done; exit 1'
+          SOL_OWNED='f="$1"; owned() { st=$(cat /proc/$p/stat 2>/dev/null) || return 1; st=${st##*) }; set -f; set -- $st; [ "$1" != Z ] && [ "${20}" = "$s" ]; }; [ -f "$f" ] || exit 1; read -r p s < "$f"; [ -n "$p" ] && [ -n "$s" ] || exit 1; owned'
+          fail='0'
           SOL_WORKFLOW=''
           SOL_DELIVERY=''
           SOL_NOTICE_WATCH=''
           'trap' 'rc="$?"
           if '\''['\'' '\''-n'\'' "$SOL_WORKFLOW" '\'']'\''; then '\''echo'\'' '\''gunbc-workflow: collector release requested by the step exit trap at='\''$('\''date'\'' '\''-u'\'' '\''+%Y-%m-%dT%H:%M:%SZ'\'') | '\''dd'\'' '\''of='\''"$SOL_WORKFLOW" '\''oflag=append'\'' '\''conv=notrunc'\'' '\''status=none'\'' || '\''true'\''; fi
-          '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_PID_FILE" || '\''echo'\'' '\''::error::mtcollins1 SOL collector survived KILL at step exit'\''
+          if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_PID_FILE"; then col='\''ok'\''; else col='\''survived-KILL'\''; fi
           obs='\''unstarted'\''
-          if '\''['\'' '\''-n'\'' "$SOL_NOTICE_WATCH" '\'']'\''; then '\'':'\'' > "$SOL_OUT"'\''.notice.stop'\'' || '\''true'\''; '\''timeout'\'' '\''10'\'' '\''tail'\'' '\''--pid='\''"$SOL_NOTICE_WATCH" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''; if '\''kill'\'' '\''-0'\'' "$SOL_NOTICE_WATCH" 2>/dev/null; then '\''kill'\'' "$SOL_NOTICE_WATCH" 2>/dev/null || '\''true'\''; obs='\''unfinished'\''; else if '\''wait'\'' "$SOL_NOTICE_WATCH"; then obs='\''0'\''; else obs="$?"; fi; fi; fi
-          '\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"
-          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher result: '\''"$obs"'\'' (the boot command exited '\''"$rc"'\''); delivery ledger: '\''"$SOL_DELIVERY"; if '\''['\'' "$rc" '\''='\'' '\''0'\'' '\'']'\''; then rc='\''1'\''; fi; fi
+          wclean='\''none'\''
+          if '\''['\'' '\''-n'\'' "$SOL_NOTICE_WATCH" '\'']'\''; then '\'':'\'' > "$SOL_OUT"'\''.notice.stop'\'' || '\''true'\''; '\''timeout'\'' '\''10'\'' '\''tail'\'' '\''--pid='\''"$SOL_NOTICE_WATCH" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''; if '\''bash'\'' '\''-c'\'' "$SOL_OWNED" '\''sol-owned'\'' "$SOL_OUT"'\''.notice.watcher'\''; then obs='\''unfinished'\''; if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_OUT"'\''.notice.watcher'\''; then wclean='\''stopped'\''; else wclean='\''unresolved-survived-KILL'\''; fi; else if '\''wait'\'' "$SOL_NOTICE_WATCH"; then obs='\''0'\''; else obs="$?"; fi; fi; fi
+          if '\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"; then clean='\''ok'\''; else clean='\''failed'\''; fi
+          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher did not succeed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$col" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL collector survived KILL at step exit '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$clean" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 boot credential cleanup failed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
+          if '\''['\'' "$rc" '\''='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$fail" '\''='\'' '\''1'\'' '\'']'\''; then rc='\''1'\''; fi
           '\''exit'\'' "$rc"
           ' 'EXIT'
           'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
