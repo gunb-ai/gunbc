@@ -1,5 +1,7 @@
 module gunbc.fabric_storage_placement
 
+import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
+
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, fleet_intent_network }
@@ -45,7 +47,7 @@ data fabric_storage_https_port: Port = 10000
 // from every dashboard instance's listen port (gunbc.roadmap_dashboard_instance).
 data fabric_storage_listen_port: Port = 18090
 
-data fabric_storage_route_prefix: String = "/fabric-storage"
+
 
 // The store root is the placed instance's fabric DB root -- one authority with the deployment that
 // creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root).
@@ -184,5 +186,20 @@ fn fabric_storage_store_directories() -> List<ManagedDirectoryAdmission> {
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false)),
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)),
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root))),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects)),
+    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads)),
   ]
+}
+
+// The authenticated state space shares the fabric DB service and CAS implementation, but never
+// shares its object directory with the legacy CI-writable namespace. A public head alias therefore
+// cannot expose private state objects. Only the store service writes here, even for local callers.
+fn fabric_storage_state_directory(member: NonEmptyStr, path: NonEmptyStr) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: member, path: path as String as FilePath, owner: service, group_principal: service,
+    dependents: [DirectoryDependent { who: service, needs: [Read, Write, Execute] }],
+    ownership: Ensured, entries: EntriesUnmanaged,
+  }
 }

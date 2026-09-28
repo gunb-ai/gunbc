@@ -1,0 +1,7 @@
+module gunbc.runner_microvm_slot_unit_identity
+
+import std.types { String, NonEmptyStr }
+
+fn microvm_slot_unit_instance_name(slot_instance: String) -> NonEmptyStr {
+  join(["gunbc-microvm-slot@", slot_instance, ".service"], "") as NonEmptyStr
+}

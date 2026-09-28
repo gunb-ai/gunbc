@@ -1,5 +1,9 @@
 module gunbc.auth.approval_broker_serve
 
+import extdeps.tailscale.identity { TailnetIdentity }
+import extdeps.http.server { RequestSecurityContext, AccessPathTailnetProxy, TailnetRouteReadbackUnobserved }
+
+
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
@@ -175,7 +179,7 @@ fn device_route_response(marker: ApprovalBrokerMarker, process: ApprovalServingP
 // for its life, and is threaded down rather than inferred from the request. A request cannot choose
 // it by matching a route, which is precisely what it could do to the fold arm.
 fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String, marker: ApprovalBrokerMarker, process: ApprovalServingProcess) -> ServeHttpResponse {
-  ServeHttpResponse {
+  ServeHttpResponse { headers: [],
     status: status,
     content_type: content_type,
     body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
@@ -219,7 +223,7 @@ fn broker_page_response(page: Fragment, marker: ApprovalBrokerMarker, process: A
 // this very fold until stage 6, so a response that named only the route was emitted identically by
 // both processes and the cutover probe could not tell them apart.
 fn approval_confirm_page_response(
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<TailnetIdentity>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -247,7 +251,7 @@ fn approval_confirm_page_response(
 // things only the request carries -- the method, the capability segment from the path, the
 // AUTHENTICATED IDENTITY and the clock reading -- and to render whatever comes back.
 //
-// The identity comes from request.identity, which the serve entry populated from the header
+// The identity comes from request.security.authentication, which the serve entry populated from the header
 // tailscale serve injects. It is not read from the body, a query parameter, or a cookie: those are
 // all supplied by whoever is making the request, and an identity the caller supplies is not an
 // identity. And whether that header is evidence at all is the deployment's to establish, not this
@@ -266,7 +270,7 @@ fn approval_confirm_page_response(
 // store untouched -- which is also what keeps the hermetic witness able to reach this handler
 // whether or not the trust standing is established, since Clock.Now has no hermetic arm.
 fn approval_decide_response(
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<TailnetIdentity>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -276,7 +280,7 @@ fn approval_decide_response(
       broker_text_response(
         status: 400,
         content_type: text_plain_utf8,
-        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.security.authentication), "\n"], ""),
         marker: DecisionHandlerObserved,
         process: process,
       )
@@ -296,7 +300,7 @@ fn approval_decide_response(
   }
 }
 
-fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_decide_parsed_response(request: ServeHttpRequest<TailnetIdentity>, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
@@ -313,7 +317,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, p
     keyring: keyring,
     method: request.method,
     segment: segment,
-    presented_identity: request.identity,
+    presented_identity: request.security.authentication,
     observed_at: observed_at,
   )
   let status = match outcome {
@@ -335,7 +339,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, p
     body: join([
       "approval decision: ", store_redemption_reason(r: outcome), "\n",
       "capability: ", segment, "\n",
-      "identity: ", tailnet_identity_login(i: request.identity), "\n",
+      "identity: ", tailnet_identity_login(i: request.security.authentication), "\n",
       "observed_at: ", observed_at, "\n",
     ], ""),
     marker: DecisionHandlerObserved,
@@ -348,7 +352,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, p
 // key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
 // the body and renders the outcome, and the response never carries a link -- links go only to the
 // operator's phone.
-fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_response(request: ServeHttpRequest<TailnetIdentity>, process: ApprovalServingProcess) -> ServeHttpResponse {
   match approval_write_admission(asker: process) {
     ApprovalWriteRefused { holder: h, asker: a } =>
       broker_text_response(
@@ -378,7 +382,7 @@ fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingP
 // the server for it. Copying a body once is an extraction; keeping the copy while its authority
 // moves is a reimplementation that drifts silently -- and the tell is exactly this, a merge where
 // the other side changed a fold I had duplicated rather than consumed.
-fn approval_submit_admitted_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_admitted_response(request: ServeHttpRequest<TailnetIdentity>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
@@ -443,7 +447,7 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
 
 fn approval_broker_selection_response(
   sel: RouteSelection<ApprovalBrokerHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<TailnetIdentity>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match sel {
@@ -485,7 +489,7 @@ fn approval_broker_selection_response(
 fn approval_broker_invoke(
   handler: ApprovalBrokerHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<TailnetIdentity>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
@@ -557,11 +561,17 @@ fn approval_broker_respond_as(
           approval_broker_selection_response(
             sel: serve_select_route(table: t, method: m, path: path),
             process: process,
-            request: ServeHttpRequest {
+            request: ServeHttpRequest<TailnetIdentity> {
               method: m,
               path: path,
               body: body,
-              identity: tailnet_identity_of(header_value: tailscale_identity),
+              security: RequestSecurityContext {
+                access_path: AccessPathTailnetProxy {
+                  transport_observation: tailnet_identity_of(header_value: tailscale_identity),
+                  route_readback: TailnetRouteReadbackUnobserved { reason: "broker transport admission remains with its independent capability authority" },
+                },
+                authentication: tailnet_identity_of(header_value: tailscale_identity),
+              },
             },
           )
       }

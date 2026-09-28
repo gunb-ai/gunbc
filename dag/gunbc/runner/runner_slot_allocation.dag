@@ -1873,3 +1873,17 @@ fn host_github_slot_count(host: HostIdentity) -> RunnerWidthResolution {
       RunnerWidthDerived { slots: count_github_members(identities: m) }
   }
 }
+
+// Workspace designation is an administrator-owned exclusive purpose decision over existing,
+// prebudgeted fabric cells. Empty until a census and convergence receipt admit a particular slot;
+// no shakedown/reproduction slot is reassigned by inference from being present in the roster.
+data workspace_dedicated_slot_designations: List<RunnerSlotIdentity> = []
+
+fn identity_is_workspace_execution_member(identity: RunnerSlotIdentity) -> Bool {
+  identity_is_fabric_execution_member(identity: identity)
+    && identity_in_list(identity: identity, members: workspace_dedicated_slot_designations)
+}
+
+fn workspace_execution_slot_identities() -> List<RunnerSlotIdentity> {
+  filter(fabric_execution_slot_identities(), slot => identity_is_workspace_execution_member(identity: slot))
+}

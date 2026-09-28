@@ -1,0 +1,170 @@
+module gunbc.roadmap.roadmap_event_migration
+
+import std.types { String, NonEmptyStr, FilePath, List, Int, Bool }
+import std.list { distinct_by_key }
+import std.algebra { trim }
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, serialize_json }
+import std.fabric_storage {
+  FabricObjectRef, FabricObject, ExpectHeadAbsent, ExpectHeadAt, FabricObjectStored, FabricPutRefused,
+  FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused, FabricClosureRead, FabricHeadAt,
+  fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_eq, fabric_storage_fault_wire,
+}
+import gunbc.fabric_storage_client { fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+import gunbc.roadmap.roadmap_event_log { roadmap_event_decode, RoadmapEventDecoded, RoadmapEventUndecodable }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, RoadmapStoredEvent, RoadmapEventSnapshot, roadmap_event_object,
+  roadmap_event_manifest, roadmap_event_store_head, roadmap_event_snapshot_read,
+  RoadmapEventSnapshotObserved, RoadmapEventSnapshotRefused, roadmap_import_receipt_head, roadmap_event_read_bound,
+}
+
+// The only Git read is an explicit import of a pinned object. Runtime carrier code never imports
+// this module. Original bytes, event IDs and principal/schema generations remain unchanged.
+type RoadmapEventImportSource { repository: FilePath, revision: GitObjectId, git_program: FilePath }
+type RoadmapImportFile { path: NonEmptyStr, wire: NonEmptyStr }
+type RoadmapImportRead
+  = RoadmapImportReadComplete { files: List<RoadmapImportFile> }
+  | RoadmapImportReadRefused { reason: String }
+type RoadmapImportEvents
+  = RoadmapImportEventsDecoded { events: List<RoadmapStoredEvent> }
+  | RoadmapImportEventsRefused { reason: String }
+type RoadmapImportResult
+  = RoadmapEventsImported { event_count: Int, manifest: FabricObjectRef, receipt: FabricObjectRef }
+  | RoadmapEventsImportRefused { step: String, reason: String }
+
+// ls-tree's NUL output keeps path boundaries intact; only event JSON paths are accepted.
+fn roadmap_import_source_read(source: RoadmapEventImportSource) -> RoadmapImportRead {
+  let revision = git_object_id_wire_hex(oid: source.revision)
+  let listing = gunbc.WitnessBin.Run(workdir: source.repository, bin_path: source.git_program,
+    args: ["ls-tree", "-r", "-z", "--name-only", revision as String, "--", "events"], expect: OutcomeIsData)
+  if !listing.success { RoadmapImportReadRefused { reason: listing.stderr } }
+  else {
+    let names = filter(split(s: listing.stdout, delimiter: "\u{0}"), name => name != "")
+    fold(names, init: RoadmapImportReadComplete { files: [] }, f: (acc, name) => match acc {
+      RoadmapImportReadRefused { reason } => RoadmapImportReadRefused { reason: reason }
+      RoadmapImportReadComplete { files } => {
+        if !starts_with(s: name, prefix: "events/") || !ends_with(s: name, suffix: ".json") { RoadmapImportReadRefused { reason: join(["unrecognized event-source path: ", name], "") } }
+        else {
+          let read = gunbc.WitnessBin.Run(workdir: source.repository, bin_path: source.git_program,
+            args: ["show", join([revision as String, ":", name], "")], expect: OutcomeIsData)
+          if !read.success { RoadmapImportReadRefused { reason: join([name, ": ", read.stderr], "") } }
+          else if read.stdout == "" { RoadmapImportReadRefused { reason: join([name, ": empty event bytes"], "") } }
+          else { RoadmapImportReadComplete { files: files + [RoadmapImportFile { path: name as NonEmptyStr, wire: read.stdout as NonEmptyStr }] } }
+        }
+      }
+    })
+  }
+}
+
+fn roadmap_import_decode(files: List<RoadmapImportFile>) -> RoadmapImportEvents {
+  fold(files, init: RoadmapImportEventsDecoded { events: [] }, f: (acc, file) => match acc {
+    RoadmapImportEventsRefused { reason } => RoadmapImportEventsRefused { reason: reason }
+    RoadmapImportEventsDecoded { events } => match roadmap_event_decode(text: file.wire as String) {
+      RoadmapEventUndecodable { reason } => RoadmapImportEventsRefused { reason: join([file.path as String, ": ", reason], "") }
+      RoadmapEventDecoded { envelope } =>
+        if (file.path as String) != join(["events/", envelope.event.node as String, "/", envelope.id as String, ".json"], "") {
+          RoadmapImportEventsRefused { reason: "event path disagrees with its verified node and ID" }
+        } else if any(events, existing => existing.envelope.id == envelope.id) {
+          RoadmapImportEventsRefused { reason: "duplicate event ID in import source" }
+        } else { RoadmapImportEventsDecoded { events: events + [RoadmapStoredEvent { envelope: envelope, object: fabric_object_ref_of(object: roadmap_event_object(wire: file.wire)), wire: file.wire }] } }
+    }
+  })
+}
+
+fn roadmap_import_same_history(expected: List<RoadmapStoredEvent>, observed: List<RoadmapStoredEvent>) -> Bool {
+  expected.count() == observed.count() && all(expected, event => any(observed, actual => actual.envelope.id == event.envelope.id && actual.wire == event.wire))
+}
+
+fn roadmap_import_receipt(source: RoadmapEventImportSource, manifest: FabricObjectRef, count: Int) -> FabricObject {
+  FabricObject { links: [manifest], body: serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-event-import/v1")),
+    json_kv(key: "source_repository", value: json_string(s: source.repository as String)),
+    json_kv(key: "source_revision", value: json_string(s: git_object_id_wire_hex(oid: source.revision) as String)),
+    json_kv(key: "target_manifest", value: json_string(s: fabric_object_ref_wire(object: manifest) as String)),
+    json_kv(key: "event_count", value: json_int(n: count)),
+  ])) as NonEmptyStr }
+}
+
+fn roadmap_import_verify(layout: RoadmapEventCarrierLayout, source: RoadmapEventImportSource, events: List<RoadmapStoredEvent>, manifest: FabricObjectRef) -> RoadmapImportResult {
+  match roadmap_event_snapshot_read(layout: layout) {
+    RoadmapEventSnapshotRefused { step, reason } => RoadmapEventsImportRefused { step: join(["readback/", step], ""), reason: reason }
+    RoadmapEventSnapshotObserved { snapshot } =>
+      if !roadmap_import_same_history(expected: events, observed: snapshot.events) { RoadmapEventsImportRefused { step: "readback", reason: "target history differs from the pinned source; cutover not established" } }
+      else { match snapshot.expected {
+        ExpectHeadAbsent => RoadmapEventsImportRefused { step: "readback", reason: "import head remains absent" }
+        ExpectHeadAt { object: observed_manifest } => match fabric_storage_put(binding: layout.store, object: roadmap_import_receipt(source: source, manifest: observed_manifest, count: events.count())) {
+        FabricPutRefused { fault } => RoadmapEventsImportRefused { step: "receipt", reason: fabric_storage_fault_wire(fault: fault) }
+        FabricObjectStored { object: receipt_ref } => roadmap_import_index_receipt(layout: layout, source: source, events: events, manifest: observed_manifest, receipt: receipt_ref)
+      } } }
+  }
+}
+
+// Import requires an absent head or an exact replay. It never overwrites an existing tracker.
+fn roadmap_import_publish(layout: RoadmapEventCarrierLayout, source: RoadmapEventImportSource, events: List<RoadmapStoredEvent>) -> RoadmapImportResult {
+  match roadmap_event_snapshot_read(layout: layout) {
+    RoadmapEventSnapshotRefused { step, reason } => RoadmapEventsImportRefused { step: step, reason: reason }
+    RoadmapEventSnapshotObserved { snapshot } => {
+      let manifest = roadmap_event_manifest(events: events)
+      match snapshot.expected {
+        ExpectHeadAbsent => {
+          let puts = map(events, e => fabric_storage_put(binding: layout.store, object: roadmap_event_object(wire: e.wire)))
+          if !all(puts, p => match p { FabricObjectStored { object: _ } => true _ => false }) { RoadmapEventsImportRefused { step: "put-events", reason: "at least one imported event object was refused; head unchanged" } }
+          else { match fabric_storage_put(binding: layout.store, object: manifest) {
+            FabricPutRefused { fault } => RoadmapEventsImportRefused { step: "put-manifest", reason: fabric_storage_fault_wire(fault: fault) }
+            FabricObjectStored { object: manifest_ref } => match fabric_storage_advance(binding: layout.store, name: roadmap_event_store_head, expected: ExpectHeadAbsent, target: manifest_ref) {
+              FabricHeadAdvanced { object: _, generation: _ } => roadmap_import_verify(layout: layout, source: source, events: events, manifest: manifest_ref)
+              FabricHeadMoved { expected: _, observed: _ } => roadmap_import_verify(layout: layout, source: source, events: events, manifest: manifest_ref)
+              FabricHeadAdvanceRefused { fault } => RoadmapEventsImportRefused { step: "publish", reason: fabric_storage_fault_wire(fault: fault) }
+            }
+          } }
+        }
+        _ =>
+          if roadmap_import_same_history(expected: events, observed: snapshot.events) { roadmap_import_verify(layout: layout, source: source, events: events, manifest: fabric_object_ref_of(object: manifest)) }
+          else { RoadmapEventsImportRefused { step: "admission", reason: "target already holds a different event history; import refuses to overwrite it" } }
+      }
+    }
+  }
+}
+
+fn roadmap_events_import_pinned(layout: RoadmapEventCarrierLayout, source: RoadmapEventImportSource) -> RoadmapImportResult {
+  match roadmap_import_source_read(source: source) {
+    RoadmapImportReadRefused { reason } => RoadmapEventsImportRefused { step: "source-read", reason: reason }
+    RoadmapImportReadComplete { files } => match roadmap_import_decode(files: files) {
+      RoadmapImportEventsRefused { reason } => RoadmapEventsImportRefused { step: "source-decode", reason: reason }
+      RoadmapImportEventsDecoded { events } => roadmap_import_publish(layout: layout, source: source, events: events)
+    }
+  }
+}
+
+// The immutable receipt head is the restart point after raw import, before authored seeds.
+fn roadmap_import_index_receipt(layout: RoadmapEventCarrierLayout, source: RoadmapEventImportSource,
+  events: List<RoadmapStoredEvent>, manifest: FabricObjectRef, receipt: FabricObjectRef) -> RoadmapImportResult {
+  match fabric_storage_advance(binding: layout.store, name: roadmap_import_receipt_head, expected: ExpectHeadAbsent, target: receipt) {
+    FabricHeadAdvanceRefused { fault } => RoadmapEventsImportRefused { step: "receipt-index", reason: fabric_storage_fault_wire(fault: fault) }
+    _ => roadmap_import_recover(layout: layout, source: source, events: events)
+  }
+}
+
+// Recovery compares the pinned source to the receipt's original manifest, not the later
+// seeded head. It then proves all imported bytes remain in the current observed head.
+fn roadmap_import_recover(layout: RoadmapEventCarrierLayout, source: RoadmapEventImportSource,
+  events: List<RoadmapStoredEvent>) -> RoadmapImportResult {
+  let original_manifest = fabric_object_ref_of(object: roadmap_event_manifest(events: events))
+  let expected_receipt = roadmap_import_receipt(source: source, manifest: original_manifest, count: events.count())
+  let expected_ref = fabric_object_ref_of(object: expected_receipt)
+  match fabric_storage_closure(binding: layout.store, name: roadmap_import_receipt_head, bound: roadmap_event_read_bound) {
+    FabricClosureRead { reading: FabricHeadAt { object: indexed, generation: _ }, newest_first: objects } =>
+      if !fabric_object_ref_eq(a: indexed, b: expected_ref) || !any(objects, item => fabric_object_ref_eq(a: item.object, b: expected_ref) && item.content == expected_receipt) {
+        RoadmapEventsImportRefused { step: "receipt-recovery", reason: "indexed import receipt does not match the pinned source" }
+      } else { match roadmap_event_snapshot_read(layout: layout) {
+        RoadmapEventSnapshotRefused { step: _, reason: detail } => RoadmapEventsImportRefused { step: "receipt-recovery", reason: detail }
+        RoadmapEventSnapshotObserved { snapshot: current } =>
+          if all(events, original => any(current.events, actual => actual.envelope.id == original.envelope.id && actual.wire == original.wire)) {
+            RoadmapEventsImported { event_count: events.count(), manifest: original_manifest, receipt: expected_ref }
+          } else { RoadmapEventsImportRefused { step: "receipt-recovery", reason: "current history lost imported source bytes" } }
+      } }
+    _ => RoadmapEventsImportRefused { step: "receipt-recovery", reason: "durable raw import receipt is absent or unreadable" }
+  }
+}

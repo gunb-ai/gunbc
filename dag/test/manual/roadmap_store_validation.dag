@@ -1,0 +1,26 @@
+module test.manual.roadmap_store_validation
+
+import gunbc.roadmap.roadmap_task_migration { roadmap_tasks_seed_authored }
+
+import test.claim.roadmap.roadmap_event_carrier_witness_test {
+  roadmap_fabric_manifest_preserves_original_event_identity_and_bytes,
+  roadmap_fabric_missing_link_refuses_instead_of_returning_partial_history,
+  roadmap_empty_head_and_unreadable_history_are_distinct,
+  an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read,
+  roadmap_current_write_requires_readable_authenticated_event_bytes,
+}
+
+import test.claim.roadmap.roadmap_event_carrier_wet_witness_test {
+  roadmap_fabric_competing_writes_and_idempotent_retry_preserve_both_events,
+  roadmap_legacy_import_and_replay_keep_original_bytes_and_ids,
+  roadmap_pinned_git_import_ignores_uncommitted_changes_and_reads_back_history,
+  roadmap_editorial_store_edit_and_stale_revision_refusal,
+}
+
+import test.claim.roadmap.roadmap_task_projection_witness_test {
+  editorial_v4_roundtrip_preserves_identity_and_empty_body,
+  editorial_revision_and_progress_share_one_expected_head,
+  editorial_edit_cannot_replace_minted_identity_or_code_binding,
+  editorial_creation_is_once_and_dependency_cannot_be_self,
+  editorial_v4_reader_preserves_v3_authenticated_history_ids,
+}

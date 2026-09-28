@@ -136,7 +136,7 @@ fn gunbc_floor_cold_build_receipt_plan() -> ColdBuildReceiptPlan {
       DeclarationRef { module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_storage_components", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_job_wall_receipt_2026_09_19", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.runner_microvm", decl_name: "runner_microvm_workspace_grant", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.fabric_witness_run", decl_name: "floor_grant_duration", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.fabric_floor_policy", decl_name: "floor_grant_duration", field: WholeDeclaration },
     ],
   }
 }

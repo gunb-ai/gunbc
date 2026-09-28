@@ -1,0 +1,114 @@
+module gunbc.roadmap.roadmap_task_migration
+
+import std.types { String, List, Int }
+import std.fabric_storage { FabricObject, ExpectHeadAbsent, ExpectHeadAt, FabricObjectStored, FabricPutRefused, FabricHeadAdvanceRefused, fabric_storage_fault_wire }
+import gunbc.fabric_storage_client { fabric_storage_put, fabric_storage_advance }
+import gunbc.roadmap.roadmap_event_migration { RoadmapEventImportSource, roadmap_import_recover, RoadmapEventsImported, RoadmapEventsImportRefused }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap.roadmap_event_log { EventPrincipal, roadmap_event_heads }
+import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, roadmap_task_graph_refusal, roadmap_task_authored_seed, RoadmapTaskAbsent, RoadmapTaskCurrent, RoadmapTaskUnreadable }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, RoadmapStoredEvent, RoadmapImportTarget, RoadmapMigratedService, roadmap_event_carrier_service_layout, roadmap_migration_gate_head, roadmap_migration_gate_schema, roadmap_event_snapshot_read, RoadmapEventSnapshotObserved, RoadmapEventSnapshotRefused,
+  roadmap_event_append_snapshot, EventAppended, EventAlreadyPresent, EventAppendRefused,
+}
+
+type RoadmapTaskSeedResult
+  = RoadmapTaskSeeded { count: Int }
+  | RoadmapTaskSeedRefused { reason: String }
+
+// Invoke after the pinned history import, before switching readers. Each seed is a normal
+// event CAS, so interruption is retryable. Existing editorial content is never overwritten
+// by a later source checkout; retries only verify the immutable authored identity binding.
+fn roadmap_tasks_seed_apply(layout: RoadmapEventCarrierLayout, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>,
+  author: EventPrincipal, recorded_at: String) -> RoadmapTaskSeedResult {
+  fold(nodes, init: RoadmapTaskSeeded { count: 0 }, f: (acc, source_node) => match acc {
+    RoadmapTaskSeedRefused { reason: _ } => acc
+    RoadmapTaskSeeded { count: completed } => match roadmap_event_snapshot_read(layout: layout) {
+      RoadmapEventSnapshotRefused { step: _, reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+      RoadmapEventSnapshotObserved { snapshot: observed } => {
+        let history = map(observed.events, item => item.envelope)
+        match roadmap_task_projection(node: source_node.node, events: history) {
+          RoadmapTaskUnreadable { reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+          RoadmapTaskCurrent { task: existing, revision: _ } =>
+            if existing.identity == source_node.identity && match existing.code_contract {
+              Present { value: binding } => binding == source_node.identity
+              Absent => false
+            } { RoadmapTaskSeeded { count: completed + 1 } }
+            else { RoadmapTaskSeedRefused { reason: "authored import collides with another immutable node identity" } }
+          RoadmapTaskAbsent => {
+            let heads = roadmap_event_heads(envs: filter(history, item => item.event.node == source_node.node))
+            let expected_parent = match heads.first() { Present { value: prior_head } => Present { value: prior_head.id }  Absent => none }
+            match roadmap_task_authored_seed(node: source_node, edges: edges, author: author, parent: expected_parent, recorded_at: recorded_at) {
+              Absent => RoadmapTaskSeedRefused { reason: "authored node has no title" }
+              Present { value: seed_event } => match roadmap_event_append_snapshot(layout: layout, snapshot: observed, event: seed_event) {
+                EventAppended { id: _ } => RoadmapTaskSeeded { count: completed + 1 }
+                EventAlreadyPresent { id: _ } => RoadmapTaskSeeded { count: completed + 1 }
+                EventAppendRefused { id: _, step: _, reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+fn roadmap_tasks_seed_verify(layout: RoadmapEventCarrierLayout, nodes: List<RoadmapNode>) -> RoadmapTaskSeedResult {
+  match roadmap_event_snapshot_read(layout: layout) {
+    RoadmapEventSnapshotRefused { step: _, reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+    RoadmapEventSnapshotObserved { snapshot: readback } => {
+      let history = map(readback.events, item => item.envelope)
+      if (match roadmap_task_graph_refusal(events: history, allow_unresolved: false) { Present { value: _ } => true Absent => false }) {
+        RoadmapTaskSeedRefused { reason: "migration editorial graph is unreadable, cyclic, or contains unknown prerequisites" }
+      } else if all(nodes, source_node => match roadmap_task_projection(node: source_node.node, events: history) {
+        RoadmapTaskCurrent { task: persisted, revision: _ } => persisted.identity == source_node.identity && match persisted.code_contract {
+          Present { value: binding } => binding == source_node.identity
+          Absent => false
+        }
+        _ => false
+      }) { RoadmapTaskSeeded { count: nodes.count() } }
+      else { RoadmapTaskSeedRefused { reason: "authored task migration readback does not preserve every node identity and binding" } }
+    }
+  }
+}
+
+fn roadmap_tasks_seed_authored(layout: RoadmapEventCarrierLayout, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>,
+  author: EventPrincipal, recorded_at: String) -> RoadmapTaskSeedResult {
+  match roadmap_tasks_seed_apply(layout: layout, nodes: nodes, edges: edges, author: author, recorded_at: recorded_at) {
+    RoadmapTaskSeedRefused { reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+    RoadmapTaskSeeded { count: _ } => roadmap_tasks_seed_verify(layout: layout, nodes: nodes)
+  }
+}
+
+// Only the explicit import target can be initialized. Production reads never create a gate.
+fn roadmap_tasks_finish_migration(layout: RoadmapEventCarrierLayout, nodes: List<RoadmapNode>,
+  source: RoadmapEventImportSource, imported: List<RoadmapStoredEvent>) -> RoadmapTaskSeedResult {
+  match layout.mode {
+    RoadmapMigratedService => RoadmapTaskSeedRefused { reason: "initialization requires the explicit import-target layout" }
+    RoadmapImportTarget => match roadmap_import_recover(layout: layout, source: source, events: imported) {
+      RoadmapEventsImportRefused { step: _, reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+      RoadmapEventsImported { event_count: _, manifest: _, receipt: raw_receipt } => match roadmap_tasks_seed_verify(layout: layout, nodes: nodes) {
+        RoadmapTaskSeedRefused { reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+        RoadmapTaskSeeded { count: verified_count } => match roadmap_event_snapshot_read(layout: layout) {
+          RoadmapEventSnapshotRefused { step: _, reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+          RoadmapEventSnapshotObserved { snapshot: baseline } => match baseline.expected {
+            ExpectHeadAbsent => RoadmapTaskSeedRefused { reason: "migration baseline head is absent" }
+            ExpectHeadAt { object: baseline_ref } => {
+              let marker = FabricObject { links: [raw_receipt, baseline_ref], body: roadmap_migration_gate_schema }
+              match fabric_storage_put(binding: layout.store, object: marker) {
+                FabricPutRefused { fault } => RoadmapTaskSeedRefused { reason: fabric_storage_fault_wire(fault: fault) }
+                FabricObjectStored { object: marker_ref } => match fabric_storage_advance(binding: layout.store, name: roadmap_migration_gate_head, expected: ExpectHeadAbsent, target: marker_ref) {
+                  FabricHeadAdvanceRefused { fault } => RoadmapTaskSeedRefused { reason: fabric_storage_fault_wire(fault: fault) }
+                  _ => match roadmap_event_snapshot_read(layout: roadmap_event_carrier_service_layout(store: layout.store)) {
+                    RoadmapEventSnapshotRefused { step: _, reason: detail } => RoadmapTaskSeedRefused { reason: detail }
+                    RoadmapEventSnapshotObserved { snapshot: _ } => RoadmapTaskSeeded { count: verified_count }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

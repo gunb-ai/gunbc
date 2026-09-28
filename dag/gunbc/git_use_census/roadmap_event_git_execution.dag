@@ -5,9 +5,9 @@ import std.decl_ref { decl_ref }
 import gunbc.git_use_authority { GitUseRow, DagGitProcessDependency, ClassifiedGitUse, GitWorkspaceSourceAuthority, DeclaredLegacyGitUse }
 
 data roadmap_event_git_execution: GitUseRow = GitUseRow {
-  consumer: decl_ref(module_path: "gunbc.roadmap.roadmap_event_carrier", decl_name: "carrier_exec"),
+  consumer: decl_ref(module_path: "gunbc.roadmap.roadmap_event_migration", decl_name: "roadmap_import_source_read"),
 
-  surface: DagGitProcessDependency { operation: "Execute layout.git_program through carrier_exec_program; the instance binds GitWorkspaceCapability." as NonEmptyStr },
+  surface: DagGitProcessDependency { operation: "Read a pinned Git object revision through the explicit one-time roadmap event migration importer." as NonEmptyStr },
 
   classification: ClassifiedGitUse {
     role: GitWorkspaceSourceAuthority,
@@ -16,7 +16,7 @@ data roadmap_event_git_execution: GitUseRow = GitUseRow {
     }
   },
 
-  bridge_disposition: "Git currently stores the authoritative roadmap event stream on roadmap-events. Import its existing envelopes into the native durable event carrier and route append/read through that carrier; preserve event identities and explicit Git import provenance. KNOWN BYPASS: the direct-import wall does not observe this configured process invocation; closing it requires Node-derived process provenance through capability bindings." as NonEmptyStr,
+  bridge_disposition: "Runtime event append/read now use fabric storage only. This isolated migration reader imports original bytes from an explicit pinned Git revision and emits an immutable fabric import receipt; it is never a fallback on runtime refusal." as NonEmptyStr,
 
   cutover_disposition: "The native event carrier remains authoritative for event append/read independently of SCM target landing. Git may export an event-history compatibility projection, but no event reader or appender treats that projection as its authority or falls back to it on refusal." as NonEmptyStr,
 }

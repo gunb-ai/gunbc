@@ -1,0 +1,78 @@
+module gunbc.roadmap.roadmap_task_routes
+
+import std.types { String, NonEmptyStr, Timestamp, Int }
+import std.access { Permit, Deny, access_refusal_reason }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, ServeResponseHeaderNoStore, application_json_utf8 }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, GoogleOidcSession, DeploymentAccessPolicy, ServeActionReviseIssue, human_write_admission, human_authentication_decision, tracker_write_authorization_policy }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_task_wire { roadmap_task_revision_submission, roadmap_task_revision_value }
+import gunbc.roadmap.roadmap_task_editorial { roadmap_task_editorial_json }
+import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, RoadmapTaskAbsent, RoadmapTaskCurrent, RoadmapTaskUnreadable }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, TaskRevised, EventPrincipalAuthenticated }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_snapshot_read, RoadmapEventSnapshotRefused, RoadmapEventSnapshotObserved, roadmap_event_append_snapshot, EventAppended, EventAlreadyPresent, EventAppendRefused }
+
+fn task_http_json(status: Int, document: JsonValue) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: application_json_utf8, body: serialize_json(v: document), headers: [ServeResponseHeaderNoStore] }
+}
+
+fn task_http_refused(status: Int, reason: String) -> ServeHttpResponse {
+  task_http_json(status: status, document: json_object(members: [json_kv(key: "reason", value: json_string(s: reason))]))
+}
+
+// The same migrated event snapshot serves comments, claims and mutable editorial fields.
+fn task_http_get_over(request: ServeHttpRequest<RequestAuthenticationEvidence>, layout: RoadmapEventCarrierLayout,
+  node: RoadmapNodeId, observed_at: Timestamp) -> ServeHttpResponse {
+  match human_authentication_decision(route_path: "/issue/editorial", action: ServeActionReviseIssue, security: request.security, observed_at: observed_at) {
+    Deny { refusal } => task_http_refused(status: 401, reason: access_refusal_reason(refusal: refusal))
+    Permit => match roadmap_event_snapshot_read(layout: layout) {
+      RoadmapEventSnapshotRefused { step: _, reason } => task_http_refused(status: 503, reason: reason)
+      RoadmapEventSnapshotObserved { snapshot } => match roadmap_task_projection(node: node, events: map(snapshot.events, item => item.envelope)) {
+        RoadmapTaskAbsent => task_http_refused(status: 404, reason: "Issue not found in migrated workspace")
+        RoadmapTaskUnreadable { reason } => task_http_refused(status: 503, reason: reason)
+        RoadmapTaskCurrent { task, revision } => task_http_json(status: 200, document: json_object(members: [
+          json_kv(key: "node", value: json_string(s: node as String)),
+          json_kv(key: "revision", value: json_string(s: revision as String)),
+          json_kv(key: "task", value: roadmap_task_editorial_json(task: task)),
+        ]))
+      }
+    }
+  }
+}
+
+fn task_http_revise_over(request: ServeHttpRequest<RequestAuthenticationEvidence>, layout: RoadmapEventCarrierLayout,
+  node: RoadmapNodeId, observed_at: Timestamp, deployment_policy: DeploymentAccessPolicy) -> ServeHttpResponse {
+  match roadmap_task_revision_submission(body: request.body) {
+    Absent => task_http_refused(status: 400, reason: "Expected JSON csrf_token, expected_revision, title, body, state and prerequisites")
+    Present { value: submitted } => match human_write_admission(route_path: "/issue/editorial", action: ServeActionReviseIssue,
+      security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: deployment_policy,
+      csrf_presented: submitted.csrf_token, observed_at: observed_at) {
+      Deny { refusal } => task_http_refused(status: 403, reason: access_refusal_reason(refusal: refusal))
+      Permit => match request.security.authentication {
+        GoogleOidcSession { session } => match roadmap_event_snapshot_read(layout: layout) {
+          RoadmapEventSnapshotRefused { step: _, reason } => task_http_refused(status: 503, reason: reason)
+          RoadmapEventSnapshotObserved { snapshot } => {
+            let history = map(snapshot.events, item => item.envelope)
+            match roadmap_task_projection(node: node, events: history) {
+              RoadmapTaskAbsent => task_http_refused(status: 404, reason: "Issue not found in migrated workspace")
+              RoadmapTaskUnreadable { reason } => task_http_refused(status: 503, reason: reason)
+              RoadmapTaskCurrent { task: prior, revision: head } =>
+                if (head as String) != (submitted.expected_revision as String) { task_http_refused(status: 409, reason: "Issue changed; reload before editing") }
+                else if any(submitted.prerequisites, dependency => dependency == node || match roadmap_task_projection(node: dependency, events: history) { RoadmapTaskCurrent { task: _, revision: _ } => false _ => true }) {
+                  task_http_refused(status: 400, reason: "Prerequisites must name other readable workspace issues")
+                } else { match roadmap_event_append_snapshot(layout: layout, snapshot: snapshot, event: RoadmapEvent {
+                  node: node, parent: Present { value: head }, author: EventPrincipalAuthenticated { ref: session.principal },
+                  kind: TaskRevised { task: roadmap_task_revision_value(prior: prior, submission: submitted) }, recorded_at: observed_at,
+                }) {
+                  EventAppended { id } => task_http_json(status: 200, document: json_object(members: [json_kv(key: "revision", value: json_string(s: id as String))]))
+                  EventAlreadyPresent { id } => task_http_json(status: 200, document: json_object(members: [json_kv(key: "revision", value: json_string(s: id as String))]))
+                  EventAppendRefused { id: _, step: _, reason } => task_http_refused(status: 409, reason: reason)
+                } }
+            }
+          }
+        }
+        _ => task_http_refused(status: 401, reason: "Sign in to edit this issue")
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+module test.manual.workspace_image_demo_wet
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.workspace_guest_image { workspace_image_build }
+
+// An unprivileged build of the pinned workspace userspace image in this integration worktree.
+fn main() -> ProcessExit {
+  if workspace_image_build(root: "target/workspace-image-demo") {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "workspace image build refused; base digest, SSH prerequisites, writes and ext4 builder must all succeed" }
+  }
+}

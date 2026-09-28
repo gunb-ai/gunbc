@@ -1,0 +1,24 @@
+module test.claim.workspace_allocation_http_witness_test
+
+import test.claim.request_authentication_witness_test { witness_mint_session }
+import gunbc.auth.session { SessionMinted, SessionRefused }
+import gunbc.auth.request_authentication { GoogleOidcSession, DeploymentAccessPolicy, ServeActionCreateAllocation }
+import extdeps.http.server { RequestSecurityContext, AccessPathLocalDev }
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_write_admission }
+import std.access { Permit, Deny }
+
+test fn witness_allocation_enrollment_and_csrf_both_required() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session } => {
+      let security = RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: session } }
+      let allowed = WorkspaceAuthorizationPolicy { principals: [session.principal] }
+      let good = workspace_write_admission(security: security, owner: session.principal, policy: allowed, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+      let bad_csrf = workspace_write_admission(security: security, owner: session.principal, policy: allowed, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "wrong")
+      let unenrolled = workspace_write_admission(security: security, owner: session.principal, policy: WorkspaceAuthorizationPolicy { principals: [] }, deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false }, observed_at: "2026-09-25T00:10:00Z", route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: "csrf-1")
+      match good { Permit => true Deny { refusal: _ } => false }
+        && match bad_csrf { Deny { refusal: _ } => true Permit => false }
+        && match unenrolled { Deny { refusal: _ } => true Permit => false }
+    }
+  }
+}

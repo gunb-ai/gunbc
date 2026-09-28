@@ -1,0 +1,221 @@
+module gunbc.fabric_floor_policy
+
+import std.types { NonEmptyStr, Timestamp }
+import extdeps.currency.currency { CurrencyCode, Usd }
+import std.measure { hardware_thread_count, MoneyAmountMicro, second }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.envelope { ResourceEnvelope }
+import gunbc.floor_demand { floor_memory_requirement }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef }
+import product.fabric.supply { SupplierOffer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration, offer_fungibility_for, offer_affordability_for }
+import product.fabric.demand { AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId }
+
+// OUR FLOOR IS arm64. THE CLASS IS NOT.
+//
+// This function previously spelled the architecture INSIDE a capability tag --
+// "gunbc.capabilities.linux-aarch64-rust-toolchain" -- making an accident of our supply look like
+// a property of the execution class. Ampere is what we stock; the product must serve x86 and arm
+// at the lowest cost, and rented x86 is an anticipated supplier. A class that names its
+// architecture cannot admit one it did not -- the GitHub-vocabulary argument one layer over. So
+// the tag below names the toolchain and NOT the machine.
+//
+// WHY NO Architecture VALUE IS DECLARED HERE YET. Matching a declared architecture needs the OFFER
+// to carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm that reads
+// it land together. An earlier revision declared `floor_architecture() -> Architecture = Aarch64`
+// anyway, with ZERO consumers; v2.lens.inert_carrier caught it on CI as an unrostered inert
+// carrier -- in the same commit whose message refused to add an unread field to SupplierOffer by
+// citing review 53848's declared-but-nothing-derives-it defect. Refusing the defect on one side of
+// a module boundary and authoring it on the other is the same defect.
+//
+// So the architecture decision lives in prose and in the recut plan until it has a consumer: a
+// decision recorded is not a carrier modeled, and minting it early buys only a row that lies about
+// being load-bearing.
+
+// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
+//
+// A floor run is OUR OWN work on OUR OWN fleet, and it runs today on slots providing none of the
+// isolation guarantees -- a reused writable root by design, the host's process namespace, and
+// /home/ghrunner shared across every slot. Declaring a requirement the floor does not have would
+// invent a gap: the run modeled as ineligible for the executor it has been green on for months.
+//
+// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER: the floor asks for no tenancy
+// guarantee. The gap this model expresses belongs to CUSTOMER work -- see product.fabric.isolation
+// tenant_workload_isolation_requirement and the witness measuring today's slots against it.
+//
+// CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
+// has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
+// the modeled decision the broker will consume, not a live wall; calling it enforcement would be
+// the rung inflation recorded above for affordability. NEXT-RUNG TRIGGER is the same: a broker
+// fold that selects an Offer for this Demand.
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// THE FLOOR IS CONTROL-PLANE WORK AND SAYS SO. This is the demand the capacity
+// class exists to protect: our own scheduler, reconciliation, admission and
+// receipt work, which must never be satisfied by capacity sanctioned for
+// customer execution. Declared on the side we ORIGINATE, so no supplier can
+// author it and the refusal is decided at admission rather than after ranking.
+//
+// THE ENVELOPE STATES MEMORY AND NOTHING ELSE, AND EACH ABSENCE HAS A REASON.
+//
+// Memory was unstated while the runner cells were sized to this very Work's
+// demand (gunbc.runner_slot_allocation, the 2026-09-12 ruling) -- the cell knew
+// what the floor needed and the floor's own Work did not say, so a microVM guest
+// sized for it had nothing to read. It now reads gunbc.floor_demand: the
+// resident held-set lower bound derived from raw memory.stat beats on the host
+// slot, and NOTHING while that is unmeasured -- a cgroup peak charges reclaimable
+// cache, so it is a ceiling rather than a demand, and stating it here would size
+// every consumer to a bet. The guest's cache allowance is the guest shape's own
+// fact (gunbc.runner_microvm), not this Work's. Stating memory has a
+// consequence on the offer side that is the point rather than a cost: an offer
+// that does not state memory no longer covers this Work (product.fabric.supply
+// MemoryNotOffered), so every offer that claims to run the floor must say how
+// much memory it runs it in.
+//
+// Storage is a DECLARED FRONTIER, stated in gunbc.floor_demand
+// floor_storage_demand and consumed there by the microVM shape's
+// workspace fit and the cold-build receipt plan, but NOT placed on this
+// envelope yet. product.fabric.supply compares no storage axis, so a stated
+// requirement here would be silently unchecked -- the fail-open absence of
+// observation the envelope exists to prevent -- and adding the axis to the
+// fold would make every host-slot offer refuse, because a shared host slot has
+// no storage number to offer (gunbc.runner_slot_allocation: disk admits
+// nothing numeric anywhere). TRIGGER: an offer-side storage fact for the cells
+// the floor runs on, at which point the axis joins the fold and this field
+// reads floor_storage_demand.
+//
+// Architecture is unstated because the Work does not require one: the job
+// builds what it runs, and the aarch64 the fleet provides is a fact about the
+// fleet's labels rather than about this Work. Stating it would refuse an x86
+// offer for a reason the Work does not have (DESIGN 4d, over-prohibition).
+// THE FLEET'S OWN TRUST DOMAIN, AS A ROW RATHER THAN A LITERAL, because a second consumer now
+// decides on it: gunbc.runner_attempt_launch admits the reservation-authorized planner arm only for
+// a Work whose trust_domain IS this row -- the untrusted-CI route carries another domain and cannot
+// reach that arm by construction. Two spellings of the domain would let the two drift apart and
+// the selection silently widen or narrow.
+data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
+
+fn floor_execution_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: ResourceEnvelope {
+        cpu: none,
+        gpu: none,
+        memory: floor_memory_requirement(),
+        storage: none,
+        network: none,
+      },
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: gunbc_internal_fleet_trust_domain,
+    isolation: floor_isolation_requirement(),
+  }
+}
+
+
+// THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
+//
+// The intent is unchanged: gunbc's own CI enters the market on the same terms as any other demand,
+// so the opportunity cost of our own work stays computable and the arbitrage -- run our CI on our
+// hardware, or sell that capacity and rent -- never degrades into a hand-maintained spreadsheet.
+// The budget ceiling is an argument for exactly that reason.
+//
+// WHAT WAS OVERSTATED: this previously read that the ceiling is an argument "precisely so that
+// there is no arm here that admits a floor run without clearing a price", as though the guard
+// were live. It is not reachable. `floor_offer_affordability` and `floor_buy_terms` have NO
+// production consumer -- the only function here any non-test module calls is
+// `required_ci_lane_command` -- so no floor run has ever cleared a price and no arm runs at all.
+// A fold with no caller enforces nothing; describing it as enforcement is the inflation the
+// header paragraph records.
+//
+// The fold stays as the modeled decision the broker will consume; deleting it would delete the
+// design, not the overstatement. It is described as UNCONSUMED, a countable gap. NEXT-RUNG
+// TRIGGER: a broker fold that selects a SupplierOffer for this Demand, putting affordability on
+// the live path.
+//
+// Control-plane work is a separately privileged class. That exclusion must not leak here: a floor
+// run is customer work that happens to be ours.
+
+fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
+  offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
+}
+
+// THE FLOOR'S GRANT DURATION IS AN ESTIMATE, NOT A MEASUREMENT. `~30 min wall` is the wall-clock
+// this document's "Building & checks" section records for the three consecutive green
+// `--required-ci` runs on main (32203661157 and neighbors) -- a measured receipt -- but still an
+// ESTIMATE of what THIS run will take. EstimatedGrantDuration rather than ExactGrantDuration is
+// the only honest constructor, and it lets a rate-quoted offer land on AffordableUnderEstimate
+// instead of borrowing certainty ExactGrantDuration would claim.
+fn floor_grant_duration() -> GrantDuration {
+  EstimatedGrantDuration { seconds: second(count: 1800) }
+}
+
+fn floor_offer_affordability<P>(
+  offer: SupplierOffer<P>,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+) -> DemandOfferAffordability {
+  offer_affordability_for(
+    offer: offer,
+    maximum_buy_order: maximum_buy_order,
+    budget_currency: budget_currency,
+    duration: floor_grant_duration(),
+  )
+}
+
+// THE FLOOR'S DEMAND: where "ordinary priced demand" becomes a row someone can read.
+//
+// REUSE IS A POLICY ON THE DEMAND, NOT A PROPERTY OF THE WORK. The cutover runs with
+// terminal_receipt_may_satisfy = false and new_attempt_required = true, so an identical Work with
+// an accepted receipt still executes -- deliberately conservative while the floor's purity as a
+// function of the tree is unproven -- and expressed HERE rather than in the Work key, so turning
+// reuse on later edits a policy row, not what a Work IS. The plan's section 13 and its sign-off
+// conflated the two; the carriers never did, so no new modeling was needed.
+//
+// step_reuse_permitted stays TRUE: a materialization provider may accelerate a rerun. A build
+// cache making the second attempt faster is not a receipt.
+
+fn floor_satisfaction_requirement() -> SatisfactionRequirement {
+  SatisfactionRequirement {
+    terminal_receipt_may_satisfy: false,
+    new_attempt_required: true,
+    step_reuse_permitted: true,
+  }
+}
+
+fn floor_buy_terms(
+  account: BudgetAccountId,
+  reservation_price: MoneyAmountMicro,
+  maximum_buy_order: MoneyAmountMicro,
+) -> BuyTerms {
+  BuyTerms {
+    budget_account: account,
+    currency: Usd,
+    reservation_price: reservation_price,
+    maximum_buy_order: maximum_buy_order,
+  }
+}
+
+// THE FLOOR HAS NO PRIVILEGE FIELD BECAUSE THERE IS NO LONGER A FIELD TO HAVE.
+//
+// This note used to read that priority_class is not a privilege escape -- the floor competes on
+// price, and a class orders demands that can all be afforded rather than admitting one that
+// cannot. Correct, and prose: the field was a String, nothing enforced it, and a witness could only
+// assert its spelling.
+//
+// The field is deleted (product.fabric.demand records why); product.fabric.contention derives the
+// ordering from the margin between what a buyer will pay and what serving them costs. The floor's
+// terms carry no rank, and there is no spelling in which gunbc jumps the queue: to win contention
+// it must post the better margin like every other buyer. If this ever became the field that let
+// gunbc jump the queue, the arbitrage would be lost and the opportunity cost of our own work would
+// stop being computable.
+
+fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: deadline,
+    buy: buy,
+  }
+}

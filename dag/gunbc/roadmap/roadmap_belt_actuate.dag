@@ -1,5 +1,8 @@
 module gunbc.roadmap_belt_actuate
 
+import gunbc.roadmap.roadmap_submission { CaptureUnreadable }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptUnreadable }
+
 import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
@@ -4276,6 +4279,8 @@ fn belt_workflow_progress_for_attempt_ref(
         reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
       },
       publication_source: ReceiptSourceAbsent,
+      submission_capture: CaptureUnreadable { reason: "this attempt has no modeled state pointer" },
+      integration: IntegrationReceiptUnreadable { reason: "this attempt has no modeled state pointer" },
       review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
       goal_audit: [],
     })
@@ -4425,6 +4430,8 @@ fn belt_workflow_progress_for_attempt_ref(
       ),
       publication_subject: publication_subject,
       publication_source: publication_receipt,
+      submission_capture: CaptureUnreadable { reason: "submission capture observation is not integrated in this draft belt" },
+      integration: IntegrationReceiptUnreadable { reason: "integration receipt observation is not integrated in this draft belt" },
       review: review_evidence,
       goal_audit: audit_evidence,
     })

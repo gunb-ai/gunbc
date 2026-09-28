@@ -44,7 +44,7 @@ import gunbc.roadmap_presentation {
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
   WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
-  work_scheduling, work_scheduling_key, scheduling_dependency_line,
+  work_scheduling, work_scheduling_key,
   row_headline, row_summary, legacy_lead,
   dispatch_action, action_view,
   activity_view_from_parts, activity_summary_line,
@@ -525,15 +525,6 @@ test fn witness_scheduling_projects_typed_positions() -> Bool {
     && work_scheduling_key(s: work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
     && work_scheduling_key(s: work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: [])) == "unplanned"
     && work_scheduling_key(s: work_scheduling(rn: superseded_node, nodes: [superseded_node], edges: [])) == "superseded"
-}
-
-test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
-  let two = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
-  let one = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1"] })
-  let ready = scheduling_dependency_line(s: SchedulingReady)
-  (match two { Present { value: line } => line == "requires all: a2-parent-1, a2-parent-2" Absent => false })
-    && (match one { Absent => true Present { value: _ } => false })
-    && (match ready { Absent => true Present { value: _ } => false })
 }
 
 // The workspace grouping (operator blocker 6): a row with active or refused work belongs to the

@@ -1,0 +1,165 @@
+module gunbc.workspace_allocation_plan
+import std.decl_ref { decl_ref }
+import std.types { NonEmptyStr, String, Int }
+import std.measure { MoneyAmountMicro, MoneyPerSecond }
+import std.durable_compare_and_set { ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, cas_generation_successor, CasSuccessorGeneration }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable }
+import extdeps.currency.currency { CurrencyCode }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
+import product.fabric.demand { Demand }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
+import product.fabric.supply { GrantDuration, offer_quote_currency }
+import product.fabric.selection { selection_liability }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest, reserve_money, AccountAdvanced }
+import gunbc.fabric_control_plane { broker_select_for_requirements, CellSelectedForDemand, fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_acquire_prepare, file_hold_acquire_commit, observe_file_hold,
+  FileHoldAcquirePlan, FileHoldAcquirePlanned, FileHoldAcquireNotEligible, FileHoldAcquired, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
+}
+import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
+import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_work, workspace_execution_requirements, workspace_memory_grant, workspace_reservation_json, workspace_reservation_from_json, workspace_json_string }
+import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
+
+// A prepared target is immutable across retries. Its predicted incarnation is derived from a
+// live absent/free hold observation; persistence of this plan precedes every acquisition effect.
+type WorkspaceReservationPlan sole_constructor { root: NonEmptyStr, reservation: WorkspaceReservation }
+type WorkspaceReservationPreparation
+  = WorkspaceReservationPrepared { plan: WorkspaceReservationPlan }
+  | WorkspaceReservationPreparationRefused { reason: NonEmptyStr }
+type WorkspaceReservationApply
+  = WorkspaceReservationObserved { reservation: WorkspaceReservation }
+  | WorkspaceReservationApplyRefused { reason: NonEmptyStr }
+
+fn workspace_reservation_plan_request(plan: WorkspaceReservationPlan) -> WorkspaceRequest { plan.reservation.request }
+fn workspace_reservation_plan_reservation(plan: WorkspaceReservationPlan) -> WorkspaceReservation { plan.reservation }
+fn workspace_reservation_plan_json(plan: WorkspaceReservationPlan) -> JsonValue {
+  json_object(members: [json_kv(key: "root", value: json_string(s: plan.root as String)), json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation))])
+}
+
+// The administrator-owned durable plan is re-admitted through the same request/grant codec.
+// This is not an HTTP payload decoder: callers load only their committed convergence artifact.
+fn workspace_reservation_plan_from_json(value: JsonValue) -> WorkspaceReservationPlan? {
+  match workspace_json_string(value: value, key: "root") {
+    Absent => none
+    Present { value: root } => if root == "" { none } else {
+      match json_object_unique_member(v: value, key: "reservation") {
+        JsonMemberFound { value: body } => match workspace_reservation_from_json(value: body) {
+          Present { value: reservation } => Present { value: WorkspaceReservationPlan { root: root as NonEmptyStr, reservation: reservation } }
+          Absent => none
+        }
+        _ => none
+      }
+    }
+  }
+}
+
+fn workspace_reservation_prepare(
+  root: NonEmptyStr, request: WorkspaceRequest, demand: Demand<NonEmptyStr>,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>, supply: WorkspaceDedicatedSupply,
+  duration: GrantDuration, currency: CurrencyCode, account: MoneyAccount,
+  maximum_buy_order: MoneyAmountMicro, delay_valuation: MoneyPerSecond,
+) -> WorkspaceReservationPreparation {
+  if !fabric_identity_eq(left: demand.work, right: workspace_work(request: request).id) {
+    WorkspaceReservationPreparationRefused { reason: "demand does not name the admitted workspace Work" }
+  } else {
+    match workspace_memory_grant(request: request, work: demand.work, attempt: attempt) {
+      MemoryGrantIssued { grant } => match broker_select_for_requirements(
+        demand: demand, requirements: workspace_execution_requirements(profile: request.profile),
+        duration: duration, currency: currency, roster: supply.roster, sanctions: supply.sanctions,
+        maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation,
+      ) {
+        CellSelectedForDemand { offer, cost } => {
+          let matches = filter(supply.roster, member => fabric_identity_eq(left: member.candidate.offer.id, right: offer.id))
+          if matches.count() != 1 { WorkspaceReservationPreparationRefused { reason: "selected offer has no unique dedicated slot" } }
+          else { match matches.first() {
+            Absent => WorkspaceReservationPreparationRefused { reason: "selected slot unavailable" }
+            Present { value: member } => {
+              let reference = fabric_money_reservation_ref(demand: demand.id, offer: offer.id)
+              match reserve_money(a: account, request: MoneyReservationRequest { reference: reference, generation: 0, maximum_liability: selection_liability(c: cost), currency: offer_quote_currency(q: offer.quote) }) {
+                AccountAdvanced { account: advanced } => match file_hold_acquire_prepare(root: root, slot_key: fabric_cell_allocation_key(slot: member.slot), requested_owner: fabric_hold_owner(reservation: reference)) {
+                  FileHoldAcquirePlanned { plan: hold } => {
+                    let next = match hold.expected {
+                      ExpectSlotAbsent => Present { value: 1 }
+                      ExpectSlotGeneration { generation } => match cas_generation_successor(g: generation) {
+                        CasSuccessorGeneration { generation: successor } => Present { value: cas_generation_count(g: successor) }
+                        _ => none
+                      }
+                    }
+                    match next {
+                      Absent => WorkspaceReservationPreparationRefused { reason: "slot generation exhausted" }
+                      Present { value: generation } => WorkspaceReservationPrepared { plan: WorkspaceReservationPlan { root: root, reservation: WorkspaceReservation {
+                        request: request, slot: member.slot, generation: generation, grant: grant, work: demand.work,
+                        demand: demand.id, offer: offer.id, money_account: advanced, money_generation: 0,
+                      } } }
+                    }
+                  }
+                  FileHoldAcquireNotEligible { slot_key: _, refusal } => match refusal {
+                    HoldAcquireOccupied { generation: _, holder: _ } => WorkspaceReservationPreparationRefused { reason: "selected slot is occupied; no acquisition plan issued" }
+                    HoldAcquireSlotUndecodable { generation: _, detail } => WorkspaceReservationPreparationRefused { reason: detail }
+                    HoldAcquireObservationUnavailable { cause: _ } => WorkspaceReservationPreparationRefused { reason: "allocation store observation unavailable; no acquisition plan issued" }
+                  }
+                }
+                _ => WorkspaceReservationPreparationRefused { reason: "monetary reservation refused" }
+              }
+            }
+          } }
+        }
+        _ => WorkspaceReservationPreparationRefused { reason: "no admitted workspace offer selected" }
+      }
+      _ => WorkspaceReservationPreparationRefused { reason: "workspace memory grant refused" }
+    }
+  }
+}
+
+// Only this exact slot/incarnation may be acquired or recovered. An already held match is an
+// observation of the original reservation, never a grant to relaunch an existing process.
+fn workspace_reservation_apply(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> WorkspaceReservationApply
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_apply_recorded_plan")]
+  = {
+  if root != plan.root { WorkspaceReservationApplyRefused { reason: "prepared plan names another allocation store" } } else {
+  let reservation = plan.reservation
+  let key = fabric_cell_allocation_key(slot: reservation.slot)
+  let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer))
+  match observe_file_hold(root: root, key: key) {
+    HoldSlotHeld { generation, owner: observed_owner } =>
+      if observed_owner == owner && cas_generation_count(g: generation) == reservation.generation {
+        WorkspaceReservationObserved { reservation: reservation }
+      } else { WorkspaceReservationApplyRefused { reason: "slot held by a different reservation or incarnation; retain prepared plan" } }
+    _ => match file_hold_acquire_prepare(root: root, slot_key: key, requested_owner: owner) {
+      FileHoldAcquirePlanned { plan: hold } => {
+        let expected_matches = match hold.expected {
+          ExpectSlotAbsent => reservation.generation == 1
+          ExpectSlotGeneration { generation } => cas_generation_count(g: generation) == reservation.generation - 1
+        }
+        if !expected_matches { WorkspaceReservationApplyRefused { reason: "prepared reservation is stale; never reacquire a later slot incarnation" } }
+        else { match file_hold_acquire_commit(plan: hold) {
+          FileHoldAcquired { slot_key: _, owner: _, generation } =>
+            if cas_generation_count(g: generation) == reservation.generation { WorkspaceReservationObserved { reservation: reservation } }
+            else { WorkspaceReservationApplyRefused { reason: "acquisition returned unexpected generation; retain hold for investigation" } }
+          FileHoldAcquireLost { slot_key: _ } => WorkspaceReservationApplyRefused { reason: "acquisition raced; reread this same prepared target" }
+          FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => WorkspaceReservationApplyRefused { reason: "acquisition store unavailable; retain plan and reread this same target" }
+          _ => WorkspaceReservationApplyRefused { reason: "acquisition refused; retain plan and reread this same target" }
+        } }
+      }
+      _ => WorkspaceReservationApplyRefused { reason: "prepared slot cannot be acquired; retain plan and reread this target" }
+    }
+  }
+}
+}
+
+// Retired intent observes a possible prior acquisition and never creates a new hold.
+fn workspace_reservation_recover(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> WorkspaceReservationApply {
+  let reservation = plan.reservation
+  if root != plan.root { WorkspaceReservationApplyRefused { reason: "prepared plan names another allocation store" } }
+  else {
+    let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer))
+    match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: reservation.slot)) {
+      HoldSlotHeld { generation, owner: observed_owner } =>
+        if observed_owner == owner && cas_generation_count(g: generation) == reservation.generation {
+          WorkspaceReservationObserved { reservation: reservation }
+        } else { WorkspaceReservationApplyRefused { reason: "no matching held incarnation observed; do not acquire retired intent" } }
+      _ => WorkspaceReservationApplyRefused { reason: "no matching held incarnation observed; do not acquire retired intent" }
+    }
+  }
+}

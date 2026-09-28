@@ -1,0 +1,11 @@
+module test.manual.workspace_preparation_typecheck
+
+import gunbc.workspace_prepare_convergence { workspace_prepare_convergence_from_observations }
+import gunbc.workspace_offer_producer { workspace_offer_from_observations }
+import gunbc.workspace_preparation { workspace_prepare_recorded_intent }
+import gunbc.workspace_tool_observer { workspace_observe_tools }
+import gunbc.workspace_gateway_observer { workspace_refresh_gateway_wet }
+import std.process { ProcessExit, ExitSuccess }
+
+// Typecheck/import-closure entry only. Success makes no claim about installed fleet capacity.
+fn workspace_preparation_typecheck() -> ProcessExit { ExitSuccess }

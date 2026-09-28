@@ -1,5 +1,8 @@
 module gunbc.fabric_storage_client
 
+import gunbc.fabric_storage_state_auth_io { fabric_state_signed_request }
+import gunbc.fabric_storage_address { fabric_storage_state_suffix }
+
 import std.types { String, NonEmptyStr, Int, List }
 import std.nat { Nat }
 import extdeps.http.client
@@ -20,8 +23,6 @@ import gunbc.fabric_storage_wire {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
-import product.placement_supply { HostIdentity, host_identity_eq }
 
 // THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of two
 // handlers. The binding is realization and sits here, at the periphery (DESIGN 3: the dispatch that
@@ -46,18 +47,7 @@ type FabricStorageBinding
   | FabricStorageBindingUnplaced
   | FabricStorageBindingRefused { detail: NonEmptyStr }
 
-fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
-  match placement {
-    FabricStorageUnplaced => FabricStorageBindingUnplaced
-    FabricStoragePlaced { host: h, store_root: r, endpoint: e } =>
-      if host_identity_eq(a: h, b: executor) {
-        match fabric_storage_placed_file_root(store_root: r) {
-          FabricStoragePlacedRootReady { root } => FabricStorageLocalFiles { root: root }
-          FabricStoragePlacedRootRefused { detail } => FabricStorageBindingRefused { detail: detail }
-        }
-      } else { FabricStorageServed { endpoint: e } }
-  }
-}
+
 
 data fabric_storage_unplaced_detail: NonEmptyStr = "the fabric DB is unplaced" as NonEmptyStr
 
@@ -92,7 +82,7 @@ fn served_reply_from_status(stdout: String) -> ServedReply {
   }
 }
 
-fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+fn served_post_raw(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
   let r = http.Client.PostStdinWithin(
     url: join([endpoint as String, "/", operation], "") as NonEmptyStr,
     request_body: request,
@@ -179,4 +169,17 @@ fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIde
         ServedAnswered { body: b } => fabric_storage_unwire_identity(text: b)
       }
   }
+}
+
+// All state clients reach the one authenticated service, including the placed host's controller.
+// A file binding is reserved for injected local fixtures, never production state placement.
+
+
+fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  if ends_with(s: endpoint as String, suffix: fabric_storage_state_suffix) {
+    match fabric_state_signed_request(operation: operation, request: request) {
+      Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
+      Present { value: envelope } => served_post_raw(endpoint: endpoint, operation: "authenticated", request: envelope)
+    }
+  } else { served_post_raw(endpoint: endpoint, operation: operation, request: request) }
 }
