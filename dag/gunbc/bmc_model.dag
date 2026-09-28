@@ -167,21 +167,62 @@ fn bmc_apply_event(world: BmcWorld, event: BmcEvent, at: Second) -> BmcWorld {
   }
 }
 
-// Every event due at or before `now` fires, in schedule order, and moves from pending to fired. With
-// nothing pending there is nothing to fire, and the world is returned as it is rather than rebuilt.
+// EVERY EVENT DUE AT OR BEFORE `now` FIRES, EARLIEST FIRST, AND AN EVENT A TRANSITION SCHEDULES IS
+// KEPT. One due event is taken off the world's own pending list, applied, and recorded as fired; the
+// advance then repeats on the world THAT TRANSITION PRODUCED, so an event it scheduled -- a power
+// restore arming its SOL drop -- stays pending and fires in turn if it too is due. (An earlier fold
+// rebuilt pending from its own accumulator after each transition and so discarded exactly those
+// events: #12423 side-chat review 5342387382.) Each step fires one due event, so the repetition ends.
+// With nothing due the world is returned as it is rather than rebuilt.
 fn bmc_advance(world: BmcWorld, now: Second) -> BmcWorld {
-  if count(world.pending) == 0 { world } else { bmc_advance_pending(world: world, now: now) }
+  match bmc_first_due(pending: world.pending, now: now) {
+    Absent => world
+    Present { value: e } => {
+      let remaining = bmc_without_first(pending: world.pending, event: e)
+      let applied = bmc_apply_event(world: bmc_with_pending(world: world, pending: remaining, fired: world.fired), event: e.event, at: e.at)
+      bmc_advance(world: bmc_with_pending(world: applied, pending: applied.pending, fired: list_append(applied.fired, e)), now: now)
+    }
+  }
 }
 
-fn bmc_advance_pending(world: BmcWorld, now: Second) -> BmcWorld {
-  fold(world.pending, init: bmc_with_pending(world: world, pending: [], fired: world.fired), f: fn(acc, e) {
-    if second_count(s: e.at) <= second_count(s: now) {
-      let applied = bmc_apply_event(world: acc, event: e.event, at: e.at)
-      bmc_with_pending(world: applied, pending: acc.pending, fired: list_append(acc.fired, e))
-    } else {
-      bmc_with_pending(world: acc, pending: list_append(acc.pending, e), fired: acc.fired)
+// The due event with the earliest instant; among equal instants, the first in schedule order.
+fn bmc_no_event() -> BmcScheduledEvent? {
+  none
+}
+
+fn bmc_first_due(pending: List<BmcScheduledEvent>, now: Second) -> BmcScheduledEvent? {
+  fold(pending, init: bmc_no_event(), f: fn(acc, e) {
+    if second_count(s: e.at) > second_count(s: now) { acc } else {
+      match acc {
+        Absent => Present { value: e }
+        Present { value: best } => if second_count(s: e.at) < second_count(s: best.at) { Present { value: e } } else { acc }
+      }
     }
   })
+}
+
+type BmcPendingRemoval {
+  kept: List<BmcScheduledEvent>
+  removed: Bool
+}
+
+// Removes ONE occurrence -- the first equal to `event` -- so two identical scheduled events fire twice.
+fn bmc_without_first(pending: List<BmcScheduledEvent>, event: BmcScheduledEvent) -> List<BmcScheduledEvent> {
+  fold(pending, init: BmcPendingRemoval { kept: [], removed: false }, f: fn(acc, e) {
+    if !acc.removed && second_count(s: e.at) == second_count(s: event.at) && bmc_event_eq(a: e.event, b: event.event) {
+      BmcPendingRemoval { kept: acc.kept, removed: true }
+    } else {
+      BmcPendingRemoval { kept: list_append(acc.kept, e), removed: acc.removed }
+    }
+  }).kept
+}
+
+fn bmc_event_eq(a: BmcEvent, b: BmcEvent) -> Bool {
+  match a {
+    BmcAcPowerLost => match b { BmcAcPowerLost => true _ => false }
+    BmcPowerRestored => match b { BmcPowerRestored => true _ => false }
+    BmcSolSessionDropped => match b { BmcSolSessionDropped => true _ => false }
+  }
 }
 
 fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {

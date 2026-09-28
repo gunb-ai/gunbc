@@ -2,6 +2,8 @@ module test.claim.boot_world_models_witness_test
 
 import std.types { Bool, List, String }
 import std.measure { second }
+import gunbc.bmc_model { BmcWorld, BmcPowerOn, bmc_world, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_chassis_control, bmc_advance, bmc_power_is_on, bmc_sol_drop_fired }
+import extdeps.bmc.ipmi_chassis_control { IpmiChassisPowerCycle }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.shell { ShellProcessExited }
 import extdeps.exec.command { argv_words }
@@ -71,4 +73,22 @@ test fn a_write_needs_its_parent_directory() -> Bool {
       extdeps.transports.file.FileOperationFailed { kind: extdeps.filesystem.filesystem_io.FilesystemNotFound, error: _ } => true
       _ => false
     }
+}
+
+// A POWER RESTORE KEEPS THE SOL DROP IT SCHEDULES (#12423 side-chat review 5342387382). An ON host with
+// an open SOL session and a 30-second after-boot drop is power-cycled at t=0: the controller drops power
+// and schedules the restore at t=5; the restore boots the host and schedules the drop at t=35. A quiet
+// advance to t=10 fires only the restore; ONE quiet advance to t=40, spanning both due times, fires both
+// -- the drop the restore scheduled is not discarded -- and leaves nothing pending.
+fn cycled_on_host() -> BmcWorld {
+  let on = bmc_with_sol_drop_after_boot(world: bmc_with_sol_session(world: bmc_world(power: BmcPowerOn), open: true), after: second(count: 30))
+  bmc_chassis_control(world: on, action: IpmiChassisPowerCycle, now: second(count: 0)).world
+}
+
+test fn a_power_restore_keeps_the_sol_drop_it_schedules() -> Bool {
+  let at_ten = bmc_advance(world: cycled_on_host(), now: second(count: 10))
+  let at_forty = bmc_advance(world: cycled_on_host(), now: second(count: 40))
+  bmc_power_is_on(world: at_ten) && at_ten.sol_session_open && count(at_ten.fired) == 1 && count(at_ten.pending) == 1
+    && bmc_power_is_on(world: at_forty) && !at_forty.sol_session_open && bmc_sol_drop_fired(world: at_forty)
+    && count(at_forty.fired) == 2 && count(at_forty.pending) == 0
 }
