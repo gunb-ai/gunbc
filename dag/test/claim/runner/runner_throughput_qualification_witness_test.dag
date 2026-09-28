@@ -25,9 +25,8 @@ import product.fabric.node_qualification {
 }
 import gunbc.host_budget_source { HostBudgetResolved, HostBudgetObserved, BudgetSourceCgroupMemoryHigh }
 import gunbc.required_ci_phase_roster { RequiredCiPhase, ParsePhase, FloorPhase, required_ci_phases, required_ci_phase_is }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired, gunbc_runner_cores_per_slot, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
 }

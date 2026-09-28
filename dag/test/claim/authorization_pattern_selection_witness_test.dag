@@ -201,6 +201,42 @@ test fn each_witness_ground_fires_alone() -> Bool {
     && witness_required(e: break_glass)
 }
 
+// THE FABRIC STORE'S PROTECTED-HEAD WRITERS (operator ruling A, 2026-09-27). Each writer's
+// selection is the credential the store door will verify for it; asserting it here is what makes
+// the tap count the operator was told a derived fact. D0's door gates on the approval it selects,
+// but the store does not verify it, so its store write diverges like every other writer's. The recurring host-effect lanes select the workload's own identity -- no human per run -- and the
+// operator's recovery and establishment entries select one approval each; all diverge today under
+// the one stated reason, because the store verifies nothing for any of them.
+// THE ROW'S OWN VERDICT through the real per-row fold (site_verdict), not the whole census folded
+// and then filtered: each claim is about one site, and the census fold is already run by the
+// roster claims above (§3: a witness discriminates at one interface).
+fn fabric_writer_verdict(key: String, want_approval: Bool) -> Bool {
+  any(map(filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key), row => site_verdict(row: row)), v =>
+    (if want_approval { selected_approved(s: v.selection) } else { selected_federated(s: v.selection) })
+      && match v.conformance {
+        Conforms => false
+        DivergesWithReason { reason: _ } => true
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+test fn the_d0_door_selects_operator_approval_and_states_the_unverified_store() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.pair_serving_d0_door::pair_serving_d0_ci_wet", want_approval: true)
+}
+
+test fn the_host_effect_lanes_select_workload_identity_and_state_the_unverified_store() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.host_commitment::claim_host_effect_live", want_approval: false)
+    && fabric_writer_verdict(key: "gunbc.spark.host_commitment::settle_host_effect_live_over", want_approval: false)
+}
+
+test fn the_fabric_operator_entries_select_one_approval_each_and_state_the_unverified_store() -> Bool {
+  fabric_writer_verdict(key: "gunbc.spark.host_commitment::host_effect_recover_wet", want_approval: true)
+    && fabric_writer_verdict(key: "gunbc.spark.pair_serving_authority_log::pair_serving_authority_establish_wet", want_approval: true)
+    && fabric_writer_verdict(key: "gunbc.spark.pair_serving_authority_log::host_placement_finalize_wet", want_approval: true)
+    && fabric_writer_verdict(key: "gunbc.spark.pair_serving_authority_log::host_placement_abort_wet", want_approval: true)
+}
+
 // ── The census, run through the real fold ────────────────────────────────────────────────────
 test fn every_census_site_is_decidable() -> Bool {
   (undecidable_sites() |> count) == 0

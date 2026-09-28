@@ -22,12 +22,8 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
 }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  gunbc_runner_committed_width,
-  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
-  runner_width_unresolved_cause_text,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import product.placement_supply { HostIdentity }

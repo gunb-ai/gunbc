@@ -149,16 +149,31 @@ fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) ->
 // roster row goes in this change, since a frozen row naming an absent witness is a
 // StaleFrozenPathDeferral refusal.
 test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool {
-  let resolved = pick_ingested_resolved_module_from_source(source: pick_ingested_source)
+  let resolved = bind_outcome(
+    o: pick_probe_normalized_module(),
+    f: fn(normalized) { v2.compiler.resolve.resolve(tree: normalized, lm: dag_language_model()) }
+  )
   pick_probe_module_arm_has_magnitude_child_holds(module_outcome: resolved, arm_index: 1)
     && pick_probe_module_arm_has_magnitude_child_holds(module_outcome: resolved, arm_index: 2)
 }
 
+// ONE NORMALIZE, TWO CLAIMS, ENROLLED WARM (v2.workflow.floor_pure_producer_share). The resolved
+// and normalized claims both demand normalize over the same probe source; that shared demand is
+// this one nullary producer, so normalize runs once for the floor rather than once per claim.
+// Both claims still run the real tokenize -> parse -> normalize route through it.
+fn pick_probe_normalized_module() -> Outcome<NormalizedTree> {
+  pick_ingested_normalized_module_from_source(source: pick_ingested_source)
+}
+
 test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
-  pick_probe_module_arm_has_magnitude_child_holds(
-    module_outcome: pick_ingested_normalized_module_from_source(source: pick_ingested_source),
-    arm_index: 1
-  )
+  match pick_probe_normalized_module() {
+    Accepted { value: normalized, diagnostics: diagnostics } =>
+      pick_probe_module_arm_has_magnitude_child_holds(
+        module_outcome: Accepted { value: normalized.root, diagnostics: diagnostics },
+        arm_index: 1
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn pick_probe_parsed_then_arm_has_magnitude_child_holds() -> Bool {

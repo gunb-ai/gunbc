@@ -25,7 +25,7 @@ import std.measure { ByteSize, byte_size }
 //
 // WHAT FALSIFIED IT: the runner row stopped being an allowance for "a gunbc process". The
 // 2026-09-12 demand ruling sizes it from the REQUIRED FLOOR'S measured peak -- one prepared subject
-// over the whole corpus, a figure gunbc.runner_slot_allocation gunbc_runner_slot_memory_max_ruling_note
+// over the whole corpus, a figure gunbc.runner_slot_desired gunbc_runner_slot_memory_max_ruling_note
 // owns and this row deliberately does not restate -- which is work this deployment never performs. The
 // same 2026-09-04 measurement the old note cited for scale is the refutation at this size: serve
 // peaked at 3.46 GB and the belt at 0.97 GB. Sharing one number with the floor was a coincidence of
