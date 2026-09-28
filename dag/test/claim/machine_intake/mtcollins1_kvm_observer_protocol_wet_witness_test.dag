@@ -8,7 +8,10 @@ import v2.std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import gunbc.runner_browser_toolchain { RunnerBrowserToolchainLocation, runner_browser_toolchain_here_wet, BrowserToolchainReady }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainLocation, RunnerBrowserToolchainResolution, runner_browser_toolchain_here_wet, runner_browser_toolchain_standing_text,
+  BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+}
 import gunbc.bmc_model { BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle }
 import gunbc.bmc_megarac_web_adapter { MegaRacWebLogin, megarac_web_transition_table, megarac_web_exploration_depth }
 import gunbc.bmc_megarac_web_transport {
@@ -18,7 +21,7 @@ import gunbc.bmc_megarac_web_transport {
 }
 import gunbc.owned_process {
   OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseNotOwned, OwnedForeign, OwnedRunning, OwnedGone,
-  owned_process_release, owned_process_standing,
+  owned_process_release, owned_process_standing, owned_process_launch_script,
 }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord,
@@ -72,8 +75,15 @@ fn scratch_dir() -> String {
   if made.success { made.path as String } else { "" }
 }
 
-fn toolchain() -> RunnerBrowserToolchainLocation? {
-  match runner_browser_toolchain_here_wet() { BrowserToolchainReady { location: l, standing: _ } => Present { value: l }  _ => none }
+// WHY THE TOOLCHAIN IS NOT HERE is kept as the toolchain authority states it -- the readback standing
+// for NotReady, the cause for Unresolved -- and carried into the rig's KvmObserverNotStarted reason,
+// never collapsed into a generic "not ready".
+fn toolchain_absence(r: RunnerBrowserToolchainResolution) -> String {
+  match r {
+    BrowserToolchainReady { location: _, standing: _ } => ""
+    BrowserToolchainNotReady { standing: st } => concat("the runner browser toolchain is not ready on this host: ", runner_browser_toolchain_standing_text(s: st))
+    BrowserToolchainUnresolved { cause: c } => concat("the runner browser toolchain is unresolved on this host: ", c)
+  }
 }
 
 fn read_or_empty(path: String) -> String {
@@ -91,9 +101,9 @@ fn rig(w: BmcWorld) -> Rig {
   let pw_path = concat(dir, "/credential")
   let _pw = Filesystem.Write(path: pw_path, content: "pw")
   let table = megarac_web_transition_table(initial: w, credentials: [MegaRacWebLogin { username: "admin", password: "pw" }], extended_privilege: 259, depth: megarac_web_exploration_depth)
-  match toolchain() {
-    Absent => Rig { dir: dir, serving: TransportNotServing { cause: TransportPidUnpublished }, start: KvmObserverNotStarted { reason: "the runner browser toolchain is not ready on this host" } }
-    Present { value: loc } => {
+  let resolution = runner_browser_toolchain_here_wet()
+  match resolution {
+    BrowserToolchainReady { location: loc, standing: _ } => {
       let serving = megarac_web_transport_serve(dir: dir, table: table, node_binary: loc.node_binary as String)
       let start = match serving {
         TransportServing { port: port, pid: _ } => {
@@ -105,6 +115,7 @@ fn rig(w: BmcWorld) -> Rig {
       }
       Rig { dir: dir, serving: serving, start: start }
     }
+    _ => Rig { dir: dir, serving: TransportNotServing { cause: TransportPidUnpublished }, start: KvmObserverNotStarted { reason: toolchain_absence(r: resolution) as NonEmptyStr } }
   }
 }
 
@@ -241,15 +252,40 @@ test fn a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped() -
   string_contains(s: log, pattern: "child stopped (observed gone)") && string_contains(s: log, pattern: "exited status=137")
 }
 
+// THE SAME LAUNCH WITH ITS PROCESS STATE UNOBSERVABLE, EXECUTED: the production launch script's exact
+// bytes (gunbc.owned_process owned_process_launch_script, the string LaunchOwned hands to bash -c) run
+// with one fixture fault -- a cat earlier on PATH that fails every /proc/<pid>/stat read and passes
+// everything else through. An unreadable stat is not a gone child, so the launch must still escalate
+// to KILL (the exit record shows status 137) and nothing the fixture started may survive. Under the
+// pre-fix launch an unreadable stat ended the TERM wait and skipped KILL, leaving the TERM-ignoring
+// child running while the log claimed it stopped. The fixture kills its own marked child afterwards,
+// whatever the verdict.
+test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child() -> Bool {
+  let dir = scratch_dir()
+  let bin = concat(dir, "/bin")
+  let _b = shell.Mkdir.Parents(path: bin as FilePath)
+  let _stub = Filesystem.Write(path: concat(bin, "/cat"), content: "#!/bin/sh\ncase \"$1\" in /proc/*/stat) exit 1;; esac\nexec /bin/cat \"$@\"\n")
+  let _x = shell.Exec.RunArgv(program: "chmod", arguments: ["+x", concat(bin, "/cat")])
+  let pid_path = concat(dir, "/child.pid")
+  let _blocker = shell.Mkdir.Parents(path: pid_path as FilePath)
+  let marker = "37.0417"
+  let _l = shell.Exec.RunArgv(program: "env", arguments: [concat("PATH=", concat(bin, ":/usr/bin:/bin")), "bash", "-c", owned_process_launch_script, "owned-launch", pid_path, concat(dir, "/child.log"), "sh", "-c", concat("trap '' TERM; exec sleep ", marker)])
+  let _w = settle(seconds: 6)
+  let log = read_or_empty(path: concat(dir, "/child.log"))
+  let survivor = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", concat("^sleep ", concat(marker, "$"))]).exit_code == 0
+  let _clean = shell.Exec.RunArgv(program: "pkill", arguments: ["-KILL", "-f", concat("^sleep ", concat(marker, "$"))])
+  let _gone = shell.Remove.RecursiveForce(path: dir)
+  string_contains(s: log, pattern: "exited status=137") && !survivor
+}
+
 // THE PRODUCTION DIRECTORY SHAPE, EXECUTED: a RELATIVE observer directory (as the boot passes
 // artifacts/mtcollins1-boot-kvm-<attempt>) is resolved once. The observer is launched through the real
 // kvm_observer_launch_in with an unreadable credential, so it refuses before loading Playwright and
 // journals that refusal; the boot reads it from the one resolved location, and no doubled
 // <dir>/<dir> journal exists.
 test fn a_relative_observer_directory_is_resolved_once() -> Bool {
-  match toolchain() {
-    Absent => false
-    Present { value: loc } => {
+  match runner_browser_toolchain_here_wet() {
+    BrowserToolchainReady { location: loc, standing: _ } => {
       let made = shell.Mktemp.DirWithTemplate(template: "target/gunbc_kvmrel.XXXXXX")
       let dir = trim(s: made.path as String)
       let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel")
@@ -261,6 +297,7 @@ test fn a_relative_observer_directory_is_resolved_once() -> Bool {
       let _gone = shell.Remove.RecursiveForce(path: dir)
       refused && !doubled
     }
+    _ => false
   }
 }
 
