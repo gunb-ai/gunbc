@@ -1000,6 +1000,24 @@ fn run() -> Result<ExitCode, ExitCode> {
         // The subject is the SAME PRODUCER the cargo board runs
         // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
         // a green here and an emitting board are one fact rather than two.
+        // THE WHOLE POOL'S BARE-REFERENCE OBLIGATION. An entry resolve judges only the files its
+        // closure reaches; this phase is where every import-less pool file is judged, on every
+        // pull_request and merge_group, so the narrowing an entry run is allowed never becomes a
+        // pool nobody judged. Before the floor, on the index the floor reuses.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase bare-reference-admission (every pool file, one judgment)"
+            );
+            match v1_compiler::cli_run::run_required_bare_reference_admission(&source_roots) {
+                Ok(coverage) => eprintln!("required-ci: bare-reference-admission OK {coverage}"),
+                Err(e) => {
+                    eprintln!("required-ci: bare-reference-admission REFUSED {e}");
+                    phase_failures.push(format!("bare-reference-admission refused: {e}"));
+                }
+            }
+            ran.push("bare-reference-admission");
+        }
+
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             v1_compiler::cli_run::floor_seam("floor-entry");
@@ -1663,6 +1681,7 @@ enum RequiredCiPhase {
     PrimitiveRuntimeBody,
     GeneratedArtifact,
     RegenFixedPoint,
+    BareReferenceAdmission,
     Floor,
 }
 
@@ -1673,6 +1692,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
+            RequiredCiPhase::BareReferenceAdmission => "bare-reference-admission",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1687,6 +1707,10 @@ impl RequiredCiPhase {
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
             RequiredCiPhase::PrimitiveRuntimeBody => RequiredCiLane::Witnesses,
+            // THE POOL'S BARE-REFERENCE OBLIGATION RIDES WITH THE FLOOR because they share one
+            // subject and one index: the phase judges the whole pool on the process-shared index
+            // the floor then prepares from, so the heads census is read once.
+            RequiredCiPhase::BareReferenceAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1711,11 +1735,12 @@ impl RequiredCiPhase {
 // (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
 // refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
 // namespace_wave_admission_wall_removed.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
+    RequiredCiPhase::BareReferenceAdmission,
     RequiredCiPhase::Floor,
 ];
 
@@ -1728,11 +1753,12 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
     "ParsePhase",
     "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
+    "BareReferenceAdmissionPhase",
     "FloorPhase",
 ];
 

@@ -9597,6 +9597,30 @@ pub(crate) fn unimported_bare_providers(
     Ok(out.into_iter().collect())
 }
 
+/// THE REQUIRED WHOLE-POOL PHASE (`gunbc.required_ci_phase_roster` `BareReferenceAdmissionPhase`).
+/// Judges every pool file on the process-shared index the floor then prepares from, and refuses
+/// unless every file carries a verdict: coverage is checked, not assumed from a fold that
+/// returned. Returns the coverage it established.
+pub fn run_required_bare_reference_admission(source_roots: &[String]) -> Result<String, String> {
+    let index = try_process_shared_index(source_roots)?;
+    admit_pool_bare_references(&index)?;
+    let judged = index.bare_reference_admission.borrow().len();
+    let pool = index.source_files.len();
+    if judged != pool {
+        return Err(format!(
+            "coverage incomplete: {judged} of {pool} pool files carry a bare-reference verdict"
+        ));
+    }
+    let eligible = index
+        .source_files
+        .values()
+        .filter(|s| !source_declares_import_lines(&s.content))
+        .count();
+    Ok(format!(
+        "judged={judged} pool={pool} import_less={eligible}"
+    ))
+}
+
 /// ONE FILE'S BARE-REFERENCE ADMISSION: the judgment both demands fold.
 ///
 /// An import-less file's bare references are resolved against the COMPLETE heads-derived name
