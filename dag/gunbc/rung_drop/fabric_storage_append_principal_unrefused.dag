@@ -50,6 +50,20 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // d0_store_operation_wall, a missing construction rather than a drop: it never existed under git
 // either) -- so retiring this row alone does not open D0, and Cut 0 with the escalation ->
 // authorization producer cannot make D0 executable before both walls stand, by construction.
+//
+// THE SERVED HALF STANDS; THE ROW STILL DOES (2026-09-27). gunbc.fabric_storage_serve now refuses a
+// put or advance from any login outside gunbc.fabric_writer_roster's roster (an authored roster of recorded readings), including an absent
+// login, as FabricWriterRefused (discriminating reds over the real handler in
+// test.claim.fabric.fabric_storage_file_store_wet_witness). The roster is the fold of the recorded
+// readings, which today ground no login (srv1 unproxied; srv3, srv4 could not resolve the door), so
+// it is empty and the door refuses every served write. The row stands because the local half does
+// not: the placed host's in-process writers are walled only by the store directories' ownership
+// (operator owner, CI-runner group, no other-write -- test.claim.fabric.fabric_writer_roster_witness),
+// and the backend listens on TCP loopback, so ANY srv1 local account can reach the served door and
+// present a forged Tailscale-User-Login (extdeps.tailscale.identity: header trust is a deployment
+// property). Operator-ruled restoration (proud-deer-538, 2026-09-27): the backend moves to a
+// group-restricted unix socket behind tailscale serve and FabricStorageLocalFiles is retired, so the
+// placed host writes through the same door; that change deletes this row.
 data fabric_storage_append_principal_unrefused: RungDrop = RungDrop {
   identity: "fabric_storage_append_principal_unrefused" as NonEmptyStr,
 
@@ -66,6 +80,7 @@ data fabric_storage_append_principal_unrefused: RungDrop = RungDrop {
     population: [
       "SERVED WRITERS (FabricStorageServed, every executor but the placed host): gunbc.fabric_storage_serve fabric_storage_serve_handle",
       "LOCAL WRITERS (FabricStorageLocalFiles, the placed host srv1): gunbc.fabric_storage_file_store fabric_storage_file_put / fabric_storage_file_advance, reached in process by gunbc.fabric_storage_binding fabric_storage_binding_for",
+      "LOOPBACK (any account on the placed host): the served backend's TCP loopback listener, where a forged Tailscale-User-Login passes the served roster",
       "gunbc.fabric_event_log event_log_append",
       "gunbc.fabric_event_log event_log_append_with",
       "gunbc.fabric_event_log fabric_seat_acquire",
