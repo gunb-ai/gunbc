@@ -1,5 +1,6 @@
 module gunbc.pid_control_curve_decode_witness
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { exact_decimal_wire }
@@ -50,11 +51,15 @@ fn point_at(points: List<DemandCurvePoint>, index: Int) -> List<DemandCurvePoint
 
 fn the_deployed_curve_decodes_paired() -> Bool {
   let points = decoded_points(text: deployed_curve_text)
-  let third = point_at(points: points, index: 3)
-  points.length() == 9
-    && third.length() == 1
-    && exact_decimal_wire(d: measure_count(m: third.first().reading)) == "66"
-    && exact_decimal_wire(d: third.first().output.magnitude) == "44"
+  let thirds = point_at(points: points, index: 3)
+  match thirds.first() {
+    Absent => false
+    Present { value: third } =>
+      points.length() == 9
+        && thirds.length() == 1
+        && exact_decimal_wire(d: measure_count(m: third.reading)) == "66"
+        && exact_decimal_wire(d: third.output.magnitude) == "44"
+  }
 }
 
 // PAIRING IS BY KEY IDENTITY, NOT BY POSITION, and this is the discriminator that proves it: the
@@ -65,13 +70,21 @@ data reordered_output_curve_text: String = "\{\"reading\": \{\"0\": 40, \"1\": 5
 
 fn pairing_survives_a_reordered_output_object() -> Bool {
   let points = decoded_points(text: reordered_output_curve_text)
-  let third = point_at(points: points, index: 3)
-  let zeroth = point_at(points: points, index: 0)
-  points.length() == 4
-    && third.length() == 1
-    && exact_decimal_wire(d: third.first().output.magnitude) == "44"
-    && zeroth.length() == 1
-    && exact_decimal_wire(d: zeroth.first().output.magnitude) == "22"
+  let thirds = point_at(points: points, index: 3)
+  let zeroths = point_at(points: points, index: 0)
+  match thirds.first() {
+    Absent => false
+    Present { value: third } =>
+      match zeroths.first() {
+        Absent => false
+        Present { value: zeroth } =>
+          points.length() == 4
+            && thirds.length() == 1
+            && exact_decimal_wire(d: third.output.magnitude) == "44"
+            && zeroths.length() == 1
+            && exact_decimal_wire(d: zeroth.output.magnitude) == "22"
+      }
+  }
 }
 
 // A NON-CANONICAL KEY IS NOT AN INDEX THE DAEMON ASKS FOR. phosphor-pid-control requests the exact

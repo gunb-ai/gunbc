@@ -44,18 +44,33 @@ fn cpu_catalog_shape() -> MachineShape {
 }
 
 test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
-  let memory = cpu_catalog_shape().domains.first().memory
-  list_length(items: memory) == 3
-    && memory.first().id == ampere_l1_level
-    && byte_size_count(b: memory.first().capacity) == ampere_l1_bytes_per_core
-    && match memory.first().transfer_grain {
-      Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
-      Absent => false
-    }
-    && memory.skip(n: 1).first().id == ampere_l2_level
-    && byte_size_count(b: memory.skip(n: 1).first().capacity) == ampere_l2_bytes_per_core
-    && memory.skip(n: 2).first().id == ampere_l3_level
-    && byte_size_count(b: memory.skip(n: 2).first().capacity) == ampere_l3_bytes
+  match cpu_catalog_shape().domains.first() {
+    Present { value: domain } =>
+      match domain.memory.first() {
+        Present { value: l1 } =>
+          match domain.memory.skip(n: 1).first() {
+            Present { value: l2 } =>
+              match domain.memory.skip(n: 2).first() {
+                Present { value: l3 } =>
+                  list_length(items: domain.memory) == 3
+                    && l1.id == ampere_l1_level
+                    && byte_size_count(b: l1.capacity) == ampere_l1_bytes_per_core
+                    && match l1.transfer_grain {
+                      Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
+                      Absent => false
+                    }
+                    && l2.id == ampere_l2_level
+                    && byte_size_count(b: l2.capacity) == ampere_l2_bytes_per_core
+                    && l3.id == ampere_l3_level
+                    && byte_size_count(b: l3.capacity) == ampere_l3_bytes
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn w_cpu_catalog_lane_count_matches_threads() -> Bool {

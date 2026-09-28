@@ -671,19 +671,23 @@ test fn witness_live_sessions_panel_rows() -> Bool {
     TmuxLsParsed { entries } => {
       let filtered = filter_dispatch_tmux_sessions(entries: entries)
       if count(filtered) == 1 {
-        let entry = filtered.first()
-        let scope = dispatch_tmux_session_scope_for_process_fingerprint(
-          node_id: roadmap_dispatch_actuator_nid(s: "panel-a"),
-          process_fingerprint: dispatch_codex_process_fingerprint,
-        )
-        let row = dispatch_live_session_row_for_scope(
-          entry: entry,
-          scope: scope,
-          instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
-        )
-        row.node_id == "panel-a"
-          && row.session_name == "gunbc-dispatch-panel-a"
-          && row.lease_verdict == UnknownRefused
+        match filtered.first() {
+          Absent => false
+          Present { value: entry } => {
+            let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+              node_id: roadmap_dispatch_actuator_nid(s: "panel-a"),
+              process_fingerprint: dispatch_codex_process_fingerprint,
+            )
+            let row = dispatch_live_session_row_for_scope(
+              entry: entry,
+              scope: scope,
+              instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
+            )
+            row.node_id == "panel-a"
+              && row.session_name == "gunbc-dispatch-panel-a"
+              && row.lease_verdict == UnknownRefused
+          }
+        }
       } else {
         false
       }
