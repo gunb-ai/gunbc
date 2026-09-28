@@ -5,6 +5,7 @@ import std.measure { byte_size_count, byte_size }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import gunbc.spark.v41_engram_differential_run {
   V41DifferentialImage, DifferentialImageBuilt, ImageLacksEngramOverlay, v41_differential_image,
   V41DifferentialOutcome, V41DifferentialRead, V41DifferentialRefused, v41_admit_differential, V41StoreKey,
@@ -23,12 +24,12 @@ import std.nat { Nat }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// NO IMAGE CARRIES THE OVERLAY YET, so the binding is unbuilt and the mode refuses with its trigger named
-// (ImageLacksEngramOverlay) instead of running anything.
-test fn the_differential_image_is_unbuilt_until_an_image_carries_the_overlay() -> Bool {
+// THE DIFFERENTIAL RUNS FROM THE PRODUCTION IMAGE, which carries the overlay: the binding names its config
+// digest and the build run that produced it.
+test fn the_differential_image_is_the_production_image() -> Bool {
   match v41_differential_image {
-    ImageLacksEngramOverlay { trigger: t } => contains(t as String, "production V4.1 image")
-    DifferentialImageBuilt { config_digest: _, build_run: _ } => false
+    DifferentialImageBuilt { image: p } => render_oci_content_digest_wire(d: p.config) == "sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" && (p.receipt_run as String) == "36327364664"
+    ImageLacksEngramOverlay { trigger: _ } => false
   }
 }
 

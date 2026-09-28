@@ -1800,6 +1800,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
       function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_launch_that_cannot_publish_its_pid_stops_the_child_it_created" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_launch_that_cannot_publish_its_pid_stops_the_child_it_created",
+      expectation: ExpectedToHold {}
     }
   ]
 }
