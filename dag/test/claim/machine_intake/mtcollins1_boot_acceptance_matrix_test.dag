@@ -58,7 +58,7 @@ data sol_capture_path: String = "/run/sol.capture"
 
 data sol_pid_path: String = "/run/sol.pid"
 
-fn grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
   Grant { verb: verb, root: NamespacePosition { tree: ServiceOpTree { service: service }, path: [] }, binding: ModeledRealization { realization: realization_identity as String }, lifecycle: LifecycleByConstruction }
 }
 
@@ -77,7 +77,7 @@ fn matrix_frame_over(realization: OperationRealization<MtCollins1BootWorld>) -> 
   WitnessEvaluationFrame {
     envelope: Envelope {
       frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
-      grants: concat(map(matrix_services, s => grant(service: s, verb: Read)), map(matrix_services, s => grant(service: s, verb: Write)))
+      grants: concat(map(matrix_services, s => matrix_grant(service: s, verb: Read)), map(matrix_services, s => matrix_grant(service: s, verb: Write)))
     }
     rest_fixtures: []
     realization: Present { value: realization }

@@ -158,7 +158,7 @@ fn operation_handler_selection<S>(
   let at = invocation.at
   match covering_grant(env: env, verb: operation_verb(readonly: readonly), target: operation_position(at: at)) {
     NoCoveringGrant { verb: _, target: _, frame: _ } => OperationHandlerRefused { cause: OperationUncovered { at: at } }
-    CoveredBy { grant } => match grant.binding {
+    CoveredBy { grant: covering } => match covering.binding {
       ModeledRealization { realization: named } =>
         if named != (realization.identity as String) {
           OperationHandlerRefused { cause: OperationRealizationMismatch { at: at, named: named, active: realization.identity } }
