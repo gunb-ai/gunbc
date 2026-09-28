@@ -286,7 +286,7 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   ResolvedSharedTypeName {
     names: ["Float"],
     resolution: ResolvedByRehomingBothToExtdeps { authority: "extdeps.standards.ieee_754_2019 binary64", citation: "IEEE 754-2019 §3.6 (operator ruling relayed 2026-09-28): `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64) both deleted; kernel Float's meaning is the `std.kernel_type_denotation` row, not a std alias" },
-    change: 0
+    change: 12547
   },
   ResolvedSharedTypeName {
     names: ["ProjectionKind"],
