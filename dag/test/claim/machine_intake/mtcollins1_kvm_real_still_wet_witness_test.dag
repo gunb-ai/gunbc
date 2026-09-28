@@ -1,0 +1,48 @@
+module test.claim.machine_intake.mtcollins1_kvm_real_still_wet_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { second }
+import v2.std.optional { Present, Absent }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_kvm_still {
+  KvmObserverStarted, KvmObserverEstablished, KvmStillHashed, KvmTeardownRecorded,
+  mtcollins1_kvm_observer_start, kvm_observer_trigger, mtcollins1_kvm_observer_finish,
+  mtcollins1_bmc_firmware, mtcollins1_kvm_still_toolchain_dir_env,
+}
+
+// THE ROUTE, EXECUTED AGAINST THE REAL CONTROLLER (eager-owl-205, 2026-09-28: the protocol controls
+// are process evidence; one claim must acquire a real still). READ-ONLY on the BMC: it logs in to the
+// web UI, takes the KVM viewer seat only if it is free, reads one still from the canvas and logs out.
+// It sends no power, media, boot-device or SOL command. It runs where the mtcollins1 BMC credential
+// and the declared toolchain are bound (srv1, the boot step's environment); anywhere else the
+// observer refuses and this claim is RED, never skipped.
+test fn one_still_is_acquired_from_the_real_controller_and_the_seat_is_released() -> Bool {
+  match mtcollins1_bmc_username {
+    Absent => false
+    Present { value: user } => {
+      let attempt = "real-still-probe"
+      let start = mtcollins1_kvm_observer_start(
+        firmware: mtcollins1_bmc_firmware,
+        bmc_host: mtcollins1_endpoint.host,
+        username: user,
+        password_file: actions_variable_trimmed(name: host_reset_bmc_credential_path_env),
+        toolchain_dir: actions_variable_trimmed(name: mtcollins1_kvm_still_toolchain_dir_env),
+        attempt: attempt,
+      )
+      let est = match start {
+        KvmObserverStarted { dir: _, standing: s, checked_at: _ } => match s { KvmObserverEstablished { at: _, host: _, session: _, attempt: a } => a == attempt  _ => false }
+        _ => false
+      }
+      let asked = kvm_observer_trigger(start: start, order: 1, reason: "real-still-probe")
+      let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 5))
+      let rec = mtcollins1_kvm_observer_finish(start: start, attempt: attempt, terminal_order: 2)
+      let hashed = count(filter(rec.stills, s => match s { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }))
+      let released = match rec.teardown { KvmTeardownRecorded { snapshot_path: _, snapshot_kept: _, requested_at: _, stopped_seen: st, released: rl, forced_release_at: _ } => st && string_contains(s: rl, pattern: "session released")  _ => false }
+      est && asked && hashed >= 1 && released
+    }
+  }
+}

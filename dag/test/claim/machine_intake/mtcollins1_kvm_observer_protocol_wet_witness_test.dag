@@ -1,0 +1,172 @@
+module test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness_test
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.measure { second }
+import v2.std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.bmc_model { BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle }
+import gunbc.bmc_megarac_web_adapter { megarac_web_protocol_script, megarac_web_transport_script }
+import gunbc.machine_intake_mtcollins1_kvm_still {
+  KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord,
+  KvmObserverEstablished, KvmObserverRefused, KvmSeatBusy,
+  KvmJournalConnectionLost, KvmJournalAcquisitionFailed, KvmNotConnected, KvmCanvasUnreadable,
+  KvmStillHashed, KvmTeardownRecorded,
+  kvm_observer_launch_in, kvm_observer_trigger, mtcollins1_kvm_observer_finish, mtcollins1_kvm_still_toolchain_dir_env,
+}
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
+
+// PROCESS-AND-PROTOCOL EVIDENCE, NOT HARDWARE EVIDENCE (eager-owl-205, 2026-09-28). Each control runs
+// the REAL held observer -- the same kvm_observer_launch_in, triggers and mtcollins1_kvm_observer_finish
+// the boot runs -- in headless Chromium against a loopback controller whose every answer is a
+// gunbc.bmc_model transition (gunbc.bmc_megarac_web_adapter), so the observer and the one BMC model
+// cannot drift. It needs the declared toolchain on GUNBC_KVM_STILL_TOOLCHAIN; without it the observer
+// refuses and every control here is RED, never skipped. The hardware half -- one read-only still from
+// the real controller -- is test.claim.machine_intake.mtcollins1_kvm_real_still_wet_witness.
+
+fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
+  BmcWorld {
+    power: BmcPowerOn,
+    pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at_seconds: close_at, event: BmcKvmStreamClosed {} }] },
+    fired: [],
+    web: BmcWebWorld {
+      account: BmcWebAccount { username: "admin", password: "pw", privilege: 4 },
+      sessions: [],
+      next_session_id: 7,
+      other_kvm_viewers: other_viewers,
+      kvm: BmcKvmIdle {},
+      canvas_readable: canvas_readable,
+    },
+  }
+}
+
+type Rig {
+  dir: String
+  start: KvmObserverStart
+  transport_log: String
+}
+
+fn scratch_dir() -> String {
+  let made = shell.Mktemp.Dir()
+  if made.success { made.path as String } else { "" }
+}
+
+// Serve the model's world on loopback, write the credential, and launch the real observer at it.
+fn rig(w: BmcWorld, port: Int) -> Rig {
+  let dir = scratch_dir()
+  let script_path = concat(dir, "/controller.script")
+  let log_path = concat(dir, "/controller.log")
+  let pw_path = concat(dir, "/credential")
+  let _script = Filesystem.Write(path: script_path, content: megarac_web_protocol_script(initial: w, username: "admin", password: "pw", extended_privilege: 259))
+  let _pw = Filesystem.Write(path: pw_path, content: "pw")
+  let _served = gunbc.bmc_megarac_web.transport.Start(
+    script: megarac_web_transport_script as NonEmptyStr,
+    port: to_string(port) as NonEmptyStr,
+    image_port: to_string(port + 1) as NonEmptyStr,
+    script_path: script_path as NonEmptyStr,
+    log_path: log_path as NonEmptyStr,
+    pid_path: concat(dir, "/controller.pid") as NonEmptyStr,
+  )
+  let obs = concat(dir, "/observer")
+  let _made = shell.Mkdir.Parents(path: obs as FilePath)
+  let start = kvm_observer_launch_in(dir: obs, base_url: concat("http://127.0.0.1:", to_string(port)), username: "admin", password_file: pw_path, toolchain_dir: actions_variable_trimmed(name: mtcollins1_kvm_still_toolchain_dir_env), attempt: "wet")
+  Rig { dir: dir, start: start, transport_log: log_path }
+}
+
+fn close_rig(r: Rig) -> Bool {
+  let _stopped = gunbc.bmc_megarac_web.transport.Stop(pid_path: concat(r.dir, "/controller.pid") as NonEmptyStr)
+  shell.Remove.RecursiveForce(path: r.dir).success
+}
+
+fn read_or_empty(path: String) -> String {
+  let x = Filesystem.Read(path: path)
+  if x.success { x.content } else { "" }
+}
+
+fn settle(seconds: Int) -> Bool {
+  sleep_delay_seconds_second_carrier_projection(duration: second(count: seconds))
+}
+
+fn established(s: KvmObserverStart) -> Bool {
+  match s {
+    KvmObserverStarted { dir: _, standing: st, checked_at: _ } => match st { KvmObserverEstablished { at: _, host: _, session: se, attempt: a } => se == "7" && a == "wet"  _ => false }
+    _ => false
+  }
+}
+
+fn released(rec: KvmObserverRecord) -> Bool {
+  match rec.teardown {
+    KvmTeardownRecorded { snapshot_path: _, snapshot_kept: k, requested_at: _, stopped_seen: st, released: rl, forced_release_at: _ } => k && st && string_contains(s: rl, pattern: "session released")
+    _ => false
+  }
+}
+
+// ESTABLISHED BEFORE ANY TRIGGER, BOUND TO HOST, SESSION AND ATTEMPT; the triggered still is hash-bound
+// with its instant; the teardown snapshot is kept, the boot's stop request is separately timestamped,
+// and the controller saw the logout.
+test fn a_held_observer_is_established_first_and_its_triggered_still_is_hash_bound() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: -1, canvas_readable: true), port: 18180)
+  let est = established(s: r.start)
+  let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
+  let _w = settle(seconds: 3)
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = read_or_empty(path: r.transport_log)
+  let workflow = match r.start { KvmObserverStarted { dir: d, standing: _, checked_at: _ } => read_or_empty(path: concat(d as String, "/workflow"))  _ => "" }
+  let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && a.ms > 0  _ => false }))
+  let _gone = close_rig(r: r)
+  est && asked && loss_still == 1 && released(rec: rec)
+    && string_contains(s: workflow, pattern: "observer stop requested at=")
+    && string_contains(s: log, pattern: "logout")
+}
+
+// VIEWER SLOT BUSY: the model's other viewer makes viewer_count 1; the observer refuses with that
+// count, never connects the stream, and still releases its web session.
+test fn a_busy_viewer_slot_refuses_without_connecting_and_releases_the_session() -> Bool {
+  let r = rig(w: world(other_viewers: 1, close_at: -1, canvas_readable: true), port: 18190)
+  let refused = match r.start {
+    KvmObserverStarted { dir: _, standing: st, checked_at: _ } => match st { KvmObserverRefused { at: _, refusal: x } => match x { KvmSeatBusy { viewer_count: n } => n == "1"  _ => false }  _ => false }
+    _ => false
+  }
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let log = read_or_empty(path: r.transport_log)
+  let _gone = close_rig(r: r)
+  refused && !string_contains(s: log, pattern: "kvm-open") && string_contains(s: log, pattern: "logout") && released(rec: rec)
+}
+
+// CONNECTION LOST MID-BOOT: the model closes the stream 3 s after connect. The browser's WebSocket
+// close is journalled as connection-lost, the boot's tick report freezes it, and a still asked after
+// it is acquisition-failed not-connected -- never a still from a dead stream.
+test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: 3, canvas_readable: true), port: 18200)
+  let est = established(s: r.start)
+  let _w = settle(seconds: 5)
+  let reported = mtcollins1_boot_screen_boundary_report(screen: r.start, already: [])
+  let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
+  let _w2 = settle(seconds: 2)
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let report_file = match r.start { KvmObserverStarted { dir: d, standing: _, checked_at: _ } => read_or_empty(path: concat(d as String, "/boundary-report"))  _ => "" }
+  let lost = count(filter(rec.events, e => match e { KvmJournalConnectionLost { at: _ } => true  _ => false })) == 1
+  let not_connected = count(filter(rec.events, e => match e { KvmJournalAcquisitionFailed { at: _, seq: _, reason: why, cause: c } => string_contains(s: why, pattern: "sol-channel-lost") && match c { KvmNotConnected => true  _ => false }  _ => false })) == 1
+  let _gone = close_rig(r: r)
+  est && asked && lost && not_connected && count(rec.stills) == 0
+    && count(reported) >= 1 && string_contains(s: report_file, pattern: "CONNECTION LOST")
+    && released(rec: rec)
+}
+
+// CANVAS UNREADABLE: the world's browser-side flag makes the page's canvas unexportable; the still
+// asked for is acquisition-failed canvas-unreadable with the browser's own words.
+test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> Bool {
+  let r = rig(w: world(other_viewers: 0, close_at: -1, canvas_readable: false), port: 18210)
+  let est = established(s: r.start)
+  let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
+  let _w = settle(seconds: 3)
+  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let unreadable = count(filter(rec.events, e => match e {
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c } => match c { KvmCanvasUnreadable { detail: d } => string_contains(s: d, pattern: "Tainted canvases")  _ => false }
+    _ => false
+  })) >= 1
+  let _gone = close_rig(r: r)
+  est && asked && unreadable && count(rec.stills) == 0 && released(rec: rec)
+}
