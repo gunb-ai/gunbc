@@ -740,7 +740,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
   run_completed: false,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -985,7 +985,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeld
   run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 
@@ -1407,7 +1407,7 @@ data gunbc_floor_memory_stat_receipt_2026_09_23: FloorHeldSetReceipt = FloorHeld
   run_completed: true,
   swap_policy: SwapMaxDeclaredUnread {
     declared: byte_size(34359738368),
-    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+    declaring_authority: "gunbc.runner_slot_desired gunbc_runner_slot_desired memory_swap_max",
   },
 }
 

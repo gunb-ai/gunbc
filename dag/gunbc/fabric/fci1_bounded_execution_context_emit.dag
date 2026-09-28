@@ -21,9 +21,10 @@ type Fci1BoundedExecutionContextEmission
 // emit, which is the tell DESIGN section 6 names, admitted as an interim only because the trigger
 // below names the capability that actually replaces it.
 //
-// dissolve-on: bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes this
-// runner through orchestration emit or typed host_effect_apply, without a medium-as-string concat
-// scaffold -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
+// dissolve-on: this runner is built as v2.extdeps.languages.bash_build nodes and emitted by
+// v2.workflow.bash_emit bash_emit_stmts (a route available today; the migration is unauthored, not
+// blocked), or as typed host_effect_apply
+// -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
 // tools/fabric_ci_fci1_live_instrument.sh.
 //
 // THE MARK IS HERE AND NOT ONLY ON THOSE TWO FILES BECAUSE THE TRIGGER WOULD OTHERWISE RETIRE THEM

@@ -27,7 +27,7 @@ import v2.extdeps.formats.sql_create_table_fold {
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.collection {
   Map

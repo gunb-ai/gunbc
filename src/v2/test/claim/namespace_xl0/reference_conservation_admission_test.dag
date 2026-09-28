@@ -6,7 +6,6 @@ import v2.compiler.reference_conservation_admission {
   ExplainedDrop,
   KnownDropShape,
   NamedArgumentLabel,
-  MatchLaterArm,
   StatementLetBinder,
   WhereRefinementPredicate,
   known_drop_shape_restoration_trigger,
@@ -95,7 +94,7 @@ test fn explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds(
 
 // The exact extent under the wrong shape consumes nothing: the drop stays refused and the
 // explanation is stale.
-data rc_label_misclassified: ExplainedDrop = ExplainedDrop { start: 170, end: 178, shape: MatchLaterArm }
+data rc_label_misclassified: ExplainedDrop = ExplainedDrop { start: 170, end: 178, shape: StatementLetBinder }
 
 test fn an_explanation_with_the_wrong_shape_consumes_nothing_holds() -> Bool {
   match conserved_normalize(subject: named_argument_label_subject(), explained: Cons { head: rc_label_misclassified, tail: Empty }) {
@@ -140,7 +139,7 @@ fn restoration_named(shape: KnownDropShape) -> Bool {
 }
 
 test fn every_known_drop_shape_names_its_restoration_trigger_holds() -> Bool {
-  restoration_named(shape: NamedArgumentLabel) && restoration_named(shape: WhereRefinementPredicate) && restoration_named(shape: MatchLaterArm) && restoration_named(shape: StatementLetBinder)
+  restoration_named(shape: NamedArgumentLabel) && restoration_named(shape: WhereRefinementPredicate) && restoration_named(shape: StatementLetBinder)
 }
 
 // Removing a declaration reds the fixture: the same source, with and without its explanation.
