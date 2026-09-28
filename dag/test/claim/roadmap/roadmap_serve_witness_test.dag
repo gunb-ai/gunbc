@@ -459,7 +459,7 @@ fn public_plan_section_title() -> String { "Active deliverables" }
 
 fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
   RoadmapAuthorityProjected {
-    doc: RoadmapDocument {
+    doc: RoadmapDocument { memberships: [],
       preamble: [],
       lead_lanes: [],
       sections: [

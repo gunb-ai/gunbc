@@ -1,5 +1,6 @@
 module gunbc.roadmap_served_observation
 
+import gunbc.roadmap_live_projection { roadmap_live_authority_projection }
 import gunbc.roadmap.roadmap_event_carrier_instance { roadmap_event_carrier_layout_for_instance }
 
 import gunbc.site.markup { page_render_refusal_body }
@@ -417,7 +418,7 @@ fn served_observation_observe_and_write_over(instance: HostDashboardInstance, pl
 fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     observed_at: observed_at,
   )
 }
@@ -468,6 +469,7 @@ fn served_observation_refusal_body(refusal: String, detail: String) -> String {
 
 fn served_observation_refusal_response(refusal: String, detail: String) -> ServeHttpResponse {
   ServeHttpResponse {
+    headers: [],
     status: 503,
     content_type: application_json_utf8,
     body: served_observation_refusal_body(refusal: refusal, detail: detail),
@@ -488,6 +490,7 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
       )
     ServedObservationBodyPresent { body: bytes } =>
       ServeHttpResponse {
+        headers: [],
         status: entry.status,
         content_type: served_observation_kind_media_type(kind: entry.kind, status: entry.status),
         body: bytes,
@@ -570,6 +573,7 @@ fn served_observation_standing_http_status(read: ServedObservationRead) -> Int {
 fn served_observation_standing_response_for_instance(instance: HostDashboardInstance) -> ServeHttpResponse {
   let read = served_observation_read_for_instance(instance: instance)
   ServeHttpResponse {
+    headers: [],
     status: served_observation_standing_http_status(read: read),
     content_type: application_json_utf8,
     body: serialize_json(v: served_observation_standing_json_value(read: read)),

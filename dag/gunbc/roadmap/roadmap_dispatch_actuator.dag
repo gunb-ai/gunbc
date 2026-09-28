@@ -1,5 +1,6 @@
 module gunbc.roadmap_dispatch_actuator
 
+import gunbc.roadmap_dispatch_fields { DispatchBriefFields, carrier_paths_label }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import v2.std.optional { Present }
@@ -466,18 +467,7 @@ fn dispatch_capability_program(
   }
 }
 
-type DispatchBriefFields {
-  node_id: String
-  displaced_cost: String
-  current_state: String
-  first_slice: String
-  red_control: String
-  out_of_scope: String
-  handback: String
-  paths: String
-  commands_to_run: String
-  expected_artifact: String
-}
+
 
 // DispatchBriefFields contains only fields consumed by fill_dispatch_brief. Sizing remains typed on
 // RoadmapNode and is projected only where rendered.
@@ -1523,44 +1513,8 @@ fn dispatch_tmux_session_scope(
   }
 }
 
-fn carrier_paths_label(carriers: List<Pointer>, repo: String) -> String {
-  if count(carriers) == 0 {
-    concat("dag/gunbc/roadmap/roadmap_dispatch_actuator.dag (repo=", concat(repo, ")"))
-  } else {
-    join(map(carriers, p => p.path), " · ")
-  }
-}
-
 fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields {
-  let title = node_title(item: node.line)
-  match line_ticket(item: node.line) {
-    Present { value: t } =>
-      DispatchBriefFields {
-        node_id: node.node,
-        displaced_cost: t.displaced_cost,
-        current_state: t.current_state,
-        first_slice: t.first_slice,
-        red_control: t.red_control,
-        out_of_scope: t.out_of_scope,
-        handback: t.handback,
-        paths: carrier_paths_label(carriers: node.carriers, repo: repo),
-        commands_to_run: "",
-        expected_artifact: "",
-      }
-    Absent =>
-      DispatchBriefFields {
-        node_id: node.node,
-        displaced_cost: title,
-        current_state: title,
-        first_slice: title,
-        red_control: "drop modeled argv row and witness goes red",
-        out_of_scope: "see parent roadmap dispatch plan",
-        handback: "node not ready, foreign lease, or unsupported repo",
-        paths: carrier_paths_label(carriers: node.carriers, repo: repo),
-        commands_to_run: "",
-        expected_artifact: "",
-      }
-  }
+  gunbc.roadmap_dispatch_fields.dispatch_slot_fields(node: node, repo: repo)
 }
 
 fn dispatch_brief_fields_for_environment(
@@ -1575,6 +1529,7 @@ fn dispatch_brief_fields_for_environment(
   Dispatchable { repo, acceptance: _ } => {
     let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
+      brief: f.brief,
       node_id: f.node_id,
       displaced_cost: f.displaced_cost,
       current_state: f.current_state,
@@ -1590,6 +1545,7 @@ fn dispatch_brief_fields_for_environment(
   NotDispatchable => {
     let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
+      brief: f.brief,
       node_id: f.node_id,
       displaced_cost: f.displaced_cost,
       current_state: f.current_state,
@@ -1613,18 +1569,7 @@ fn dispatch_brief_fields(node: RoadmapNode) -> DispatchBriefFields {
 }
 
 fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String {
-  template
-    .replace(from: "<node_id>", to: fields.node_id)
-    .replace(from: "<displaced cost / what it unblocks>", to: fields.displaced_cost)
-    .replace(from: "<explicitly out of scope>", to: fields.out_of_scope)
-    .replace(from: "<prove current state / reproduce the gap>", to: fields.current_state)
-    .replace(from: "<first implementation slice>", to: fields.first_slice)
-    .replace(from: "<perturbation that goes red>", to: fields.red_control)
-    .replace(from: "<execution on the real path>", to: fields.commands_to_run)
-    .replace(from: "<named hand-back conditions>", to: fields.handback)
-    .replace(from: "<paths>", to: fields.paths)
-    .replace(from: "<repro/verify commands>", to: fields.commands_to_run)
-    .replace(from: "<what comes back even if the fix does not land>", to: fields.expected_artifact)
+  gunbc.roadmap_dispatch_fields.fill_dispatch_brief(template: template, fields: fields)
 }
 
 fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {

@@ -1,0 +1,22 @@
+module gunbc.auth.approval_broker_transport_request
+
+import extdeps.http.server { ServeHttpRequest, RequestSecurityContext, AccessPathTailnetProxy, AccessPathDirectHttps, AccessPathLocalDev }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent }
+
+// The legacy broker consumes the transport observation and independently checks its declared
+// identity-header trust, capability and writer authority. Google/service authentication is not
+// convertible into a tailnet identity. Keep this adapter explicit until A7 replaces that broker
+// admission contract; it does not establish trust or change the broker's decision policy.
+fn approval_broker_transport_request<Authentication>(request: ServeHttpRequest<Authentication>) -> ServeHttpRequest<TailnetIdentity> {
+  ServeHttpRequest {
+    method: request.method, path: request.path, body: request.body,
+    security: RequestSecurityContext {
+      access_path: request.security.access_path,
+      authentication: match request.security.access_path {
+        AccessPathTailnetProxy { transport_observation, route_readback: _ } => transport_observation
+        AccessPathDirectHttps => TailnetIdentityAbsent
+        AccessPathLocalDev => TailnetIdentityAbsent
+      },
+    },
+  }
+}

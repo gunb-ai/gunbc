@@ -1,0 +1,124 @@
+module test.claim.roadmap.roadmap_planning_candidate_witness_test
+
+import std.types { String, Bool, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_status { TicketFields, TicketBrief, TicketVerified }
+import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal }
+import gunbc.roadmap_planning_candidate {
+  PlanningIssueSnapshot, IssueRevisionCandidate, CandidateFieldChange, CandidateSetParent, CandidateSetBlockers,
+  planning_issue_revision, planning_candidate_review, planning_candidate_acceptance,
+  CandidateReviewReady, CandidateRevisionConflict, CandidateReviewRefused,
+  CandidateAcceptanceAdmitted, CandidateAcceptanceRefused, CandidateAcceptanceConflict,
+}
+
+fn human(subject: String) -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: subject as NonEmptyStr }
+}
+
+fn snapshot(brief: String, event_revision: String) -> PlanningIssueSnapshot {
+  PlanningIssueSnapshot { issue: "issue-one" as RoadmapNodeId,
+    ticket: TicketFields { headline: "Headline", brief: brief, displaced_cost: "Cost", current_state: "Current",
+      first_slice: "Plan", red_control: "Control", out_of_scope: "Scope", handback: "Handback", updates: [], authored_on: "2026-09-28", last_verified_on: "" },
+    parent: none, blockers: [], event_revision: event_revision, accountable_human: Present { value: human(subject: "owner") } }
+}
+
+fn candidate() -> IssueRevisionCandidate {
+  IssueRevisionCandidate { identity: "proposal-one" as NonEmptyStr, issue: "issue-one" as RoadmapNodeId,
+    base_issue_revision: planning_issue_revision(snapshot: snapshot(brief: "Old brief", event_revision: "head-one")),
+    proposed_field_changes: [CandidateFieldChange { field: TicketBrief, value: "New brief" }],
+    proposed_relation_changes: [], proposed_draft_children: [], author: fabric_workflow_principal, work_request: "work-one" as NonEmptyStr }
+}
+
+test fn review_preserves_old_value_and_does_not_apply() -> Bool {
+  let current = snapshot(brief: "Old brief", event_revision: "head-one")
+  match planning_candidate_review(candidate: candidate(), current: current) {
+    CandidateReviewReady { review } => review.current.ticket.brief == "Old brief"
+      && review.preview_ticket.brief == "New brief" && review.preview_ticket.headline == current.ticket.headline
+      && review.preview_ticket.authored_on == current.ticket.authored_on && review.preview_ticket.last_verified_on == current.ticket.last_verified_on
+      && (match review.field_differences.first() { Present { value: d } => d.field == TicketBrief && d.before == "Old brief" && d.after == "New brief" Absent => false })
+    _ => false
+  }
+}
+
+test fn repository_contract_change_conflicts_even_without_event_change() -> Bool {
+  match planning_candidate_review(candidate: candidate(), current: snapshot(brief: "Revised in repository", event_revision: "head-one")) {
+    CandidateRevisionConflict { current_revision: _ } => true
+    _ => false
+  }
+}
+
+test fn intervening_event_conflicts_at_acceptance() -> Bool {
+  match planning_candidate_acceptance(candidate: candidate(), current: snapshot(brief: "Old brief", event_revision: "head-two"), acceptor: human(subject: "owner")) {
+    CandidateAcceptanceConflict { current_revision: _ } => true
+    _ => false
+  }
+}
+
+test fn only_accountable_human_can_accept() -> Bool {
+  let current = snapshot(brief: "Old brief", event_revision: "head-one")
+  (match planning_candidate_acceptance(candidate: candidate(), current: current, acceptor: human(subject: "owner")) { CandidateAcceptanceAdmitted { review: _ } => true _ => false })
+    && (match planning_candidate_acceptance(candidate: candidate(), current: current, acceptor: human(subject: "someone-else")) { CandidateAcceptanceRefused { cause: _ } => true _ => false })
+    && (match planning_candidate_acceptance(candidate: candidate(), current: current, acceptor: fabric_workflow_principal) { CandidateAcceptanceRefused { cause: _ } => true _ => false })
+}
+
+test fn duplicate_field_edits_refuse() -> Bool {
+  let c = candidate()
+  let duplicate = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+    proposed_field_changes: [CandidateFieldChange { field: TicketBrief, value: "A" }, CandidateFieldChange { field: TicketBrief, value: "B" }],
+    proposed_relation_changes: [], proposed_draft_children: [], author: c.author, work_request: c.work_request }
+  match planning_candidate_review(candidate: duplicate, current: snapshot(brief: "Old brief", event_revision: "head-one")) { CandidateReviewRefused { cause } => cause == "a field occurs more than once" _ => false }
+}
+
+test fn verification_is_evidence_not_an_editable_planning_field() -> Bool {
+  let c = candidate()
+  let forged = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+    proposed_field_changes: [CandidateFieldChange { field: TicketVerified, value: "passed" }],
+    proposed_relation_changes: [], proposed_draft_children: [], author: c.author, work_request: c.work_request }
+  match planning_candidate_review(candidate: forged, current: snapshot(brief: "Old brief", event_revision: "head-one")) { CandidateReviewRefused { cause } => cause == "planning cannot author verification evidence" _ => false }
+}
+
+test fn parent_and_blocker_proposals_remain_separate() -> Bool {
+  let c = candidate()
+  let current = snapshot(brief: "Old brief", event_revision: "head-one")
+  let proposal = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+    proposed_field_changes: [], proposed_relation_changes: [CandidateSetParent { parent: Present { value: "project" as RoadmapNodeId } }, CandidateSetBlockers { blockers: ["prerequisite" as RoadmapNodeId] }],
+    proposed_draft_children: [], author: c.author, work_request: c.work_request }
+  match planning_candidate_review(candidate: proposal, current: current) {
+    CandidateReviewReady { review } => review.current.parent == none && count(review.current.blockers) == 0
+      && count(review.candidate.proposed_relation_changes) == 2 && count(review.field_differences) == 0
+    _ => false
+  }
+}
+
+test fn absent_accountable_human_refuses_acceptance() -> Bool {
+  let s = snapshot(brief: "Old brief", event_revision: "head-one")
+  let unassigned = PlanningIssueSnapshot { issue: s.issue, ticket: s.ticket, parent: s.parent, blockers: s.blockers,
+    event_revision: s.event_revision, accountable_human: none }
+  let c = candidate()
+  let proposal = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: planning_issue_revision(snapshot: unassigned),
+    proposed_field_changes: c.proposed_field_changes, proposed_relation_changes: [], proposed_draft_children: [], author: c.author, work_request: c.work_request }
+  match planning_candidate_acceptance(candidate: proposal, current: unassigned, acceptor: human(subject: "owner")) {
+    CandidateAcceptanceRefused { cause } => cause == "issue has no accountable human"
+    _ => false
+  }
+}
+
+test fn another_issue_cannot_reuse_the_revision() -> Bool {
+  let c = candidate()
+  let proposal = IssueRevisionCandidate { identity: c.identity, issue: "another-issue" as RoadmapNodeId, base_issue_revision: c.base_issue_revision,
+    proposed_field_changes: c.proposed_field_changes, proposed_relation_changes: [], proposed_draft_children: [], author: c.author, work_request: c.work_request }
+  match planning_candidate_review(candidate: proposal, current: snapshot(brief: "Old brief", event_revision: "head-one")) {
+    CandidateReviewRefused { cause } => cause == "candidate names a different issue"
+    _ => false
+  }
+}
+
+test fn self_blocker_refuses_review() -> Bool {
+  let c = candidate()
+  let proposal = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+    proposed_field_changes: [], proposed_relation_changes: [CandidateSetBlockers { blockers: [c.issue] }], proposed_draft_children: [], author: c.author, work_request: c.work_request }
+  match planning_candidate_review(candidate: proposal, current: snapshot(brief: "Old brief", event_revision: "head-one")) {
+    CandidateReviewRefused { cause } => cause == "relations contain duplicate edits, duplicate blockers or self relations"
+    _ => false
+  }
+}

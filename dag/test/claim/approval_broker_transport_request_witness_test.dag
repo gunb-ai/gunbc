@@ -1,0 +1,26 @@
+module test.claim.approval_broker_transport_request_witness_test
+
+import std.types { String, Bool }
+import extdeps.http.server { ServeHttpRequest, RequestSecurityContext, RequestAccessPath, AccessPathTailnetProxy, AccessPathDirectHttps, AccessPathLocalDev, TailnetRouteReadbackUnobserved, POST }
+import extdeps.tailscale.identity { TailnetIdentityAbsent, tailnet_identity_of }
+import gunbc.auth.approval_broker_transport_request { approval_broker_transport_request }
+
+fn request_on(path: RequestAccessPath) -> ServeHttpRequest<String> {
+  ServeHttpRequest { method: POST, path: "/approve/fixture", body: "fixture-body",
+    security: RequestSecurityContext { access_path: path, authentication: "not-a-tailnet-proof" } }
+}
+
+test fn broker_adapter_never_converts_other_authentication_into_tailnet_identity() -> Bool {
+  approval_broker_transport_request(request: request_on(path: AccessPathDirectHttps)).security.authentication == TailnetIdentityAbsent
+    && approval_broker_transport_request(request: request_on(path: AccessPathLocalDev)).security.authentication == TailnetIdentityAbsent
+}
+
+test fn broker_adapter_preserves_transport_and_request_without_claiming_trust() -> Bool {
+  let path = AccessPathTailnetProxy { transport_observation: tailnet_identity_of(header_value: "fixture@example.test"),
+    route_readback: TailnetRouteReadbackUnobserved { reason: "untrusted fixture" } }
+  let request = request_on(path: path)
+  let projected = approval_broker_transport_request(request: request)
+  projected.method == request.method && projected.path == request.path && projected.body == request.body
+    && projected.security.access_path == path
+    && projected.security.authentication == tailnet_identity_of(header_value: "fixture@example.test")
+}

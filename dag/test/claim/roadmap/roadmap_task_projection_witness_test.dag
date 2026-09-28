@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, roadmap_task_graph_refusal, roadmap_task_append_admits, RoadmapTaskCurrent, RoadmapTaskUnreadable }
 
 fn editorial_fixture(title: NonEmptyStr) -> RoadmapTaskEditorial {
-  RoadmapTaskEditorial { identity: "minted-node-1" as RoadmapNodeIdentity, code_contract: none, title: title, body: "", prerequisites: [], state: IssueStatusNew }
+  RoadmapTaskEditorial { ticket: none, parent: none, identity: "minted-node-1" as RoadmapNodeIdentity, code_contract: none, title: title, body: "", prerequisites: [], state: IssueStatusNew }
 }
 fn editorial_creation() -> RoadmapEvent {
   RoadmapEvent { node: "first-node" as RoadmapNodeId, author: event_principal_authenticated(ref: fabric_workflow_principal), parent: none,
@@ -42,7 +42,7 @@ test fn editorial_revision_and_progress_share_one_expected_head() -> Bool {
 
 test fn editorial_edit_cannot_replace_minted_identity_or_code_binding() -> Bool {
   let created = roadmap_event_envelope(e: editorial_creation())
-  let changed = RoadmapTaskEditorial { identity: "different" as RoadmapNodeIdentity, code_contract: none, title: "Edited", body: "", prerequisites: [], state: IssueStatusFixed }
+  let changed = RoadmapTaskEditorial { ticket: none, parent: none, identity: "different" as RoadmapNodeIdentity, code_contract: none, title: "Edited", body: "", prerequisites: [], state: IssueStatusFixed }
   let edit_event = RoadmapEvent { node: created.event.node, author: created.event.author, parent: Present { value: created.id }, kind: TaskRevised { task: changed }, recorded_at: "2026-09-27T00:01:00Z" }
   !roadmap_task_append_admits(event: edit_event, events: [created]) && match roadmap_task_projection(node: created.event.node, events: [created, roadmap_event_envelope(e: edit_event)]) {
     RoadmapTaskUnreadable { reason: _ } => true
@@ -52,7 +52,7 @@ test fn editorial_edit_cannot_replace_minted_identity_or_code_binding() -> Bool 
 
 test fn editorial_creation_is_once_and_dependency_cannot_be_self() -> Bool {
   let created = roadmap_event_envelope(e: editorial_creation())
-  let invalid = RoadmapTaskEditorial { identity: "minted-node-1" as RoadmapNodeIdentity, code_contract: none, title: "Recursive", body: "", prerequisites: [created.event.node], state: IssueStatusNew }
+  let invalid = RoadmapTaskEditorial { ticket: none, parent: none, identity: "minted-node-1" as RoadmapNodeIdentity, code_contract: none, title: "Recursive", body: "", prerequisites: [created.event.node], state: IssueStatusNew }
   let edit_event = RoadmapEvent { node: created.event.node, author: created.event.author, parent: Present { value: created.id }, kind: TaskRevised { task: invalid }, recorded_at: "2026-09-27T00:01:00Z" }
   !roadmap_task_append_admits(event: created.event, events: [created]) && !roadmap_task_append_admits(event: edit_event, events: [created])
 }
@@ -71,7 +71,7 @@ test fn editorial_v4_reader_preserves_v3_authenticated_history_ids() -> Bool {
 
 fn editorial_graph_creation(node: NonEmptyStr, dependencies: List<RoadmapNodeId>) -> RoadmapEvent {
   RoadmapEvent { node: node as RoadmapNodeId, author: event_principal_authenticated(ref: fabric_workflow_principal), parent: none,
-    kind: TaskCreated { task: RoadmapTaskEditorial { identity: node as RoadmapNodeIdentity, code_contract: none,
+    kind: TaskCreated { task: RoadmapTaskEditorial { ticket: none, parent: none, identity: node as RoadmapNodeIdentity, code_contract: none,
       title: node, body: "", prerequisites: dependencies, state: IssueStatusNew } }, recorded_at: "2026-09-27T00:00:00Z" }
 }
 

@@ -1,0 +1,74 @@
+module gunbc.roadmap_planning_candidate_storage
+
+import gunbc.roadmap_planning_candidate_wire { planning_candidate_json }
+
+import std.types { String, NonEmptyStr }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
+import gunbc.principal_projection { principal_ref_label }
+import gunbc.roadmap_status { TicketFields, TicketField, TicketBrief, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback, TicketVerified }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, PlanningIssueSnapshot, CandidateSetParent, CandidateSetBlockers }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef, FabricHeadAbsent, FabricHeadAt, ExpectHeadAbsent,
+  FabricObjectStored, FabricPutRefused, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
+  fabric_object_ref_eq, fabric_storage_fault_wire,
+}
+import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+
+// Proposals are immutable and have separate heads from issue state. Publishing a proposal
+// cannot advance the issue revision it was based on. The protected-state binding is supplied
+// by the caller; this module neither chooses a host nor falls back to another store.
+fn planning_candidate_head(identity: NonEmptyStr) -> NonEmptyStr {
+  concat("planning-candidate-v1-", identity as String) as NonEmptyStr
+}
+
+
+fn planning_candidate_object(candidate: IssueRevisionCandidate) -> FabricObject {
+  FabricObject { links: [], body: serialize_json(v: planning_candidate_json(candidate: candidate)) as NonEmptyStr }
+}
+
+type CandidateStoredRead
+  = CandidateStoredAbsent
+  | CandidateStored { object: FabricObjectRef, body: NonEmptyStr }
+  | CandidateStoreReadRefused { reason: String }
+
+fn planning_candidate_read(store: FabricStorageBinding, identity: NonEmptyStr) -> CandidateStoredRead {
+  match fabric_storage_closure(binding: store, name: planning_candidate_head(identity: identity), bound: 1) {
+    FabricClosureRefused { fault } => CandidateStoreReadRefused { reason: fabric_storage_fault_wire(fault: fault) }
+    FabricClosureBudgetExhausted { at: _, bound: _ } => CandidateStoreReadRefused { reason: "candidate head links more than one object" }
+    FabricClosureRead { reading: FabricHeadAbsent, newest_first } => if count(newest_first) == 0 { CandidateStoredAbsent }
+      else { CandidateStoreReadRefused { reason: "absent candidate head returned objects" } }
+    FabricClosureRead { reading: FabricHeadAt { object: head, generation: _ }, newest_first } =>
+      if count(newest_first) != 1 { CandidateStoreReadRefused { reason: "candidate head must name exactly one object" } }
+      else { match newest_first.first() {
+        Absent => CandidateStoreReadRefused { reason: "candidate object missing" }
+        Present { value: stored } => if !fabric_object_ref_eq(a: stored.object, b: head) || count(stored.content.links) != 0 {
+          CandidateStoreReadRefused { reason: "candidate object does not match its head" }
+        } else { CandidateStored { object: head, body: stored.content.body } }
+      } }
+  }
+}
+
+type CandidatePublication
+  = CandidatePublished { object: FabricObjectRef }
+  | CandidatePublicationReplayed { object: FabricObjectRef }
+  | CandidateIdentityConflict
+  | CandidatePublicationRefused { reason: String }
+
+// Authentication, work-request admission and candidate review precede publication. Equality
+// checks the full canonical body after a lost CAS, never the structural locator alone.
+fn planning_candidate_publish(store: FabricStorageBinding, candidate: IssueRevisionCandidate) -> CandidatePublication {
+  let proposed = planning_candidate_object(candidate: candidate)
+  match fabric_storage_put(binding: store, object: proposed) {
+    FabricPutRefused { fault } => CandidatePublicationRefused { reason: fabric_storage_fault_wire(fault: fault) }
+    FabricObjectStored { object } => match fabric_storage_advance(binding: store, name: planning_candidate_head(identity: candidate.identity), expected: ExpectHeadAbsent, target: object) {
+      FabricHeadAdvanced { object: published, generation: _ } => CandidatePublished { object: published }
+      FabricHeadAdvanceRefused { fault } => CandidatePublicationRefused { reason: fabric_storage_fault_wire(fault: fault) }
+      FabricHeadMoved { expected: _, observed: _ } => match planning_candidate_read(store: store, identity: candidate.identity) {
+        CandidateStored { object: prior, body } => if body == proposed.body { CandidatePublicationReplayed { object: prior } } else { CandidateIdentityConflict }
+        CandidateStoredAbsent => CandidatePublicationRefused { reason: "candidate head disappeared after publication conflict" }
+        CandidateStoreReadRefused { reason } => CandidatePublicationRefused { reason: reason }
+      }
+    }
+  }
+}

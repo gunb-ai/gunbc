@@ -105,7 +105,7 @@ fn launch_fixture_session(node_id: String, process: WorkerProcessEvidence) -> Di
 }
 
 fn launch_fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
-  RoadmapDocument {
+  RoadmapDocument { memberships: [],
     preamble: [],
     lead_lanes: [],
     sections: [RoadmapSection {

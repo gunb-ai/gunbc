@@ -445,7 +445,7 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
 test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
   let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let projected = RoadmapAuthorityProjected {
-    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+    doc: RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [] },
     accepted: [],
     withheld: [],
   }

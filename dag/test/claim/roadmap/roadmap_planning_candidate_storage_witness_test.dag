@@ -1,0 +1,44 @@
+module test.claim.roadmap.roadmap_planning_candidate_storage_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.shell
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBindingUnplaced }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, CandidateFieldChange }
+import gunbc.roadmap_status { TicketBrief }
+import gunbc.roadmap_planning_candidate_storage {
+  planning_candidate_object, planning_candidate_publish, planning_candidate_read,
+  CandidatePublished, CandidatePublicationReplayed, CandidateIdentityConflict, CandidatePublicationRefused,
+  CandidateStored, CandidateStoredAbsent,
+}
+import test.claim.roadmap.roadmap_planning_candidate_witness_test { candidate }
+
+// This executes the production adapter and real file-store CAS in a disposable directory.
+// The supplied store is a test binding; no fleet endpoint or credential is contacted.
+test fn candidate_publication_readback_retry_and_identity_conflict() -> Bool {
+  let root = fabric_storage_file_root(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_candidate_store.XXXXXX").path as NonEmptyStr)
+  match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: root }
+      let c = candidate()
+      let absent = match planning_candidate_read(store: store, identity: c.identity) { CandidateStoredAbsent => true _ => false }
+      let published = match planning_candidate_publish(store: store, candidate: c) { CandidatePublished { object: _ } => true _ => false }
+      let readback = match planning_candidate_read(store: store, identity: c.identity) { CandidateStored { object: _, body } => body == planning_candidate_object(candidate: c).body _ => false }
+      let replayed = match planning_candidate_publish(store: store, candidate: c) { CandidatePublicationReplayed { object: _ } => true _ => false }
+      let changed = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+        proposed_field_changes: [CandidateFieldChange { field: TicketBrief, value: "A different payload" }],
+        proposed_relation_changes: c.proposed_relation_changes, proposed_draft_children: c.proposed_draft_children, author: c.author, work_request: c.work_request }
+      let refused = match planning_candidate_publish(store: store, candidate: changed) { CandidateIdentityConflict => true _ => false }
+      let retained = match planning_candidate_read(store: store, identity: c.identity) { CandidateStored { object: _, body } => body == planning_candidate_object(candidate: c).body _ => false }
+      absent && published && readback && replayed && refused && retained
+    }
+    _ => false
+  }
+}
+
+test fn unplaced_store_refuses_publication() -> Bool {
+  match planning_candidate_publish(store: FabricStorageBindingUnplaced, candidate: candidate()) {
+    CandidatePublicationRefused { reason: _ } => true
+    _ => false
+  }
+}

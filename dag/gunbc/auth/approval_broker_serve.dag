@@ -561,7 +561,7 @@ fn approval_broker_respond_as(
           approval_broker_selection_response(
             sel: serve_select_route(table: t, method: m, path: path),
             process: process,
-            request: ServeHttpRequest<TailnetIdentity> {
+            request: ServeHttpRequest {
               method: m,
               path: path,
               body: body,

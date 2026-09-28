@@ -1,0 +1,122 @@
+module gunbc.roadmap_planning_candidate
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_status { TicketFields, TicketField, TicketBrief, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback, TicketVerified, ticket_field_value, ticket_with_field_preview }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq, google_oidc_principal_authority, google_accounts_principal_namespace }
+
+// Planning produces values. No filesystem, event append, code-edit or dispatch capability is
+// imported here. An admitted review is an input to the authenticated atomic command boundary,
+// not a receipt asserting that a write happened.
+type IssueRevision { snapshot: PlanningIssueSnapshot }
+
+type CandidateFieldChange { field: TicketField, value: String }
+
+type CandidateRelationChange
+  = CandidateSetParent { parent: RoadmapNodeId? }
+  | CandidateSetBlockers { blockers: List<RoadmapNodeId> }
+
+type CandidateDraftChild {
+  identity: NonEmptyStr
+  ticket: TicketFields
+}
+
+type IssueRevisionCandidate {
+  identity: NonEmptyStr
+  issue: RoadmapNodeId
+  base_issue_revision: IssueRevision
+  proposed_field_changes: List<CandidateFieldChange>
+  proposed_relation_changes: List<CandidateRelationChange>
+  proposed_draft_children: List<CandidateDraftChild>
+  author: PrincipalRef
+  work_request: NonEmptyStr
+}
+
+// The caller supplies a truthful read of the issue, including its repository-authored contract
+// and durable event head. Neither an empty event history nor an unchanged event head establishes
+// that the authored contract stayed unchanged.
+type PlanningIssueSnapshot {
+  issue: RoadmapNodeId
+  ticket: TicketFields
+  parent: RoadmapNodeId?
+  blockers: List<RoadmapNodeId>
+  event_revision: String
+  accountable_human: PrincipalRef?
+}
+
+fn planning_issue_revision(snapshot: PlanningIssueSnapshot) -> IssueRevision {
+  IssueRevision { snapshot: snapshot }
+}
+
+type CandidateFieldDifference { field: TicketField, before: String, after: String }
+
+type CandidateReview {
+  candidate: IssueRevisionCandidate
+  current: PlanningIssueSnapshot
+  preview_ticket: TicketFields
+  field_differences: List<CandidateFieldDifference>
+}
+
+type CandidateReviewResult
+  = CandidateReviewReady { review: CandidateReview }
+  | CandidateRevisionConflict { current_revision: IssueRevision }
+  | CandidateReviewRefused { cause: String }
+
+fn candidate_fields_distinct(changes: List<CandidateFieldChange>) -> Bool {
+  !any(changes, c => count(filter(changes, other => other.field == c.field)) != 1)
+}
+
+fn candidate_relation_shape_valid(changes: List<CandidateRelationChange>, issue: RoadmapNodeId) -> Bool {
+  count(filter(changes, c => match c { CandidateSetParent { parent: _ } => true _ => false })) <= 1
+    && count(filter(changes, c => match c { CandidateSetBlockers { blockers: _ } => true _ => false })) <= 1
+    && all(changes, c => match c {
+      CandidateSetParent { parent } => match parent { Absent => true Present { value: p } => p != issue }
+      CandidateSetBlockers { blockers } => !any(blockers, b => b == issue || count(filter(blockers, other => other == b)) != 1)
+    })
+}
+
+fn planning_candidate_review(candidate: IssueRevisionCandidate, current: PlanningIssueSnapshot) -> CandidateReviewResult {
+  if candidate.issue != current.issue { CandidateReviewRefused { cause: "candidate names a different issue" } }
+  else if candidate.base_issue_revision != planning_issue_revision(snapshot: current) {
+    CandidateRevisionConflict { current_revision: planning_issue_revision(snapshot: current) }
+  } else if !candidate_fields_distinct(changes: candidate.proposed_field_changes) {
+    CandidateReviewRefused { cause: "a field occurs more than once" }
+  } else if any(candidate.proposed_field_changes, c => c.field == TicketVerified) {
+    CandidateReviewRefused { cause: "planning cannot author verification evidence" }
+  } else if !candidate_relation_shape_valid(changes: candidate.proposed_relation_changes, issue: candidate.issue) {
+    CandidateReviewRefused { cause: "relations contain duplicate edits, duplicate blockers or self relations" }
+  } else if any(candidate.proposed_draft_children, c => count(filter(candidate.proposed_draft_children, other => other.identity == c.identity)) != 1) {
+    CandidateReviewRefused { cause: "draft child identity occurs more than once" }
+  } else if count(candidate.proposed_field_changes) + count(candidate.proposed_relation_changes) + count(candidate.proposed_draft_children) == 0 {
+    CandidateReviewRefused { cause: "candidate has no proposed changes" }
+  } else {
+    CandidateReviewReady { review: CandidateReview { candidate: candidate, current: current,
+      preview_ticket: fold(candidate.proposed_field_changes, init: current.ticket, f: (ticket, change) =>
+        ticket_with_field_preview(ticket: ticket, field: change.field, value: change.value)),
+      field_differences: map(candidate.proposed_field_changes, c => CandidateFieldDifference {
+        field: c.field, before: ticket_field_value(ticket: current.ticket, field: c.field), after: c.value }) } }
+  }
+}
+
+type CandidateAcceptance
+  = CandidateAcceptanceAdmitted { review: CandidateReview }
+  | CandidateAcceptanceRefused { cause: String }
+  | CandidateAcceptanceConflict { current_revision: IssueRevision }
+
+// Authentication and CSRF belong to the HTTP write law. This additional decision binds its
+// already-authenticated human to the accountable principal of the CURRENT issue snapshot.
+// Re-review at acceptance is mandatory: a browser's prior preview is never a write precondition.
+fn planning_candidate_acceptance(candidate: IssueRevisionCandidate, current: PlanningIssueSnapshot, acceptor: PrincipalRef) -> CandidateAcceptance {
+  match planning_candidate_review(candidate: candidate, current: current) {
+    CandidateRevisionConflict { current_revision } => CandidateAcceptanceConflict { current_revision: current_revision }
+    CandidateReviewRefused { cause } => CandidateAcceptanceRefused { cause: cause }
+    CandidateReviewReady { review } => match current.accountable_human {
+      Absent => CandidateAcceptanceRefused { cause: "issue has no accountable human" }
+      Present { value: owner } =>
+        if owner.authority != google_oidc_principal_authority || owner.namespace != google_accounts_principal_namespace
+          || !principal_ref_eq(a: owner, b: acceptor) {
+          CandidateAcceptanceRefused { cause: "only the accountable human may accept this candidate" }
+        } else { CandidateAcceptanceAdmitted { review: review } }
+    }
+  }
+}

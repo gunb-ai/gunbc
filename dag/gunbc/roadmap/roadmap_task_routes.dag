@@ -57,7 +57,8 @@ fn task_http_revise_over(request: ServeHttpRequest<RequestAuthenticationEvidence
               RoadmapTaskAbsent => task_http_refused(status: 404, reason: "Issue not found in migrated workspace")
               RoadmapTaskUnreadable { reason } => task_http_refused(status: 503, reason: reason)
               RoadmapTaskCurrent { task: prior, revision: head } =>
-                if (head as String) != (submitted.expected_revision as String) { task_http_refused(status: 409, reason: "Issue changed; reload before editing") }
+                if (match prior.ticket { Present { value: _ } => true Absent => false }) { task_http_refused(status: 409, reason: "Use the planning candidate editor for typed issue revisions") }
+                else if (head as String) != (submitted.expected_revision as String) { task_http_refused(status: 409, reason: "Issue changed; reload before editing") }
                 else if any(submitted.prerequisites, dependency => dependency == node || match roadmap_task_projection(node: dependency, events: history) { RoadmapTaskCurrent { task: _, revision: _ } => false _ => true }) {
                   task_http_refused(status: 400, reason: "Prerequisites must name other readable workspace issues")
                 } else { match roadmap_event_append_snapshot(layout: layout, snapshot: snapshot, event: RoadmapEvent {

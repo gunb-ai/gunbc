@@ -275,3 +275,43 @@ fn roadmap_all_events_of_reads(reads: List<RoadmapEventsRead>) -> RoadmapAllEven
     }
   })
 }
+
+// A planning acceptance may create draft children and revise the parent. Their events and the
+// acceptance receipt become reachable in ONE manifest CAS; no child is published on its own.
+fn roadmap_event_batch_prepare(snapshot: RoadmapEventSnapshot, events: List<RoadmapEvent>) -> RoadmapEventSnapshotRead {
+  fold(events, init: RoadmapEventSnapshotObserved { snapshot: snapshot }, f: (acc, event) => match acc {
+    RoadmapEventSnapshotRefused { step: _, reason: _ } => acc
+    RoadmapEventSnapshotObserved { snapshot: prior } => {
+      let envelope = roadmap_event_envelope(e: event)
+      let wire = roadmap_event_wire_text(env: envelope) as NonEmptyStr
+      if !roadmap_event_wire_admits(envelope: envelope, wire: wire) || !roadmap_event_parent_admits(snapshot: prior, event: event)
+        || !roadmap_task_append_admits(event: event, events: map(prior.events, e => e.envelope)) {
+        RoadmapEventSnapshotRefused { step: "batch-admission", reason: "batch event violates encoding, revision or editorial identity" }
+      } else { RoadmapEventSnapshotObserved { snapshot: RoadmapEventSnapshot { expected: prior.expected,
+        events: prior.events + [RoadmapStoredEvent { envelope: envelope, object: fabric_object_ref_of(object: roadmap_event_object(wire: wire)), wire: wire }] } } }
+    }
+  })
+}
+
+fn roadmap_event_append_batch_snapshot(layout: RoadmapEventCarrierLayout, snapshot: RoadmapEventSnapshot, events: List<RoadmapEvent>, result: RoadmapEventId) -> RoadmapEventAppend {
+  if count(events) == 0 { EventAppendRefused { id: result, step: "batch", reason: "empty event batch" } }
+  else { match roadmap_event_batch_prepare(snapshot: snapshot, events: events) {
+    RoadmapEventSnapshotRefused { step, reason } => EventAppendRefused { id: result, step: step, reason: reason }
+    RoadmapEventSnapshotObserved { snapshot: next } => match roadmap_task_graph_refusal(events: map(next.events, e => e.envelope), allow_unresolved: false) {
+      Present { value: reason } => EventAppendRefused { id: result, step: "relationships", reason: reason }
+      Absent => {
+        let puts = map(events, event => fabric_storage_put(binding: layout.store, object: roadmap_event_object(wire: roadmap_event_wire_text(env: roadmap_event_envelope(e: event)) as NonEmptyStr)))
+        if any(puts, put => match put { FabricPutRefused { fault: _ } => true _ => false }) {
+          EventAppendRefused { id: result, step: "put-batch", reason: "could not store every event; nothing published" }
+        } else { match fabric_storage_put(binding: layout.store, object: roadmap_event_manifest(events: next.events)) {
+          FabricPutRefused { fault } => EventAppendRefused { id: result, step: "put-manifest", reason: fabric_storage_fault_wire(fault: fault) }
+          FabricObjectStored { object } => match fabric_storage_advance(binding: layout.store, name: roadmap_event_store_head, expected: snapshot.expected, target: object) {
+            FabricHeadAdvanced { object: _, generation: _ } => EventAppended { id: result }
+            FabricHeadMoved { expected: _, observed: _ } => EventAppendRefused { id: result, step: "revision", reason: "workspace changed before atomic publication" }
+            FabricHeadAdvanceRefused { fault } => EventAppendRefused { id: result, step: "advance", reason: fabric_storage_fault_wire(fault: fault) }
+          }
+        } }
+      }
+    }
+  } }
+}

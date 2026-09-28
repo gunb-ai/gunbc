@@ -1,0 +1,145 @@
+module gunbc.roadmap_planning_apply
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq, fabric_workflow_principal, google_oidc_principal_authority, google_accounts_principal_namespace }
+import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity }
+import extdeps.google.issue_tracker { IssueStatusNew }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, PlanningIssueSnapshot, CandidateReview, planning_candidate_acceptance, CandidateAcceptanceAdmitted, CandidateAcceptanceRefused, CandidateAcceptanceConflict, CandidateSetParent, CandidateSetBlockers }
+import gunbc.roadmap_planning_candidate_wire { planning_candidate_decode }
+import gunbc.roadmap_planning_candidate_storage { planning_candidate_read, CandidateStoredAbsent, CandidateStored, CandidateStoreReadRefused }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial, roadmap_task_ticket }
+import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, RoadmapTaskCurrent, RoadmapTaskAbsent, RoadmapTaskUnreadable }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated, roadmap_issue_assignment, PlanningApplied, TaskCreated, Claimed, roadmap_event_envelope }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventSnapshot, roadmap_event_snapshot_read, RoadmapEventSnapshotObserved, RoadmapEventSnapshotRefused, roadmap_event_append_batch_snapshot, EventAppended, EventAlreadyPresent, EventAppendRefused }
+
+type PlanningSnapshotRead
+  = PlanningSnapshotReady { snapshot: PlanningIssueSnapshot, task: RoadmapTaskEditorial }
+  | PlanningSnapshotRefused { reason: String }
+
+fn planning_accountable_human(events: List<RoadmapEventEnvelope>) -> PrincipalRef? {
+  let assignment = roadmap_issue_assignment(envs: events)
+  match assignment.holder {
+    Present { value: EventPrincipalAuthenticated { ref: holder } } =>
+      if holder.authority == google_oidc_principal_authority && holder.namespace == google_accounts_principal_namespace { Present { value: holder } }
+      else if principal_ref_eq(a: holder, b: fabric_workflow_principal) {
+        match assignment.return_to {
+          Present { value: EventPrincipalAuthenticated { ref: owner } } =>
+            if owner.authority == google_oidc_principal_authority && owner.namespace == google_accounts_principal_namespace { Present { value: owner } } else { none }
+          _ => none
+        }
+      } else { none }
+    _ => none
+  }
+}
+
+fn planning_snapshot_from_events(node: RoadmapNodeId, events: List<RoadmapEventEnvelope>) -> PlanningSnapshotRead {
+  match roadmap_task_projection(node: node, events: events) {
+    RoadmapTaskAbsent => PlanningSnapshotRefused { reason: "issue is not present in Fabric storage" }
+    RoadmapTaskUnreadable { reason } => PlanningSnapshotRefused { reason: reason }
+    RoadmapTaskCurrent { task, revision } => {
+      let ticket = roadmap_task_ticket(task: task)
+      PlanningSnapshotReady { task: task, snapshot: PlanningIssueSnapshot {
+        issue: node, ticket: ticket, parent: task.parent, blockers: task.prerequisites, event_revision: revision as String,
+        accountable_human: planning_accountable_human(events: filter(events, e => e.event.node == node)),
+      } }
+    }
+  }
+}
+
+fn planning_reviewed_task(prior: RoadmapTaskEditorial, review: CandidateReview) -> RoadmapTaskEditorial {
+  let parent = fold(review.candidate.proposed_relation_changes, init: prior.parent, f: (acc, c) => match c { CandidateSetParent { parent } => parent _ => acc })
+  let blockers = fold(review.candidate.proposed_relation_changes, init: prior.prerequisites, f: (acc, c) => match c { CandidateSetBlockers { blockers } => blockers _ => acc })
+  RoadmapTaskEditorial { identity: prior.identity, code_contract: prior.code_contract, title: prior.title,
+    body: review.preview_ticket.brief, ticket: Present { value: review.preview_ticket }, parent: parent, prerequisites: blockers, state: prior.state }
+}
+
+fn planning_acceptance_events(prior: RoadmapTaskEditorial, review: CandidateReview, acceptor: PrincipalRef, observed_at: String) -> List<RoadmapEvent> {
+  let author = EventPrincipalAuthenticated { ref: acceptor }
+  let children = fold(review.candidate.proposed_draft_children, init: [], f: (acc, child) => {
+    let created = RoadmapEvent { node: child.identity as RoadmapNodeId, parent: none, author: author, recorded_at: observed_at,
+      kind: TaskCreated { task: RoadmapTaskEditorial { identity: child.identity as RoadmapNodeIdentity, code_contract: none,
+        title: child.ticket.headline as NonEmptyStr, body: child.ticket.brief, ticket: Present { value: child.ticket },
+        parent: Present { value: review.candidate.issue }, prerequisites: [], state: IssueStatusNew } } }
+    acc + [created, RoadmapEvent { node: created.node, parent: Present { value: roadmap_event_envelope(e: created).id }, author: author, recorded_at: observed_at,
+      kind: Claimed { assignee: author, return_to: author } }]
+  })
+  children + [RoadmapEvent { node: review.candidate.issue, parent: Present { value: review.current.event_revision as RoadmapEventId }, author: author,
+    recorded_at: observed_at, kind: PlanningApplied { candidate: review.candidate.identity, task: planning_reviewed_task(prior: prior, review: review) } }]
+}
+
+type PlanningApplyResult
+  = PlanningAppliedResult { revision: RoadmapEventId, replayed: Bool }
+  | PlanningApplyConflict { reason: String }
+  | PlanningApplyRefused { reason: String }
+
+fn planning_prior_application(candidate: IssueRevisionCandidate, events: List<RoadmapEventEnvelope>, acceptor: PrincipalRef) -> PlanningApplyResult? {
+  let prior = filter(events, e => match e.event.kind { PlanningApplied { candidate: id, task: _ } => id == candidate.identity _ => false })
+  if count(prior) > 1 { Present { value: PlanningApplyRefused { reason: "candidate has multiple acceptance receipts" } } }
+  else { match prior.first() {
+    Absent => none
+    Present { value: applied } => if applied.event.node != candidate.issue { Present { value: PlanningApplyRefused { reason: "candidate receipt names another issue" } } }
+      else { match applied.event.author {
+        EventPrincipalAuthenticated { ref } => if principal_ref_eq(a: ref, b: acceptor) { Present { value: PlanningAppliedResult { revision: applied.id, replayed: true } } }
+          else { Present { value: PlanningApplyRefused { reason: "retry requires the original accepting principal" } } }
+        _ => Present { value: PlanningApplyRefused { reason: "acceptance receipt has no authenticated principal" } }
+      } }
+  } }
+}
+
+fn planning_apply_snapshot(layout: RoadmapEventCarrierLayout, store_snapshot: RoadmapEventSnapshot, candidate: IssueRevisionCandidate, acceptor: PrincipalRef, observed_at: String) -> PlanningApplyResult {
+  let events = map(store_snapshot.events, e => e.envelope)
+  match planning_prior_application(candidate: candidate, events: events, acceptor: acceptor) {
+    Present { value: result } => result
+    Absent => match planning_snapshot_from_events(node: candidate.issue, events: events) {
+      PlanningSnapshotRefused { reason } => PlanningApplyRefused { reason: reason }
+      PlanningSnapshotReady { snapshot, task } => match planning_candidate_acceptance(candidate: candidate, current: snapshot, acceptor: acceptor) {
+        CandidateAcceptanceRefused { cause } => PlanningApplyRefused { reason: cause }
+        CandidateAcceptanceConflict { current_revision: _ } => PlanningApplyConflict { reason: "issue changed after this candidate was prepared" }
+        CandidateAcceptanceAdmitted { review } =>
+          if any(candidate.proposed_draft_children, child => child.ticket.headline == "" || child.ticket.last_verified_on != "" || count(child.ticket.updates) != 0
+            || any(events, e => (e.event.node as String) == (child.identity as String))) {
+            PlanningApplyRefused { reason: "draft child has an occupied identity, empty title or asserted history/evidence" }
+          } else {
+            let batch = planning_acceptance_events(prior: task, review: review, acceptor: acceptor, observed_at: observed_at)
+            match (batch |> skip(n: count(batch) - 1)).first() {
+              Absent => PlanningApplyRefused { reason: "acceptance produced no event" }
+              Present { value: final_event } => {
+            let root = roadmap_event_envelope(e: final_event).id
+            match roadmap_event_append_batch_snapshot(layout: layout, snapshot: store_snapshot, events: batch, result: root) {
+              EventAppended { id } => PlanningAppliedResult { revision: id, replayed: false }
+              EventAlreadyPresent { id } => PlanningAppliedResult { revision: id, replayed: true }
+              EventAppendRefused { id: _, step, reason } =>
+                if step == "revision" { planning_reconcile_apply(layout: layout, candidate: candidate, acceptor: acceptor) }
+                else { PlanningApplyRefused { reason: reason } }
+            }
+            } }
+          }
+      }
+    }
+  }
+}
+
+fn planning_reconcile_apply(layout: RoadmapEventCarrierLayout, candidate: IssueRevisionCandidate, acceptor: PrincipalRef) -> PlanningApplyResult {
+  match roadmap_event_snapshot_read(layout: layout) {
+    RoadmapEventSnapshotRefused { step: _, reason } => PlanningApplyRefused { reason: reason }
+    RoadmapEventSnapshotObserved { snapshot } => match planning_prior_application(candidate: candidate, events: map(snapshot.events, e => e.envelope), acceptor: acceptor) {
+      Present { value: result } => result
+      Absent => PlanningApplyConflict { reason: "workspace changed before publication; review the current state" }
+    }
+  }
+}
+
+fn planning_apply_stored(layout: RoadmapEventCarrierLayout, identity: NonEmptyStr, node: RoadmapNodeId, acceptor: PrincipalRef, observed_at: String) -> PlanningApplyResult {
+  match planning_candidate_read(store: layout.store, identity: identity) {
+    CandidateStoredAbsent => PlanningApplyRefused { reason: "candidate not found" }
+    CandidateStoreReadRefused { reason } => PlanningApplyRefused { reason: reason }
+    CandidateStored { object: _, body } => match planning_candidate_decode(wire: body as String) {
+      Absent => PlanningApplyRefused { reason: "stored candidate cannot be decoded" }
+      Present { value: candidate } => if candidate.identity != identity || candidate.issue != node { PlanningApplyRefused { reason: "stored candidate identity does not match the requested issue" } }
+        else { match roadmap_event_snapshot_read(layout: layout) {
+          RoadmapEventSnapshotRefused { step: _, reason } => PlanningApplyRefused { reason: reason }
+          RoadmapEventSnapshotObserved { snapshot } => planning_apply_snapshot(layout: layout, store_snapshot: snapshot, candidate: candidate, acceptor: acceptor, observed_at: observed_at)
+        } }
+    }
+  }
+}

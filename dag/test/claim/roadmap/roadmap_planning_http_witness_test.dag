@@ -1,0 +1,49 @@
+module test.claim.roadmap.roadmap_planning_http_witness_test
+
+import std.types { String, Bool, NonEmptyStr }
+import extdeps.http.server { ServeHttpRequest, RequestSecurityContext, ServeResponseHeaderNoStore, GET, POST }
+import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, GoogleOidcSession, AuthAbsent, request_access_path_of }
+import extdeps.tailscale.acl { operator_tailscale_acl_policy }
+import test.claim.request_authentication_witness_test { proxied_status, witness_serve_route }
+import test.claim.roadmap.roadmap_planning_candidate_witness_test { human }
+import test.claim.roadmap.roadmap_planning_apply_witness_test { fixture_store, stored_candidate }
+import gunbc.roadmap_planning_routes { planning_get, planning_post }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate }
+import gunbc.roadmap_planning_candidate_wire { planning_candidate_json }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+
+fn planning_test_request(body: String, signed_in: Bool) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+  ServeHttpRequest { method: POST, path: "/issue/issue-one/planning/propose", body: body,
+    security: RequestSecurityContext { access_path: request_access_path_of(listen_host: "127.0.0.1" as NonEmptyStr, tailscale_header: "operator@github",
+      serve_status: proxied_status(), serve_route: witness_serve_route(), acl_policy: operator_tailscale_acl_policy),
+      authentication: if signed_in { GoogleOidcSession { session: AuthenticatedSession { session_id: "test-session", principal: human(subject: "owner"),
+        authenticated_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-29T00:00:00Z", auth_method: AuthMethodGoogleOidc,
+        client: SessionClientTrackerWeb, csrf: CsrfToken { token: "test-csrf" } } } } else { AuthAbsent } } }
+}
+
+test fn http_propose_review_accept_and_csrf_refusal() -> Bool {
+  let layout = fixture_store()
+  match stored_candidate(layout: layout, identity: "http-one", child: false) {
+    Absent => false
+    Present { value: c } => {
+      let candidate = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+        author: c.author, work_request: concat("human-editor:", c.identity as String) as NonEmptyStr, proposed_field_changes: c.proposed_field_changes,
+        proposed_relation_changes: c.proposed_relation_changes, proposed_draft_children: c.proposed_draft_children }
+      let proposal_body = serialize_json(v: json_object(members: [json_kv(key: "csrf_token", value: json_string(s: "test-csrf")), json_kv(key: "candidate", value: planning_candidate_json(candidate: candidate))]))
+      let proposed = planning_post(request: planning_test_request(body: proposal_body, signed_in: true), layout: layout, node: c.issue, accept: false, observed_at: "2026-09-28T00:00:05Z")
+      let reviewed = planning_get(request: planning_test_request(body: "", signed_in: true), layout: layout, node: c.issue, kind: "candidate", identity: c.identity as String, observed_at: "2026-09-28T00:00:06Z")
+      let bad = planning_post(request: planning_test_request(body: "{\"csrf_token\":\"wrong\",\"identity\":\"http-one\"}", signed_in: true), layout: layout, node: c.issue, accept: true, observed_at: "2026-09-28T00:00:07Z")
+      let good = planning_post(request: planning_test_request(body: "{\"csrf_token\":\"test-csrf\",\"identity\":\"http-one\"}", signed_in: true), layout: layout, node: c.issue, accept: true, observed_at: "2026-09-28T00:00:08Z")
+      proposed.status == 200 && reviewed.status == 200 && bad.status == 403 && good.status == 200
+        && any(reviewed.headers, h => h == ServeResponseHeaderNoStore)
+    }
+  }
+}
+
+test fn anonymous_editor_and_accept_refuse_before_storage() -> Bool {
+  let layout = fixture_store()
+  let page = planning_get(request: planning_test_request(body: "", signed_in: false), layout: layout, node: "issue-one", kind: "page", identity: "", observed_at: "2026-09-28T00:00:05Z")
+  let apply = planning_post(request: planning_test_request(body: "{\"csrf_token\":\"test-csrf\",\"identity\":\"http-one\"}", signed_in: false), layout: layout, node: "issue-one", accept: true, observed_at: "2026-09-28T00:00:05Z")
+  page.status == 401 && apply.status == 403
+}

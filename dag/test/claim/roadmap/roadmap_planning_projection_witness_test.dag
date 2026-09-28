@@ -1,0 +1,61 @@
+module test.claim.roadmap.roadmap_planning_projection_witness_test
+
+import std.types { Bool, NonEmptyStr }
+
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_live_document { roadmap_live_document_over, LiveDocumentProjected }
+import gunbc.roadmap_document { doc_all_nodes }
+import gunbc.roadmap_dispatch_fields { dispatch_slot_fields, fill_dispatch_brief }
+import gunbc.roadmap_status { line_ticket }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_snapshot_read, RoadmapEventSnapshotObserved }
+import gunbc.roadmap_planning_candidate_storage { planning_candidate_publish }
+import gunbc.roadmap_planning_apply { planning_apply_stored, PlanningAppliedResult }
+import test.claim.roadmap.roadmap_planning_apply_witness_test { fixture_store, stored_candidate }
+import test.claim.roadmap.roadmap_planning_candidate_witness_test { human }
+import extdeps.http.server { GET, POST }
+
+test fn accepted_ticket_is_the_shared_dashboard_and_worker_input() -> Bool {
+  let layout = fixture_store()
+  match stored_candidate(layout: layout, identity: "shared-input", child: false) {
+    Absent => false
+    Present { value: c } => {
+      let published = planning_candidate_publish(store: layout.store, candidate: c)
+      match planning_apply_stored(layout: layout, identity: c.identity, node: c.issue, acceptor: human(subject: "owner"), observed_at: "2026-09-28T00:00:05Z") {
+        PlanningAppliedResult { revision: _, replayed: _ } => match roadmap_event_snapshot_read(layout: layout) {
+          RoadmapEventSnapshotObserved { snapshot } => match roadmap_live_document_over(
+            doc: RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [] }, events: map(snapshot.events, e => e.envelope)) {
+            LiveDocumentProjected { doc } => match (doc_all_nodes(doc: doc)).first() {
+              Absent => false
+              Present { value: node } => match line_ticket(item: node.line) {
+                Absent => false
+                Present { value: ticket } => ticket.brief == "Accepted brief"
+                  && dispatch_slot_fields(node: node, repo: "").first_slice == "Accepted plan"
+                  && string_contains(s: fill_dispatch_brief(template: "<first implementation slice>", fields: dispatch_slot_fields(node: node, repo: "")), pattern: "Accepted brief")
+              }
+            }
+            _ => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+// Stored text cannot erase the source's independent completion and supersession evidence.
+test fn accepted_text_preserves_source_status_authority() -> Bool {
+  let t = test.claim.roadmap.roadmap_planning_candidate_witness_test.snapshot(brief: "Accepted", event_revision: "r").ticket
+  let source = test.claim.roadmap_document.audit_node()
+  let task = gunbc.roadmap.roadmap_task_editorial.RoadmapTaskEditorial {
+    identity: source.identity, code_contract: Present { value: source.identity },
+    title: "Accepted" as NonEmptyStr, body: t.brief, prerequisites: [],
+    state: extdeps.google.issue_tracker.IssueStatusNew, ticket: Present { value: t }, parent: none }
+  let completed = gunbc.roadmap_live_document.live_editorial_node(source: source, task: task).line
+  let derived = gunbc.roadmap_status.LiveTicketLine { source: gunbc.roadmap_status.DerivableLine { prs: [42], title: "old", description: "old" }, ticket: t }
+  let superseded = gunbc.roadmap_status.LiveTicketLine { source: gunbc.roadmap_status.SupersededLine { by: "replacement", content: "old" }, ticket: t }
+  gunbc.roadmap_status.item_is_done(item: completed, merged: [])
+    && !gunbc.roadmap_status.item_is_done(item: derived, merged: [])
+    && gunbc.roadmap_status.item_is_done(item: derived, merged: [42])
+    && gunbc.roadmap_status.item_superseded_by(item: superseded) == "replacement"
+}

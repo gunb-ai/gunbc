@@ -1,0 +1,41 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/planning-candidate-fabric
+◐ started shell.Mktemp.DirWithTemplate
+✓ shell.Mktemp.DirWithTemplate done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] list /tmp/gunbc_candidate_store.XOMTfK/heads
+[file] write_create_new /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651 (766 bytes)
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] list /tmp/gunbc_candidate_store.XOMTfK/heads
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] list /tmp/gunbc_candidate_store.XOMTfK/heads
+[file] write_create_new /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1 (16 bytes)
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+[file] write_create_new /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651 (766 bytes)
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+[file] write_create_new /tmp/gunbc_candidate_store.XOMTfK/objects/0e891fc62d1a0758 (776 bytes)
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/0e891fc62d1a0758
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.1
+[file] read /tmp/gunbc_candidate_store.XOMTfK/heads/planning-candidate-v1-proposal-one.2
+[file] read /tmp/gunbc_candidate_store.XOMTfK/objects/47f7d0d3c38c8651
+PASS candidate_publication_readback_retry_and_identity_conflict
+PASS unplaced_store_refuses_publication

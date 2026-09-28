@@ -72,7 +72,7 @@ test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
 }
 
 fn empty_doc_html() -> HtmlEmitResult {
-  let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
+  let empty = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [] }
   try_serialize_html_source(node: roadmap_page(doc: empty, merged: []))
 }
 
@@ -203,7 +203,7 @@ fn dispatch_doc_standing() -> LaunchHostStanding {
 
 fn dispatch_doc_html_for(rn: RoadmapNode) -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [sec] }
   try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
@@ -224,13 +224,13 @@ fn dispatch_doc_html_supplied(rn: RoadmapNode) -> HtmlEmitResult {
 
 fn dispatch_doc_html_supplied_with_merged(rn: RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [sec] }
   try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: merged, launch: dispatch_doc_standing(), stylesheet: supplied_stylesheet()))
 }
 
 fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [sec] }
   try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: merged, launch: dispatch_doc_standing()))
 }
 
@@ -265,7 +265,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
 
 fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [sec] }
   roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing())
 }
 
@@ -426,7 +426,7 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
     title: "Belt",
     elements: [ section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
   }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [sec] }
   try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 

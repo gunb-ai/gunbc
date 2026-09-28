@@ -1,0 +1,77 @@
+module gunbc.roadmap_live_document
+
+import std.types { String, List }
+import std.list { distinct_by_key }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapMembership, RoadmapNodeId, NotDispatchable, Group, SectionGroup, Prose }
+import gunbc.roadmap_status { TicketLine, LiveTicketLine, AuthoredLine, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_task_projection { RoadmapTaskGraphNode, roadmap_task_projection, RoadmapTaskCurrent, RoadmapTaskAbsent, RoadmapTaskUnreadable, roadmap_task_graph_refusal }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial, roadmap_task_ticket }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
+
+import gunbc.roadmap_document { doc_all_nodes }
+
+type LiveDocumentProjection = LiveDocumentProjected { doc: RoadmapDocument } | LiveDocumentRefused { detail: String }
+
+fn live_editorial_node(source: RoadmapNode, task: RoadmapTaskEditorial) -> RoadmapNode {
+  RoadmapNode { identity: source.identity, node: source.node,
+    line: LiveTicketLine { source: source.line, ticket: roadmap_task_ticket(task: task) },
+    carriers: source.carriers, dispatch: source.dispatch, execution: source.execution, owner: source.owner, signoff: source.signoff }
+}
+
+fn live_draft_node(row: RoadmapTaskGraphNode) -> RoadmapNode {
+  RoadmapNode { identity: row.task.identity, node: row.node,
+    line: TicketLine { done: false, ticket: roadmap_task_ticket(task: row.task) },
+    carriers: [], dispatch: NotDispatchable, execution: ExecutionContractUnspecified, owner: "", signoff: Unsigned }
+}
+
+type LiveEditorialRows = LiveEditorialReady { rows: List<RoadmapTaskGraphNode> } | LiveEditorialRefused { reason: String }
+fn live_editorial_rows(events: List<RoadmapEventEnvelope>) -> LiveEditorialRows {
+  let ids = distinct_by_key(xs: map(events, e => e.event.node), key: n => n as String)
+  fold(ids, init: LiveEditorialReady { rows: [] }, f: (acc, id) => match acc {
+    LiveEditorialRefused { reason: _ } => acc
+    LiveEditorialReady { rows } => match roadmap_task_projection(node: id, events: events) {
+      RoadmapTaskAbsent => LiveEditorialRefused { reason: "issue history has no seeded editorial state" }
+      RoadmapTaskUnreadable { reason } => LiveEditorialRefused { reason: reason }
+      RoadmapTaskCurrent { task, revision: _ } => LiveEditorialReady { rows: rows + [RoadmapTaskGraphNode { node: id, task: task }] }
+    }
+  })
+}
+
+// Both dashboard and workers consume this projection. Repository declarations supply executable
+// bindings and proof obligations; their mutable ticket fields are never a fallback after migration.
+fn roadmap_live_document_over(doc: RoadmapDocument, events: List<RoadmapEventEnvelope>) -> LiveDocumentProjection {
+    match live_editorial_rows(events: events) {
+      LiveEditorialRefused { reason } => LiveDocumentRefused { detail: reason }
+      LiveEditorialReady { rows } => {
+        let source = doc_all_nodes(doc: doc)
+        if any(source, n => count(filter(rows, row => row.node == n.node && row.task.identity == n.identity
+          && row.task.code_contract == Present { value: n.identity })) != 1) {
+          LiveDocumentRefused { detail: "live issue projection lacks a unique migrated contract binding; complete the reviewed migration" }
+        } else { match roadmap_task_graph_refusal(events: events, allow_unresolved: false) {
+          Present { value: reason } => LiveDocumentRefused { detail: reason }
+          Absent => {
+            let nodes = flat_map(source, n => map(filter(rows, row => row.node == n.node), row => live_editorial_node(source: n, task: row.task)))
+              + map(filter(rows, row => row.task.code_contract == none), live_draft_node)
+            let edges = flat_map(rows, row => map(row.task.prerequisites, parent => RoadmapEdge { child: row.node, parent: parent }))
+            let memberships = flat_map(rows, row => match row.task.parent { Absent => [] Present { value: parent } => [RoadmapMembership { project: parent, member: row.node }] })
+            LiveDocumentProjected {
+              doc: RoadmapDocument { memberships: memberships, preamble: doc.preamble,
+                lead_lanes: map(doc.lead_lanes, section => live_project_section(section: section, nodes: nodes, edges: edges)),
+                sections: map(doc.sections, section => live_project_section(section: section, nodes: nodes, edges: edges))
+                  + (if any(rows, row => row.task.code_contract == none) { [RoadmapSection { title: "Draft issues", elements: [Group { group: SectionGroup { label: "Drafts", nodes: map(filter(rows, row => row.task.code_contract == none), live_draft_node), edges: filter(edges, e => any(rows, row => row.node == e.child && row.task.code_contract == none)) } }] }] } else { [] }) } }
+          }
+        } }
+      }
+    }
+}
+
+fn live_project_section(section: RoadmapSection, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
+  RoadmapSection { title: section.title, elements: map(section.elements, element => match element {
+    Prose { prose } => Prose { prose: prose }
+    Group { group } => Group { group: SectionGroup { label: group.label,
+      nodes: filter(nodes, n => any(group.nodes, old => old.node == n.node)),
+      edges: filter(edges, e => any(group.nodes, old => old.node == e.child)) } }
+  }) }
+}

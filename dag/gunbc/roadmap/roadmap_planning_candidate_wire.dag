@@ -1,0 +1,243 @@
+module gunbc.roadmap_planning_candidate_wire
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonArray, json_object, json_kv, json_string, json_array, serialize_json }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, parse_json_document, JsonDocumentParsed }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_status { TicketFields, TicketUpdate, TicketField, TicketBrief, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback, TicketVerified }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, IssueRevision, PlanningIssueSnapshot, CandidateFieldChange, CandidateRelationChange, CandidateDraftChild, CandidateSetParent, CandidateSetBlockers }
+
+fn candidate_field_wire(field: TicketField) -> String {
+  match field {
+    TicketBrief => "brief"
+    TicketDisplacedCost => "displaced_cost"
+    TicketCurrentState => "current_state"
+    TicketFirstSlice => "first_slice"
+    TicketRedControl => "red_control"
+    TicketOutOfScope => "out_of_scope"
+    TicketHandback => "handback"
+    TicketVerified => "last_verified_on"
+  }
+}
+
+fn candidate_ticket_json(ticket: TicketFields) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "headline", value: json_string(s: ticket.headline)),
+    json_kv(key: "brief", value: json_string(s: ticket.brief)),
+    json_kv(key: "displaced_cost", value: json_string(s: ticket.displaced_cost)),
+    json_kv(key: "current_state", value: json_string(s: ticket.current_state)),
+    json_kv(key: "first_slice", value: json_string(s: ticket.first_slice)),
+    json_kv(key: "red_control", value: json_string(s: ticket.red_control)),
+    json_kv(key: "out_of_scope", value: json_string(s: ticket.out_of_scope)),
+    json_kv(key: "handback", value: json_string(s: ticket.handback)),
+    json_kv(key: "authored_on", value: json_string(s: ticket.authored_on)),
+    json_kv(key: "last_verified_on", value: json_string(s: ticket.last_verified_on)),
+    json_kv(key: "updates", value: json_array(elements: map(ticket.updates, u => json_object(members: [
+      json_kv(key: "on", value: json_string(s: u.on)), json_kv(key: "note", value: json_string(s: u.note))])))),
+  ])
+}
+
+fn candidate_snapshot_json(snapshot: PlanningIssueSnapshot) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "issue", value: json_string(s: snapshot.issue as String)),
+    json_kv(key: "ticket", value: candidate_ticket_json(ticket: snapshot.ticket)),
+    json_kv(key: "parent", value: json_string(s: match snapshot.parent { Absent => "" Present { value: p } => p as String })),
+    json_kv(key: "blockers", value: json_array(elements: map(snapshot.blockers, b => json_string(s: b as String)))),
+    json_kv(key: "event_revision", value: json_string(s: snapshot.event_revision)),
+    json_kv(key: "accountable_human", value: json_string(s: match snapshot.accountable_human { Absent => "" Present { value: p } => principal_ref_label(p: p) })),
+  ])
+}
+
+fn planning_candidate_json(candidate: IssueRevisionCandidate) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "planning-candidate/v1")),
+    json_kv(key: "identity", value: json_string(s: candidate.identity as String)),
+    json_kv(key: "issue", value: json_string(s: candidate.issue as String)),
+    json_kv(key: "base_issue_revision", value: candidate_snapshot_json(snapshot: candidate.base_issue_revision.snapshot)),
+    json_kv(key: "author", value: json_string(s: principal_ref_label(p: candidate.author))),
+    json_kv(key: "work_request", value: json_string(s: candidate.work_request as String)),
+    json_kv(key: "proposed_field_changes", value: json_array(elements: map(candidate.proposed_field_changes, c => json_object(members: [
+      json_kv(key: "field", value: json_string(s: candidate_field_wire(field: c.field))), json_kv(key: "value", value: json_string(s: c.value))])))),
+    json_kv(key: "proposed_relation_changes", value: json_array(elements: map(candidate.proposed_relation_changes, c => match c {
+      CandidateSetParent { parent } => json_object(members: [json_kv(key: "kind", value: json_string(s: "set_parent")),
+        json_kv(key: "parent", value: json_string(s: match parent { Absent => "" Present { value: p } => p as String }))])
+      CandidateSetBlockers { blockers } => json_object(members: [json_kv(key: "kind", value: json_string(s: "set_blockers")),
+        json_kv(key: "blockers", value: json_array(elements: map(blockers, b => json_string(s: b as String))))])
+    }))),
+    json_kv(key: "proposed_draft_children", value: json_array(elements: map(candidate.proposed_draft_children, c => json_object(members: [
+      json_kv(key: "identity", value: json_string(s: c.identity as String)), json_kv(key: "ticket", value: candidate_ticket_json(ticket: c.ticket))])))),
+  ])
+}
+
+
+fn planning_wire_member(doc: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: doc, key: key) { JsonMemberFound { value } => Present { value: value } _ => none }
+}
+fn planning_wire_string(doc: JsonValue, key: String) -> String? {
+  match planning_wire_member(doc: doc, key: key) { Present { value: JsonString { value } } => Present { value: value } _ => none }
+}
+fn planning_wire_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
+  match planning_wire_string(doc: doc, key: key) { Present { value } => if value == "" { none } else { Present { value: value as NonEmptyStr } } _ => none }
+}
+fn planning_wire_array(doc: JsonValue, key: String) -> List<JsonValue>? {
+  match planning_wire_member(doc: doc, key: key) { Present { value: JsonArray { elements } } => Present { value: elements } _ => none }
+}
+fn planning_wire_nodes(values: List<JsonValue>) -> List<RoadmapNodeId>? {
+  fold(values, init: Present { value: [] }, f: (acc, item) => match acc { Absent => none Present { value: prior } => match item {
+    JsonString { value } => if value == "" { none } else { Present { value: prior + [value as RoadmapNodeId] } }
+    _ => none
+  } })
+}
+fn planning_wire_updates(values: List<JsonValue>) -> List<TicketUpdate>? {
+  fold(values, init: Present { value: [] }, f: (acc, item) => match acc { Absent => none Present { value: prior } =>
+    match planning_wire_string(doc: item, key: "on") { Absent => none Present { value: on } =>
+      match planning_wire_string(doc: item, key: "note") { Absent => none Present { value: note } => Present { value: prior + [TicketUpdate { on: on, note: note }] } } }
+  })
+}
+
+fn candidate_ticket_decode(doc: JsonValue) -> TicketFields? {
+  match planning_wire_string(doc: doc, key: "headline") { Absent => none Present { value: headline } =>
+  match planning_wire_string(doc: doc, key: "brief") { Absent => none Present { value: brief } =>
+  match planning_wire_string(doc: doc, key: "displaced_cost") { Absent => none Present { value: displaced_cost } =>
+  match planning_wire_string(doc: doc, key: "current_state") { Absent => none Present { value: current_state } =>
+  match planning_wire_string(doc: doc, key: "first_slice") { Absent => none Present { value: first_slice } =>
+  match planning_wire_string(doc: doc, key: "red_control") { Absent => none Present { value: red_control } =>
+  match planning_wire_string(doc: doc, key: "out_of_scope") { Absent => none Present { value: out_of_scope } =>
+  match planning_wire_string(doc: doc, key: "handback") { Absent => none Present { value: handback } =>
+  match planning_wire_string(doc: doc, key: "authored_on") { Absent => none Present { value: authored_on } =>
+  match planning_wire_string(doc: doc, key: "last_verified_on") { Absent => none Present { value: last_verified_on } =>
+  match planning_wire_array(doc: doc, key: "updates") { Absent => none Present { value: u } =>
+  match planning_wire_updates(values: u) { Absent => none Present { value: updates } =>
+  Present { value: TicketFields { headline: headline, brief: brief, displaced_cost: displaced_cost, current_state: current_state, first_slice: first_slice, red_control: red_control, out_of_scope: out_of_scope, handback: handback, authored_on: authored_on, last_verified_on: last_verified_on, updates: updates } }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn candidate_field_decode(wire: String) -> TicketField? {
+  if wire == "brief" { Present { value: TicketBrief } }
+  else if wire == "displaced_cost" { Present { value: TicketDisplacedCost } }
+  else if wire == "current_state" { Present { value: TicketCurrentState } }
+  else if wire == "first_slice" { Present { value: TicketFirstSlice } }
+  else if wire == "red_control" { Present { value: TicketRedControl } }
+  else if wire == "out_of_scope" { Present { value: TicketOutOfScope } }
+  else if wire == "handback" { Present { value: TicketHandback } }
+  else if wire == "last_verified_on" { Present { value: TicketVerified } }
+  else { none }
+}
+type CandidateMaybePrincipal = PrincipalRef?
+fn candidate_optional_principal(wire: String) -> CandidateMaybePrincipal? {
+  if wire == "" { Present { value: none } } else { match principal_ref_parse_label(s: wire) { Absent => none Present { value: p } => Present { value: Present { value: p } } } }
+}
+
+fn candidate_snapshot_decode(doc: JsonValue) -> PlanningIssueSnapshot? {
+  match planning_wire_nonempty(doc: doc, key: "issue") { Absent => none Present { value: issue } =>
+  match planning_wire_member(doc: doc, key: "ticket") { Absent => none Present { value: t } =>
+  match candidate_ticket_decode(doc: t) { Absent => none Present { value: ticket } =>
+  match planning_wire_string(doc: doc, key: "parent") { Absent => none Present { value: parent } =>
+  match planning_wire_array(doc: doc, key: "blockers") { Absent => none Present { value: b } =>
+  match planning_wire_nodes(values: b) { Absent => none Present { value: blockers } =>
+  match planning_wire_string(doc: doc, key: "event_revision") { Absent => none Present { value: event_revision } =>
+  match planning_wire_string(doc: doc, key: "accountable_human") { Absent => none Present { value: a } =>
+  match candidate_optional_principal(wire: a) { Absent => none Present { value: accountable } =>
+  Present { value: PlanningIssueSnapshot { issue: issue as RoadmapNodeId, ticket: ticket, parent: if parent == "" { none } else { Present { value: parent as RoadmapNodeId } }, blockers: blockers, event_revision: event_revision, accountable_human: accountable } }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn candidate_change_decode(doc: JsonValue) -> CandidateFieldChange? {
+  match planning_wire_string(doc: doc, key: "field") { Absent => none Present { value: f } =>
+  match candidate_field_decode(wire: f) { Absent => none Present { value: field } =>
+  match planning_wire_string(doc: doc, key: "value") { Absent => none Present { value: value } =>
+  Present { value: CandidateFieldChange { field: field, value: value } }
+  }
+  }
+  }
+}
+
+fn candidate_relation_decode(doc: JsonValue) -> CandidateRelationChange? {
+  match planning_wire_string(doc: doc, key: "kind") {
+    Present { value: "set_parent" } => match planning_wire_string(doc: doc, key: "parent") { Absent => none Present { value: parent } => Present { value: CandidateSetParent { parent: if parent == "" { none } else { Present { value: parent as RoadmapNodeId } } } } }
+    Present { value: "set_blockers" } => match planning_wire_array(doc: doc, key: "blockers") { Absent => none Present { value: b } => match planning_wire_nodes(values: b) { Absent => none Present { value: nodes } => Present { value: CandidateSetBlockers { blockers: nodes } } } }
+    _ => none
+  }
+}
+
+fn candidate_child_decode(doc: JsonValue) -> CandidateDraftChild? {
+  match planning_wire_nonempty(doc: doc, key: "identity") { Absent => none Present { value: identity } =>
+  match planning_wire_member(doc: doc, key: "ticket") { Absent => none Present { value: t } =>
+  match candidate_ticket_decode(doc: t) { Absent => none Present { value: ticket } =>
+  Present { value: CandidateDraftChild { identity: identity, ticket: ticket } }
+  }
+  }
+  }
+}
+
+fn candidate_changes_decode(values: List<JsonValue>) -> List<CandidateFieldChange>? {
+ fold(values, init: Present { value: [] }, f: (acc, item) => match acc { Absent => none Present { value: prior } => match candidate_change_decode(doc: item) { Absent => none Present { value: value } => Present { value: prior + [value] } } })
+}
+
+fn candidate_relations_decode(values: List<JsonValue>) -> List<CandidateRelationChange>? {
+ fold(values, init: Present { value: [] }, f: (acc, item) => match acc { Absent => none Present { value: prior } => match candidate_relation_decode(doc: item) { Absent => none Present { value: value } => Present { value: prior + [value] } } })
+}
+
+fn candidate_children_decode(values: List<JsonValue>) -> List<CandidateDraftChild>? {
+ fold(values, init: Present { value: [] }, f: (acc, item) => match acc { Absent => none Present { value: prior } => match candidate_child_decode(doc: item) { Absent => none Present { value: value } => Present { value: prior + [value] } } })
+}
+
+fn planning_candidate_decode_body(doc: JsonValue) -> IssueRevisionCandidate? {
+  match planning_wire_nonempty(doc: doc, key: "identity") { Absent => none Present { value: identity } =>
+  match planning_wire_nonempty(doc: doc, key: "issue") { Absent => none Present { value: issue } =>
+  match planning_wire_member(doc: doc, key: "base_issue_revision") { Absent => none Present { value: base } =>
+  match candidate_snapshot_decode(doc: base) { Absent => none Present { value: snapshot } =>
+  match planning_wire_string(doc: doc, key: "author") { Absent => none Present { value: a } =>
+  match principal_ref_parse_label(s: a) { Absent => none Present { value: author } =>
+  match planning_wire_nonempty(doc: doc, key: "work_request") { Absent => none Present { value: work_request } =>
+  match planning_wire_array(doc: doc, key: "proposed_field_changes") { Absent => none Present { value: fields_wire } =>
+  match candidate_changes_decode(values: fields_wire) { Absent => none Present { value: fields } =>
+  match planning_wire_array(doc: doc, key: "proposed_relation_changes") { Absent => none Present { value: relations_wire } =>
+  match candidate_relations_decode(values: relations_wire) { Absent => none Present { value: relations } =>
+  match planning_wire_array(doc: doc, key: "proposed_draft_children") { Absent => none Present { value: children_wire } =>
+  match candidate_children_decode(values: children_wire) { Absent => none Present { value: children } =>
+  Present { value: IssueRevisionCandidate { identity: identity, issue: issue as RoadmapNodeId, base_issue_revision: IssueRevision { snapshot: snapshot }, author: author, work_request: work_request, proposed_field_changes: fields, proposed_relation_changes: relations, proposed_draft_children: children } }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
+fn planning_candidate_decode(wire: String) -> IssueRevisionCandidate? {
+  match parse_json_document(s: wire) {
+    JsonDocumentParsed { value: doc } => if (match doc { JsonObject { members } => count(members) != 9 _ => true }) { none } else { match planning_wire_string(doc: doc, key: "schema") {
+      Present { value: "planning-candidate/v1" } => planning_candidate_decode_body(doc: doc)
+      _ => none
+    } }
+    _ => none
+  }
+}

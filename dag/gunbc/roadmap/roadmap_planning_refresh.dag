@@ -1,0 +1,30 @@
+module gunbc.roadmap_planning_refresh
+
+import std.types { Timestamp }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
+import extdeps.languages.json.emit { JsonObject, json_object, json_kv, json_string, json_bool }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_event_carrier_instance { roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap_planning_routes { planning_post }
+import gunbc.roadmap.roadmap_task_routes { task_http_json }
+import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+import gunbc.roadmap_belt_actuate { BeltPassRecorded }
+
+// Acceptance is already durable before refreshing the local pre-rendered dashboard. Failure
+// to refresh does not pretend to undo it. A retry recovers the same revision and retries refresh.
+fn planning_accept_and_refresh(request: ServeHttpRequest<RequestAuthenticationEvidence>, instance: HostDashboardInstance, node: RoadmapNodeId, observed_at: Timestamp) -> ServeHttpResponse {
+  let response = planning_post(request: request, layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node, accept: true, observed_at: observed_at)
+  if response.status != 200 { response } else {
+    let refreshed = match served_observation_observe_and_write_for_instance(instance: instance, observed_at: observed_at as String) { BeltPassRecorded => true _ => false }
+    match parse_json_document(s: response.body) {
+      JsonDocumentParsed { value: JsonObject { members } } => task_http_json(status: 200, document: json_object(members: members + [
+        json_kv(key: "dashboard_refreshed", value: json_bool(b: refreshed)),
+        json_kv(key: "refresh_reason", value: json_string(s: if refreshed { "Dashboard refreshed from accepted state." } else { "Accepted state is durable; dashboard refresh is pending. Retry acceptance to retry refresh." })),
+      ]))
+      _ => response
+    }
+  }
+}

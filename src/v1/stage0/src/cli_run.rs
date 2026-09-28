@@ -21399,11 +21399,19 @@ fn serve_response_header_line_admitted(line: &str) -> bool {
     if line.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) {
         return false;
     }
-    let Some((name, _)) = line.split_once(':') else { return false; };
+    let Some((name, _)) = line.split_once(':') else {
+        return false;
+    };
     !name.is_empty()
         && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
-        && !["content-length", "transfer-encoding", "connection", "content-type"]
-            .iter().any(|reserved| name.eq_ignore_ascii_case(reserved))
+        && ![
+            "content-length",
+            "transfer-encoding",
+            "connection",
+            "content-type",
+        ]
+        .iter()
+        .any(|reserved| name.eq_ignore_ascii_case(reserved))
 }
 
 fn serve_wire_fields(
@@ -21432,7 +21440,9 @@ fn serve_wire_fields(
                 let mut lines = Vec::with_capacity(items.len());
                 for item in items.iter() {
                     match item {
-                        Value::Str(s) if serve_response_header_line_admitted(s) => lines.push(s.to_string()),
+                        Value::Str(s) if serve_response_header_line_admitted(s) => {
+                            lines.push(s.to_string())
+                        }
                         _ => return None,
                     }
                 }
@@ -45834,15 +45844,27 @@ mod serve_cookie_transport_tests {
 
     #[test]
     fn duplicate_cookie_is_refused_before_handler_dispatch() {
-        let result = request(b"GET /auth/session HTTP/1.1\r\nCookie: session=one\r\ncOoKiE: session=two\r\n\r\n");
+        let result = request(
+            b"GET /auth/session HTTP/1.1\r\nCookie: session=one\r\ncOoKiE: session=two\r\n\r\n",
+        );
         assert!(result.unwrap_err().contains("duplicate cookie"));
     }
 
     #[test]
     fn response_headers_cannot_inject_lines_or_override_framing() {
-        assert!(serve_response_header_line_admitted("Set-Cookie: session=fixture; Secure; HttpOnly"));
-        assert!(serve_response_header_line_admitted("Cache-Control: no-store"));
-        for line in ["Location: /\r\nSet-Cookie: injected", "Content-Length: 0", "Transfer-Encoding: chunked", "Connection: keep-alive", "Bad Name: value"] {
+        assert!(serve_response_header_line_admitted(
+            "Set-Cookie: session=fixture; Secure; HttpOnly"
+        ));
+        assert!(serve_response_header_line_admitted(
+            "Cache-Control: no-store"
+        ));
+        for line in [
+            "Location: /\r\nSet-Cookie: injected",
+            "Content-Length: 0",
+            "Transfer-Encoding: chunked",
+            "Connection: keep-alive",
+            "Bad Name: value",
+        ] {
             assert!(!serve_response_header_line_admitted(line));
         }
     }

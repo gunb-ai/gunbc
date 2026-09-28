@@ -70,7 +70,7 @@ test fn altitude_counts_wire_holds() -> Bool {
 
 fn doc_html(nodes: List<RoadmapNode>) -> String {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: nodes, edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [sec] }
   match try_serialize_html_source(node: roadmap_page(doc: doc, merged: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""

@@ -1,7 +1,7 @@
 module gunbc.roadmap_document
 
 import std.markdown { MarkdownDocument, MarkdownBlock }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, SectionElement }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapMembership, SectionElement, Prose, Group }
 import gunbc.roadmap_emit { project_roadmap_section }
 
 type RoadmapSection {
@@ -10,6 +10,7 @@ type RoadmapSection {
 }
 
 type RoadmapDocument {
+  memberships: List<RoadmapMembership>
   preamble: List<MarkdownBlock>
   lead_lanes: List<RoadmapSection>
   sections: List<RoadmapSection>
@@ -32,4 +33,36 @@ fn project_roadmap_to_markdown(doc: RoadmapDocument, merged: List<Int>) -> Markd
       concat(acc, section_blocks(s: s, merged: merged))
     })
   }
+}
+
+fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.nodes
+  }
+}
+
+fn element_edges(e: SectionElement) -> List<RoadmapEdge> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.edges
+  }
+}
+
+fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_nodes(e: e)))
+}
+
+fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_edges(e: e)))
+}
+
+fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
+  let lane_nodes = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_nodes(s: s)))
+  fold(doc.sections, init: lane_nodes, f: (acc, s) => concat(acc, section_nodes(s: s)))
+}
+
+fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
+  let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
+  fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }

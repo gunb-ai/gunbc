@@ -35,6 +35,74 @@ type TicketFields {
   last_verified_on: String
 }
 
+// Field identities survive projection; labels are presentation text, never routing keys.
+type TicketField
+  = TicketBrief
+  | TicketDisplacedCost
+  | TicketCurrentState
+  | TicketFirstSlice
+  | TicketRedControl
+  | TicketOutOfScope
+  | TicketHandback
+  | TicketVerified
+
+type TicketSection = TicketDescription | TicketAcceptance | TicketPlan | TicketScope | TicketMetadata
+
+fn ticket_field_value(ticket: TicketFields, field: TicketField) -> String {
+  match field {
+    TicketBrief => ticket.brief
+    TicketDisplacedCost => ticket.displaced_cost
+    TicketCurrentState => ticket.current_state
+    TicketFirstSlice => ticket.first_slice
+    TicketRedControl => ticket.red_control
+    TicketOutOfScope => ticket.out_of_scope
+    TicketHandback => ticket.handback
+    TicketVerified => ticket.last_verified_on
+  }
+}
+
+// A preview of an editable field preserves identity and evidence metadata. The caller must
+// separately admit the edit; TicketVerified intentionally has no mutation here.
+fn ticket_with_field_preview(ticket: TicketFields, field: TicketField, value: String) -> TicketFields {
+  TicketFields {
+    headline: ticket.headline,
+    brief: if field == TicketBrief { value } else { ticket.brief },
+    displaced_cost: if field == TicketDisplacedCost { value } else { ticket.displaced_cost },
+    current_state: if field == TicketCurrentState { value } else { ticket.current_state },
+    first_slice: if field == TicketFirstSlice { value } else { ticket.first_slice },
+    red_control: if field == TicketRedControl { value } else { ticket.red_control },
+    out_of_scope: if field == TicketOutOfScope { value } else { ticket.out_of_scope },
+    handback: if field == TicketHandback { value } else { ticket.handback },
+    updates: ticket.updates, authored_on: ticket.authored_on, last_verified_on: ticket.last_verified_on,
+  }
+}
+
+fn ticket_field_label(field: TicketField) -> String {
+  match field {
+    TicketBrief => "brief"
+    TicketDisplacedCost => "displaced cost"
+    TicketCurrentState => "current state"
+    TicketFirstSlice => "first slice"
+    TicketRedControl => "red control"
+    TicketOutOfScope => "out of scope"
+    TicketHandback => "hand-back"
+    TicketVerified => "verified"
+  }
+}
+
+fn ticket_field_section(field: TicketField) -> TicketSection {
+  match field {
+    TicketBrief => TicketDescription
+    TicketDisplacedCost => TicketPlan
+    TicketCurrentState => TicketPlan
+    TicketFirstSlice => TicketPlan
+    TicketRedControl => TicketAcceptance
+    TicketOutOfScope => TicketScope
+    TicketHandback => TicketAcceptance
+    TicketVerified => TicketMetadata
+  }
+}
+
 type RoadmapItem
 
   = DerivableLine { prs: List<Int>, title: String, description: String }
@@ -46,6 +114,8 @@ type RoadmapItem
   | SupersededLine { by: String, content: String }
 
   | TicketLine { done: Bool, ticket: TicketFields }
+
+  | LiveTicketLine { source: RoadmapItem, ticket: TicketFields }
 
 // Acceptance was three hand-set Bools, so a row could be accepted by asserting
 // works/scope_equivalent while its declared red_control never executed and its declared handback
@@ -145,6 +215,7 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
     PlainLine { content: _ } => false
     SupersededLine { by: _, content: _ } => true
     TicketLine { done, ticket: _ } => done
+    LiveTicketLine { source, ticket: _ } => item_is_done(item: source, merged: merged)
   }
 }
 
@@ -155,6 +226,7 @@ fn item_superseded_by(item: RoadmapItem) -> String {
     PlainLine { content: _ } => ""
     SupersededLine { by, content: _ } => by
     TicketLine { done: _, ticket: _ } => ""
+    LiveTicketLine { source, ticket: _ } => item_superseded_by(item: source)
   }
 }
 
@@ -176,6 +248,7 @@ fn node_title(item: RoadmapItem) -> String {
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => ticket.headline
+    LiveTicketLine { source: _, ticket } => ticket.headline
   }
 }
 
@@ -186,6 +259,7 @@ fn item_description(item: RoadmapItem) -> String {
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => ticket.brief
+    LiveTicketLine { source: _, ticket } => ticket.brief
   }
 }
 
@@ -197,6 +271,8 @@ fn item_exit_criterion(item: RoadmapItem) -> String? {
     SupersededLine { by: _, content: _ } => none
     TicketLine { done: _, ticket } =>
       if ticket.handback == "" { none } else { Present { value: ticket.handback } }
+    LiveTicketLine { source: _, ticket } =>
+      if ticket.handback == "" { none } else { Present { value: ticket.handback } }
   }
 }
 
@@ -207,6 +283,7 @@ fn line_ticket(item: RoadmapItem) -> TicketFields? {
     PlainLine { content: _ } => Absent
     SupersededLine { by: _, content: _ } => Absent
     TicketLine { done: _, ticket } => Present { value: ticket }
+    LiveTicketLine { source: _, ticket } => Present { value: ticket }
   }
 }
 
@@ -222,6 +299,7 @@ fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Dr
     PlainLine { content: _ } => Underivable
     SupersededLine { by: _, content: _ } => Underivable
     TicketLine { done: _, ticket: _ } => Underivable
+    LiveTicketLine { source, ticket: _ } => status_drift(item: source, committed_box: committed_box, merged: merged)
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean

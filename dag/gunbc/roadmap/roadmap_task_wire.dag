@@ -62,6 +62,6 @@ fn roadmap_task_revision_submission(body: String) -> RoadmapTaskRevisionSubmissi
 }
 
 fn roadmap_task_revision_value(prior: RoadmapTaskEditorial, submission: RoadmapTaskRevisionSubmission) -> RoadmapTaskEditorial {
-  RoadmapTaskEditorial { identity: prior.identity, code_contract: prior.code_contract,
+  RoadmapTaskEditorial { ticket: none, parent: prior.parent, identity: prior.identity, code_contract: prior.code_contract,
     title: submission.title, body: submission.body, prerequisites: submission.prerequisites, state: submission.state }
 }

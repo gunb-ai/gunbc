@@ -3,7 +3,7 @@ module gunbc.roadmap_page
 import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, RoadmapTaskCurrent, RoadmapTaskAbsent, RoadmapTaskUnreadable }
 import extdeps.google.issue_tracker { issue_status_wire }
 
-import gunbc.roadmap.roadmap_event_log { TaskCreated, TaskRevised }
+import gunbc.roadmap.roadmap_event_log { PlanningApplied, TaskCreated, TaskRevised }
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
@@ -1808,6 +1808,7 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
       }
     TaskCreated { task: _ } => "created the issue"
     TaskRevised { task: _ } => "updated the issue"
+    PlanningApplied { candidate, task: _ } => join(["accepted planning candidate ", candidate as String], "")
     Released => "released the issue"
     Progress { note } => join(["progress: ", note as String], "")
     Blocked { reason } => join(["blocked: ", reason as String], "")
@@ -2201,6 +2202,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
           RoadmapTaskAbsent => view.headline
         })) ],
         issue_head_chip_nodes(view: view)))),
+    header_surface_link(label: "Plan changes", href: concat("/issue/", concat(view.node_id, "/planning"))),
     el_class("div", "issue-tabs", [
       issue_tab_chip(label: "comments", tab: "comments"),
       issue_tab_chip(label: "dependencies", tab: "dependencies"),
@@ -2246,7 +2248,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> Lis
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("children") ]),
-      el_class("div", "issue-deps-body", if count(panel.blocking) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocking) }),
+      el_class("div", "issue-deps-body", if count(panel.children) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.children) }),
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("blocked by") ]),
@@ -2254,7 +2256,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> Lis
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("blocking") ]),
-      el_class("div", "issue-deps-body", [ txt("rides the same primary-parent rule until dependency-reverse edges are declared — named, not fabricated") ]),
+      el_class("div", "issue-deps-body", if count(panel.blocking) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocking) }),
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("related") ]),
@@ -2450,7 +2452,7 @@ fn issue_detail_page_for(
               standing: standing_for_node(standings: standings, node_id: node_id),
               launch: ctx,
               attempt_stale: any(stale_nodes, s => s == node_id)),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, memberships: doc.memberships),
             observation: observation,
             attempts: attempts,
             events: events,
@@ -2800,7 +2802,7 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_page_impl(
-        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+        doc: RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         main_prefix: [
           dashboard_instance_banner(),
@@ -2880,7 +2882,7 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_daily_workspace_page_impl_for_accepted(
-        doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+        doc: RoadmapDocument { memberships: [], preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         accepted_ids: [],
         withheld: [],
