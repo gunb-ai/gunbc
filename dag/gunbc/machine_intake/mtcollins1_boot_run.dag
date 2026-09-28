@@ -1611,7 +1611,9 @@ fn mtcollins1_boot_screen_boundary_report(screen: KvmObserverStart, already: Lis
   }
 }
 
-// THE OBSERVER, STARTED BEFORE THE HANDOFF (acceptance (a)). Bound to the BMC host, the web session
+// THE OBSERVER, STARTED BEFORE THE HANDOFF (acceptance (a)). mtcollins1_boot_actuate calls this after
+// the boot parameter 5 read and before the attach, so the phase clock counts its bounded wait
+// (mtcollins1_kvm_observer_establish_wait) inside media_attach. Bound to the BMC host, the web session
 // it logs in with (the established line carries its id) and the attempt. The toolchain is resolved,
 // never assumed (gunbc.runner_browser_toolchain).
 fn mtcollins1_boot_screen_start(password_file: String, attempt: String) -> KvmObserverStart {
@@ -1872,8 +1874,6 @@ fn mtcollins1_boot_actuate(
       let acquired_at = clock_now_probed_at_or_unknown() as String
       let p5_before = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_before_read = proc_uptime_read()
-      // The observer's start (bounded by mtcollins1_kvm_observer_establish_wait) sits between this read
-      // and the attach, so the phase clock counts it inside media_attach.
       let screen = mtcollins1_boot_screen_start(password_file: password_file, attempt: attempt)
       let before_attach = mtcollins1_sol_supervised(stage: SolLostBeforeAttach, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: acquired_at)
       let attached = match before_attach {
