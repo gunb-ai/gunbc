@@ -49,10 +49,12 @@ import gunbc.auth.approval_keyring_pins {
   approval_capability_mac_key_path_env,
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_sol_incident_suffix,
   mtcollins1_boot_sol_capture_path_env,
   mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
+import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_release_script }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
@@ -2767,6 +2769,22 @@ data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: Dissolut
 // THE BOOT PRELUDE'S BMC FETCH IS THE SHARED ONE (gunbc_ci_mtcollins1_bmc_credential_fetch_steps).
 // The four steps it used to spell inline are byte-identical to what that function returns when it is
 // given this lane's destination variable, which is why the factoring changes no emitted YAML here.
+// THE SOL-LOSS NOTICE IS THIS STEP'S OWN LOG (operator ruling 2026-09-27: not ntfy, no new
+// credential). The boot's watch freezes an ObservationChannelLost incident to "$SOL_OUT<suffix>"
+// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_incident_suffix) before it takes any
+// enrichment read; a one-second watcher started here prints that file as one `::error::` annotation
+// in the live run log and appends it to the step summary, once (the .noted marker). The file is
+// emptied first because a self-hosted workspace outlives the run that wrote it. The trap stops the
+// watcher and flushes a notice it had not yet printed, so a loss frozen just before exit is never
+// dropped. `%` is escaped per the workflow-command grammar; the incident is one line. Every trap
+// command that may legitimately fail carries `|| true`: the step runs under `set -e`, which aborts a
+// trap at its first failing command -- a watcher that had already exited after its notice once made
+// the `kill` fail and skipped the collector release (caught by the executed cancel control).
+// THE TRAP STOPS THE SOL COLLECTOR THROUGH THE HOLD'S OWN RELEASE (gunbc.machine_intake_sol_hold
+// mtcollins1_sol_hold_release_script), not a `kill $(cat pidfile)` of its own: the pid file holds
+// "<pid> <starttime>", and a bare kill would signal whatever process now has that pid. The EXIT trap
+// fires on normal exit and when the runner cancels or times out the step with SIGINT or SIGTERM;
+// only the runner's final SIGKILL escapes it.
 // Everything around it stays: this prelude's own file names, its trap with the SOL child kill, and
 // the SOL capture wiring - none of which the fan observation has or needs. The second fetch, of the
 // approval submission MAC key, is gone with the approval stage (operator ruling 2026-09-23): the
@@ -2780,12 +2798,18 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
     Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
     Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
-    Do { run: ci_retry_body_run(command: "trap 'if [ -f \"$SOL_PID_FILE\" ]; then kill \"$(cat \"$SOL_PID_FILE\")\" 2>/dev/null || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: concat("SOL_RELEASE='", concat(mtcollins1_sol_hold_release_script, "'"))) },
+    Do { run: ci_retry_body_run(command: "trap 'kill \"$\{SOL_LOSS_WATCH:-\}\" 2>/dev/null || true; if type sol_loss_notice >/dev/null 2>&1; then sol_loss_notice || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT") },
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_pid_path_env as String, "=\"$SOL_PID_FILE\""))) },
+    Do { run: ci_retry_body_run(command: concat("SOL_LOSS=\"$SOL_OUT", concat(mtcollins1_sol_incident_suffix, "\""))) },
+    Do { run: ci_retry_body_run(command: ": > \"$SOL_LOSS\"") },
+    Do { run: ci_retry_body_run(command: "SOL_LOSS_NOTED=\"$RUNNER_TEMP/mtcollins1-sol-loss.noted\"; rm -f \"$SOL_LOSS_NOTED\"") },
+    Do { run: ci_retry_body_run(command: "sol_loss_notice() { [ -s \"$SOL_LOSS\" ] && [ ! -e \"$SOL_LOSS_NOTED\" ] || return 1; : > \"$SOL_LOSS_NOTED\"; m=$(head -c 4000 \"$SOL_LOSS\" | tr -d '\\r\\n'); m=$\{m//\\%/%25\}; printf '::error title=mtcollins1 SOL observation lost::%s\\n' \"$m\"; { printf '### mtcollins1 SOL observation lost\\n\\n'; cat \"$SOL_LOSS\"; } >> \"$GITHUB_STEP_SUMMARY\"; }") },
+    Do { run: ci_retry_body_run(command: "( while :; do sol_loss_notice && exit 0; sleep 1; done ) & SOL_LOSS_WATCH=$!") },
   ])
 }
 
