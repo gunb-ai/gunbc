@@ -1816,6 +1816,35 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
   }
 }
 
+// THE CALLEE'S ARROW, FROM THE CALLEE'S OWN EVIDENCE WHEN THE NODE IS NOT ONE ITSELF. A resolved
+// declaration reference stays a Conj however well typed it is, so infer_operator_arrow answers Absent
+// for it and every consumer of this helper -- formals, type parameters, argument inhabitance, result
+// typing -- fell through to the undecidable-accepted arm. Giving the reference callable facts does not
+// make this path read them; this is where it reads them. The use keeps its own node and occurrence:
+// only the TYPE is taken from its facts entry, never the declaration's body or identity.
+fn infer_application_callee_arrow_with_facts(
+  node: Node,
+  entries: List<InferredFactsEntry>
+) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Absent => Absent
+    Present { value: operator } =>
+      match infer_operator_arrow(operator: operator) {
+        Present { value: arrow } => Present { value: arrow }
+        Absent =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: operator) {
+            Absent => Absent
+            Present { value: facts } =>
+              match facts.grounding {
+                GroundingNotDerived { node: _ } => Absent
+                DerivedGrounding { grounding: g } =>
+                  infer_operator_arrow(operator: g.witness.structural.evidence)
+              }
+          }
+      }
+  }
+}
+
 fn infer_application_callee_arrow(node: Node) -> Optional<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Absent => Absent
@@ -1833,8 +1862,8 @@ type InferApplicationFormals
   | FormalsUnresolved
   | FormalsOrderRefused { reason: Symbol }
 
-fn infer_application_formals(node: Node) -> InferApplicationFormals {
-  match infer_application_callee_arrow(node: node) {
+fn infer_application_formals(node: Node, entries: List<InferredFactsEntry>) -> InferApplicationFormals {
+  match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => FormalsUnresolved
     Present { value: arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
@@ -1929,8 +1958,8 @@ fn infer_pairing_formal(p: InferFormalPairing) -> InhabitanceFormal {
 }
 
 // The callee's declared type parameters; empty when the operator is not an Arrow or declares none.
-fn infer_application_type_params(node: Node) -> List<Symbol> {
-  match infer_application_callee_arrow(node: node) {
+fn infer_application_type_params(node: Node, entries: List<InferredFactsEntry>) -> List<Symbol> {
+  match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => []
     Present { value: arrow } => type_param_names(n: arrow)
   }
@@ -2075,7 +2104,7 @@ fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>
 ) -> Outcome<Bool> {
-  match infer_application_formals(node: node) {
+  match infer_application_formals(node: node, entries: entries) {
     FormalsUnresolved =>
       infer_inhabitance_undecidable_accepted(
         application: node,
@@ -2094,7 +2123,7 @@ fn infer_application_argument_inhabitance(
           )
         )
       } else {
-        let type_params = infer_application_type_params(node: node)
+        let type_params = infer_application_type_params(node: node, entries: entries)
         match fold(
           zip_map(
             a: formals,
@@ -2816,7 +2845,7 @@ fn infer_transform_derived_optional(
 // a non-Arrow operator, or a return the language join does not denote stays on the counted
 // frontier: Absent here, never an admission.
 fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
-  match infer_application_callee_arrow(node: node) {
+  match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => optional_absent()
     Present { value: arrow } =>
       match lookup_inferred_facts_in_entries(entries: entries, key: arrow) {

@@ -16,7 +16,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node, NodeFold, TypeNode, Atom, fold_node }
+import v2.std.node { Node, NodeFold, TypeNode, Atom, ComputationNode, Transform, fold_node }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { list_at_optional }
@@ -191,3 +191,56 @@ test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> 
 // demonstrates that a leaf-keyed answer would be caught. Qualifying it needs a reliable reader for a
 // parameter's declared type inside a derived Arrow domain, which is the missing piece and is worth
 // finding before the claim is made.
+
+// THE APPLICATION CONSUMER. A grounded reference is not a grounded application: at the base,
+// infer_application_callee_arrow read the callee EXPRESSION's own kind, and a resolved declaration
+// reference stays a Conj however well typed, so every consumer -- formals, type parameters, argument
+// inhabitance, result typing -- fell through. This asserts the CALL's facts, not the reference's.
+fn dre_call_is_grounded(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          match dre_first_application_optional(n: inferred.root) {
+            Absent => false
+            Present { value: call } =>
+              match inferred.facts.lookup(call) {
+                Absent => false
+                Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+              }
+          }
+      }
+  }
+}
+
+fn dre_first_application_optional(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          ComputationNode { behavior: Transform } =>
+            match dre_uses_of(root: n0, wanted: ^callee) {
+              Cons { head: _, tail: _ } => optional_present(value: n0)
+              Empty => optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _e, child) {
+        match acc { Present { value: _ } => acc  Absent => child }
+      }
+    }
+  )
+}
+
+// EXPECTED RED, ENROLLED AS THE NEXT BOUNDARY. The entries-aware callee reader is NECESSARY -- without
+// it the application path cannot see a reference's callable evidence at all -- and it is NOT SUFFICIENT:
+// this call still does not ground. What remains is unidentified, and naming it is the next step rather
+// than widening the reader. Recorded as a claim so the boundary is executed and reported rather than
+// described.
+fn dre_a_named_call_is_grounded_expected_red() -> Bool {
+  dre_call_is_grounded(o: dre_reference_source())
+}
