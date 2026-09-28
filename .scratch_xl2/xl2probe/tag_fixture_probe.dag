@@ -1,0 +1,14 @@
+module xl2probe.tag_fixture_probe
+
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject, conservation_report_of }
+import v2.compiler.reference_conservation { reference_conservation_report_lines }
+import v2.std.algebra { fold_list }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.text { String }
+
+data tag_src: String = "module v2.test.reference_conservation_construct_tags\n\ntype RcRow {\n  v: Int\n}\n\nfn rc_make(n: Int) -> RcRow { RcRow { v: n } }\n\nfn rc_read(r: RcRow) -> Int {\n  match r {\n    RcRow { v: x } => x\n  }\n}\n"
+
+fn probe() -> String {
+  let r = conservation_report_of(subject: conservation_subject(id_tail: "construct_tags", source: tag_src))
+  fold_list(xs: reference_conservation_report_lines(report: r), empty: "", cons: fn(acc, l) { acc + l + "\n" })
+}

@@ -1,0 +1,19 @@
+module xl2probe.norm_refuse_probe
+
+import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.text { String }
+
+fn verdict(tail: String, src: String) -> String {
+  let s = conservation_subject(id_tail: tail, source: src)
+  let p = match s.parsed { Accepted { value: _, diagnostics: _ } => "parsed" Rejected { diagnostics: _ } => "parse-refused" }
+  let n = match s.normalized { Accepted { value: _, diagnostics: _ } => "normalized" Rejected { diagnostics: d } => "norm-refused:" + symbol_lexeme(sym: d.head.reason) }
+  tail + " " + p + " " + n + "\n"
+}
+
+fn probe() -> String {
+  verdict(tail: "elseless", src: "module v2.test.rc_elseless\n\nfn rc_guard(c: Bool, n: Int) -> Int {\n  if c { return n }\n  n\n}\n")
+    + verdict(tail: "lambda", src: "module v2.test.rc_lambda\n\nfn rc_apply(f: Int, n: Int) -> Int { f }\n\nfn rc_lam(n: Int) -> Int { rc_apply(f: x => x, n: n) }\n")
+    + verdict(tail: "caret", src: "module v2.test.rc_caret\n\nfn rc_caret(s: Int) -> Bool { s == ^rc_sym }\n")
+}
