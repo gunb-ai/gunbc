@@ -1,10 +1,8 @@
 module test.claim.spark.spark_pair_serving_apply_wet_witness
 
 import std.logic { Bool }
-import std.types { String, List }
-import v2.std.optional { Present, Absent }
+import std.types { String, List, EpochSecs }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap_dashboard_instance { DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_plans, spark_pair_apply_plan_refusals }
 import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
@@ -16,6 +14,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // runner made the verdict a function of which runner took the job
 // (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
 data off_fleet_executor: String = "off-fleet-witness-executor"
+
+// The instant is supplied too: a store that does not resolve refuses before any lease standing is
+// derived from it, so the claim does not depend on the clock.
+data supplied_at: EpochSecs = 1790000000
 
 // THE APPLY SEAM'S LIVE BINDING, EXECUTED. test.claim.spark.spark_pair_serving_apply_witness drives
 // the plan fold over a SUPPLIED roster; this is the other half of DESIGN §3's pairing obligation:
@@ -29,15 +31,12 @@ test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet
   match dashboard_instance_for_host(host: off_fleet_executor) {
     DashboardInstanceForHost { instance: _ } => false
     DashboardInstanceHostUnknown { host: _ } =>
-      match now_epoch_seconds() {
-        Absent => false
-        Present { value: at } => {
-          let plans = spark_pair_apply_plans(executor: off_fleet_executor, at: at)
-          let refusals = spark_pair_apply_plan_refusals(plans: plans)
-          length(plans) == length(spark_pair_serving_authorities)
-            && length(refusals) == length(plans)
-            && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read"))
-        }
+      {
+        let plans = spark_pair_apply_plans(executor: off_fleet_executor, at: supplied_at)
+        let refusals = spark_pair_apply_plan_refusals(plans: plans)
+        length(plans) == length(spark_pair_serving_authorities)
+          && length(refusals) == length(plans)
+          && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read"))
       }
   }
 }

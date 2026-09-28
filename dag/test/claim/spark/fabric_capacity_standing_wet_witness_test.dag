@@ -1,11 +1,9 @@
 module test.claim.spark.fabric_capacity_standing_wet_witness
 
 import std.logic { Bool }
-import std.types { String }
-import v2.std.optional { Present, Absent }
+import std.types { String, EpochSecs }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitSuccess, ExitFailure }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap_dashboard_instance { DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host }
 import gunbc.instruments.fabric_capacity_standing { fabric_capacity_standing_at }
 
@@ -18,7 +16,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
 data off_fleet_executor: String = "off-fleet-witness-executor"
 
-// THE LIVE ENTRY BELOW ITS OBSERVATIONS, EXECUTED. test.claim.spark.fabric_capacity_standing_witness
+// The instant is supplied too: a store that does not resolve refuses before any lease standing is
+// derived from it, so the claim does not depend on the clock.
+data supplied_at: EpochSecs = 1790000000
+
+// THE LIVE ENTRY BELOW ITS OBSERVATIONS, EXECUTED HERMETICALLY. test.claim.spark.fabric_capacity_standing_witness
 // drives the verdict over a SUPPLIED roster; this is the other half of DESIGN §3's pairing
 // obligation: fabric_capacity_standing_at resolves the supplied executor's event log layout
 // through the real host-store derivation and reads every claimed group's authority before any
@@ -30,14 +32,10 @@ test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet(
   match dashboard_instance_for_host(host: off_fleet_executor) {
     DashboardInstanceForHost { instance: _ } => false
     DashboardInstanceHostUnknown { host: _ } =>
-      match now_epoch_seconds() {
-        Absent => false
-        Present { value: at } =>
-          match fabric_capacity_standing_at(executor: off_fleet_executor, at: at) {
-            ExitSuccess => false
-            ExitFailure { code: _, reason: reason } =>
-              string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
-          }
+      match fabric_capacity_standing_at(executor: off_fleet_executor, at: supplied_at) {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: reason } =>
+          string_contains(s: reason, pattern: "group-a: serving authority could not be read at ")
       }
   }
 }

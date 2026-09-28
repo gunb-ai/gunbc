@@ -316,7 +316,7 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // authority log folds to when no transition is recorded -- so the claim stays hermetic while the
 // real group_report producer and the binding that maps it over the roster both execute. The
 // live entry, which reads that roster from the event log first, is executed by
-// test.claim.spark.fabric_capacity_standing_wet_witness on the local-repo wet lane.
+// test.claim.spark.fabric_capacity_standing_wet_witness over a supplied executor with no placement.
 fn w_resting_current() -> List<CurrentAuthority> {
   map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
