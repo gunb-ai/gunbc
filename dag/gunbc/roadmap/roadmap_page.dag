@@ -176,12 +176,14 @@ fn finish_line_progress_markup() -> Fragment {
   }
 }
 
+fn dashboard_instance_banner_with_progress(progress: List<Fragment>) -> Fragment {
+  el_class("section", dashboard_instance_class, concat([
+    el_class("span", dashboard_instance_label_class, [txt("instance · observing")]),
+  ], progress))
+}
+
 fn dashboard_instance_banner() -> Fragment {
-  el_class("section", dashboard_instance_class, [
-    el_class("span", dashboard_instance_label_class, [
-      txt("instance · observing"),
-    ]),
-  ])
+  dashboard_instance_banner_with_progress(progress: [])
 }
 
 // The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a
@@ -2519,11 +2521,9 @@ fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>,
 
 fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
   el_class("section", "program-progress", [
-    el_class("span", "program-progress-name", [ txt(v.name) ]),
     el_class("span", "program-progress-count", [
       txt(join([
-        to_string(v.completed), " of ", to_string(v.total), " finish lines complete",
-        " · ", to_string(v.ready_obligation_count), " ready now",
+        to_string(v.ready_obligation_count), " ready",
       ], "")),
     ]),
   ])
@@ -2652,7 +2652,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     stale_nodes: stale_nodes,
   )
   let program_strip = match ws.program {
-    Present { value: v } => [ program_progress_markup_of(v: v) ]
+    Present { value: v } => [ txt(" · "), program_progress_markup_of(v: v) ]
     Absent => []
   }
   Element {
@@ -2667,7 +2667,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       ]),
       el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
+        el_class("main", "daily-workspace", concat([dashboard_instance_banner_with_progress(progress: program_strip)], concat(main_prefix, concat(
           workspace_observation_banner(observation: ws.observation),
           [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc))])))),
         dispatch_client_script(),
@@ -2879,7 +2879,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         accepted_ids: [],
         withheld: [],
         main_prefix: [
-          dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
         ],
         attempts: attempts,
@@ -2895,7 +2894,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         accepted_ids: accepted,
         withheld: withheld,
         main_prefix: [
-          dashboard_instance_banner(),
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
