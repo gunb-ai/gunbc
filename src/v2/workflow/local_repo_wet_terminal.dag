@@ -1293,6 +1293,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store" },
+      entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
+      function: "a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_storage_file_store_wet_witness", function: "the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution" },
       entry: "dag/test/claim/fabric/fabric_storage_file_store_wet_witness_test.dag",
       function: "the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution",
