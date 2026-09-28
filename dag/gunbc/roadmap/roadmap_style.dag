@@ -1542,7 +1542,8 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "header-account-menu" }, decls: [
       decl(prop: Position, value: "absolute"),
-      decl(prop: Inset, value: "auto 0 auto auto"),
+      decl(prop: Inset, value: "100% 0 auto auto"),
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: MinWidth, value: "11rem"),
