@@ -465,7 +465,7 @@ test fn a_parenthesised_call_operand_resolves() -> Bool {
 // A caret operand RESOLVES, and resolve never looks its symbol up. `^cav_left == ^cav_right` names
 // two symbols NO declaration binds, so a lookup of either would refuse the module as unbound: the
 // module resolving is the evidence that v2.compiler.resolve resolve_atom returns a symbol literal
-// whole (dag_node_is_symbol_literal_atom) rather than reading it as a reference. It refused
+// whole (dag_symbol_literal_name_optional) rather than reading it as a reference. It refused
 // operator_operand_unread, then (MQ-1 PR-1) caret_symbol_not_lowered at the `^`, before
 // v2.compiler.body_lowering_fold lowered a caret to its symbol literal (MQ-1 PR-2).
 test fn a_caret_symbol_operand_resolves_without_lookup() -> Bool {

@@ -38,7 +38,7 @@ import v2.extdeps.languages.dag {
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
-  dag_node_is_symbol_literal_atom,
+  dag_symbol_literal_name_optional,
   dag_symbol_literal_node,
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
@@ -540,7 +540,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
     ComputationNode { behavior: _ } => true
     _ =>
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || dag_node_is_symbol_literal_atom(node: node)
+        || (match dag_symbol_literal_name_optional(node: node) { Present { value: _ } => true  Absent => false })
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
