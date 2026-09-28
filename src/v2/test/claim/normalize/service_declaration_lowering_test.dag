@@ -253,3 +253,66 @@ fn repeated_operation_stream() -> TokenStream {
 test fn repeated_operation_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: repeated_operation_source, file: ^service_lowering_probe, supplied: repeated_operation_stream())
 }
+
+// AN OPERATION'S INPUT IS ONE PARAMETER OF A RECORD TYPE (v2.compiler.body_lowering_fold
+// body_lower_operation_params), so its payload fields are indexed under the parameter's binder,
+// `m.S.Op.operation_input.x`, and NOT at `m.S.Op.x`, where they stood while the payload Conj sat in
+// the domain's place. Both halves are asserted: the new path resolves, and the old one does not, so a
+// reader still keyed on the old path finds nothing rather than a stale entry. Admission, the new
+// path and the old path are three claims, so a red names which one broke.
+data single_input_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n  }\n}\n"
+
+fn single_input_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^service_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^service_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^service_lowering_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^service_lowering_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^service_lowering_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^service_lowering_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_ident, lexeme: "input", file: ^service_lowering_probe, start: 42, end: 47 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^service_lowering_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^service_lowering_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^service_lowering_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^service_lowering_probe, start: 53, end: 56 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 57, end: 58 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 61, end: 62 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^service_lowering_probe, start: 63, end: 64 }
+  ])
+}
+
+test fn single_input_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: single_input_source, file: ^service_lowering_probe, supplied: single_input_stream())
+}
+
+fn indexes(index: SymbolIndex, path: FreeMonoid<Symbol>) -> Bool {
+  match symbol_index_lookup(index: index, qualified_path: path) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn single_input_index_holds(check: fn(SymbolIndex) -> Bool) -> Bool {
+  match census_of_stream(tokens: single_input_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } => check(index_of(t: t))
+  }
+}
+
+test fn a_single_input_operation_is_admitted_and_indexed_holds() -> Bool {
+  single_input_index_holds(check: fn(index) { declares(index: index, service: "S", member: "Op") })
+}
+
+test fn an_operation_input_field_is_indexed_under_its_parameter_holds() -> Bool {
+  single_input_index_holds(check: fn(index) {
+    indexes(index: index, path: Cons { head: ^m, tail: Cons { head: symbol_intern_lexeme(lexeme: "S"), tail: Cons { head: symbol_intern_lexeme(lexeme: "Op"), tail: Cons { head: ^operation_input, tail: Cons { head: symbol_intern_lexeme(lexeme: "x"), tail: Empty } } } } })
+  })
+}
+
+test fn an_operation_input_field_is_not_indexed_at_the_operation_holds() -> Bool {
+  single_input_index_holds(check: fn(index) {
+    !indexes(index: index, path: Cons { head: ^m, tail: Cons { head: symbol_intern_lexeme(lexeme: "S"), tail: Cons { head: symbol_intern_lexeme(lexeme: "Op"), tail: Cons { head: symbol_intern_lexeme(lexeme: "x"), tail: Empty } } } })
+  })
+}

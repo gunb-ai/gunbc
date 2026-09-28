@@ -8144,10 +8144,11 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
 
 // SERVICE DECLARATIONS, AT DECLARATION GRADE. A service is an interface (DESIGN section 3): a named
 // product of function types. `service S { operation Op { input { a: A } output { b: B } } }` lowers
-// onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { a: A }, Conj { b: B }) } }`,
-// the same Arrow a function TYPE lowers to (body_lower_fn_type_lowered_optional) -- so the graft
-// flattens it like a record and the symbol index sees the service, its operations and their
-// payload fields. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
+// onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { operation_input: Conj { a: A } },
+// Conj { b: B }, order [operation_input]) } }`, a one-parameter declared signature whose parameter is
+// the input record (body_lower_operation_params) -- so the graft flattens it like a record and the
+// symbol index sees the service, its operations and their payload fields under
+// `S.Op.operation_input`. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
 // node_minimal's TransportSlot is NOT promoted: transport is a realization handler, not a node field).
 //
 // WHAT IS NOT LOWERED IS SET ASIDE, TYPED AND LOCATED, UNDER TWO COUNTED REASONS:
@@ -8354,6 +8355,21 @@ fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
 }
 
 // An operation that declares no input (or no output) block exchanges the empty product.
+// AN OPERATION TAKES ONE INPUT, OF A RECORD TYPE: its domain is a parameter list with the one binder
+// ^operation_input whose target is the input payload, never the payload's fields standing in the
+// domain's place. A payload Conj at domain position reads, to every domain reader (v2.std.node
+// arrow_domain_binder_labels, v2.compiler.resolve add_arrow_domain_named_params), as one parameter
+// per field -- bound by name, with no declared order, and scoped as locals of an Arrow that has no
+// body. Built through v2.std.compilers.body_lowering declared_signature like every other signature,
+// so the operation's domain and its order come from one mint. An operation with no input block has
+// an empty parameter list, not an empty payload argument.
+fn body_lower_operation_params(input: Optional<Node>) -> List<Edge> {
+  match input {
+    Present { value: payload } => [Edge { label: Named { name: ^operation_input }, target: payload }]
+    Absent => []
+  }
+}
+
 fn body_lower_io_payload_or_empty(o: Optional<Node>, source: Node) -> Node {
   match o {
     Present { value: payload } => payload
@@ -8380,6 +8396,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
               f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
             ),
             f: fn(a) {
+              let signature = declared_signature(params: body_lower_operation_params(input: a.input), source: shell)
               outcome_accepted(
                 value: BodyLowerOperation {
                   edge: Edge {
@@ -8387,8 +8404,9 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                     target: node_with_occurrence_id(
                       kind: TypeNode { connective: Arrow },
                       children: [
-                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.input, source: shell) },
-                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) }
+                        signature.domain,
+                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) },
+                        signature.order
                       ],
                       occurrence_id: shell.occurrence_id
                     )
