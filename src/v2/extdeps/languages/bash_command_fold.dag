@@ -697,8 +697,8 @@ fn bash_fold_formal_productions() -> List<FormalProduction> {
 // THE FOLD'S GRAMMAR IS ONE VALUE, BUILT ONCE AND CARRIED TO EVERY LEAF. The production catalog,
 // its encoding as a catalog node, the lex rules and the emit transforms are the same for every word
 // and command this fold serializes; only the relation row depends on the emitted node. Rebuilding
-// them inside each leaf re-derived a constant per command -- ~40k evaluator steps of a one-word
-// command, so a 37-command deploy script paid ~1.4M steps to spell 7 KB (claim_batch eval_steps over
+// them inside each leaf re-derived a constant once per command, so the cost of a script grew with
+// its command count rather than its bytes (re-derive with claim_batch eval_steps over
 // gunbc.live_deploy.emit approval_broker_dark_install_script). Declared once here, a leaf's own work
 // is the row and the serialization of its tokens.
 data bash_fold_formal_production_catalog: List<FormalProduction> = bash_fold_formal_productions()
@@ -740,18 +740,6 @@ data bash_fold_formal_production_catalog_subtree_count: Int = node_subtree_count
 
 fn bash_fold_translation_rules_budget_for_row(row: Node) -> Int {
   1 + bash_fold_formal_production_catalog_subtree_count + node_subtree_count(n: row)
-}
-
-fn bash_fold_translation_rules_node_for_emitted(
-  emitted: Node,
-  lhs: Symbol,
-  rule_name: Symbol
-) -> Witness<Node> {
-  match bash_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
-    Holds { value: row } =>
-      Holds { value: bash_fold_translation_rules_node_for_row(row: row, rule_name: rule_name) }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
 }
 
 fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
@@ -799,22 +787,6 @@ fn bash_fold_serialize_source_for_row(
         }
       }
     Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
-  }
-}
-
-fn bash_fold_serialize_source_witness(
-  emitted: Node,
-  source_literal: Symbol,
-  production_binding: Symbol
-) -> Witness<Node> {
-  match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    Holds { value: row } =>
-      bash_fold_serialize_source_for_row(
-        row: row,
-        source_literal: source_literal,
-        production_binding: production_binding
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
