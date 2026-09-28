@@ -10,7 +10,7 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -1303,11 +1303,12 @@ test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
   srv1_ensures_directory(path: files.objects as String) && srv1_ensures_directory(path: files.heads as String)
 }
 
-// THE AREAS ARE WRITABLE BY THE CLAIM PRINCIPAL, READ OFF THE ENSURE THE SRV1 SPEC ACTUALLY LOWERS.
-// Owner the service principal, group the CI job principal's, 2770 with setgid: fleet-converge run
-// 36139624393's host-effect claim refused `object publication refused: permission_denied` against
-// the briansrls:briansrls 0755 areas the previous ensure created. Red if either area goes back to a
-// single-owner ensure, or its admission refuses.
+// THE AREAS ARE THE SERVICE'S ALONE AND THE DOOR IS THE CI PRINCIPAL'S WAY IN, READ OFF THE ENSURE THE
+// SRV1 SPEC ACTUALLY LOWERS. The store areas are briansrls:briansrls 0700: no other account writes
+// the files (gunbc.fabric_storage_placement fabric_storage_directory). The door directory is owned
+// by the service with group ghrunner and group traverse only (2710), so the CI job reaches the
+// socket and nothing else. Red if an area admits the CI principal again, or the door stops admitting
+// it, or either admission refuses.
 fn srv1_fabric_area_ensure(path: String) -> String {
   fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
     Dependency { step: dep } => match dep.subject {
@@ -1319,19 +1320,19 @@ fn srv1_fabric_area_ensure(path: String) -> String {
   })
 }
 
-test fn the_fabric_storage_areas_are_ensured_writable_by_the_claim_principal() -> Bool {
+test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_principal() -> Bool {
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
-  string_contains(s: objects, pattern: "2770") && string_contains(s: objects, pattern: "briansrls") && string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "2770") && string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path() as String)
+  string_contains(s: objects, pattern: "0700") && string_contains(s: objects, pattern: "briansrls") && !string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
+    && string_contains(s: heads, pattern: "0700") && !string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+    && string_contains(s: door, pattern: "2710") && string_contains(s: door, pattern: "ghrunner") && !string_contains(s: door, pattern: "REFUSED")
 }
 
-// THE SAME ENSURE REPAIRS THE AREAS' EXISTING ENTRIES, read off the command the srv1 spec lowers:
-// the CI job principal publishes from `umask 077` steps, so every entry it wrote before the store
-// declared its entry mode is 0600 and the service principal cannot read it (srv1 2026-09-26). The
-// ensure adds the derived read bits to the entries the applying principal owns, unprivileged. Red
-// if the areas stop managing their entries, or the derivation refuses.
+// THE ENSURE NO LONGER REPAIRS THE AREAS' ENTRIES, read off the command the srv1 spec lowers: the
+// service is the only writer and publishes at the declared mode itself. Red if a repair reappears,
+// which would mean some other principal is again expected to write the store's files.
 fn srv1_fabric_area_repair(path: String) -> String {
   fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
     Dependency { step: dep } => match dep.subject {
@@ -1343,21 +1344,18 @@ fn srv1_fabric_area_repair(path: String) -> String {
   })
 }
 
-test fn the_fabric_storage_area_ensure_repairs_the_ci_principals_entries() -> Bool {
+test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -> Bool {
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
-  let objects = srv1_fabric_area_repair(path: files.objects as String)
-  let heads = srv1_fabric_area_repair(path: files.heads as String)
-  string_contains(s: objects, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: heads, pattern: "REFUSED")
+  srv1_fabric_area_repair(path: files.objects as String) == "" && srv1_fabric_area_repair(path: files.heads as String) == ""
 }
 
-// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0444, the other-read being
-// the service principal's only route to an entry the CI principal created. The per-rule cases, and
+// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0400, since the service
+// principal is the store's only writer and reader once every writer goes through the door. The per-rule cases, and
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
-test fn the_placed_fabric_store_derives_entry_mode_0444() -> Bool {
+test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
   match fabric_storage_entry_mode() {
-    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0444"
+    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }
 }
@@ -1721,17 +1719,18 @@ test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> 
     && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
-// THE FABRIC DB ENDPOINT IS LOOPBACK-BOUND AND ROUTED ONLY BY TAILSCALE: its unit runs the fabric DB
-// handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
-// on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to
-// exactly that port.
-test fn the_fabric_storage_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
+// THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
+// handler on the placement's unix socket and binds no TCP listener (never 0.0.0.0, and no loopback
+// port any local account could reach with a forged identity header), and its route is tailscale
+// serve's 10000 listener at the root mount, proxying to exactly that socket.
+test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
   let route = deployment_fabric_storage_serve_endpoint()
   unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_storage_listen_port)], ""))
-    && !unit.contains("0.0.0.0")
+    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket() as String], ""))
+    && !unit.contains("--host")
+    && !unit.contains("--port")
     && route.https_port == fabric_storage_https_port
-    && (route.backend as String) == to_string(fabric_storage_listen_port)
+    && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }

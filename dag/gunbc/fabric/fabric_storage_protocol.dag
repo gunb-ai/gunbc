@@ -11,7 +11,7 @@ import std.fabric_storage {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
+import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity, DoorProxied }
 import extdeps.tailscale.identity { tailnet_identity_of }
 
 import v2.std.algebra { skip }
@@ -55,7 +55,7 @@ fn malformed(detail: String) -> ServeWireResponse {
 fn fabric_storage_respond(root: FabricStorageFileRoot, operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
   let ws = words(text: body)
   match operation {
-    "identity" => ok(body: fabric_storage_wire_identity(identity: tailnet_identity_of(header_value: tailscale_identity)))
+    "identity" => ok(body: fabric_storage_wire_identity(principal: DoorProxied { identity: tailnet_identity_of(header_value: tailscale_identity) }))
     "head" =>
       match head_name(w: word(ws: ws, i: 0)) {
         Absent => malformed(detail: "head names no head")

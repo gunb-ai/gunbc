@@ -17,9 +17,8 @@ import std.fabric_storage {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
-import extdeps.tailscale.identity { tailnet_identity_of }
-import gunbc.fabric_writer_roster { fabric_served_writer_admission_over, fabric_served_writer_roster, FabricServedWriterAdmitted, FabricServedWriterRefused }
+import gunbc.fabric_storage_wire { FabricDoorPrincipal, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
+import gunbc.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
 import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
@@ -36,36 +35,44 @@ import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStorageP
 // NOTHING LIVES IN MEMORY. Each request reads and writes the files; a restart loses nothing and
 // there is no cache to rebuild or to go stale.
 //
-// ACCESS: the backend binds loopback only and is reached through `tailscale serve`, the same
-// deployment the dashboard uses, so only tailnet members reach it and the Tailscale-User-Login
-// header is trustworthy exactly to the extent extdeps.tailscale.identity states. THE WRITER WALL:
-// a put or advance is admitted only for a login in gunbc.fabric_writer_roster's served roster --
-// derived from the readings gunbc.fabric_writer_identity_observe took through this door's own
-// `identity` operation -- and an absent login is refused, never admitted as anonymous. The refusal
-// is a typed store outcome (FabricWriterRefused) and touches no file. Reads (head, closure) and the
-// identity echo stay open to the tailnet: they move nothing. WHAT THIS WALL CANNOT SEE: the placed
-// host's own writes never arrive here (FabricStorageLocalFiles runs the file store in process; their
-// wall is the store directories' ownership, gunbc.fabric_storage_placement fabric_storage_directory),
-// and the roster is a USER grain, not a node grain.
+// ACCESS: THE DOOR IS A UNIX SOCKET (gunbc.fabric_storage_placement fabric_storage_door_socket),
+// reached two ways: through `tailscale serve`, which proxies to it as root and names the tailnet
+// user in Tailscale-User-Login, and directly by the placed host's own writers, whose account the
+// kernel attests (`gunbc serve --unix-socket` hands the handler `peer_user`). THE WRITER WALL: a
+// put or advance is admitted only for a proxied login in gunbc.fabric_writer_roster's served roster
+// or a local peer in the door directory's roster -- the header is believed only from the proxy --
+// and an absent login, an unrostered login or account, and an unattested peer are refused as a
+// typed store outcome (FabricWriterRefused) that touches no file. Reads (head, closure) and the
+// identity echo stay open to whoever reaches the door: they move nothing. The store's files are
+// the service principal's alone (fabric_storage_directory), so no writer reaches them except as a
+// request here -- root and the service account itself excepted, which is stated there.
 //
 // EVERY TYPED OUTCOME IS HTTP 200. The status says the protocol was answered; the arm is in the
 // body. A non-200 means the request itself was not this protocol (unknown operation, malformed
 // request), and the caller reads that as FabricReplyUndecodable -- never as a store outcome.
 
-// Both public and protected routes retain one storage protocol. This public adapter adds
-// the merged served-writer admission; the protected adapter admits its signed envelope.
-fn fabric_served_storage_respond(root: FabricStorageFileRoot, roster: List<NonEmptyStr>,
-  operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
-  let admission = fabric_served_writer_admission_over(roster: roster,
-    identity: tailnet_identity_of(header_value: tailscale_identity))
-  match admission {
-    FabricServedWriterRefused { refusal } => if operation == "put" {
+// Transport identity and protected-envelope admission are separate required gates. The
+// protocol implementation remains shared, including its single closure-bound authority.
+fn fabric_served_storage_respond(root: FabricStorageFileRoot, rosters: FabricDoorRosters,
+  operation: String, body: String, principal: FabricDoorPrincipal) -> ServeWireResponse {
+  if operation == "identity" { ok(body: fabric_storage_wire_identity(principal: principal)) }
+  else { match fabric_door_writer_admission_over(logins: rosters.logins, locals: rosters.locals, principal: principal) {
+    FabricDoorWriterRefused { refusal } => if operation == "put" {
       ok(body: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: refusal } }))
     } else if operation == "advance" {
       ok(body: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricWriterRefused { refusal: refusal } }))
-    } else { fabric_storage_respond(root: root, operation: operation, body: body, tailscale_identity: tailscale_identity) }
-    FabricServedWriterAdmitted { login: _ } =>
-      fabric_storage_respond(root: root, operation: operation, body: body, tailscale_identity: tailscale_identity)
+    } else { fabric_storage_respond(root: root, operation: operation, body: body, tailscale_identity: "") }
+    FabricDoorWriterAdmitted { principal: _ } =>
+      fabric_storage_respond(root: root, operation: operation, body: body, tailscale_identity: "")
+  } }
+}
+
+fn fabric_storage_protected_door_over(root: FabricStorageFileRoot, rosters: FabricDoorRosters,
+  method: String, path: String, body: String, tailscale_identity: String, peer_user: String) -> ServeWireResponse {
+  match fabric_door_writer_admission_over(logins: rosters.logins, locals: rosters.locals,
+    principal: fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user)) {
+    FabricDoorWriterRefused { refusal: _ } => text_response(status: 403, body: "fabric state transport principal refused\n")
+    FabricDoorWriterAdmitted { principal: _ } => fabric_storage_state_serve_over(root: root, method: method, path: path, body: body)
   }
 }
 
@@ -75,14 +82,21 @@ fn fabric_storage_operation_of(path: String) -> String? {
   if starts_with(s: path, prefix: prefix) { Present { value: substring(s: path, start: length(prefix), end: length(path)) } } else { none }
 }
 
-// The roster is a parameter so a claim can supply one; the served entry below binds the derived one.
-fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, roster: List<NonEmptyStr>, method: String, path: String, body: String, tailscale_identity: String) -> ServeWireResponse {
+// THE TWO ROSTERS THE DOOR ADMITS AGAINST: proxied logins (gunbc.fabric_writer_roster
+// fabric_served_writer_roster) and local peers (fabric_door_local_roster). A parameter, so a claim
+// can supply both; the served entry below binds the derived ones.
+type FabricDoorRosters {
+  logins: List<NonEmptyStr>
+  locals: List<NonEmptyStr>
+}
+
+fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, rosters: FabricDoorRosters, method: String, path: String, body: String, tailscale_identity: String, peer_user: String) -> ServeWireResponse {
   if method != "POST" {
     text_response(status: 405, body: "fabric_storage/1 only POST is admitted\n")
   } else {
     match fabric_storage_operation_of(path: path) {
       Absent => text_response(status: 404, body: join(["fabric_storage/1 no route ", path, "\n"], ""))
-      Present { value: op } => fabric_served_storage_respond(root: root, roster: roster, operation: op, body: body, tailscale_identity: tailscale_identity)
+      Present { value: op } => fabric_served_storage_respond(root: root, rosters: rosters, operation: op, body: body, principal: fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user))
     }
   }
 }
@@ -90,7 +104,7 @@ fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, roster: List<No
 // THE SERVED ENTRY, in the shape `gunbc serve --function` binds (the roadmap serve seam's). The
 // store root is the placement's; an unplaced store answers 503 on every request rather than
 // choosing a root.
-fn fabric_storage_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha) -> ServeWireResponse {
+fn fabric_storage_serve_handle(method: String, path: String, body: String, tailscale_identity: String, peer_user: String, release_revision: CommitSha) -> ServeWireResponse {
   match fabric_storage_placement() {
     FabricStorageUnplaced => text_response(status: 503, body: "fabric_storage/1 the fabric DB is unplaced\n")
     FabricStoragePlaced { host: _, store_root: r, endpoint: _ } =>
@@ -98,8 +112,8 @@ fn fabric_storage_serve_handle(method: String, path: String, body: String, tails
         FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: join(["fabric_storage/1 the store's entry mode is refused: ", detail as String, "\n"], ""))
         FabricStoragePlacedRootReady { root } =>
           if starts_with(s: path, prefix: concat(concat(fabric_storage_route_prefix, fabric_storage_state_suffix), "/")) {
-            fabric_storage_state_serve_over(root: fabric_storage_state_file_root(store_root: r), method: method, path: path, body: body)
-          } else { fabric_storage_serve_handle_over(root: root, roster: fabric_served_writer_roster(), method: method, path: path, body: body, tailscale_identity: tailscale_identity) }
+            fabric_storage_protected_door_over(root: fabric_storage_state_file_root(store_root: r), rosters: FabricDoorRosters { logins: fabric_served_writer_roster(), locals: fabric_door_local_roster() }, method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user)
+          } else { fabric_storage_serve_handle_over(root: root, rosters: FabricDoorRosters { logins: fabric_served_writer_roster(), locals: fabric_door_local_roster() }, method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user) }
       }
   }
 }

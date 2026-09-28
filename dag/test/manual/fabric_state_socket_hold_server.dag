@@ -1,0 +1,37 @@
+module test.manual.fabric_state_socket_hold_server
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.http.server { ServeWireResponse }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_serve { fabric_storage_protected_door_over, FabricDoorRosters }
+import gunbc.fabric_storage_protocol { text_response }
+
+// This fixture executes the production protected transport gate, using a temporary store and
+// the real kernel peer supplied by serve. The test supplies an explicit local account roster.
+fn served_storage_socket_hold_handler(method: String, path: String, body: String, peer_user: String,
+  tailscale_identity: String = "", release_revision: String = "", cookie_header: String = "") -> ServeWireResponse {
+  if method == "GET" && path == "/fixture/session" {
+    ServeWireResponse { status: 200, content_type_label: "text/plain", body: cookie_header,
+      headers: ["Set-Cookie: fixture=socket; HttpOnly; SameSite=Lax"] }
+  } else { match shell.Env.Get(name: "GUNBC_HOLD_STORAGE_ROOT").value {
+    Absent => text_response(status: 503, body: "fixture root absent")
+    Present { value: root } => if !starts_with(s: root, prefix: "/tmp/gunbc-hold-storage-") { text_response(status: 503, body: "fixture root refused") }
+      else { match shell.Env.Get(name: "GUNBC_HOLD_LOCAL_WRITER_FILE").value {
+        Absent => text_response(status: 503, body: "fixture writer absent")
+        Present { value: writer_path } => {
+          let writer_read = Filesystem.Read(path: writer_path)
+          let writer = if writer_read.success { trim(s: writer_read.content) } else { "" }
+          let store = fabric_storage_file_root(root: root as NonEmptyStr)
+          match fabric_storage_file_root_ensure(root: store) {
+            FabricStorageRootReady => if writer == "" { text_response(status: 503, body: "fixture writer unreadable") } else { fabric_storage_protected_door_over(root: store,
+              rosters: FabricDoorRosters { logins: [], locals: [writer as NonEmptyStr] },
+              method: method, path: path, body: body, tailscale_identity: tailscale_identity, peer_user: peer_user) }
+            _ => text_response(status: 503, body: "fixture store refused")
+          }
+        }
+      } }
+  } }
+}
