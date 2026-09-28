@@ -23,6 +23,10 @@ import v2.workflow.floor_subject_seed {
   ReadInInterface,
   ReadInBody,
   interface_change_propagates,
+  reach_propagates,
+  ReachConsumer,
+  StrictPreparation,
+  ClaimExecution,
   InterfaceChangeGround,
   ArmSetGrown,
   ArmSetChanged,
@@ -155,6 +159,18 @@ test fn only_an_interface_read_propagates_a_change() -> Bool {
   interface_change_propagates(site: ReadInInterface, binding: BoundToDeclaringModule)
     && interface_change_propagates(site: ReadInInterface, binding: BoundThroughFlatBareChannel)
     && !interface_change_propagates(site: ReadInBody, binding: BoundToDeclaringModule)
+}
+
+// A BODY READ PROPAGATES FOR EXECUTION AND NOT FOR PREPARATION (gunbc#12361). The discriminating
+// cell is the body read: the same read stops the compile walk and continues the execution walk,
+// and an interface read continues both, so the execution walk is a superset keyed on its consumer
+// rather than a second relation.
+test fn a_body_read_propagates_for_claim_execution_and_not_for_strict_preparation() -> Bool {
+  reach_propagates(consumer: ClaimExecution, site: ReadInBody, binding: BoundToDeclaringModule)
+    && reach_propagates(consumer: ClaimExecution, site: ReadInBody, binding: BoundThroughFlatBareChannel)
+    && !reach_propagates(consumer: StrictPreparation, site: ReadInBody, binding: BoundToDeclaringModule)
+    && reach_propagates(consumer: StrictPreparation, site: ReadInInterface, binding: BoundToDeclaringModule)
+    && reach_propagates(consumer: ClaimExecution, site: ReadInInterface, binding: BoundToDeclaringModule)
 }
 
 // GROWTH IS NOT A SIGNATURE CHANGE. An arm added with nothing else moved strands only an

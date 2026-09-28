@@ -1,6 +1,6 @@
 module extdeps.transports.shell
 
-import std.types { FermiDepth, NonEmptyStr }
+import std.types { FermiDepth, Int, NonEmptyStr, String }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -50,3 +50,12 @@ type ShellTransportConfig {
 type ShellOutcome
   = ShellExited
   | ShellSpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }
+
+// WHAT THE SHELL TRANSPORT OBSERVES, as a value: a process that ran to an exit status with its two
+// captured streams, or no process at all. This is the observation a modeled operation realization
+// (v2.std.operation_realization) supplies in place of a spawned process; the interpreter feeds it to
+// the same declared-output projection a real process result reaches, so every field an operation
+// declares from stdout, stderr or the exit status is derived exactly as it would be from a real run.
+type ShellExchangeObservation
+  = ShellProcessExited { exit_code: Int, stdout: String, stderr: String }
+  | ShellProcessSpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }
