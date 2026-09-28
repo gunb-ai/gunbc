@@ -225,7 +225,7 @@ data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
 // 36431733521 (a unit wall past the job cap), re-read there rather than copied here; they are
 // re-derived when the step turns required or the live-tree tests are reshaped.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 50)
+  minute(count: 1)
 }
 
 // Checkout, toolchain install and the lint run before the unit step; their measured sum is a small
