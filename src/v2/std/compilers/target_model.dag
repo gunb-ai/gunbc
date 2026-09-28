@@ -65,6 +65,12 @@ import v2.std.diagnostic {
   invariant_port_locus,
   rejected_with_pending
 }
+import v2.std.compilers.body_lowering {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  arrow_declared_parameter_order
+}
 import v2.std.compilers.lexing {
   AnnotationRule,
   KeywordPattern,
@@ -15393,6 +15399,32 @@ fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == wanted })
 }
 
+// A RETURNED CLOSURE'S PARAMETERS, IN DECLARED ORDER. The emitted closure is applied positionally,
+// so its parameter list is the Arrow's declared order (v2.std.compilers.body_lowering
+// arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
+// Conj's stored sequence, which is sorted by label and is not the signature (#12361). Scope
+// MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
+// binds names but carries no readable order refuses typed, exactly as eval's
+// eval_param_labels_in_declared_order does: there is no domain-order fallback. A domain that binds
+// no name emits no parameter.
+fn realized_closure_ordered_params(closure: Node) -> Outcome<List<Symbol>> {
+  match arrow_domain_binder_names(arrow: closure) {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: _, tail: _ } =>
+      match arrow_declared_parameter_order(arrow: closure) {
+        ArrowParameterOrderDeclared { labels: labels } => outcome_accepted(value: labels)
+        ArrowParameterOrderAbsent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_absent, node: closure)
+          )
+        ArrowParameterOrderMalformed =>
+          outcome_rejected(
+            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_malformed, node: closure)
+          )
+      }
+  }
+}
+
 // A FUNCTION VALUE THAT IS RETURNED: the body of a function item (FunctionValueBody), or the body
 // of such a closure when it is itself a function value. Each sits at a function-typed position, so
 // its spelling is the target's FunctionTypeRealizationRow for that position -- the same row the
@@ -15426,54 +15458,58 @@ fn target_project_realized_closure(
         )
       )
     Present { value: row } =>
-      let params = arrow_domain_binder_names(arrow: closure)
-      let scope = list_append(left: enclosing, right: params)
+      let scope = list_append(left: enclosing, right: arrow_domain_binder_names(arrow: closure))
       bind_outcome(
-        o: find_arrow_body_child(root: closure),
-        f: fn(body) {
+        o: realized_closure_ordered_params(closure: closure),
+        f: fn(params) {
           bind_outcome(
-            o: match classify_arrow_body_form(target: body) {
-              FunctionValueBody =>
-                target_project_realized_closure(
-                  closure: body,
-                  position: FunctionTypeAtFnBoundReturn,
-                  enclosing: scope,
-                  target: target,
-                  source_bool_form: source_bool_form,
-                  handle_transform: handle_transform
-                )
-              _ =>
-                match body.kind {
-                  TypeNode { connective: Atom { identity: id } } =>
-                    if symbol_list_contains(xs: scope, wanted: id) {
-                      outcome_accepted(target_value_expression_binding_ref(binding: id))
-                    } else {
-                      target_value_expr_project_body_subexpression(
-                        arrow: closure,
-                        node: body,
-                        target: target,
-                        source_bool_form: source_bool_form,
-                        handle_transform: handle_transform
-                      )
-                    }
-                  _ =>
-                    target_value_expr_project_body_subexpression(
-                      arrow: closure,
-                      node: body,
+            o: find_arrow_body_child(root: closure),
+            f: fn(body) {
+              bind_outcome(
+                o: match classify_arrow_body_form(target: body) {
+                  FunctionValueBody =>
+                    target_project_realized_closure(
+                      closure: body,
+                      position: FunctionTypeAtFnBoundReturn,
+                      enclosing: scope,
                       target: target,
                       source_bool_form: source_bool_form,
                       handle_transform: handle_transform
                     )
+                  _ =>
+                    match body.kind {
+                      TypeNode { connective: Atom { identity: id } } =>
+                        if symbol_list_contains(xs: scope, wanted: id) {
+                          outcome_accepted(target_value_expression_binding_ref(binding: id))
+                        } else {
+                          target_value_expr_project_body_subexpression(
+                            arrow: closure,
+                            node: body,
+                            target: target,
+                            source_bool_form: source_bool_form,
+                            handle_transform: handle_transform
+                          )
+                        }
+                      _ =>
+                        target_value_expr_project_body_subexpression(
+                          arrow: closure,
+                          node: body,
+                          target: target,
+                          source_bool_form: source_bool_form,
+                          handle_transform: handle_transform
+                        )
+                    }
+                },
+                f: fn(body_expr) {
+                  outcome_accepted(
+                    target_value_expression_realized_closure(
+                      params: params,
+                      body: body_expr,
+                      value_open: row.value_open,
+                      value_close: row.value_close
+                    )
+                  )
                 }
-            },
-            f: fn(body_expr) {
-              outcome_accepted(
-                target_value_expression_realized_closure(
-                  params: params,
-                  body: body_expr,
-                  value_open: row.value_open,
-                  value_close: row.value_close
-                )
               )
             }
           )
