@@ -2640,9 +2640,13 @@ fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>) -> Fragmen
   ])
 }
 
+// THE STRIP'S NAME, superseded (owner ruling 2026-09-28: the "v1 exit · N of 4 finish lines"
+// framing is retired — the workspace is the program now): the view keeps the type's shape for
+// its remaining constructors, but the strip renders the workspace's readiness, and the
+// completed/total fields ride unused until the type retires with its last consumer.
 fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>, ready_count: Int) -> ProgramProgressView {
   ProgramProgressView {
-    name: "v1 exit",
+    name: "workspace",
     completed: v1_finish_lines_accepted_count(accepted: accepted_ids),
     total: count(v1_exit_finish_lines()),
     ready_obligation_count: ready_count,
@@ -2653,10 +2657,7 @@ fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
   el_class("section", "program-progress", [
     el_class("span", "program-progress-name", [ txt(v.name) ]),
     el_class("span", "program-progress-count", [
-      txt(join([
-        to_string(v.completed), " of ", to_string(v.total), " finish lines complete",
-        " · ", to_string(v.ready_obligation_count), " ready now",
-      ], "")),
+      txt(join([to_string(v.ready_obligation_count), " ready now"], "")),
     ]),
   ])
 }

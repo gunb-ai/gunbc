@@ -158,14 +158,15 @@ test fn witness_finish_line_variants_render_from_fixture() -> Bool {
   }
 }
 
-data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — it carries the one-line program-progress summary with the LOCAL denominator, and the full narrative block lives on /roadmap only. The 'of 4' magnitude is structural, not a live-population transcription: v1_exit_finish_lines is the authored four-row design list, unlike the deleted global declared/accepted/active counts this section used to show (see live_state_count_transcription_note in test.claim.roadmap_authority)."
+data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — the full narrative block lives on /roadmap only. The 'of 4' magnitude was structural, not a live-population transcription. SUPERSEDED 2026-09-28 by the owner ruling retiring the v1-exit framing from the workspace header: the one-line strip now carries only the readiness count ('N ready now'), and the program view's name reads 'workspace'."
 
 test fn witness_daily_leads_operational_not_narrative() -> Bool {
   match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"program-progress\"")
-        && string_contains(s: h, pattern: " of 4 finish lines complete")
+        && string_contains(s: h, pattern: " ready now")
+        && !string_contains(s: h, pattern: "finish lines complete")
         && !string_contains(s: h, pattern: "class=\"finish-line-progress\"")
         && !string_contains(s: h, pattern: "class=\"finish-line-claim\"")
   }
