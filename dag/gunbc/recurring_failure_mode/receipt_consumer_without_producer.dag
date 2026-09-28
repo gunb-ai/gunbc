@@ -1,0 +1,12 @@
+module gunbc.recurring_failure_mode.receipt_consumer_without_producer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data receipt_consumer_without_producer: RecurringFailureMode = RecurringFailureMode {
+  identity: "receipt_consumer_without_producer" as NonEmptyStr,
+  receipts: [
+    "PR #12421 review 5331195485: gunbc_ci_namecheap_observe_invoke supplied receipt_rel as though it captured execution output, but gunbc_invoke_receipt_steps only read an existing file. A successful observer therefore failed the shell step and suppressed its artifact upload. Invalid state: an emitted receipt read with no producer. Harm: successful observation becomes workflow failure. Discriminating facts: execute emitted shell in a clean root with only the declared output; a planted unmatched read must fail. Mitigation: writer, console display and uploader derive the path from one declaration. Ceiling: workflow construction rejects a receipt consumer without a producer edge; next trigger: that consumed workflow admission relation.",
+  ],
+  evidence: [],
+}
