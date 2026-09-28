@@ -43,6 +43,8 @@ import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.v41_engram_row_store { v41_row_store_spec, v41_live_head_sizes, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, v41_published_store_readings }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
+import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_production_produced_image }
+import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
 import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
 import product.placement_supply { HostIdentity }
@@ -76,12 +78,11 @@ import product.placement_supply { HostIdentity }
 // The design-B RED's evidence of record meanwhile is fleet-converge run 36254702828 (srv5, all eight
 // stores equal), taken before this form existed.
 type V41DifferentialImage
-  = DifferentialImageBuilt { config_digest: NonEmptyStr, build_run: NonEmptyStr }
+  = DifferentialImageBuilt { image: V41ProducedImageHeld }
   | ImageLacksEngramOverlay { trigger: NonEmptyStr }
 
-data v41_differential_image: V41DifferentialImage = ImageLacksEngramOverlay {
-  trigger: "the production V4.1 image built from main after the design-B cutover lands, whose patch population includes engram_file_backed.py.patch; bind its config digest and build run here from that build's receipt" as NonEmptyStr,
-}
+// The production V4.1 image, built with this overlay, named by its receipt row.
+data v41_differential_image: V41DifferentialImage = DifferentialImageBuilt { image: v41_production_produced_image }
 
 data v41_differential_overlay_module: String = "vllm.models.deepseek_v4_1.nvidia.engram_file_backed"
 
@@ -330,7 +331,8 @@ fn v41_engram_differential_ci_wet() -> ProcessExit
   let now = clock_now_probed_at()
   match v41_differential_image {
     ImageLacksEngramOverlay { trigger: t } => exit_failure(reason: join(["ImageLacksEngramOverlay: no image carrying the file-backed Engram overlay is bound, so the differential cannot run its module; nothing was claimed or run. Waiting on: ", t as String], ""))
-    DifferentialImageBuilt { config_digest: image, build_run: _ } =>
+    DifferentialImageBuilt { image: produced } => {
+      let image = render_oci_content_digest_wire(d: produced.config) as NonEmptyStr
       match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
         V41RowStoreSpecRefused { defects: d } => exit_failure(reason: join(["the row-store spec refused: ", join(map(d, x => x as String), "; ")], ""))
         V41RowStoreSpecAdmitted { spec: spec } =>
@@ -342,6 +344,7 @@ fn v41_engram_differential_ci_wet() -> ProcessExit
             }
           }
       }
+    }
   }
 }
 

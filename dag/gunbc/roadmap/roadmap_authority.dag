@@ -4136,6 +4136,24 @@ fn withheld_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> W
   }
 }
 
+// The accepted half of the same frontier plan, for consumers that join against the accepted set
+// without rendering the document (the private strategy witness's capability-evidence join). It is
+// the successor of the accepted_roadmap_node_ids_projection deleted by #11310 and differs from it
+// in the one way that deletion was about: it reads frontier_sets_projection, so a revoked,
+// superseded or unreplayable history refuses here exactly as it does for the active frontier.
+type AcceptedNodeIdsProjection
+  = AcceptedNodeIdsProjected { ids: List<RoadmapNodeId> }
+  | AcceptedNodeIdsProjectionRefused { detail: String }
+
+fn accepted_node_ids_projection(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptedNodeIdsProjection {
+  match frontier_sets_projection(history: history) {
+    FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+      AcceptedNodeIdsProjected { ids: accepted }
+    FrontierSetsProjectionRefused { detail: detail } =>
+      AcceptedNodeIdsProjectionRefused { detail: detail }
+  }
+}
+
 fn roadmap_node_id_set(ids: List<RoadmapNodeId>) -> Set<RoadmapNodeId> {
   ids |> fold(init: empty_set(), f: (acc, id) => set_insert(acc, id))
 }

@@ -31,7 +31,17 @@ import gunbc.native_route_progress_guard { NativeProgressDispositionRow, NativeC
 // WHO WRITES IT. Nobody by hand. A row is produced only by `native_frontier_proposal_lines`,
 // rendered by the emitted binary from its own run, and it lands through a reviewed pull request
 // that carries the run receipt (host, tested tree, executable, command). The nightly
-// `native-frontier` workflow opens that pull request. It is never merged automatically.
+// `native-frontier` workflow only PUBLISHES the proposal (a workflow artifact, with `contents: read`);
+// it opens no pull request, so every mint and re-mint is a person carrying that artifact into one.
+//
+// WHEN THE FIRST MINT MAY HAPPEN. A mint makes whatever the run observed the baseline, so a mint
+// taken just before a known correctness flip lands records the silently wrong acceptances as
+// agreement, and the flip then reads as a loss on every one of them. The first mint is therefore
+// taken after the pending flips its minter knows of have landed (2026-09-27: the caret flip,
+// gunbc#12392, reason caret_symbol_not_lowered), so their refusals enter as baseline debt. A flip
+// landing AFTER a mint is not stranded: gunbc.native_frontier_ratchet admits it per identity as
+// `FrontierGrewByOwnedCorrectnessFlip` when its cause is owned and declared in
+// v2.workflow.compile_door_cause_ownership known_correctness_flips.
 //
 // THE STANDING TODAY IS UNMINTED, AND THAT IS A RED, NOT A PASS. No run has yet produced a roster:
 // the route's measured wall (gunbc.rung_drop v2_native_route_off_the_merge_path, re-derived by the
