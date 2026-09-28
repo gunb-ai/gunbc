@@ -89,6 +89,15 @@ fn stat_inode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
 }
 
+// -L FOLLOWS THE FINAL LINK, so on a /proc/<pid>/exe or /proc/<pid>/fd/<n> magic link %i is the
+// inode of the object the process HOLDS, not of the link: a regular file's inode (still reported
+// after the file is unlinked), and for `socket:[N]` / `pipe:[N]` the N that sockfs and pipefs report.
+// Every `anon_inode:[...]` target shares the anon_inode filesystem's one inode, which identifies
+// nothing; that is the caller's to skip, not this read's to hide.
+fn stat_dereferenced_inode_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-L", "-c", "%i", "--", path])
+}
+
 // %u AND %a AND %s AS COMMANDS, for a caller that reads back a file it just staged: numeric owner,
 // octal mode, size in bytes. One token each, for the reason the argv pair above states.
 fn stat_owner_uid_command(path: String) -> ArgvCommand {

@@ -1,6 +1,5 @@
 module gunbc.host_reset_return_run
 
-import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRulingConfirmed, StandingRulingRefused, mtcollins1_boot_standing_ruling_read }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
   unit_hold_store_root, host_reset_owner,
@@ -58,7 +57,6 @@ import gunbc.host_reset_return {
   SubjectHasNoRosterRow,
   UnitHoldStoreNotOnObserver,
   UnitHeldForMaintenance,
-  StandingRulingUnconfirmed,
   reset_preflight_refusal_wire,
   ResetDispatchAdmitted,
   ResetDispatchNotThisMode,
@@ -92,8 +90,13 @@ import gunbc.machine_intake_oob_boot_handoff {
   BootSelectionRefused,
   BootSelectionUnverifiable,
   OobBootHandoffOutcome,
-  PowerCycleRefused,
+  PowerCommandAcceptedNoTransition,
+  oob_power_action_verb,
+  power_transition_progress_text,
+  PowerCommandRefused,
+  PowerStateReadFailed,
 }
+import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 
 // THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is
@@ -311,9 +314,9 @@ fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
 // keeps them apart in the first place.
 fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
   match outcome {
-    BootControlIssued { selected: d } =>
+    BootControlIssued { selected: d, power: _ } =>
       ResetAccepted {
-        controller_response: join(["boot source override verified for '", d as String, "' and the power action was accepted; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
+        controller_response: join(["boot source override verified for '", d as String, "' and the chassis power transition was observed; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
         issued_at: issued_at,
       }
     BootSelectionRefused =>
@@ -338,9 +341,17 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
       ResetRefusedByController {
         diagnostic: join(["boot parameter 5 did not read back, so the override for '", d as String, "' is unverified; output: ", r], "") as NonEmptyStr,
       }
-    PowerCycleRefused { selected: d } =>
+    PowerStateReadFailed { selected: d, observed_state: o } =>
       ResetRefusedByController {
-        diagnostic: join(["the override for '", d as String, "' APPLIED but the power cycle was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+        diagnostic: join(["the override for '", d as String, "' APPLIED but chassis power read ", chassis_observation_text(observation: o) as String, ", so no power action was selected; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    PowerCommandRefused { selected: d, action: a } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED but chassis power ", oob_power_action_verb(action: a) as String, " was refused; the controller holds an unconsumed next-boot override"], "") as NonEmptyStr,
+      }
+    PowerCommandAcceptedNoTransition { selected: d, action: a, progress: pr, last_observed: o } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' APPLIED and chassis power ", oob_power_action_verb(action: a) as String, " exited 0 but the transition did not complete within the bound: ", power_transition_progress_text(progress: pr) as String, "; last chassis power ", chassis_observation_text(observation: o) as String], "") as NonEmptyStr,
       }
     BootHandoffNotAdmitted { admission: _ } =>
       ResetNotAttempted { cause: "the controller was not admitted for out-of-band drive; no write was attempted" }
@@ -495,7 +506,6 @@ fn host_reset_return_issue_and_watch(
     username: candidate.username,
     password_file: password_file,
     selection: candidate.boot_selection,
-    power_action: candidate.power_action,
   )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
   let observation = observe_reset_return(
@@ -683,25 +693,17 @@ fn host_reset_return_wet() -> ProcessExit
                   remedy: "the subject's maintenance hold lives on the store host; a reset observed from anywhere else would take a hold in a store the operator never sees",
                 )
               } else {
-                match mtcollins1_boot_standing_ruling_read() {
-                  StandingRulingRefused { reason: why } =>
+                match unit_hold_acquire(root: unit_hold_store_root, key: k, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
+                  UnitHoldRefused { reason: r } =>
                     host_reset_return_preflight_exit(
-                      refusal: StandingRulingUnconfirmed { subject: subject, reason: why },
-                      remedy: "the operator's standing ruling for this unit's destructive BMC effects is not confirmed; nothing was written to its controller",
+                      refusal: UnitHeldForMaintenance { subject: subject, reason: r },
+                      remedy: "the unit is held (maintenance or another run); nothing was written to its controller",
                     )
-                  StandingRulingConfirmed { confirmation: ruling } =>
-                  match unit_hold_acquire(ruling: ruling, root: unit_hold_store_root, key: k, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
-                    UnitHoldRefused { reason: r } =>
-                      host_reset_return_preflight_exit(
-                        refusal: UnitHeldForMaintenance { subject: subject, reason: r },
-                        remedy: "the unit is held (maintenance or another run); nothing was written to its controller",
-                      )
-                    UnitHeld { proof: p } =>
-                      unit_hold_release(
-                        proof: p,
-                        outcome: host_reset_return_attempt_exit(proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
-                      )
-                  }
+                  UnitHeld { proof: p } =>
+                    unit_hold_release(
+                      proof: p,
+                      outcome: host_reset_return_attempt_exit(proof: Present { value: p }, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr),
+                    )
                 }
               }
           }

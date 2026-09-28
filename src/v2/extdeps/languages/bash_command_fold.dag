@@ -50,7 +50,8 @@ import v2.extdeps.languages.bash {
   bash_word_pass_emitted,
   bash_word_pass_target_model
 }
-import v2.std.algebra { list_append, list_map }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
 import v2.std.collection {
   List,
   Map,

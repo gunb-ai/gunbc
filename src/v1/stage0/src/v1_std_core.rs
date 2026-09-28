@@ -669,6 +669,10 @@ pub enum CompilerDiagnostic {
         second_operand: String,
         span: Rc<SourceSpan>,
     },
+    PresentArmScrutineeTypeUnresolved {
+        pattern: String,
+        span: Rc<SourceSpan>,
+    },
     NonExhaustiveMatch {
         missing: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
@@ -1010,6 +1014,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::TestCodeReferenceRowOrphaned { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { span: s, .. } => s.clone(),
+        CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
@@ -1088,6 +1093,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' declares ".to_string()), (d.clone()).to_string()), " reference(s) but ".to_string()), (o.clone()).to_string()), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("two sibling operands of '".to_string(), c.clone()), "' each reach a declared effect ('".to_string()), a.clone()), "' and '".to_string()), b.clone()), "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '".to_string()), c.clone()), "'".to_string()),
+    CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern: p, .. } => v1_rt::concat(v1_rt::concat("a '".to_string(), p.clone()), "' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
@@ -1113,7 +1119,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::UnlistedVariantValueUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted variant value use '".to_string(), n.clone()), "' (a coproduct arm referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
-    CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.".to_string()),
+    CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
     CompilerDiagnostic::EmittedSymbolCollision { symbol: s, identities: ids, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("emitted symbol collision: ".to_string(), ((ids.clone().len() as i64)).to_string()), " authored identities render one emitted symbol '".to_string()), s.clone()), "': ".to_string()), ids.clone().join(&", ".to_string())), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
@@ -1256,6 +1262,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),

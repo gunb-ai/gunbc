@@ -277,13 +277,6 @@ data wet_receipt_route_standings: List<WetReceiptRouteStanding> = [
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
-      function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
-    },
-    module_path: "src/v2/compiler/parse_engine_hooks.dag"
-  ),
-  wet_receipt_module_row_standing(
-    receipt: WetReceiptIdentity {
       entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag",
       function: "self_host_program_assembly_behavioral_receipt_holds"
     },

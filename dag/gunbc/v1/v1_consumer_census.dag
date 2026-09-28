@@ -6,7 +6,8 @@ import std.content_hash { Sha1Digest }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
 import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.algebra { fold_list }
+import std.algebra { list_append, list_snoc_item }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.process { ProcessExit, ExitFailure }
 import gunbc.replacement_cut {
@@ -1341,7 +1342,7 @@ data v1_tests_manifest_dependency: CargoPathDependency = CargoPathDependency {
 // renderer that spells the seed's package name some other way (a `const`, `.to_owned()`, a
 // `[dependencies.v1-compiler]` table header) is outside the produced population and is neither
 // joined nor reported; widening the tokens is how the reach grows, and the tokens are derived from
-// the package name's authority so the spelling they do cover cannot drift. The three .dag renderers are cited by declaration and the
+// the package name's authority so the spelling they do cover cannot drift. The .dag renderers are cited by declaration and the
 // citation wall refuses a stale name; their join to a produced .dag literal population is the
 // declared frontier tools.v1_consumer_discovery (PR #10939) closes.
 //
@@ -1375,12 +1376,6 @@ fn v1_minted_manifest_dependencies() -> List<CargoPathDependency> {
       consumer_package: FixedPackageName { name: "v1_compiled" },
       dependency_package: stage0_host_shell_package_name(),
       origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.self_host_curated_seed_linked_harness", decl_name: "cssl_v1_compiled_cargo_deps_block") },
-      linkage: SeedLinkedIntoEmittedCode,
-    },
-    CargoPathDependency {
-      consumer_package: FixedPackageName { name: "v1_compiled" },
-      dependency_package: stage0_host_shell_package_name(),
-      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.self_host_logic_behavioral_transport", decl_name: "slb_cargo_toml") },
       linkage: SeedLinkedIntoEmittedCode,
     },
     CargoPathDependency {

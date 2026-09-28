@@ -6,7 +6,7 @@ import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
   dissolution_status, unbound_dissolution, retires_dissolution,
 }
-import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision }
+import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
@@ -15,7 +15,6 @@ import gunbc.spark.bootstrap_provision {
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
-import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRuling, mtcollins1_boot_standing_ruling }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -57,6 +56,9 @@ import gunbc.auth.authorization_pattern_selection {
 //     resolve_access_token: the federated arm in a dispatched run, the operator's file in a session.
 //     Classified as the federated pattern, because that is the arm that executes unattended and the
 //     file arm is the operator's own workstation realization of the same entry.
+//   RealizedUnauthorized -- the site performs the effect under no credential that names it: the
+//     write reaches its store on the executor's host access alone. It matches no pattern, so a row
+//     realizing it is red unless it states why and what retires the reason.
 type OperatorSessionArm
   = GcloudInteractive
   | OperatorTokenFile
@@ -67,6 +69,7 @@ type RealizedAuthorization
   | RealizedApprovalCapability
   | RealizedHumanStep
   | RealizedOperatorSession { arm: OperatorSessionArm }
+  | RealizedUnauthorized
 
 // A REASON IS A STATEMENT PLUS THE CONDITION UNDER WHICH IT STOPS BEING ONE. A bare string moved a
 // site out of the debt roster for as long as anyone left it there (review 68720): no bound, no
@@ -110,6 +113,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedApprovalCapability => false
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedUnauthorized => false
       }
     OperatorApprovedCapability =>
       match realized {
@@ -118,6 +122,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedRunSelected => false
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedUnauthorized => false
       }
     HumanOnlyStep { step: _ } =>
       match realized {
@@ -126,6 +131,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedRunSelected => false
         RealizedApprovalCapability => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedUnauthorized => false
       }
     OperatorOwnSession =>
       match realized {
@@ -134,6 +140,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedRunSelected => false
         RealizedApprovalCapability => false
         RealizedHumanStep => false
+        RealizedUnauthorized => false
       }
     PastedOperatorToken => false
   }
@@ -222,39 +229,39 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 // no reapply restores that. An earlier revision of this row declared ReversibleByReapply, and its own
 // mutation claim showed that label was what selected federation -- a relabel standing where a
 // decision belonged (side-chat review 5286225278).
-// THE DECISION IS THE OPERATOR'S, AND IT IS ATTESTED BY THE OPERATOR, NOT BY THIS ROW (review 70369):
-// the ruling's words are filed once through the approval loop and every boot reads the stored
-// approval of those exact words before the unit hold (gunbc.machine_intake_mtcollins1_standing_ruling),
-// refusing if it is absent, denied or for other words. It is conditional on the unit's durable
-// maintenance hold being released before any BMC write. It discharges the per-instance witness for irreversibility and nothing else; the
-// interlock it names is rostered in privileged_effect_interlocks below, and a ruling whose interlock
-// is not rostered against its site is red (rulings_without_a_rostered_interlock).
+// THE DECISION IS THE OPERATOR'S, AND IT IS STATED HERE WITH NO RUN-TIME APPROVAL (operator rulings
+// 2026-09-23 and 2026-09-25). #12101 had every run read a stored approval of the ruling's words before
+// the unit hold; the operator declined to file one and asked for the check to be removed, so the
+// ruling is this one value: its words, the effect, the roots it covers and the interlock it is
+// conditional on. It discharges the per-instance witness for irreversibility and nothing else; the
+// interlock is rostered in privileged_effect_interlocks below, and a ruling whose interlock is not
+// rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
-// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation.
-// DERIVED FROM THE ONE RULING VALUE (side-chat review 5288466573): the census does not re-author the
-// words, the effect or the interlock -- it reads them off gunbc.machine_intake_mtcollins1_standing_ruling
-// mtcollins1_boot_standing_ruling, the same value the runtime digests and files.
-fn standing_authorization_of(r: StandingRuling) -> StandingDestructiveAuthorization {
-  StandingDestructiveAuthorization {
-    ruling_text: r.text,
-    effect_subject: r.effect_subject,
-    interlock: r.interlock,
-    confirmation_read: site(module_path: "gunbc.machine_intake_mtcollins1_standing_ruling", decl_name: "mtcollins1_boot_standing_ruling_read"),
-  }
+// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation for the boot;
+// the fleet-converge run's principal for host reset-return.
+data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
+  effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
+  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
 }
+
+data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+  decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+]
 
 // ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
 // recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
 fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity: WorkloadIdentityStanding) -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: join([mtcollins1_boot_standing_ruling.effect_subject as String, " -- by ", root_subject as String], "") as NonEmptyStr,
+    subject: join([mtcollins1_operator_ruling.effect_subject as String, " -- by ", root_subject as String], "") as NonEmptyStr,
     frequency: EveryProvision,
     reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
     surface: ApiSurface,
     workload_identity: identity,
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
-    witness_discharge: StandingRulingUnderInterlock { ruling: standing_authorization_of(r: mtcollins1_boot_standing_ruling) },
+    witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_operator_ruling },
   }
 }
 
@@ -331,16 +338,16 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: mtcollins1_boot_standing_ruling.interlock,
+    hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: mtcollins1_boot_standing_ruling.interlock,
+    hold: mtcollins1_operator_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
-    premise: "host reset-return reads the same standing ruling and takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
+    premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
 ]
@@ -360,22 +367,22 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
     })
 }
 
-// RUNTIME AND CENSUS CANNOT DISAGREE ON THE ROOT POPULATION: the census sites that carry this ruling's
+// THE RULING AND THE CENSUS CANNOT DISAGREE ON THE ROOT POPULATION: the census sites that carry this ruling's
 // discharge, and the ruling's own roots, are the same set (identity join, both directions).
 fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
   match v.effect.witness_discharge {
     NoWitnessDischarge => false
-    StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_boot_standing_ruling.text as String)
+    StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_operator_ruling.ruling_text as String)
   }
 }
 
 fn ruling_roots_missing_from_census() -> List<DeclarationRef> {
   let sites = map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site)
-  filter(mtcollins1_boot_standing_ruling.roots, r => !declaration_ref_in_list(target: r, refs: sites))
+  filter(mtcollins1_operator_ruling_roots, r => !declaration_ref_in_list(target: r, refs: sites))
 }
 
 fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
-  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_boot_standing_ruling.roots))
+  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_operator_ruling_roots))
 }
 
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
@@ -394,6 +401,18 @@ data interim_cloudflare_adapter_unlanded: DivergenceReason = DivergenceReason {
   dissolution: unbound_dissolution(description: "an approval-loop authority adapter that performs cloudflare.AccountTokens.Create for a one-off mint under a redeemed capability, so gunbc.cloudflare.r2_token_mint_run resolves no operator credential in any run; owner: this lane (nimble-otter-774), PR 2b after gunbc#11721 merges" as NonEmptyStr),
 }
 
+// THE GCP IAM CONVERGE'S RUNG, STATED WHERE THE CENSUS CAN SEE IT (operator decision B, 2026-09-25).
+// The selection asks for an operator-approved capability; what is realized is a federated grant to
+// iam-converge for one pinned job, with the approval enforced by that job's reviewed code refusing
+// before it impersonates. That is a divergence, and this is its reason: approval-necessity lives in
+// reviewed main code, not in the credential layer. The declared upgrade is the capability named in
+// the dissolution; a keyed minter on srv1 was the other route and was withdrawn because the
+// credential may not hard-depend on srv1.
+data gcp_iam_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceReason {
+  statement: "the GCP IAM converge federates to iam-converge through a pool pinned to fleet-converge.yml at main, a dispatch on main and the gcp-iam-converge environment, and refuses before impersonating unless a recorded approval matches the re-derived diff; approval-necessity is therefore enforced by reviewed main code, not by the credential layer -- a change merged to main that skipped the gate would federate without a tap. One pool serves both iam-observe (plan, readback) and iam-converge (apply): a second pool pinned to the same claims would add no separation, because under this pattern the credential boundary is the pinned workflow and environment either way" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "a keyless GCP-hosted minter that verifies a device-signed approval against the enrolled key before issuing an iam-converge token, so that no federated workload identity holds a path to iam-converge without the operator's signature" as NonEmptyStr),
+}
+
 // STRUCTURAL, AND BOUND TO THE THING THAT MAKES IT STRUCTURAL: the reason retires only if the
 // approval loop stops having a provisioned submission MAC key to bootstrap.
 data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
@@ -406,6 +425,23 @@ data approval_bootstrap_circularity: DivergenceReason = DivergenceReason {
 data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
   statement: "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr,
   dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "ensure_access_token_eager_bootstrap_fork_dissolve_on")),
+}
+
+// THE FABRIC STORE'S PROTECTED HEADS ARE WRITTEN UNDER HOST ACCESS ALONE (operator ruling A,
+// 2026-09-27, relayed by proud-deer-538). The pair-serving authority partitions, the host-placement
+// partition and the D0 consent slots are advanced by whoever reaches the fabric DB -- the placed
+// host in process, every other host through the served door -- and the store verifies no grant for
+// the operation. The rows below carry what each writer's selection asks for, so the door that
+// verifies it has a derived answer per writer rather than one grant vocabulary for all of them.
+// D0's door does gate on an approval before it writes, but the effect a row counts is the STORE
+// write, and the store does not see that approval: any writer reaching the DB performs the same
+// advance without it, so D0's row realizes RealizedUnauthorized like the rest (review 71933).
+// THE DISSOLUTION IS UNBOUND ON PURPOSE. d0_store_operation_wall is not retired when the capability
+// lands -- it is flipped to StoreOperationWallRestored -- so retires_dissolution over it would fire
+// on the row's deletion, an artifact, while the capability stayed dead (§4b(3)).
+data fabric_store_write_unverified: DivergenceReason = DivergenceReason {
+  statement: "the fabric DB admits an advance of a pair-serving authority partition, the host-placement partition or a D0 consent slot on the writer's host access alone: the placed host writes in process (FabricStorageLocalFiles) and the served door carries no grant, so the pattern selected for this writer is not the one the store enforces" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- the capability gunbc.spark.pair_serving_d0 d0_store_operation_wall names" as NonEmptyStr),
 }
 
 // THE DECLARATIONS THE BOUND TRIGGERS NAME, PRESENT BY CITATION. Each decl_ref here is checked by
@@ -775,6 +811,126 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedHumanStep,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.gcp_iam_converge_run", decl_name: "gcp_iam_converge_apply_wet"),
+    effect: PrivilegedEffect {
+      subject: "converge the declared GCP IAM estate: create absent pools, providers and service accounts, and add the declared impersonation and accessor cells, under one operator approval of the exact diff" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: Present { value: gcp_iam_approval_enforced_in_reviewed_code },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "pair_serving_d0_ci_wet"),
+    effect: PrivilegedEffect {
+      subject: "D0: suspend a group's pair-serving authority for a keyed successor -- claim the consent slot, move the authority partition twice and finalize the host-placement preparation on the fabric DB" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: IrreversibleEffect { what_is_lost: "the incumbent pair's serving authority: a suspended authority is not restored by re-applying, only by a further authority transition" as NonEmptyStr },
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.host_commitment", decl_name: "claim_host_effect_live"),
+    effect: PrivilegedEffect {
+      subject: "admit a bounded host effect on the host-placement partition of the fabric DB for a v41 lane" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.host_commitment", decl_name: "settle_host_effect_live_over"),
+    effect: PrivilegedEffect {
+      subject: "release a bounded host effect on the host-placement partition of the fabric DB when its lane settles" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.host_commitment", decl_name: "host_effect_recover_wet"),
+    effect: PrivilegedEffect {
+      subject: "release a host effect whose lane died, on the host-placement partition of the fabric DB, under an operator-stated receipt" as NonEmptyStr,
+      frequency: BreakGlassOnly,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "an operator-run gunbc run entry; no dispatched run carries it, so no workload identity is bound to it" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.pair_serving_authority_log", decl_name: "pair_serving_authority_establish_wet"),
+    effect: PrivilegedEffect {
+      subject: "establish a group's pair-serving authority on its fabric DB partition from the source row, once per group" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: IrreversibleEffect { what_is_lost: "the group's establishment: an established authority is never re-established, only transitioned" as NonEmptyStr },
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "an operator-run gunbc run entry; no dispatched run carries it, so no workload identity is bound to it" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.pair_serving_authority_log", decl_name: "host_placement_finalize_wet"),
+    effect: PrivilegedEffect {
+      subject: "finalize a host-placement preparation whose saga died after its authority event landed" as NonEmptyStr,
+      frequency: BreakGlassOnly,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "an operator-run gunbc run entry; no dispatched run carries it, so no workload identity is bound to it" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.pair_serving_authority_log", decl_name: "host_placement_abort_wet"),
+    effect: PrivilegedEffect {
+      subject: "abort a host-placement preparation whose saga died before its authority event landed" as NonEmptyStr,
+      frequency: BreakGlassOnly,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "an operator-run gunbc run entry; no dispatched run carries it, so no workload identity is bound to it" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
   },
 ]
 
