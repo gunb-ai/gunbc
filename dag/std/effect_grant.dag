@@ -244,18 +244,18 @@ fn namespace_tree_label(tree: NamespaceTree) -> String {
 // value set through the forward label function, so a label is spelled once, where it is written, and
 // a reader cannot drift from the writer. A service tree naming no service is refused rather than read
 // as some default service; its prefix is the one the writer uses.
-data verbs: List<Verb> = [Read, Write, Execute]
+data effect_verb_values: List<Verb> = [Read, Write, Execute]
 
 fn verb_of_label(label: String) -> Verb? {
-  (filter(verbs, v => effect_verb_label(verb: v) == label)).first()
+  (filter(effect_verb_values, v => effect_verb_label(verb: v) == label)).first()
 }
 
 data service_tree_label_prefix: String = "service:"
 
-data unparameterized_trees: List<NamespaceTree> = [FilesystemPathTree, UriTree, ProcTree, CodeNameTree]
+data namespace_trees_without_parameters: List<NamespaceTree> = [FilesystemPathTree, UriTree, ProcTree, CodeNameTree]
 
 fn namespace_tree_of_label(label: String) -> NamespaceTree? {
-  match (filter(unparameterized_trees, t => namespace_tree_label(tree: t) == label)).first() {
+  match (filter(namespace_trees_without_parameters, t => namespace_tree_label(tree: t) == label)).first() {
     Present { value: t } => Present { value: t }
     Absent =>
       if starts_with(s: label, prefix: service_tree_label_prefix) && length(label) > length(service_tree_label_prefix) {
