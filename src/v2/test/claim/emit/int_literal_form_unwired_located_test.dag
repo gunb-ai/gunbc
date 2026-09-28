@@ -7,7 +7,7 @@ import v2.compiler.emit_produced { emit_produced_decl_inner_arrow, produced_decl
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest_located }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.dag { dag_language_model, dag_pick_target_model, dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_target_model }

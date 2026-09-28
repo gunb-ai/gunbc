@@ -2,9 +2,8 @@ module test.claim.fleet_health_read_only_witness
 
 import std.types { Bool, List, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.node { Node }
+import v2.std.node { Node, symbol_lexeme }
 import v2.std.fn_index { FnArrowDecl, atom_identities_in_node, call_reachable_decls, fn_arrow_decl_facts_live }
-import v2.std.compilers.lexing { symbol_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

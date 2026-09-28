@@ -1,10 +1,8 @@
 module v2.test.manual.sg2_typescript_type_expression_projection
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate {
-  translate_type_expression_project,
-  target_serialize_source_from_model
-}
+import v2.compiler.translate { translate_type_expression_project }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.typescript {
   ts_sg2_arrow_labeled_xy_emitted,
   ts_sg2_arrow_malformed_source_type_node,
