@@ -18,7 +18,7 @@ import std.kernel_type_denotation {
 }
 import extdeps.languages.rust.primitives {
   RustFloatBinding, RustFloatBindingHolds, RustFloatBindingDisagrees, RustFloatBindingUndenoted,
-  RustFloatBindingNoPrimitive, rust_f64_binding, rust_float_binding_verdict
+  RustFloatBindingNoPrimitive, RustFloatBindingNotAKernelName, rust_f64_binding, rust_float_binding_verdict
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -90,7 +90,7 @@ test fn w_rust_f64_holds_against_what_float_denotes() -> Bool {
 test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool {
   let planted = [kernel_type_denotation_row(kernel_name: "Float", meaning: BinaryInterchangeFormatMeaning { format: binary32 })]
   match rust_float_binding_verdict(b: rust_f64_binding, denotations: planted) {
-    RustFloatBindingDisagrees { kernel_name: k, target_name: t } => k == "Float" && t == "f64"
+    RustFloatBindingDisagrees { kernel_name: k, target_name: t } => k.name == "Float" && t == "f64"
     _ => false
   }
 }
@@ -121,14 +121,14 @@ test fn w_table_with_a_non_kernel_key_is_not_admitted() -> Bool {
 
 test fn w_undenoted_kernel_name_refuses_the_binding() -> Bool {
   match rust_float_binding_verdict(b: rust_f64_binding, denotations: []) {
-    RustFloatBindingUndenoted { kernel_name: k } => k == "Float"
+    RustFloatBindingUndenoted { kernel_name: k } => k.name == "Float"
     _ => false
   }
 }
 
 test fn w_binding_to_an_absent_primitive_refuses() -> Bool {
   let planted = RustFloatBinding {
-    kernel_name: "Float", target_name: "f80", authority: rust_f64_binding.authority,
+    kernel_name: kernel_type_name(name: "Float"), target_name: "f80", authority: rust_f64_binding.authority,
     radix: 2, mantissa_digits: 53, max_exp: 1024, min_exp: -1021
   }
   match rust_float_binding_verdict(b: planted, denotations: kernel_type_denotation_rows) {
@@ -195,4 +195,15 @@ test fn w_infinities_bound_every_finite_value() -> Bool {
   is_ordered_as(a: max_finite(), b: plus_infinity(), expected: Less)
     && is_ordered_as(a: minus_infinity(), b: minus_one(), expected: Less)
     && is_ordered_as(a: smallest_subnormal(), b: plus_zero(), expected: Greater)
+}
+
+test fn w_binding_keyed_on_a_non_kernel_name_refuses() -> Bool {
+  let planted = RustFloatBinding {
+    kernel_name: kernel_type_name(name: "Float64"), target_name: "f64", authority: rust_f64_binding.authority,
+    radix: 2, mantissa_digits: 53, max_exp: 1024, min_exp: -1021
+  }
+  match rust_float_binding_verdict(b: planted, denotations: kernel_type_denotation_rows) {
+    RustFloatBindingNotAKernelName { name: n } => n == "Float64"
+    _ => false
+  }
 }

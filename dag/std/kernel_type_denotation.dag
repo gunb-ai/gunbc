@@ -51,15 +51,15 @@ fn kernel_type_denotation_rows_admitted(rows: List<KernelTypeDenotationAdmission
 
 type KernelTypeDenotationLookup
   = KernelTypeDenoted { meaning: KernelTypeMeaning }
-  | KernelTypeUndenoted { name: String }
+  | KernelTypeUndenoted { kernel_name: KernelTypeName }
 
 // The rows are a parameter so a claim can supply a planted table at this one interface; the
-// production reading is kernel_type_denotation_for(name, rows: kernel_type_denotation_rows).
-fn kernel_type_denotation_for(name: String, rows: List<KernelTypeDenotationAdmission>) -> KernelTypeDenotationLookup {
-  rows |> fold(init: KernelTypeUndenoted { name: name }, f: (acc, r) => match acc {
+// production reading is kernel_type_denotation_for(kernel_name, rows: kernel_type_denotation_rows).
+fn kernel_type_denotation_for(kernel_name: KernelTypeName, rows: List<KernelTypeDenotationAdmission>) -> KernelTypeDenotationLookup {
+  rows |> fold(init: KernelTypeUndenoted { kernel_name: kernel_name }, f: (acc, r) => match acc {
     KernelTypeDenoted { meaning: _ } => acc
-    KernelTypeUndenoted { name: _ } => match r {
-      KernelTypeDenotationAdmitted { denotation: d } => if d.kernel_name.name == name { KernelTypeDenoted { meaning: d.meaning } } else { acc }
+    KernelTypeUndenoted { kernel_name: _ } => match r {
+      KernelTypeDenotationAdmitted { denotation: d } => if d.kernel_name.name == kernel_name.name { KernelTypeDenoted { meaning: d.meaning } } else { acc }
       KernelTypeDenotationRefused { refusal: _ } => acc
     }
   })
