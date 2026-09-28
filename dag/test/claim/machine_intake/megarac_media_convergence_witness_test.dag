@@ -69,6 +69,7 @@ import gunbc.machine_intake_megarac_media_attach {
   RouteReplaced,
   ImagesListingOffers,
   ImagesListingUnparseable,
+  ImagesListingOffersAmbiguously,
   images_listing_reading,
   ConvergeStepAttachFromListing,
   attach_readiness,
@@ -83,6 +84,7 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacMediaStateUnestablished,
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacListingUnparseableAfterDetach,
+  MegaRacImageOfferedAmbiguously,
   MegaRacConfigurationsUnreadable,
   ReadinessClockIncoherent,
   ReadinessMalformed,
@@ -712,8 +714,17 @@ test fn desired_beside_a_foreign_image_refuses_as_foreign_in_both_orders() -> Bo
 
 test fn a_listing_naming_the_image_twice_is_ambiguous_not_first_match() -> Bool {
   let listing = join(["[{\"image_name\":\"", desired_census as String, "\",\"image_index\":2},{\"image_name\":\"", desired_census as String, "\",\"image_index\":5}]"], "")
-  (match images_listing_reading(body: listing, image_name: desired_census) { ImagesListingUnparseable { detail: d } => string_contains(s: d, pattern: "ambiguous") _ => false })
+  (match images_listing_reading(body: listing, image_name: desired_census) { ImagesListingOffersAmbiguously { image_indices: ids } => ids == ["2", "5"] _ => false })
     && (match images_listing_reading(body: join(["[{\"image_name\":\"", desired_census as String, "\",\"image_index\":5}]"], ""), image_name: desired_census) { ImagesListingOffers { image_index: i } => i == "5" _ => false })
+}
+
+// A VALID LISTING THAT NAMES THE IMAGE TWICE IS NOT AN UNREADABLE DOCUMENT (gunbc#12533 finding 5).
+// Its cause names both offered identities and never says "not valid JSON"; the red is the old label.
+// A duplicated row whose image_index is not numeric stays an unread member, as on the unique arm.
+test fn a_duplicate_listing_reports_both_identities_not_invalid_json() -> Bool {
+  let reason = media_attach_outcome_reason(outcome: MegaRacImageOfferedAmbiguously { image_name: desired_census, image_indices: ["2", "5"] })
+  (match reason { Present { value: r } => string_contains(s: r, pattern: "(image_index 2, 5)") && string_contains(s: r, pattern: desired_census as String) && string_contains(s: r, pattern: "JSON") == false  Absent => false })
+    && (match images_listing_reading(body: join(["[{\"image_name\":\"", desired_census as String, "\",\"image_index\":2},{\"image_name\":\"", desired_census as String, "\"}]"], ""), image_name: desired_census) { ImagesListingUnparseable { detail: _ } => true _ => false })
 }
 
 // ─── THE CODE'S DISPOSITION ON EVERY ROUTE ───────────────────────────────────────────────────────

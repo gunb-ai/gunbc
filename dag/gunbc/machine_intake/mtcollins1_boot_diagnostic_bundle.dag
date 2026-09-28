@@ -105,6 +105,7 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacImageListingEmpty,
   MegaRacImageListingUnparseable,
   MegaRacImageNotEnumerated,
+  MegaRacImageOfferedAmbiguously,
   MegaRacForeignImagePresented,
   MegaRacSeveralImagesPresented,
   MegaRacStaleDetachNotAdmitted,
@@ -112,6 +113,7 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacRedirectionUncatalogued,
   MegaRacRefreshClockUnreadable,
   MegaRacListingUnparseableAfterDetach,
+  MegaRacOfferedAmbiguouslyAfterDetach,
   MegaRacMediaStateUnestablished,
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacReadinessClockIncoherent,
@@ -531,6 +533,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
     MegaRacImageListingEmpty =>
       Present { value: "the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file" }
     MegaRacImageListingUnparseable { detail: d } => Present { value: concat("the images listing was not valid JSON: ", d) }
+    MegaRacImageOfferedAmbiguously { image_name: n, image_indices: ids } =>
+      Present { value: join(["the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing was written"], "") }
     MegaRacImageNotEnumerated { image_name: n } =>
       Present { value: concat("the image is not presented, and the controller offers other images but not '", concat(n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file")) }
     MegaRacForeignImagePresented { image_name: n, configurations: c } =>
@@ -545,6 +549,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
+    MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
+      Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
     MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
       Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). Its meaning is unresolved, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
