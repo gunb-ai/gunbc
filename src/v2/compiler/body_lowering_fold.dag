@@ -2513,17 +2513,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                             outcome_accepted(value: optional_present(value: lowered))
                                           Accepted { value: Absent, diagnostics: _ } =>
                                                     let stripped = body_lower_unwrap_surface_shell(node: node)
-                                                    match body_lower_try_fold_loop(node: stripped) {
-                                                              Rejected { diagnostics: r } =>
-                                                                Rejected { diagnostics: r }
-                                                              Accepted { value: stripped_fold, diagnostics: sfd } =>
-                                                                match stripped_fold {
-                                                                  Present { value: lowered } =>
-                                                                    outcome_with_diagnostics(
-                                                                      value: optional_present(value: lowered),
-                                                                      diagnostics: sfd
-                                                                    )
-                                                                  Absent =>
                                                             match body_lower_try_primary_ident_call(node: stripped) {
                                                               Rejected { diagnostics: r } =>
                                                                 Rejected { diagnostics: r }
@@ -2546,8 +2535,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                                     }
                                                                 }
                                                             }
-                                                            }
-                                                        }
                                         }
                             }
                         }
