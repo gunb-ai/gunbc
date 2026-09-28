@@ -113,6 +113,12 @@ fn fabric_storage_placement() -> FabricStoragePlacement {
 // WHAT THIS DOES NOT WALL: root, and the service principal itself -- any process running as the
 // operator account can write the files without passing the door. Those are outside the door's
 // model and stated here so they are chosen, not inherited.
+//
+// THE ENTRIES ARE NOT REPAIRED BY THE ENSURE ANY MORE: the service is the only writer, and it
+// publishes every entry at the declared mode itself (fabric_storage_placed_file_root). Entries the
+// CI principal wrote in process before the door cutover are ghrunner's and were repaired to
+// other-read by the ensure this replaces; the service reads them through that bit, and a read
+// that fails refuses loudly at the store rather than being papered over here.
 fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool) -> ManagedDirectory {
   let service = srv1_dashboard_service_principal()
   ManagedDirectory {
@@ -124,11 +130,6 @@ fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool
       DirectoryDependent { who: service, needs: if writes { [Read, Write, Execute] } else { [Execute] } },
     ],
     ownership: Ensured,
-    // THE ENTRIES ARE NOT REPAIRED BY THE ENSURE ANY MORE: the service is the only writer, and it
-    // publishes every entry at the declared mode itself (fabric_storage_placed_file_root). Entries the
-    // CI principal wrote in process before the door cutover are ghrunner's and were repaired to
-    // other-read by the ensure this replaces; the service reads them through that bit, and a read
-    // that fails refuses loudly at the store rather than being papered over here.
     entries: EntriesUnmanaged,
   }
 }
