@@ -41,7 +41,11 @@ import v2.compiler.reference_conservation_admission {
   conservation_read_of
 }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import gunbc.namespace_step0_subject_collector { Step0SubjectCollected, Step0SubjectCollectionRefused, collect_step0_subject_vector_at }
 import v2.std.integer { integer_int_to_decimal_string }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -287,20 +291,25 @@ fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> P
 }
 
 
-// THE PINNED STRATIFIED SAMPLE (XL-2; first pinned at main fec339d561, REPINNED at main 8fcd8e77b8).
-// The whole-corpus census is about 55 CPU-hours on the interpreter, so the drop shapes are first
-// read off this sample. The selection is a rule, not a hand pick: every `.dag` file under dag/ and
-// src/v2/ is put in a stratum (its first two path segments under dag/, its first three under
-// src/v2/); each stratum takes k = max(6, round(300 * the stratum's share of ALL `.dag` files))
-// files -- at most as many as it has -- from its files of at most 8,000 bytes sorted by path, at
-// indices floor(i * n / k) for i in 0..k-1 over those n files. Applying this rule at fec339d561
-// reproduces the original 315-path list exactly, which is what fixed the one ambiguity in the
-// earlier wording (the share is over all files, not over the small ones). The 8,000-byte cap bounds
-// the run and biases the sample toward small files; a shape that only appears in large files is
-// not in it, and the full census is what closes that gap. The list is kept here so the sample
-// re-runs byte-for-byte. A listed path the tree no longer holds is reported SamplePathMissing (its
-// absence established by a listing, not inferred from a failed read), so a stale pin is visible in
-// the census rather than a smaller population; repinning re-applies the rule at a named revision.
+// THE PINNED STRATIFIED SAMPLE (XL-2; first pinned at main fec339d561, repinned at the revision
+// reference_conservation_stratified_sample_revision names). The whole-corpus census is about 55
+// CPU-hours on the interpreter, so the drop shapes are first read off this sample. The selection is
+// a rule, not a hand pick, and the rule has one authority: sample_paths_by_rule below. The list is
+// the rule's output at that revision, kept literally so the census re-runs byte-for-byte without
+// reading the object store. reference_conservation_sample_by_rule_at_pin_exit re-derives it at the
+// pinned revision and refuses if the two differ -- but ONLY WHEN THAT INSTRUMENT IS RUN (`gunbc run
+// --function reference_conservation_sample_by_rule_at_pin_exit`): it reads every `.dag` blob at the
+// revision out of the object store, which no hermetic floor claim can do, so no gate executes it.
+// The floor claims in v2.test.claim.namespace_xl0.reference_conservation_census pin the rule's
+// arithmetic on supplied inputs; the list-to-revision pairing is established by the instrument's run
+// recorded with the change that repins, and a repin must run it again. The rule is applied to the PINNED revision, never to the checked-out tree: the sample is
+// a snapshot, and comparing it to a tree that has since grown would only detect change. The
+// 8,000-byte cap bounds the run and biases the sample toward small files; a shape that only appears
+// in large files is not in it, and the full census is what closes that gap. A listed path the tree
+// no longer holds is reported SamplePathMissing (its absence established by a listing, not inferred
+// from a failed read), so a stale pin is visible in the census rather than a smaller population.
+data reference_conservation_stratified_sample_revision: String = "8fcd8e77b898f8188a281be07119fc5e97d09bef"
+
 data reference_conservation_stratified_sample_paths: List<String> = [
   "dag/examples/blackjack/cards.dag",
   "dag/examples/blackjack/hand.dag",
@@ -626,4 +635,182 @@ fn reference_conservation_stratified_sample_census() -> String {
     empty: "",
     cons: fn(acc, path) { acc + reference_conservation_census_for_path(path: path) }
   )
+}
+
+// ---- the sampling rule, the one authority for the pinned list ------------------------------------
+
+// One `.dag` file the rule may select: its path, and whether it is at most the 8,000-byte cap.
+type SampleFile {
+  path: String
+  within_cap: Bool
+}
+
+data sample_rule_byte_cap: Int = 8000
+data sample_rule_target: Int = 300
+data sample_rule_stratum_floor: Int = 6
+
+// UTF-8 never takes fewer bytes than code points, so text of more code points than the cap is over
+// it without being encoded; only text at or under the cap in code points has its bytes counted.
+fn sample_file_within_cap(content: String) -> Bool {
+  if string_length(s: content) > sample_rule_byte_cap {
+    false
+  } else {
+    length(xs: bytes_octets(b: utf8_encode_bytes(s: content))) <= sample_rule_byte_cap
+  }
+}
+
+// A file's stratum: its first two path segments under dag/, its first three under src/v2/.
+fn sample_stratum(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  let depth = if starts_with(s: path, prefix: "dag/") { 2 } else { 3 }
+  fold_list(xs: segments, empty: SampleStratumAcc { taken: 0, text: "" }, cons: fn(acc, seg) {
+    if acc.taken >= depth {
+      acc
+    } else {
+      if acc.taken == 0 {
+        SampleStratumAcc { taken: 1, text: seg }
+      } else {
+        SampleStratumAcc { taken: acc.taken + 1, text: acc.text + "/" + seg }
+      }
+    }
+  }).text
+}
+
+type SampleStratumAcc {
+  taken: Int
+  text: String
+}
+
+// round(q / d) with ties to even, in integers (d > 0, q >= 0).
+fn sample_round_half_even(q: Int, d: Int) -> Int {
+  let f = q / d
+  let twice_rem = 2 * (q - f * d)
+  if twice_rem > d {
+    f + 1
+  } else {
+    if twice_rem == d {
+      if f % 2 == 1 { f + 1 } else { f }
+    } else {
+      f
+    }
+  }
+}
+
+// A stratum's quota: max(6, round(300 * share)), at most the files it can take from.
+fn sample_stratum_quota(stratum_count: Int, total: Int, small_count: Int) -> Int {
+  let rounded = sample_round_half_even(q: sample_rule_target * stratum_count, d: total)
+  let wanted = if rounded < sample_rule_stratum_floor { sample_rule_stratum_floor } else { rounded }
+  if wanted > small_count { small_count } else { wanted }
+}
+
+type SampleTakeAcc {
+  index: Int
+  next: Int
+  taken: FreeMonoid<String>
+}
+
+// The small files at indices floor(i * n / k), i in 0..k-1, in one ordered walk: the targets are
+// strictly increasing, so each element is compared with the next target only.
+fn sample_stratum_take(small: FreeMonoid<String>, quota: Int) -> FreeMonoid<String> {
+  let n = length(xs: small)
+  fold_list(xs: small, empty: SampleTakeAcc { index: 0, next: 0, taken: Empty }, cons: fn(acc, path) {
+    if acc.next < quota && acc.index == (acc.next * n) / quota {
+      SampleTakeAcc { index: acc.index + 1, next: acc.next + 1, taken: list_snoc_item(xs: acc.taken, item: path) }
+    } else {
+      SampleTakeAcc { index: acc.index + 1, next: acc.next, taken: acc.taken }
+    }
+  }).taken
+}
+
+type SampleRuleAcc {
+  stratum: String
+  count: Int
+  small: FreeMonoid<String>
+  selected: FreeMonoid<String>
+}
+
+fn sample_rule_flush(acc: SampleRuleAcc, total: Int) -> FreeMonoid<String> {
+  if acc.count == 0 {
+    acc.selected
+  } else {
+    fold_list(
+      xs: sample_stratum_take(small: acc.small, quota: sample_stratum_quota(stratum_count: acc.count, total: total, small_count: length(xs: acc.small))),
+      empty: acc.selected,
+      cons: fn(out, path) { list_snoc_item(xs: out, item: path) }
+    )
+  }
+}
+
+// The `.dag` suffix is read with the builtin substring: the bare name ends_with also names a corpus
+// function (gunbc.rust_item_scan), so the floor's import hygiene refuses it unimported here.
+fn sample_file_in_rule_roots(path: String) -> Bool {
+  let n = string_length(s: path)
+  n > 4 && substring(s: path, start: n - 4, end: n) == ".dag" && (starts_with(s: path, prefix: "dag/") || starts_with(s: path, prefix: "src/v2/"))
+}
+
+// THE RULE. Sorting by path makes every stratum one contiguous run -- a stratum's paths share a
+// prefix ending at a segment boundary, so no other path sorts between two of them -- and one pass
+// then groups them. The output is in path order.
+fn sample_paths_by_rule(files: FreeMonoid<SampleFile>) -> FreeMonoid<String> {
+  let in_roots = sort_by(filter(files, f => sample_file_in_rule_roots(path: f.path)), f => f.path)
+  let total = length(xs: in_roots)
+  let last = fold_list(xs: in_roots, empty: SampleRuleAcc { stratum: "", count: 0, small: Empty, selected: Empty }, cons: fn(acc, f) {
+    let st = sample_stratum(path: f.path)
+    let current = if acc.count > 0 && st == acc.stratum {
+      acc
+    } else {
+      SampleRuleAcc { stratum: st, count: 0, small: Empty, selected: sample_rule_flush(acc: acc, total: total) }
+    }
+    SampleRuleAcc {
+      stratum: current.stratum,
+      count: current.count + 1,
+      small: if f.within_cap { list_snoc_item(xs: current.small, item: f.path) } else { current.small },
+      selected: current.selected
+    }
+  })
+  sample_rule_flush(acc: last, total: total)
+}
+
+// THE PAIRING CHECK, run as an instrument (`gunbc run --function
+// reference_conservation_sample_by_rule_at_pin_exit`): read the tree at the pinned revision out of
+// the object store, apply the rule, and refuse unless the result is the pinned list exactly.
+fn reference_conservation_sample_by_rule_at(ref: String) -> SampleRuleAtRevision {
+  match collect_step0_subject_vector_at(ref: ref) {
+    Step0SubjectCollectionRefused { cause: _ } => SampleRuleRevisionUnreadable { ref: ref }
+    Step0SubjectCollected { vector: vector } =>
+      SampleRuleApplied {
+        selected: sample_paths_by_rule(files: fold(vector.members, init: Empty, f: fn(acc, m) {
+          list_snoc_item(xs: acc, item: SampleFile { path: m.path as String, within_cap: sample_file_within_cap(content: m.content) })
+        }))
+      }
+  }
+}
+
+type SampleRuleAtRevision
+  = SampleRuleApplied { selected: FreeMonoid<String> }
+  | SampleRuleRevisionUnreadable { ref: String }
+
+fn sample_paths_not_in(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> FreeMonoid<String> {
+  let present = fold_list(xs: ys, empty: empty_map(), cons: fn(m, y) { map_insert(m: m, key: y, value: true) })
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, x) {
+    match map_lookup(m: present, key: x) {
+      Present { value: _ } => acc
+      Absent => list_snoc_item(xs: acc, item: x)
+    }
+  })
+}
+
+fn reference_conservation_sample_by_rule_at_pin_exit() -> ProcessExit {
+  match reference_conservation_sample_by_rule_at(ref: reference_conservation_stratified_sample_revision) {
+    SampleRuleRevisionUnreadable { ref: r } => exit_failure(reason: "the pinned revision " + r + " could not be read from the object store")
+    SampleRuleApplied { selected: derived } =>
+      let pinned = sort_by(reference_conservation_stratified_sample_paths, p => p)
+      let missing = sample_paths_not_in(xs: derived, ys: pinned)
+      let extra = sample_paths_not_in(xs: pinned, ys: derived)
+      if length(xs: missing) == 0 && length(xs: extra) == 0 && length(xs: derived) == length(xs: pinned) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: "the rule at " + reference_conservation_stratified_sample_revision + " selects " + integer_int_to_decimal_string(value: length(xs: derived)) + " paths; the pin lists " + integer_int_to_decimal_string(value: length(xs: pinned)) + "; rule-only " + integer_int_to_decimal_string(value: length(xs: missing)) + fold_list(xs: missing, empty: "", cons: fn(a, p) { a + " " + p }) + "; pin-only " + integer_int_to_decimal_string(value: length(xs: extra)) + fold_list(xs: extra, empty: "", cons: fn(a, p) { a + " " + p }))
+      }
+  }
 }

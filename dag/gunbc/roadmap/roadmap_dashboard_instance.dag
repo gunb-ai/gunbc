@@ -3,7 +3,7 @@ module gunbc.roadmap_dashboard_instance
 import extdeps.tools.env { env_binary_path }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.measure { ByteSize }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import gunbc.fleet_main_revision { fleet_desired_ref_name }

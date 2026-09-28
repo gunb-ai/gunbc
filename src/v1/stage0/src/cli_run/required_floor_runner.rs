@@ -13075,13 +13075,59 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
                 && crate::cli_run::declaration_index::index_population(&head_index).modules > 0,
             "PLANT MALFORMED: a side indexed no modules"
         );
-        (
-            crate::cli_run::namespace_baseline::interface_changed_consumers(
+        let selection = crate::cli_run::namespace_baseline::interface_changed_consumers(
+            &base_index,
+            &head_index,
+        );
+        // THE INDEXED SELECTOR SELECTS EXACTLY WHAT THE SCAN SELECTS, on every fixture here: the
+        // leaf index changes the cost of planning and never the planned set.
+        assert_eq!(
+            selection,
+            crate::cli_run::namespace_baseline::interface_changed_consumers_by_scan(
                 &base_index,
                 &head_index,
             ),
-            head_fx,
-        )
+            "the indexed selector diverged from the scan it replaced"
+        );
+        (selection, head_fx)
+    }
+
+    /// THE COST RECEIPT, on the real corpus rather than a fixture: the base index is reconstructed
+    /// over `GUNBC_SELECTION_BASE..HEAD` exactly as the floor does, both selectors run on it, their
+    /// selections must be equal, and both times are printed. Run by hand on a wide interface change
+    /// (`cargo test ... -- --ignored --nocapture`); it is not a merge gate.
+    #[test]
+    #[ignore]
+    fn indexed_selection_equals_the_scan_on_a_real_diff_window() {
+        use crate::cli_run::namespace_baseline::{
+            git_stdout, interface_changed_consumers, interface_changed_consumers_by_scan,
+            reconstruct_base_index, BaselineReconstruction,
+        };
+        let workspace = process_workspace_root();
+        let base = std::env::var("GUNBC_SELECTION_BASE").expect("GUNBC_SELECTION_BASE");
+        let base = git_stdout(&workspace, &["rev-parse", &base]).expect("base rev");
+        let head = git_stdout(&workspace, &["rev-parse", "HEAD"]).expect("head rev");
+        let head_index =
+            crate::cli_run::run_dag_parse_sweep(&workspace, &crate::cli_run::DAG_PARSE_SWEEP_ROOTS)
+                .expect("head sweep")
+                .index;
+        let BaselineReconstruction::Reconstructed { base_index, .. } =
+            reconstruct_base_index(&workspace, &base, &head, &head_index).expect("reconstruct")
+        else {
+            panic!("base side not reconstructed");
+        };
+        let t = std::time::Instant::now();
+        let indexed = interface_changed_consumers(&base_index, &head_index);
+        let indexed_ms = t.elapsed().as_millis();
+        let t = std::time::Instant::now();
+        let scanned = interface_changed_consumers_by_scan(&base_index, &head_index);
+        let scanned_ms = t.elapsed().as_millis();
+        eprintln!(
+            "selection receipt: changes={} consumers={} indexed_ms={indexed_ms} scanned_ms={scanned_ms}",
+            indexed.changes.len(),
+            indexed.consumers.len()
+        );
+        assert_eq!(indexed, scanned);
     }
 
     fn consumers_of(
