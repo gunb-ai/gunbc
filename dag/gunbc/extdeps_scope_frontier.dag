@@ -213,6 +213,17 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/tools/xxd.dag",
+  "dag/extdeps/tools/dd.dag",
+  "dag/extdeps/tools/shasum.dag",
+  "dag/extdeps/formats/gamecube/disc.dag",
+  "dag/extdeps/formats/jsystem/rarc.dag",
+  "dag/extdeps/games/animal_crossing/message.dag",
+  "dag/extdeps/games/animal_crossing/charset.dag",
+  "dag/extdeps/games/animal_crossing/font.dag",
+  "dag/extdeps/games/animal_crossing/dialogue_catalog.dag",
+  "dag/extdeps/games/animal_crossing/disc_messages.dag",
+  "dag/extdeps/games/animal_crossing_deluxe/control_codes.dag",
   "dag/extdeps/apple/property_list.dag",
   "dag/extdeps/apple/info_plist.dag",
   "dag/extdeps/apple/build_settings.dag",

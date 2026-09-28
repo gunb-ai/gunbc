@@ -1,0 +1,153 @@
+module std.octet_read
+
+import std.types { Bool, Int, List, String }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
+import std.machine_word {
+  WordWidth, Width8, Width16, Width32, WordReady, WordRefused, OctetsReady, OctetsRefused,
+  word_from_octets, word_of_int, word_octet_count, word_to_octets,
+}
+import extdeps.toolchain.architecture_profile { BigEndian }
+
+// Fixed-width big-endian fields at an offset of an octet sequence -- the access every on-disk
+// format with big-endian headers performs. Decoding and encoding go through std.machine_word, the
+// one authority for a word's octets; this module adds only the positional read over an indexed
+// list (`get`, never a skip, so a table of N fields costs N reads rather than N^2).
+
+// `octets` written at `offset` of a target, replacing what was there.
+type OctetPatch {
+  offset: Int
+  octets: List<Int>
+}
+
+// `length` octets at `source_offset` of one file, placed at `target_offset` of another.
+type OctetRangeCopy {
+  source_offset: Int
+  target_offset: Int
+  length: Int
+}
+
+fn octets_at(bytes: List<Int>, offset: Int, n: Int) -> List<Int>? {
+  if offset < 0 || n < 0 || offset + n > count(bytes) { none }
+  else { Present { value: octets_at_from(bytes: bytes, offset: offset, n: n, acc: []) } }
+}
+
+fn octets_at_from(bytes: List<Int>, offset: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) == n { acc }
+  else { octets_at_from(bytes: bytes, offset: offset, n: n, acc: list_push(acc, get(bytes, offset + count(acc)) ?? 0)) }
+}
+
+// The unsigned big-endian value of the `width` field at `offset`; absent when the field runs past
+// the end or a member is not an octet.
+fn be_word_at(bytes: List<Int>, offset: Int, width: WordWidth) -> Int? {
+  match octets_at(bytes: bytes, offset: offset, n: word_octet_count(w: width)) {
+    Absent => none
+    Present { value: raw } =>
+      match uint8_octets_of_ints(values: raw) {
+        QualifiedOctetsRefused { observed: _ } => none
+        QualifiedOctetsReady { value: q } =>
+          match word_from_octets(width: width, octets: q, endianness: BigEndian) {
+            WordReady { word: w } => Present { value: w.value }
+            WordRefused { cause: _ } => none
+          }
+      }
+  }
+}
+
+fn be_u8_at(bytes: List<Int>, offset: Int) -> Int? { be_word_at(bytes: bytes, offset: offset, width: Width8) }
+fn be_u16_at(bytes: List<Int>, offset: Int) -> Int? { be_word_at(bytes: bytes, offset: offset, width: Width16) }
+fn be_u32_at(bytes: List<Int>, offset: Int) -> Int? { be_word_at(bytes: bytes, offset: offset, width: Width32) }
+
+// The big-endian octets of `value` as a `width` field; absent when it does not fit.
+fn be_word_octets(value: Int, width: WordWidth) -> List<Int>? {
+  match word_of_int(width: width, value: value) {
+    WordRefused { cause: _ } => none
+    WordReady { word: w } =>
+      match word_to_octets(a: w, endianness: BigEndian) {
+        OctetsReady { octets: q } => Present { value: qualified_octet_members(q: q) }
+        OctetsRefused { cause: _ } => none
+      }
+  }
+}
+
+fn be_u32_octets(value: Int) -> List<Int>? { be_word_octets(value: value, width: Width32) }
+
+// Octets in hexadecimal notation, two digits per octet, as `xxd -p` prints them.
+type HexDecode {
+  high: Int
+  octets: List<Int>
+  valid: Bool
+}
+
+fn hex_digit_value(cp: Int) -> Int {
+  if cp >= 48 && cp <= 57 { cp - 48 }
+  else if cp >= 97 && cp <= 102 { cp - 87 }
+  else if cp >= 65 && cp <= 70 { cp - 55 }
+  else { -1 }
+}
+
+fn hex_decode_step(acc: HexDecode, cp: Int) -> HexDecode {
+  if cp == 10 || cp == 13 { acc }
+  else {
+    let v = hex_digit_value(cp: cp)
+    if v < 0 { HexDecode { high: acc.high, octets: acc.octets, valid: false } }
+    else if acc.high < 0 { HexDecode { high: v, octets: acc.octets, valid: acc.valid } }
+    else { HexDecode { high: -1, octets: list_push(acc.octets, acc.high * 16 + v), valid: acc.valid } }
+  }
+}
+
+// Plain hex (as `xxd -p` prints it, line breaks ignored) to octets; absent on any non-hex
+// character or a dangling half octet.
+fn hex_octets(hex: String) -> List<Int>? {
+  let r = fold(chars(hex), init: HexDecode { high: -1, octets: [], valid: true }, f: (acc, cp) => hex_decode_step(acc: acc, cp: cp))
+  if r.valid && r.high < 0 { Present { value: r.octets } } else { none }
+}
+
+data hex_digits: String = "0123456789abcdef"
+
+fn octet_hex(octet: Int) -> String {
+  concat(char_at(hex_digits, octet / 16), char_at(hex_digits, octet % 16))
+}
+
+fn octets_hex(octets: List<Int>) -> String {
+  octets |> map(o => octet_hex(octet: o)) |> join(separator: "")
+}
+
+fn zero_octets_from(n: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { zero_octets_from(n: n, acc: list_push(acc, 0)) }
+}
+
+fn zero_octets(n: Int) -> List<Int> {
+  zero_octets_from(n: n, acc: [])
+}
+
+// An octet image as segments over a zero background, in order: where segments overlap, the later
+// one is what the image holds. A plan's output and a fixture are both written this way, so an image
+// is never held whole to read a window of it.
+fn segments_extent(segments: List<OctetPatch>) -> Int {
+  fold(segments, init: 0, f: (acc, s) => if s.offset + count(s.octets) > acc { s.offset + count(s.octets) } else { acc })
+}
+
+fn segment_overlay(window: List<Int>, offset: Int, segment: OctetPatch) -> List<Int> {
+  let lo = if segment.offset > offset { segment.offset } else { offset }
+  let segment_end = segment.offset + count(segment.octets)
+  let window_end = offset + count(window)
+  let hi = if segment_end < window_end { segment_end } else { window_end }
+  if hi <= lo { window }
+  else {
+    let part = segment.octets.skip(n: lo - segment.offset).take(n: hi - lo)
+    concat(concat(window.take(n: lo - offset), part), window.skip(n: hi - offset))
+  }
+}
+
+// The `n` octets at `offset` of a segmented image.
+fn segments_octets_at(segments: List<OctetPatch>, offset: Int, n: Int) -> List<Int> {
+  fold(segments, init: zero_octets(n: n), f: (acc, s) => segment_overlay(window: acc, offset: offset, segment: s))
+}
+
+// What a plan of range copies and literal writes means: the original, then each copy's octets
+// (read from the original alone) at its target, then every write. Any realization of such a plan
+// must produce these octets.
+fn segments_after_plan(original: List<OctetPatch>, copies: List<OctetRangeCopy>, writes: List<OctetPatch>) -> List<OctetPatch> {
+  let copied = copies |> map(c => OctetPatch { offset: c.target_offset, octets: segments_octets_at(segments: original, offset: c.source_offset, n: c.length) })
+  concat(concat(original, copied), writes)
+}

@@ -1,0 +1,277 @@
+module extdeps.formats.jsystem.rarc
+
+import v2.std.algebra { filter }
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.octet_read { OctetPatch, be_u8_at, be_u16_at, be_u32_at, be_u32_octets }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// Nintendo's JSystem resource archive (RARC, JKRArchive): a 0x20-byte header (magic, archive size,
+// header size, data offset, data length, MRAM and ARAM preload sizes), an info block at 0x20 whose
+// offsets are relative to 0x20 (node count/offset, entry count/offset, string table size/offset),
+// 16-byte directory nodes (type, name offset, hash, entry count, first entry) and 20-byte entries
+// (id, hash, flags, pad, name offset, data offset or node index, size, pad).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "wiki.tockdom.com/wiki/RARC_(File_Format)"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.formats.jsystem.rarc",
+      decl_name: "RarcFile",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data rarc_magic: List<Int> = [82, 65, 82, 67]
+data rarc_header_size: Int = 32
+data rarc_node_size: Int = 16
+data rarc_entry_size: Int = 20
+data rarc_entry_flag_directory: Int = 2
+data rarc_entry_flag_mram: Int = 16
+data rarc_entry_flag_aram: Int = 32
+data rarc_entry_flag_dvd: Int = 64
+// The data section's members start on this boundary.
+data rarc_data_alignment: Int = 32
+// Bytes a reader needs before it knows how long the whole header region is.
+data rarc_prefix_length: Int = 64
+
+type RarcHeader {
+  archive_size: Int
+  data_start: Int
+  data_length: Int
+  mram_length: Int
+  aram_length: Int
+  node_offset: Int
+  entry_offset: Int
+  string_offset: Int
+}
+
+// `flags` is the entry's attribute octet: 0x10 preload to main RAM (MRAM), 0x20 preload to ARAM,
+// 0x40 load from DVD on demand (the RARC page's file attribute table).
+type RarcFile {
+  path: String
+  flags: Int
+  entry_offset: Int
+  data_offset: Int
+  size: Int
+}
+
+type RarcDecode<T>
+  = RarcDecoded { value: T }
+  | RarcRejected { reason: String }
+
+fn rarc_u32(bytes: List<Int>, offset: Int) -> Int {
+  match be_u32_at(bytes: bytes, offset: offset) {
+    Present { value: v } => v
+    Absent => -1
+  }
+}
+
+// The header region (everything before the data section) is `data_start` bytes; the first
+// `rarc_prefix_length` bytes are enough to learn it.
+fn rarc_header(head: List<Int>) -> RarcDecode<RarcHeader> {
+  if (head |> take(n: 4)) != rarc_magic { RarcRejected { reason: "not a RARC archive" } }
+  else if count(head) < rarc_prefix_length { RarcRejected { reason: "RARC header truncated" } }
+  else {
+    RarcDecoded {
+      value: RarcHeader {
+        archive_size: rarc_u32(bytes: head, offset: 4),
+        data_start: rarc_u32(bytes: head, offset: 12) + rarc_header_size,
+        data_length: rarc_u32(bytes: head, offset: 16),
+        mram_length: rarc_u32(bytes: head, offset: 20),
+        aram_length: rarc_u32(bytes: head, offset: 24),
+        node_offset: rarc_u32(bytes: head, offset: 36) + rarc_header_size,
+        entry_offset: rarc_u32(bytes: head, offset: 44) + rarc_header_size,
+        string_offset: rarc_u32(bytes: head, offset: 52) + rarc_header_size,
+      },
+    }
+  }
+}
+
+fn rarc_small(value: Int?) -> Int {
+  match value {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn rarc_name(head: List<Int>, at: Int, acc: List<Int>) -> String {
+  match get(head, at) {
+    null => ""
+    other => if other == 0 { acc |> map(o => from_code_point(o)) |> join(separator: "") } else { rarc_name(head: head, at: at + 1, acc: list_push(acc, other)) }
+  }
+}
+
+fn rarc_indices(from: Int, to: Int, acc: List<Int>) -> List<Int> {
+  if from >= to { acc } else { rarc_indices(from: from + 1, to: to, acc: list_push(acc, from)) }
+}
+
+// Every file under directory node `node`, depth first in entry order.
+fn rarc_walk(head: List<Int>, header: RarcHeader, node: Int, prefix: String) -> List<RarcFile> {
+  let at = header.node_offset + node * rarc_node_size
+  let entry_count = rarc_small(value: be_u16_at(bytes: head, offset: at + 10))
+  let first_entry = rarc_u32(bytes: head, offset: at + 12)
+  fold(rarc_indices(from: first_entry, to: first_entry + entry_count, acc: []), init: [], f: (acc, j) => concat(acc, rarc_entry_files(head: head, header: header, index: j, prefix: prefix)))
+}
+
+fn rarc_entry_files(head: List<Int>, header: RarcHeader, index: Int, prefix: String) -> List<RarcFile> {
+  let at = header.entry_offset + index * rarc_entry_size
+  let flags = rarc_small(value: be_u8_at(bytes: head, offset: at + 4))
+  let name_offset = rarc_small(value: be_u16_at(bytes: head, offset: at + 6))
+  let name = rarc_name(head: head, at: header.string_offset + name_offset, acc: [])
+  let data = rarc_u32(bytes: head, offset: at + 8)
+  let size = rarc_u32(bytes: head, offset: at + 12)
+  if name == "." || name == ".." { [] }
+  else if (flags / rarc_entry_flag_directory) % 2 == 1 { rarc_walk(head: head, header: header, node: data, prefix: join([prefix, name, "/"], "")) }
+  else { [RarcFile { path: concat(prefix, name), flags: flags, entry_offset: at, data_offset: data, size: size }] }
+}
+
+fn rarc_files(head: List<Int>, header: RarcHeader) -> List<RarcFile> {
+  rarc_walk(head: head, header: header, node: 0, prefix: "")
+}
+
+fn rarc_find(files: List<RarcFile>, path: String) -> RarcFile? {
+  match files |> filter(f => f.path == path) |> first {
+    null => none
+    other => Present { value: other }
+  }
+}
+
+// A file's size in the repacked archive.
+type RarcResize {
+  path: String
+  size: Int
+}
+
+// Where one member's bytes go in the repacked data section, and where they came from.
+type RarcPlacement {
+  file: RarcFile
+  new_offset: Int
+  new_size: Int
+}
+
+// `header_patches` are the header-region bytes that change: each entry's offset and size, and the
+// archive totals.
+type RarcRepack {
+  placements: List<RarcPlacement>
+  header_patches: List<OctetPatch>
+  archive_size: Int
+  data_length: Int
+}
+
+fn rarc_new_size(file: RarcFile, resizes: List<RarcResize>) -> Int {
+  match resizes |> filter(r => r.path == file.path) |> first {
+    null => file.size
+    other => other.size
+  }
+}
+
+fn rarc_align(value: Int) -> Int {
+  ((value + rarc_data_alignment - 1) / rarc_data_alignment) * rarc_data_alignment
+}
+
+type RarcLayoutFold {
+  placements: List<RarcPlacement>
+  cursor: Int
+}
+
+fn rarc_octets_or_empty(value: Int) -> List<Int> {
+  match be_u32_octets(value: value) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+fn rarc_layout_step(acc: RarcLayoutFold, file: RarcFile, resizes: List<RarcResize>) -> RarcLayoutFold {
+  let size = rarc_new_size(file: file, resizes: resizes)
+  RarcLayoutFold {
+    placements: list_push(acc.placements, RarcPlacement { file: file, new_offset: acc.cursor, new_size: size }),
+    cursor: rarc_align(value: acc.cursor + size),
+  }
+}
+
+// Where a member's data is preloaded, from its attribute flags; the header's MRAM and ARAM lengths
+// are the extents of the MRAM and ARAM members, and the loader (JKRCompArchive::open) reads the
+// MRAM extent to know both how much to load into main RAM and where the ARAM transfer begins.
+type RarcRegion = RarcMram | RarcAram | RarcDvd
+
+fn rarc_has_flag(flags: Int, flag: Int) -> Bool {
+  (flags / flag) % 2 == 1
+}
+
+fn rarc_region(file: RarcFile) -> RarcRegion? {
+  let m = rarc_has_flag(flags: file.flags, flag: rarc_entry_flag_mram)
+  let a = rarc_has_flag(flags: file.flags, flag: rarc_entry_flag_aram)
+  let d = rarc_has_flag(flags: file.flags, flag: rarc_entry_flag_dvd)
+  if m && !a && !d { Present { value: RarcMram } }
+  else if a && !m && !d { Present { value: RarcAram } }
+  else if d && !m && !a { Present { value: RarcDvd } }
+  else { none }
+}
+
+fn rarc_region_rank(region: RarcRegion) -> Int {
+  match region {
+    RarcMram => 0
+    RarcAram => 1
+    RarcDvd => 2
+  }
+}
+
+type RarcRegionFold {
+  mram: Int
+  aram: Int
+  rank: Int
+  refusal: String
+}
+
+// A placement's slot runs to the next 32-octet boundary after its data, which is where the next
+// member starts; the regions are counted in slots, so their extents add up to the data length.
+fn rarc_region_step(acc: RarcRegionFold, p: RarcPlacement) -> RarcRegionFold {
+  if acc.refusal != "" { acc }
+  else {
+    let slot = rarc_align(value: p.new_offset + p.new_size) - p.new_offset
+    match rarc_region(file: p.file) {
+      Absent => RarcRegionFold { mram: acc.mram, aram: acc.aram, rank: acc.rank, refusal: join([p.file.path, " names no single preload region"], "") }
+      Present { value: r } =>
+        if rarc_region_rank(region: r) < acc.rank { RarcRegionFold { mram: acc.mram, aram: acc.aram, rank: acc.rank, refusal: join([p.file.path, " is laid out after a later region's members; interleaved regions are not repacked"], "") } }
+        else {
+          match r {
+            RarcMram => RarcRegionFold { mram: acc.mram + slot, aram: acc.aram, rank: 0, refusal: "" }
+            RarcAram => RarcRegionFold { mram: acc.mram, aram: acc.aram + slot, rank: 1, refusal: "" }
+            RarcDvd => RarcRegionFold { mram: acc.mram, aram: acc.aram, rank: 2, refusal: "" }
+          }
+        }
+    }
+  }
+}
+
+// The data section re-laid in original data-offset order on `rarc_data_alignment` boundaries,
+// with `resizes` applied: the layout the shipped archives already use, so an empty resize list
+// reproduces the original header bytes exactly. Each preload region's length is recomputed from
+// its own members; an archive whose members are not grouped MRAM, then ARAM, then DVD, or whose
+// member names no single region, is refused rather than guessed at.
+fn rarc_repack(header: RarcHeader, files: List<RarcFile>, resizes: List<RarcResize>) -> RarcDecode<RarcRepack> {
+  let ordered = sort_by(files, fn(f) { f.data_offset })
+  let laid = fold(ordered, init: RarcLayoutFold { placements: [], cursor: 0 }, f: (acc, f) => rarc_layout_step(acc: acc, file: f, resizes: resizes))
+  let regions = fold(laid.placements, init: RarcRegionFold { mram: 0, aram: 0, rank: 0, refusal: "" }, f: (acc, p) => rarc_region_step(acc: acc, p: p))
+  if regions.refusal != "" { RarcRejected { reason: regions.refusal } }
+  else {
+    let data_length = laid.cursor
+    let entry_patches = laid.placements |> map(p => OctetPatch { offset: p.file.entry_offset + 8, octets: concat(rarc_octets_or_empty(value: p.new_offset), rarc_octets_or_empty(value: p.new_size)) })
+    let archive_size = header.data_start + data_length
+    let total_patches = [
+      OctetPatch { offset: 4, octets: rarc_octets_or_empty(value: archive_size) },
+      OctetPatch { offset: 16, octets: concat(concat(rarc_octets_or_empty(value: data_length), rarc_octets_or_empty(value: regions.mram)), rarc_octets_or_empty(value: regions.aram)) },
+    ]
+    RarcDecoded { value: RarcRepack { placements: laid.placements, header_patches: concat(total_patches, entry_patches), archive_size: archive_size, data_length: data_length } }
+  }
+}

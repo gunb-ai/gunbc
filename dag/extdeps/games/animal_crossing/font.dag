@@ -1,0 +1,123 @@
+module extdeps.games.animal_crossing.font
+
+import v2.std.algebra { filter }
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// How the message window lays text out, from ac-decomp: every glyph cell is mFont_TEX_CHAR_WIDTH
+// (12) units wide and the window draws in "cut" mode (mMsg_draw_font sets mFont_SENTENCE_FLAG_CUT
+// on every line), where a glyph advances 12 - offset_data[octet] units (m_font_offset.c_inc
+// mFont_Get_FontOffset, m_font_main.c_inc mFont_GetCodeWidth). A page holds mMsg_MAX_LINE (4) lines
+// -- mMsg_draw_font draws text_lines of them, and text_lines is always mMsg_MAX_LINE -- and a
+// message is read at most mMsg_MSG_BUF_MAX (1536) octets deep looking for its terminator
+// (m_msg_main.c_inc mMsg_Count_MsgData), inserted strings included (mMsg_MoveDataCut).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ACreTeam/ac-decomp/blob/09ca8e8b5b24e6ab44047ee980cf0088ad7ecb4c/src/game/m_font_offset.c_inc"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.games.animal_crossing.font",
+      decl_name: "glyph_cut_offsets",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data glyph_cell_width: Int = 12
+data glyph_cut_offsets: List<Int> = [
+  6, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6,
+  6, 4, 4, 3, 3, 3, 3, 3, 3, 5, 5, 5, 5, 5, 5, 5,
+  7, 6, 5, 5, 5, 1, 4, 8, 6, 6, 1, 0, 8, 4, 8, 0,
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 8, 1, 4, 3, 4, 4,
+  2, 3, 5, 4, 4, 5, 5, 4, 4, 6, 6, 5, 5, 2, 4, 4,
+  5, 3, 5, 5, 5, 4, 4, 2, 5, 5, 6, 5, 0, 5, 5, 3,
+  5, 5, 5, 5, 5, 6, 7, 5, 4, 7, 7, 6, 7, 3, 5, 5,
+  5, 4, 6, 6, 7, 5, 6, 3, 6, 6, 7, 5, 5, 5, 5, 0,
+  0, 6, 6, 6, 6, 8, 4, 5, 5, 5, 5, 5, 5, 3, 5, 5,
+  0, 5, 5, 5, 5, 5, 5, 6, 6, 5, 5, 4, 5, 6, 6, 6,
+  3, 4, 2, 3, 5, 2, 2, 0, 0, 0, 0, 0, 5, 5, 5, 0,
+  1, 1, 1, 0, 3, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+  4, 4, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4,
+  8, 3, 8, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2
+]
+
+data page_line_limit: Int = 4
+data message_octet_limit: Int = 1536
+
+fn glyph_advance(octet: Int) -> Int {
+  glyph_cell_width - (get(glyph_cut_offsets, octet) ?? 0)
+}
+
+// The widest any glyph advances: the bound for text whose octets are not known in advance.
+fn widest_glyph_advance() -> Int {
+  fold(glyph_cut_offsets, init: 0, f: (acc, o) => if glyph_cell_width - o > acc { glyph_cell_width - o } else { acc })
+}
+
+// The most octets each PUT_STRING code can insert, from the buffer each mMsg_Copy* routine in
+// m_msg_main.c_inc reads: player and villager names PLAYER_NAME_LEN / ANIMAL_NAME_LEN (8), the
+// catchphrase ANIMAL_CATCHPHRASE_LEN (10), date parts the mString_Load_*FromRom buffers, free
+// strings mMsg_FREE_STRING_LEN (16) and items mIN_ITEM_NAME_LEN (16), each possibly preceded by an
+// article of up to mIN_ITEM_NAME_LEN + 1, the town name LAND_NAME_SIZE (8) plus a suffix of up to
+// mMsg_FREE_STRING_LEN, the island name mISL_ISLAND_NAME_LEN (8), mail mMsg_MAIL_STRING_LEN (132).
+// DETERMINATION inserts the chosen menu string, whose length the window records at run time, so it
+// has no bound here.
+type InsertedStringBound {
+  code_name: String
+  max_octets: Int
+}
+
+data free_string_with_article: Int = 33
+
+data inserted_string_bounds: List<InsertedStringBound> = [
+  InsertedStringBound { code_name: "PUT_STRING_PLAYER_NAME", max_octets: 8 },
+  InsertedStringBound { code_name: "PUT_STRING_TALK_NAME", max_octets: 8 },
+  InsertedStringBound { code_name: "PUT_STRING_TAIL", max_octets: 10 },
+  InsertedStringBound { code_name: "PUT_STRING_YEAR", max_octets: 6 },
+  InsertedStringBound { code_name: "PUT_STRING_MONTH", max_octets: 9 },
+  InsertedStringBound { code_name: "PUT_STRING_WEEK", max_octets: 9 },
+  InsertedStringBound { code_name: "PUT_STRING_DAY", max_octets: 4 },
+  InsertedStringBound { code_name: "PUT_STRING_HOUR", max_octets: 2 },
+  InsertedStringBound { code_name: "PUT_STRING_MIN", max_octets: 2 },
+  InsertedStringBound { code_name: "PUT_STRING_SEC", max_octets: 2 },
+  InsertedStringBound { code_name: "PUT_STRING_COUNTRY_NAME", max_octets: 24 },
+  InsertedStringBound { code_name: "PUT_STRING_ISLAND_NAME", max_octets: 8 },
+  InsertedStringBound { code_name: "PUT_STRING_AM_PM", max_octets: 2 },
+  InsertedStringBound { code_name: "PUT_STRING_RANDOM_NUMBER_2", max_octets: 2 },
+  InsertedStringBound { code_name: "PUT_STRING_MAIL", max_octets: 132 },
+]
+
+// Free strings and items all share one bound, so they are matched by prefix rather than listed.
+fn inserted_string_max_octets(code_name: String) -> Int? {
+  match inserted_string_bounds |> filter(b => b.code_name == code_name) |> first {
+    null =>
+      if code_name.starts_with(prefix: "PUT_STRING_FREE") || code_name.starts_with(prefix: "PUT_STRING_ITEM") { Present { value: free_string_with_article } }
+      else { none }
+    other => Present { value: other.max_octets }
+  }
+}
+
+// How wide a line the message window shows. The window places text at center - 96 * scale
+// (m_msg_draw_font.c_inc mMsg_draw_font), which fixes where a line starts but not where the window
+// ends, so the width is measured in game. `units` is the widest line known to draw whole inside the
+// window, not the window's edge.
+type LineWidthLimit
+  = LineWidthMeasured { units: Int }
+  | LineWidthUncalibrated
+
+// Measured on the Animal Crossing Deluxe build (Dolphin, 2026-09-26): two save-screen lines of digit
+// rulers, 240 and 245 units (thirty 8-unit digits, the second after a 5-unit space), both drew
+// whole inside the bubble with margin to spare; the bubble's edge was not reached. The base game's
+// own lines keep well inside this -- almost none exceed 186 units -- which is a house style, not
+// the limit.
+data message_window_line_width: LineWidthLimit = LineWidthMeasured { units: 245 }

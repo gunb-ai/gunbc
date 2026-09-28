@@ -1,0 +1,437 @@
+module test.claim.animal_crossing_dialogue_witness
+
+import std.types { Bool, Int, List, String }
+import v2.std.algebra { any }
+import extdeps.games.animal_crossing.message {
+  BufferOctetsRange, BufferOctetsUnbounded, message_buffer_occupancy,
+  LineWidthRange, LineUnbounded, TextLine, message_lines,
+  MessageAccepted, MessageRefused, message_start, message_table_ends, message_table_octets, message_tokens, message_text,
+  steering_tokens, text_message, vanilla_control_codes,
+}
+import extdeps.games.animal_crossing_deluxe.control_codes { deluxe_control_codes }
+import extdeps.games.animal_crossing.dialogue_catalog { CatalogEntry, Personality, dialogue_catalog, personalities, personality_looks, personality_of_looks }
+import std.octet_read { OctetPatch, OctetRangeCopy, octets_at, segments_after_plan, segments_extent, segments_octets_at }
+import std.list { first_duplicate_by_key }
+import extdeps.formats.gamecube.disc { GcmDecoded, GcmRejected, GcmFile, GcmHeader, gcm_files, gcm_find, gcm_header, gcm_header_read_length }
+import extdeps.formats.jsystem.rarc { RarcDecoded, RarcRejected, RarcFile, RarcHeader, rarc_find, rarc_header, rarc_prefix_length }
+import extdeps.games.animal_crossing.disc_messages {
+  DiscMessageLayout, MessageReplacement, MessageRewritePlan, message_archive, message_layout, message_members, message_table_image_offset,
+  plan_message_rewrite, message_data_image_offset,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Messages are supplied as literal octets. The inhabitance run over a real disc image is
+// the dialogue workflow built on these models; the repository does not carry the image.
+
+// "Hi", the catchphrase, a line break, a pause of 0x0a, then octet 0x5B -- "ã" in the game's font,
+// where ASCII would say "[".
+data sample_octets: List<Int> = [72, 105, 32, 127, 28, 205, 127, 3, 10, 91, 127, 0]
+data sample_text: String = "Hi \{PUT_STRING_TAIL}\n\{CURSOR_SET_TIME:0a}ã\{LAST}"
+
+fn text_of(octets: List<Int>) -> String {
+  match message_tokens(codes: vanilla_control_codes, message: octets) {
+    MessageAccepted { value: t } => message_text(tokens: t)
+    MessageRefused { reason: r } => concat("refused: ", r)
+  }
+}
+
+fn octets_of(text: String) -> List<Int>? {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageAccepted { value: o } => Present { value: o }
+    MessageRefused { reason: _ } => none
+  }
+}
+
+test fn control_code_table_is_indexed_by_code() -> Bool {
+  return count(vanilla_control_codes) == 123
+    && count(deluxe_control_codes()) == 141
+    && fold(deluxe_control_codes(), init: 0, f: (next, c) => if c.code == next { next + 1 } else { -1000 }) == 141
+}
+
+test fn message_text_round_trips_codes_breaks_and_font_glyphs() -> Bool {
+  return text_of(octets: sample_octets) == sample_text && octets_of(text: sample_text) == Present { value: sample_octets }
+}
+
+test fn unprintable_octets_round_trip_as_escapes() -> Bool {
+  return text_of(octets: [210, 127, 0]) == "{#d2}\{LAST}" && octets_of(text: "{#d2}\{LAST}") == Present { value: [210, 127, 0] }
+}
+
+test fn text_refuses_unknown_codes_wrong_arity_and_characters_the_font_lacks() -> Bool {
+  return octets_of(text: "\{NOPE}") == none
+    && octets_of(text: "\{CURSOR_SET_TIME}") == none
+    && octets_of(text: "\{CURSOR_SET_TIME:01 02}") == none
+    && octets_of(text: "a } b") == none
+    && octets_of(text: "a { b") == none
+    && octets_of(text: "[AI]") == none
+}
+
+fn all_glyph_octets(from: Int, acc: List<Int>) -> List<Int> {
+  if from > 255 { acc } else if from == 127 { all_glyph_octets(from: from + 1, acc: acc) } else { all_glyph_octets(from: from + 1, acc: list_push(acc, from)) }
+}
+
+test fn every_non_control_octet_round_trips_through_the_font() -> Bool {
+  let octets = all_glyph_octets(from: 0, acc: [])
+  return octets_of(text: text_of(octets: octets)) == Present { value: octets }
+}
+
+test fn a_deluxe_code_tokenizes_only_with_the_deluxe_table() -> Bool {
+  let octets = [127, 124, 42, 65]
+  let vanilla = match message_tokens(codes: vanilla_control_codes, message: octets) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+  let deluxe = match message_tokens(codes: deluxe_control_codes(), message: octets) {
+    MessageAccepted { value: t } => message_text(tokens: t) == "\{X7C:2a}A"
+    MessageRefused { reason: _ } => false
+  }
+  return vanilla && deluxe
+}
+
+test fn a_code_running_past_the_message_end_is_refused() -> Bool {
+  return match message_tokens(codes: vanilla_control_codes, message: [65, 127, 3]) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+}
+
+fn steering_of(text: String) -> List<List<Int>> {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageRefused { reason: _ } => [[-1]]
+    MessageAccepted { value: o } =>
+      match message_tokens(codes: vanilla_control_codes, message: o) {
+        MessageAccepted { value: t } => steering_tokens(tokens: t)
+        MessageRefused { reason: _ } => [[-1]]
+      }
+  }
+}
+
+data branching: String = "Done?\{SET_SELECT_STRING_2:01 ae 01 af}\{BUTTON}\{SET_SELECT_WINDOW}\{SET_NEXT_MESSAGE_0:31 1e}\{SET_NEXT_MESSAGE_1:31 1f}\{SET_FORCE_NEXT}\{CONTINUE}"
+
+test fn rewording_and_repacing_keep_the_steering_codes() -> Bool {
+  return steering_of(text: "Hmph.\{CURSOR_SET_TIME:08} Finished?\{SET_SELECT_STRING_2:01 ae 01 af}\{SET_SELECT_WINDOW}\{SET_NEXT_MESSAGE_0:31 1e}\{SET_NEXT_MESSAGE_1:31 1f}\{SET_FORCE_NEXT}\{CONTINUE}") == steering_of(text: branching)
+}
+
+test fn dropping_a_branch_target_changes_the_steering_codes() -> Bool {
+  return steering_of(text: "Done?\{SET_SELECT_STRING_2:01 ae 01 af}\{BUTTON}\{SET_SELECT_WINDOW}\{SET_NEXT_MESSAGE_0:31 1e}\{SET_FORCE_NEXT}\{CONTINUE}") != steering_of(text: branching)
+}
+
+test fn message_table_reads_end_offsets_and_writes_them_back() -> Bool {
+  let table = [0, 0, 0, 3, 0, 0, 1, 0]
+  return match message_table_ends(table: table) {
+    MessageAccepted { value: ends } => ends == [3, 256] && message_table_octets(ends: ends) == table
+    MessageRefused { reason: _ } => false
+  }
+}
+
+test fn a_ragged_message_table_is_refused() -> Bool {
+  return match message_table_ends(table: [0, 0, 3]) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+}
+
+fn lines_of(text: String) -> List<TextLine> {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageRefused { reason: _ } => []
+    MessageAccepted { value: o } =>
+      match message_tokens(codes: vanilla_control_codes, message: o) {
+        MessageAccepted { value: t } => message_lines(tokens: t)
+        MessageRefused { reason: _ } => []
+      }
+  }
+}
+
+// Digits advance 8 units and a space 5 (12 minus m_font_offset.c_inc's 4 and 7).
+test fn a_plain_line_measures_the_sum_of_its_glyph_advances() -> Bool {
+  return lines_of(text: "12 34\{LAST}") == [TextLine { page: 0, line: 0, extent: LineWidthRange { min: 37, max: 37 } }]
+}
+
+// PLAYER_NAME inserts up to 8 octets, each at most 12 units wide.
+test fn an_inserted_name_widens_the_line_to_a_range() -> Bool {
+  return lines_of(text: "1\{PUT_STRING_PLAYER_NAME}\{LAST}") == [TextLine { page: 0, line: 0, extent: LineWidthRange { min: 8, max: 104 } }]
+}
+
+test fn control_only_lines_take_no_row_and_clear_starts_a_page() -> Bool {
+  let lines = lines_of(text: "1\n2\{BUTTON}\n\{CLEAR}3\n\{SET_FORCE_NEXT}\{CONTINUE}")
+  return (lines |> map(l => [l.page, l.line])) == [[0, 0], [0, 1], [1, 0]]
+}
+
+test fn a_scaled_line_is_not_measured() -> Bool {
+  return match get(lines_of(text: "\{SET_LINE_SCALE:10}1\{LAST}"), 0) {
+    null => false
+    other => match other.extent {
+      LineUnbounded { reason: _ } => true
+      LineWidthRange { min: _, max: _ } => false
+    }
+  }
+}
+
+test fn personalities_follow_looks_order() -> Bool {
+  return count(personalities) == 6
+    && (personalities |> all(p => personality_of_looks(looks: personality_looks(p: p)) == Present { value: p }))
+    && personality_of_looks(looks: 6) == none
+}
+
+fn has_one_range_per_personality(entry: CatalogEntry) -> Bool {
+  (entry.ranges |> map(r => r.looks)) == [0, 1, 2, 3, 4, 5] && (entry.ranges |> all(r => r.first_id >= 0 && r.count > 0))
+}
+
+test fn every_catalog_entry_covers_each_personality_once() -> Bool {
+  return count(dialogue_catalog) > 0 && (dialogue_catalog |> all(e => has_one_range_per_personality(entry: e)))
+}
+
+test fn catalog_topics_are_unique() -> Bool {
+  return first_duplicate_by_key(xs: dialogue_catalog, key: fn(e) { e.topic }) == none
+}
+
+fn zero_head(n: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { zero_head(n: n, acc: list_push(acc, 0)) }
+}
+
+// Three messages (ends 3, 5, 9) in an archive at disc offset 1000 whose data section starts 64
+// octets in: message data at data offset 0, the 12-octet table at 32.
+fn tiny_layout() -> DiscMessageLayout {
+  let data = RarcFile { path: "data/message_data.bin", flags: 33, entry_offset: 0, data_offset: 0, size: 9 }
+  let table = RarcFile { path: "data/message_data_table.bin", flags: 33, entry_offset: 20, data_offset: 32, size: 12 }
+  DiscMessageLayout {
+    image_size: 6000,
+    disc: GcmHeader { game_code: [], dol_offset: 5000, fst_offset: 4000, fst_size: 40 },
+    disc_files: [GcmFile { path: "forest_2nd.arc", fst_index: 1, offset: 1000, size: 128 }, GcmFile { path: "other", fst_index: 2, offset: 2000, size: 10 }],
+    archive: GcmFile { path: "forest_2nd.arc", fst_index: 1, offset: 1000, size: 128 },
+    archive_head: zero_head(n: 64, acc: []),
+    archive_header: RarcHeader { archive_size: 128, data_start: 64, data_length: 64, mram_length: 0, aram_length: 64, node_offset: 32, entry_offset: 48, string_offset: 56 },
+    archive_files: [data, table],
+    data_file: data,
+    table_file: table,
+    ends: [3, 5, 9],
+  }
+}
+
+// Message 1 grows from 2 to 4 octets: the original's octets before and after it are copied around
+// the new text, and the table is rewritten with every later end shifted by 2.
+test fn a_grown_message_is_spliced_between_copies_of_its_neighbours() -> Bool {
+  return match plan_message_rewrite(layout: tiny_layout(), replacements: [MessageReplacement { id: 1, octets: [7, 7, 7, 7] }]) {
+    MessageRefused { reason: _ } => false
+    MessageAccepted { value: plan } =>
+      plan.archive_offset == 1000
+        && plan.copies == [OctetRangeCopy { source_offset: 1064, target_offset: 1064, length: 3 }, OctetRangeCopy { source_offset: 1069, target_offset: 1071, length: 4 }]
+        && (plan.writes |> any(w => w == OctetPatch { offset: 1067, octets: [7, 7, 7, 7] }))
+        && (plan.writes |> any(w => w == OctetPatch { offset: 1096, octets: [0, 0, 0, 3, 0, 0, 0, 7, 0, 0, 0, 11] }))
+  }
+}
+
+fn plan_refused(rs: List<MessageReplacement>) -> Bool {
+  match plan_message_rewrite(layout: tiny_layout(), replacements: rs) {
+    MessageRefused { reason: _ } => true
+    MessageAccepted { value: _ } => false
+  }
+}
+
+test fn replacements_out_of_order_or_outside_the_table_are_refused() -> Bool {
+  return plan_refused(rs: [MessageReplacement { id: 2, octets: [1] }, MessageReplacement { id: 1, octets: [1] }])
+    && plan_refused(rs: [MessageReplacement { id: 3, octets: [1] }])
+    && plan_refused(rs: [MessageReplacement { id: 1, octets: [1] }, MessageReplacement { id: 1, octets: [2] }])
+}
+
+test fn a_table_whose_ends_decrease_is_refused() -> Bool {
+  return table_refused(table: [0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 9]) && table_refused(table: [0, 0, 0, 12, 0, 0, 0, 3, 0, 0, 0, 9]) && table_refused(table: [0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 9]) == false
+}
+
+fn table_refused(table: List<Int>) -> Bool {
+  match message_table_ends(table: table) {
+    MessageAccepted { value: _ } => false
+    MessageRefused { reason: _ } => true
+  }
+}
+
+// ---- an applied rewrite, decoded again ----
+
+// A small disc, as segments over zeros: forest_2nd.arc at 0x800 (messages "ABC" "DE" "FGHI" and their table as MRAM
+// members, extra.bin 01..05 as an ARAM member), other.bin (C8..D7) packed directly after it at
+// 0x9c0, and a 16-octet executable at 0x1c00.
+data fixture_segments: List<OctetPatch> = [
+  OctetPatch { offset: 0, octets: [71, 65, 70, 69, 48, 49] },
+  OctetPatch { offset: 1058, octets: [28, 0, 0, 0, 4, 64, 0, 0, 0, 61] },
+  OctetPatch { offset: 1088, octets: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 1, 192, 0, 0, 0, 15, 0, 0, 9, 192, 0, 0, 0, 16, 102, 111, 114, 101, 115, 116, 95, 50, 110, 100, 46, 97, 114, 99, 0, 111, 116, 104, 101, 114, 46, 98, 105, 110] },
+  OctetPatch { offset: 2048, octets: [82, 65, 82, 67, 0, 0, 1, 192, 0, 0, 0, 32, 0, 0, 1, 64, 0, 0, 0, 96, 0, 0, 0, 64, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 64, 0, 0, 0, 96, 0, 0, 0, 224, 0, 3, 1, 0, 0, 0, 0, 0, 82, 79, 79, 84, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 68, 65, 84, 65, 0, 0, 0, 13, 0, 0, 0, 5, 0, 0, 0, 3, 255, 255, 0, 0, 2, 0, 0, 13, 0, 0, 0, 1, 0, 0, 0, 16, 0, 0, 0, 0, 255, 255, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 255, 255, 0, 0, 2, 0, 0, 2, 255, 255, 255, 255, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 1, 0, 0, 17, 0, 0, 35, 0, 0, 0, 32, 0, 0, 0, 12, 0, 0, 0, 0, 0, 2, 0, 0, 33, 0, 0, 58, 0, 0, 0, 64, 0, 0, 0, 5, 0, 0, 0, 0, 255, 255, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 16, 0, 0, 0, 0, 255, 255, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 46, 0, 46, 46, 0, 97, 114, 99, 104, 105, 118, 101, 0, 100, 97, 116, 97, 0, 109, 101, 115, 115, 97, 103, 101, 95, 100, 97, 116, 97, 46, 98, 105, 110, 0, 109, 101, 115, 115, 97, 103, 101, 95, 100, 97, 116, 97, 95, 116, 97, 98, 108, 101, 46, 98, 105, 110, 0, 101, 120, 116, 114, 97, 46, 98, 105, 110] },
+  OctetPatch { offset: 2400, octets: [65, 66, 67, 68, 69, 70, 71, 72, 73] },
+  OctetPatch { offset: 2435, octets: [3, 0, 0, 0, 5, 0, 0, 0, 9] },
+  OctetPatch { offset: 2464, octets: [1, 2, 3, 4, 5] },
+  OctetPatch { offset: 2496, octets: [200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215] },
+  OctetPatch { offset: 7168, octets: [170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170, 170] },
+]
+
+fn fixture_image() -> List<OctetPatch> {
+  fixture_segments
+}
+
+type Decoded {
+  layout: DiscMessageLayout
+  messages: List<List<Int>>
+  extra: List<Int>
+  other: List<Int>
+  executable: List<Int>
+  mram: Int
+  aram: Int
+}
+
+fn at(image: List<OctetPatch>, offset: Int, n: Int) -> List<Int> {
+  segments_octets_at(segments: image, offset: offset, n: n)
+}
+
+fn slice(bytes: List<Int>, offset: Int, n: Int) -> List<Int> {
+  match octets_at(bytes: bytes, offset: offset, n: n) {
+    Present { value: o } => o
+    Absent => [-1]
+  }
+}
+
+fn member_octets(image: List<OctetPatch>, layout: DiscMessageLayout, path: String) -> List<Int> {
+  match rarc_find(files: layout.archive_files, path: path) {
+    Absent => [-1]
+    Present { value: f } => at(image: image, offset: layout.archive.offset + layout.archive_header.data_start + f.data_offset, n: f.size)
+  }
+}
+
+fn file_octets(image: List<OctetPatch>, files: List<GcmFile>, path: String) -> List<Int> {
+  match gcm_find(files: files, path: path) {
+    Absent => [-1]
+    Present { value: f } => at(image: image, offset: f.offset, n: f.size)
+  }
+}
+
+fn messages_of(image: List<OctetPatch>, layout: DiscMessageLayout) -> List<List<Int>> {
+  let data = at(image: image, offset: message_data_image_offset(layout: layout), n: layout.data_file.size)
+  fold(layout.ends, init: [], f: (acc, e) => list_push(acc, slice(bytes: data, offset: message_start(ends: layout.ends, id: count(acc)), n: e - message_start(ends: layout.ends, id: count(acc)))))
+}
+
+fn decoded_with(image: List<OctetPatch>, layout: DiscMessageLayout) -> Decoded {
+  Decoded {
+    layout: layout,
+    messages: messages_of(image: image, layout: layout),
+    extra: member_octets(image: image, layout: layout, path: "data/extra.bin"),
+    other: file_octets(image: image, files: layout.disc_files, path: "other.bin"),
+    executable: at(image: image, offset: layout.disc.dol_offset, n: 16),
+    mram: layout.archive_header.mram_length,
+    aram: layout.archive_header.aram_length,
+  }
+}
+
+fn decode(image: List<OctetPatch>) -> Decoded? {
+  match gcm_header(header: at(image: image, offset: 0, n: gcm_header_read_length)) {
+    GcmRejected { reason: _ } => none
+    GcmDecoded { value: disc } =>
+      match gcm_files(fst: at(image: image, offset: disc.fst_offset, n: disc.fst_size)) {
+        GcmRejected { reason: _ } => none
+        GcmDecoded { value: files } =>
+          match message_archive(disc_files: files) {
+            MessageRefused { reason: _ } => none
+            MessageAccepted { value: archive } =>
+              match rarc_header(head: at(image: image, offset: archive.offset, n: rarc_prefix_length)) {
+                RarcRejected { reason: _ } => none
+                RarcDecoded { value: h } => {
+                  let head = at(image: image, offset: archive.offset, n: h.data_start)
+                  match message_members(archive_head: head, archive_header: h) {
+                    MessageRefused { reason: _ } => none
+                    MessageAccepted { value: members } =>
+                      match message_table_ends(table: at(image: image, offset: message_table_image_offset(archive: archive, archive_header: h, members: members), n: members.table_file.size)) {
+                        MessageRefused { reason: _ } => none
+                        MessageAccepted { value: ends } =>
+                          match message_layout(image_size: segments_extent(segments: image), disc: disc, disc_files: files, archive: archive, archive_head: head, archive_header: h, members: members, ends: ends) {
+                            MessageRefused { reason: _ } => none
+                            MessageAccepted { value: layout } => Present { value: decoded_with(image: image, layout: layout) }
+                          }
+                      }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn extra_offset(layout: DiscMessageLayout) -> Int {
+  match rarc_find(files: layout.archive_files, path: "data/extra.bin") {
+    Absent => -100000
+    Present { value: f } => f.data_offset
+  }
+}
+
+fn filled(n: Int, value: Int, acc: List<Int>) -> List<Int> {
+  if count(acc) >= n { acc } else { filled(n: n, value: value, acc: list_push(acc, value)) }
+}
+
+// Plans `replacement` against the fixture, applies the plan, decodes the output from scratch, and
+// holds every observable to what the edit should leave: the three messages (one replaced), the
+// untouched members and files, the preload region lengths, the archive's full advertised extent,
+// and zeros in the alignment gap after its last member.
+fn applied_rewrite_holds(replacement: MessageReplacement, archive_moves: Bool, mram: Int, aram: Int) -> Bool {
+  let image = fixture_image()
+  match decode(image: image) {
+    Absent => false
+    Present { value: before } =>
+      match plan_message_rewrite(layout: before.layout, replacements: [replacement]) {
+        MessageRefused { reason: _ } => false
+        MessageAccepted { value: plan } => {
+          let out = segments_after_plan(original: image, copies: plan.copies, writes: plan.writes)
+          match decode(image: out) {
+            Absent => false
+            Present { value: after } => {
+              let expected = fold(before.messages, init: [], f: (acc, m) => list_push(acc, if count(acc) == replacement.id { replacement.octets } else { m }))
+              let arc_end = plan.archive_offset + plan.archive_size
+              let gap_start = after.layout.archive.offset + after.layout.archive_header.data_start + extra_offset(layout: after.layout) + 5
+              after.messages == expected
+                && after.extra == before.extra
+                && after.other == before.other
+                && after.executable == before.executable
+                && (after.layout.archive.offset != before.layout.archive.offset) == archive_moves
+                && after.layout.archive.size == plan.archive_size
+                && segments_extent(segments: out) >= arc_end
+                && at(image: out, offset: gap_start, n: arc_end - gap_start) == filled(n: arc_end - gap_start, value: 0, acc: [])
+                && after.mram == mram
+                && after.aram == aram
+            }
+          }
+        }
+      }
+  }
+}
+
+test fn a_grown_message_relocates_the_archive_and_everything_else_survives() -> Bool {
+  return applied_rewrite_holds(replacement: MessageReplacement { id: 1, octets: filled(n: 40, value: 90, acc: []) }, archive_moves: true, mram: 96, aram: 32)
+}
+
+test fn a_message_that_still_fits_is_rewritten_in_place() -> Bool {
+  return applied_rewrite_holds(replacement: MessageReplacement { id: 1, octets: [80, 81, 82, 83] }, archive_moves: false, mram: 64, aram: 32)
+}
+
+test fn a_shrunk_message_is_rewritten_in_place() -> Bool {
+  return applied_rewrite_holds(replacement: MessageReplacement { id: 2, octets: [80] }, archive_moves: false, mram: 64, aram: 32)
+}
+
+fn occupancy_of(text: String, determination_max_octets: Int?) -> List<Int> {
+  match text_message(codes: vanilla_control_codes, text: text) {
+    MessageRefused { reason: _ } => [-1]
+    MessageAccepted { value: o } =>
+      match message_tokens(codes: vanilla_control_codes, message: o) {
+        MessageRefused { reason: _ } => [-1]
+        MessageAccepted { value: t } =>
+          match message_buffer_occupancy(tokens: t, determination_max_octets: determination_max_octets) {
+            BufferOctetsRange { min: lo, max: hi } => [lo, hi]
+            BufferOctetsUnbounded { reason: _ } => [-2]
+          }
+      }
+  }
+}
+
+// "Hi " (3) + MAIL (2) + LAST (2) encodes to 7 octets but can occupy 137 once a 132-octet mail
+// string replaces its code; a bounded DETERMINATION adds its longest select string the same way,
+// and an unbounded one cannot be measured.
+test fn buffer_occupancy_grows_by_each_inserted_string_less_its_code() -> Bool {
+  return occupancy_of(text: "Hi \{PUT_STRING_MAIL}\{LAST}", determination_max_octets: none) == [7, 137]
+    && occupancy_of(text: "\{PUT_STRING_DETERMINATION}\{LAST}", determination_max_octets: Present { value: 19 }) == [4, 21]
+    && occupancy_of(text: "\{PUT_STRING_DETERMINATION}\{LAST}", determination_max_octets: none) == [-2]
+    && occupancy_of(text: "plain\{LAST}", determination_max_octets: none) == [7, 7]
+}
