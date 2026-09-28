@@ -9,7 +9,7 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_int, json_field_string, json_object_unique_member, JsonMemberFound, FieldRead }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, workspace_allocation_json, workspace_allocation_decode, workspace_allocation_coherent, workspace_owner_key }
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceBasis }
-import gunbc.workspace_allocation_plan { WorkspaceReservationPlan }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 
 // systemd LoadCredential copies this DATA document into the invocation's readonly credential

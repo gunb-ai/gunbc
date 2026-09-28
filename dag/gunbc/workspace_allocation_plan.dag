@@ -1,4 +1,6 @@
 module gunbc.workspace_allocation_plan
+
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_seal }
 import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Int }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
@@ -23,36 +25,12 @@ import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
 
 // A prepared target is immutable across retries. Its predicted incarnation is derived from a
 // live absent/free hold observation; persistence of this plan precedes every acquisition effect.
-type WorkspaceReservationPlan sole_constructor { root: NonEmptyStr, reservation: WorkspaceReservation }
 type WorkspaceReservationPreparation
   = WorkspaceReservationPrepared { plan: WorkspaceReservationPlan }
   | WorkspaceReservationPreparationRefused { reason: NonEmptyStr }
 type WorkspaceReservationApply
   = WorkspaceReservationObserved { reservation: WorkspaceReservation }
   | WorkspaceReservationApplyRefused { reason: NonEmptyStr }
-
-fn workspace_reservation_plan_request(plan: WorkspaceReservationPlan) -> WorkspaceRequest { plan.reservation.request }
-fn workspace_reservation_plan_reservation(plan: WorkspaceReservationPlan) -> WorkspaceReservation { plan.reservation }
-fn workspace_reservation_plan_json(plan: WorkspaceReservationPlan) -> JsonValue {
-  json_object(members: [json_kv(key: "root", value: json_string(s: plan.root as String)), json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation))])
-}
-
-// The administrator-owned durable plan is re-admitted through the same request/grant codec.
-// This is not an HTTP payload decoder: callers load only their committed convergence artifact.
-fn workspace_reservation_plan_from_json(value: JsonValue) -> WorkspaceReservationPlan? {
-  match workspace_json_string(value: value, key: "root") {
-    Absent => none
-    Present { value: root } => if root == "" { none } else {
-      match json_object_unique_member(v: value, key: "reservation") {
-        JsonMemberFound { value: body } => match workspace_reservation_from_json(value: body) {
-          Present { value: reservation } => Present { value: WorkspaceReservationPlan { root: root as NonEmptyStr, reservation: reservation } }
-          Absent => none
-        }
-        _ => none
-      }
-    }
-  }
-}
 
 fn workspace_reservation_prepare(
   root: NonEmptyStr, request: WorkspaceRequest, demand: Demand<NonEmptyStr>,
@@ -88,10 +66,10 @@ fn workspace_reservation_prepare(
                     }
                     match next {
                       Absent => WorkspaceReservationPreparationRefused { reason: "slot generation exhausted" }
-                      Present { value: generation } => WorkspaceReservationPrepared { plan: WorkspaceReservationPlan { root: root, reservation: WorkspaceReservation {
+                      Present { value: generation } => WorkspaceReservationPrepared { plan: workspace_reservation_plan_seal(root: root, reservation: WorkspaceReservation {
                         request: request, slot: member.slot, generation: generation, grant: grant, work: demand.work,
                         demand: demand.id, offer: offer.id, money_account: advanced, money_generation: 0,
-                      } } }
+                      }) }
                     }
                   }
                   FileHoldAcquireNotEligible { slot_key: _, refusal } => match refusal {
@@ -115,7 +93,7 @@ fn workspace_reservation_prepare(
 // Only this exact slot/incarnation may be acquired or recovered. An already held match is an
 // observation of the original reservation, never a grant to relaunch an existing process.
 fn workspace_reservation_apply(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> WorkspaceReservationApply
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_apply_recorded_plan")]
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_apply_recorded_plan")]
   = {
   if root != plan.root { WorkspaceReservationApplyRefused { reason: "prepared plan names another allocation store" } } else {
   let reservation = plan.reservation

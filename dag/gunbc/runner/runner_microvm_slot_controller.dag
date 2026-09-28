@@ -11,14 +11,15 @@ import gunbc.runner_microvm_slot_unit { workspace_launch_credential_id }
 
 
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.workspace_allocation_store { workspace_apply_recorded_plan, WorkspaceStoreWritten, workspace_settle_unstarted_retirement, WorkspaceRetired, WorkspaceAcquiring }
+import gunbc.workspace_allocation_store { WorkspaceStoreWritten, workspace_settle_unstarted_retirement, WorkspaceRetired, WorkspaceAcquiring }
+import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
 import gunbc.runner_attempt_launch { LaunchWithdrawn }
 import gunbc.workspace_microvm { workspace_retirement_identity }
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased, WorkspaceWanted, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable }
-import gunbc.workspace_allocation_plan { workspace_reservation_plan_reservation }
+import gunbc.workspace_reservation_record { workspace_reservation_plan_reservation }
 import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_microvm { bind_workspace_launch, workspace_fleet_operator_public_key, WorkspaceLaunchBound, WorkspaceLaunchRefused }
 import gunbc.workspace_gateway { WorkspaceGateway, workspace_fleet_gateway }

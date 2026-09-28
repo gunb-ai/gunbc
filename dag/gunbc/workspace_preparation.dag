@@ -13,7 +13,8 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
 import gunbc.workspace_allocation_budget { workspace_budget_for_request, WorkspaceBudgetObserved, WorkspaceBudgetUnreadable }
-import gunbc.workspace_allocation_plan { WorkspaceReservationPlan, workspace_reservation_prepare, WorkspaceReservationPrepared, WorkspaceReservationPreparationRefused }
+import gunbc.workspace_allocation_plan { workspace_reservation_prepare, WorkspaceReservationPrepared, WorkspaceReservationPreparationRefused }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 import gunbc.workspace_allocation_store {
   workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted,
   workspace_record_plan, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused,

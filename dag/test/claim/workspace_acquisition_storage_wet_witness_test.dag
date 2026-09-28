@@ -2,7 +2,7 @@ module gunbc.test.claim.workspace_acquisition_storage_wet_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
-import gunbc.workspace_allocation_plan { workspace_reservation_plan_json }
+import gunbc.workspace_reservation_record { workspace_reservation_plan_json }
 import extdeps.shell
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted }
 import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set }
@@ -11,7 +11,8 @@ import gunbc.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBindi
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import extdeps.languages.json.emit { serialize_json, json_array, json_object, json_kv, json_string }
 import gunbc.workspace_acquisition_invocation { workspace_acquisition_protocol_key }
-import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceAcquiring, WorkspaceRetired, WorkspaceReleased, workspace_owner_key, workspace_allocation_json, workspace_settle_unelected_retirement, WorkspaceStoreWritten, WorkspaceStoreWriteRefused }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceAcquiring, WorkspaceRetired, WorkspaceReleased, workspace_owner_key, workspace_allocation_json, WorkspaceStoreWritten, WorkspaceStoreWriteRefused }
+import gunbc.workspace_allocation_acquisition { workspace_settle_unelected_retirement }
 import gunbc.test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation }
 
 fn acquisition_fixture_write(store: FabricStorageBinding, key: NonEmptyStr, value: NonEmptyStr) -> Bool {

@@ -13,7 +13,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import product.placement_supply { HostIdentity }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_work, workspace_memory_grant, workspace_reservation_json }
 import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
-import gunbc.workspace_allocation_plan { workspace_reservation_plan_from_json }
+import gunbc.workspace_reservation_record { workspace_reservation_plan_from_json }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRecorded, WorkspaceOwnerSnapshot, workspace_allocation_json, workspace_owner_key }
 import gunbc.workspace_allocation_launch_directive { WorkspaceLaunchDirectiveRead, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused, workspace_launch_directive_from_text, workspace_launch_directive_matches }
 import gunbc.test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }

@@ -15,7 +15,7 @@ import gunbc.workspace_allocation_store {
   WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
   workspace_read_owner, workspace_owner_key, workspace_allocation_json, workspace_allocation_coherent,
 }
-import gunbc.workspace_allocation_plan { WorkspaceReservationPlan }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 
 // The selected host observes its own hold root. A matching path on another host is never the
 // same authority. The global owner head supplies desired state and immutable incarnation intent.

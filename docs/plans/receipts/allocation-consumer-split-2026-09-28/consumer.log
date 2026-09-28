@@ -1,0 +1,151 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 20 seconds
+✓ typecheck v2.compiler.translate done in 5 seconds
+PASS unreadable_discovery_is_not_idle
+PASS expired_unplanned_request_retires_without_supply
+PASS explicit_retirement_does_not_require_a_readable_clock_or_supply
+PASS live_unplanned_request_selects_preparation_without_extending_lease
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 4ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.SSxcXOgR3G/heads
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.SSxcXOgR3G/heads
+[file] write_create_new /tmp/tmp.SSxcXOgR3G/objects/7a9851408f028845 (655 bytes)
+[file] read /tmp/tmp.SSxcXOgR3G/objects/7a9851408f028845
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.SSxcXOgR3G/heads
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.SSxcXOgR3G/heads
+[file] write_create_new /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1 (16 bytes)
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/objects/7a9851408f028845
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/objects/7a9851408f028845
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/objects/7a9851408f028845
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/objects/7a9851408f028845
+[file] write_create_new /tmp/tmp.SSxcXOgR3G/objects/ea04b1ca418fe192 (712 bytes)
+[file] read /tmp/tmp.SSxcXOgR3G/objects/ea04b1ca418fe192
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] write_create_new /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2 (16 bytes)
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.SSxcXOgR3G/objects/ea04b1ca418fe192
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.SSxcXOgR3G/objects/ea04b1ca418fe192
+[file] write_create_new /tmp/tmp.SSxcXOgR3G/objects/ca7e41201ffef3cf (738 bytes)
+[file] read /tmp/tmp.SSxcXOgR3G/objects/ca7e41201ffef3cf
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] write_create_new /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3 (16 bytes)
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.SSxcXOgR3G/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.SSxcXOgR3G/objects/ca7e41201ffef3cf
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 3ms
+PASS persisted_expired_request_settles_after_reader_restart_without_offers
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.iw4seRGHH6/heads
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.iw4seRGHH6/heads
+[file] write_create_new /tmp/tmp.iw4seRGHH6/objects/7a9851408f028845 (655 bytes)
+[file] read /tmp/tmp.iw4seRGHH6/objects/7a9851408f028845
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.iw4seRGHH6/heads
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] list /tmp/tmp.iw4seRGHH6/heads
+[file] write_create_new /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1 (16 bytes)
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/objects/7a9851408f028845
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/objects/7a9851408f028845
+[file] write_create_new /tmp/tmp.iw4seRGHH6/objects/27cfea8d62bbc119 (661 bytes)
+[file] read /tmp/tmp.iw4seRGHH6/objects/27cfea8d62bbc119
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] write_create_new /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2 (16 bytes)
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.iw4seRGHH6/objects/27cfea8d62bbc119
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.iw4seRGHH6/objects/27cfea8d62bbc119
+[file] write_create_new /tmp/tmp.iw4seRGHH6/objects/aae4d44d5d9377ab (696 bytes)
+[file] read /tmp/tmp.iw4seRGHH6/objects/aae4d44d5d9377ab
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] write_create_new /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3 (16 bytes)
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.1
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.2
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.4
+[file] read /tmp/tmp.iw4seRGHH6/heads/cas-slot-workspace-owner-5ab903eb23113271.3
+[file] read /tmp/tmp.iw4seRGHH6/objects/aae4d44d5d9377ab
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 2ms
+PASS waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement

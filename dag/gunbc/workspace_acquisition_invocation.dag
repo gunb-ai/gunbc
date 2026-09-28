@@ -11,7 +11,7 @@ import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasObserved
 import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
 import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.workspace_allocation_plan { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_reservation }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_reservation }
 import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
@@ -44,7 +44,7 @@ fn workspace_current_acquisition_invocation(plan: WorkspaceReservationPlan) -> S
 // One immutable actor record per exact reservation plan precedes the hold effect. A restart
 // may observe the hold, but cannot impersonate the old actor or repeat a possibly queued CAS.
 fn workspace_acquisition_actor_admits(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_apply_recorded_plan")]
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_apply_recorded_plan")]
 {
   match workspace_current_acquisition_invocation(plan: plan) {
     Absent => false
@@ -69,7 +69,7 @@ fn workspace_acquisition_actor_admits(store: FabricStorageBinding, plan: Workspa
 // Winning against actor election proves no admitted actor can ever issue this plan's hold effect.
 // An existing actor, unreadable journal, or any other value retains the acquisition obligation.
 fn workspace_cancel_unelected_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_settle_unelected_retirement")]
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_settle_unelected_retirement")]
 {
   let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
   let key = concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: plan_wire as NonEmptyStr)) as String) as NonEmptyStr
@@ -94,7 +94,7 @@ fn workspace_acquisition_protocol_key(plan: WorkspaceReservationPlan) -> NonEmpt
 // Legacy Acquiring rows predate actor election. Only a new Recorded transition may install this
 // marker, before its owner CAS, so absence of a legacy journal never becomes proof of no effect.
 fn workspace_establish_actor_protocol(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> Bool
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_store", decl_name: "workspace_begin_acquisition")]
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_begin_acquisition")]
 {
   match admit_cas_attempt_for_derived_payload(key: workspace_acquisition_protocol_key(plan: plan), expected: ExpectSlotAbsent, proposed: "actor-journal/1" as NonEmptyStr) {
     DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {

@@ -263,3 +263,43 @@ The updated gateway observer's 733-module closure completed loading/typechecking
 under the same cap and reached the deliberate `validation_no_effect_entry` missing
 function refusal. This establishes source qualification of the cleanup and refusal
 publication wiring, not execution of SSH, a periodic refresh service, or VM access.
+
+## Bounded consumer entry and acquisition separation
+
+The owner-ledger reader no longer imports reservation acquisition effects. The
+reservation record/codec moved to `workspace_reservation_record`; acquisition
+operations moved unchanged to `workspace_allocation_acquisition`. Stored JSON is
+unchanged, and caller restrictions follow their moved declarations. New plans
+still originate from the same preparation authority.
+
+The unchanged six consumer controls pass with a 298-module closure (previously
+641), measured peak 1,900,998,656 bytes (1.77 GiB), zero swap, and no cgroup OOM or
+limit events. All three acquisition storage controls also pass, including keeping
+quota held when an actor was elected and queued effects remain unresolved.
+
+`workspace_request_consumer_cli.workspace_reconcile_once` is a narrow one-pass
+entry into that same consumer. It obtains the installed protected-state binding,
+uses the authorized operator identity, reconciles expiry/retirement, and records a
+preparation wait when authoritative supply is absent. It writes a create-only
+receipt under `target/workspace-consumer-<receipt_name>.json`; callers must supply a
+fresh safe path segment. Pending preparation or host convergence is explicitly
+reported as pending, never as a launched VM. A failed receipt write does not undo
+or obscure the durable intent; the next invocation rediscovers it.
+
+Its 573-module closure completed loading/typechecking under 6 GiB/no swap and
+reached the deliberately absent `validation_no_effect_entry`. That is source
+qualification only: this entry has not been run against production protected
+state, scheduled, or connected to a commissioned remote host. The broad host
+apply CLI's earlier OOM remains unresolved by this narrower consumer result.
+Receipts: `receipts/allocation-consumer-split-2026-09-28/`.
+
+Protected socket dependency rechecked at `e22248e9229e611b64cc13ae66a0182660e9f448`
+(PR #12482): still open, not merged. Its current description continues to report
+an empty served roster and deployment/readback as remaining work. This does not
+establish the queued-acquisition fencing/drainage contract or commissioning of
+allocation protected state. No sibling source was imported on that basis.
+
+The four launch-directive controls also pass after the record move: exact
+head/host/slot/artifact binding, stale head/foreign owner refusal, foreign
+host/slot/root/artifact refusal, and release-intent settlement identity. These
+are source/fixture controls; no guest was launched.

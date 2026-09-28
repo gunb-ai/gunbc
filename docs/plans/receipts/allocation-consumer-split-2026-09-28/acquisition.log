@@ -1,0 +1,144 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.translate done in 6 seconds
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.nTxG33hU2D/fabric/heads
+[file] write_create_new /tmp/tmp.nTxG33hU2D/fabric/objects/9b72bd58912c9bb8 (1694 bytes)
+[file] read /tmp/tmp.nTxG33hU2D/fabric/objects/9b72bd58912c9bb8
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.nTxG33hU2D/fabric/heads
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.nTxG33hU2D/fabric/heads
+[file] write_create_new /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1 (16 bytes)
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.nTxG33hU2D/fabric/objects/9b72bd58912c9bb8
+[file] read /tmp/tmp.nTxG33hU2D/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.nTxG33hU2D/fabric/heads
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 2ms
+PASS legacy_acquiring_without_actor_journal_retains_quota
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/objects/9b72bd58912c9bb8 (1694 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/9b72bd58912c9bb8
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1 (16 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/objects/3f5758bc51d70ce6 (102 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/3f5758bc51d70ce6
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1 (16 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/9b72bd58912c9bb8
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/3f5758bc51d70ce6
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/objects/279ef04c7b32fb6a (1332 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/279ef04c7b32fb6a
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] list /tmp/tmp.9KQ0MBWyH4/fabric/heads
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1 (16 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/9b72bd58912c9bb8
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/objects/d96ab6d8e31fedb4 (1771 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/objects/d96ab6d8e31fedb4
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] write_create_new /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2 (16 bytes)
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.4
+[file] read /tmp/tmp.9KQ0MBWyH4/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.3
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 2ms
+PASS marked_unelected_actor_cancellation_releases_owner_quota
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] write_create_new /tmp/tmp.q3nLQFf7qo/fabric/objects/9b72bd58912c9bb8 (1694 bytes)
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/9b72bd58912c9bb8
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] write_create_new /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1 (16 bytes)
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] write_create_new /tmp/tmp.q3nLQFf7qo/fabric/objects/3f5758bc51d70ce6 (102 bytes)
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/3f5758bc51d70ce6
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] write_create_new /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1 (16 bytes)
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] write_create_new /tmp/tmp.q3nLQFf7qo/fabric/objects/ec188bcf175bcd1b (1348 bytes)
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/ec188bcf175bcd1b
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] list /tmp/tmp.q3nLQFf7qo/fabric/heads
+[file] write_create_new /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1 (16 bytes)
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/9b72bd58912c9bb8
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-protocol-735ff210af64421b.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/3f5758bc51d70ce6
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/ec188bcf175bcd1b
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.1
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/heads/cas-slot-workspace-acquisition-actor-735ff210af64421b.2
+[file] read /tmp/tmp.q3nLQFf7qo/fabric/objects/ec188bcf175bcd1b
+◐ started shell.Remove.RecursiveForce
+✓ shell.Remove.RecursiveForce done in 2ms
+PASS elected_actor_cannot_be_cancelled_from_absent_hold_assumption
