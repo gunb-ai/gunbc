@@ -1,0 +1,9 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+error: resolve failed for target/state-provision-validation/test.claim.auth.fabric_state_provision_witness_test.dag
+  cause: target/state-provision-validation/gunbc.host_standup_assimilation_deduction.dag:44:10: error: undefined variable 'srv3_pre_install_lease_table'
+target/state-provision-validation/gunbc.host_standup_assimilation_deduction.dag:48:10: error: undefined variable 'srv3_post_install_lease_table_fixture'
+target/state-provision-validation/gunbc.host_standup_assimilation_deduction.dag:64:43: error: undefined variable 'srv3_install_hang_no_router_lease_ms'
+target/state-provision-validation/gunbc.host_standup_assimilation_deduction.dag:103:10: error: function 'lease_table_has_os_up_subsumption' not found in scope
+<synthetic>: error: effect summary incomplete: call to 'lease_table_has_os_up_subsumption' in gunbc.host_standup_assimilation_deduction.deduce_os_install_actuation_verdict has no established callee identity, so its effects cannot be joined

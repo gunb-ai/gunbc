@@ -424,3 +424,29 @@ secret or establish free capacity. No live service or capacity was changed.
 The socket dependency is still open and overall HOLD remains. Commissioning,
 queued-operation recovery guarantees, current preparation evidence, remote
 convergence, maintained observations and VM lifecycle acceptance remain required.
+
+
+## Storage credential authority split
+
+`a880cd03c` separates initial storage-key material from accessor policy. The
+material entry no longer invokes `ensure_grant`; a narrow accessor entry calls
+the existing `secret_grants_via_approval` authority for the one declared row.
+Credentials and approval intents are separate; no cloud IAM role was expanded.
+
+A negative control exposed that the former material request changed its
+escalation ID across runs but retained the same intent revision. The approval
+gate compares that revision. `71aae3c54` includes the run attempt in the hashed
+intent, following the shared secret-grant request contract. Live polling still
+uses the run-specific escalation ID; the test exercises the gate directly and
+is not evidence of a reproduced live cross-run exploit.
+
+These are source repairs. The reviewed workflow credential bindings, live cloud
+readback, host custody and socket commissioning remain outstanding. The
+material/accessor split does not itself prove that distinct cloud principals
+are provisioned or supply the corresponding environment inputs.
+
+Both credential separation/run-binding controls pass at `71aae3c54` under
+6 GiB/no swap, with the production provisioning module included in the 590-module
+byte-identical closure. The dependency-copy failures and the pre-repair run-binding
+failure are retained beside the passing result in
+`receipts/allocation-state-provision-2026-09-28/`. No cloud operation was executed.

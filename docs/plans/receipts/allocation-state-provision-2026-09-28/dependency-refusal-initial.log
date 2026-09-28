@@ -1,0 +1,31 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+error: resolve failed for target/state-provision-validation/test.claim.auth.fabric_state_provision_witness_test.dag
+  cause: target/state-provision-validation/gunbc.host_standup.dag:699:49: error: unresolved type 'BmcCredentialProbeResult'
+target/state-provision-validation/gunbc.host_standup.dag:707:53: error: unresolved type 'BmcCredentialProbeResult'
+target/state-provision-validation/gunbc.host_standup.dag:715:44: error: unresolved type 'ConvergePolicy'
+target/state-provision-validation/gunbc.host_standup.dag:177:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:187:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:194:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:202:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:221:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:230:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:245:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:257:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:269:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:278:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:291:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:300:22: error: undefined variable 'host_effect_identity_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:314:22: error: undefined variable 'host_effect_converge_loop_evidence'
+target/state-provision-validation/gunbc.host_standup.dag:700:9: error: function 'bmc_credential_probe_to_phase' not found in scope
+target/state-provision-validation/gunbc.host_standup.dag:708:9: error: function 'bmc_credential_probe_to_phase' not found in scope
+target/state-provision-validation/gunbc.host_standup.dag:716:3: error: function 'fleet_converge_policy' not found in scope
+target/state-provision-validation/gunbc.host_standup_assimilation_deduction.dag:19:15: error: unresolved type 'KvmObservedScreen'
+<synthetic>: error: effect summary incomplete: call to 'bmc_credential_probe_to_phase' in gunbc.host_standup.credential_probe_maps_factory_default has no established callee identity, so its effects cannot be joined
+<synthetic>: error: effect summary incomplete: call to 'bmc_credential_probe_to_phase' in gunbc.host_standup.credential_probe_maps_credentials_rotated has no established callee identity, so its effects cannot be joined
+<synthetic>: error: effect summary incomplete: call to 'fleet_converge_policy' in gunbc.host_standup.host_standup_fleet_converge_policy has no established callee identity, so its effects cannot be joined
+<synthetic>: error: effect summary incomplete: gunbc.host_standup.host_standup_step_is_effective_gap calls gunbc.host_standup_assimilation_deduction.srv3_pre_install_actuation_verdict, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does
+<synthetic>: error: effect summary incomplete: gunbc.host_standup.host_standup_step_is_effective_gap_at_actuation_verdict calls gunbc.host_standup_assimilation_deduction.deduce_os_install_actuated_satisfied, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does
+<synthetic>: error: effect summary incomplete: gunbc.host_standup.host_standup_gap_count calls gunbc.host_standup_assimilation_deduction.srv3_pre_install_actuation_verdict, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does
+<synthetic>: error: effect summary incomplete: gunbc.host_phase_status.observe_host_phase calls gunbc.host_standup_assimilation_deduction.srv3_post_install_actuation_verdict, whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does

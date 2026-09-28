@@ -111,3 +111,38 @@ claim that the broader GCP consumer migration has been completed.
 The restricted socket dependency #12482 remains open. Its transport was integrated
 and locally qualified in #12505, but neither the dependency nor the allocation
 controller has been installed by this work. Preserve the review/commissioning gate.
+
+
+## Separate storage material and access operations
+
+The material helper now calls only the existing observe/create/initial-version/
+readback actuator. Its approval action is `gunbc.fabric-state.provision-material`;
+its request has a new identity and hashes the real run attempt, so a previous combined approval cannot authorize
+this operation. It neither resolves an accessor nor writes IAM policy.
+
+`request_fabric_state_key_access` and `converge_fabric_state_key_access` select only
+the existing fabric-state accessor row and call `secret_grants_via_approval`.
+They use that authority's separate approval, exact grant/beneficiary binding and
+`SECRET_GRANT_ACCESS_TOKEN`. Material continues to require its independently
+supplied `FABRIC_STATE_PROVISION_ACCESS_TOKEN` after app admission. This separates
+code paths; environment variable names do not prove credential-layer separation.
+The reviewed workflow must bind each to its appropriately scoped principal.
+
+The concrete commissioning sequence remains:
+
+1. Read back the pinned secret's standing under an authorized observer. No key
+   file on srv1 is not proof that the cloud secret is absent.
+2. If material is absent, obtain app approval for the material request in a real
+   reviewed run, then use an authorized material principal with the existing
+   actuator. An ambiguous create/add result requires recovery, not a fresh retry.
+3. Reconcile the single accessor row under its separately admitted policy
+   authority. Do not give the material principal policy access or the policy
+   principal secret-version access/add permissions.
+4. Use existing `host_credential_custody_converge` with `FabricStateWriterKey` to
+   install the pinned version on the necessary hosts and check ownership/mode.
+5. Install the reviewed restricted-socket service and exercise signed protected
+   state through the real proxy, then qualify acquisition recovery before any VM.
+
+Steps 1–3 still lack the connected, commissioned workflow credential path. This
+source change does not allocate a service account, expand IAM permissions, file a
+live approval, install credentials or establish production storage readiness.

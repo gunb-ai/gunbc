@@ -1,0 +1,5 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+PASS material_approval_cannot_authorize_accessor_policy
+PASS material_approval_is_bound_to_its_run_attempt

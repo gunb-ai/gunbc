@@ -1,0 +1,11 @@
+{
+  "revision": "71aae3c547ceea629bb6fcce2bab1276f8f7bf39",
+  "binary_sha256": "bf9fae33a19042737978cd913c77f7aab3548a83ab4d58c59f34b6c6404ead9f",
+  "source_modules": 590,
+  "all_copies_match_current_source": true,
+  "memory_max_bytes": 6442450944,
+  "swap_max_bytes": 0,
+  "exit": 0,
+  "controls_passed": 2,
+  "live_effects": false
+}
