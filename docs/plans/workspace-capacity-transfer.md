@@ -54,3 +54,28 @@ Produce the actual convergence transfer plan and qualify its withdrawal and budg
 controls, commission protected storage/access, apply the qualified plan, and run
 request → reservation → SSH → cleanup → same-slot reuse acceptance. The current
 empty workspace designation is retained until the transfer is established.
+
+
+## Direct-controller withdrawal boundary
+
+Source `b8f407d` connects the direct CI controller to the same capacity sanction
+used by the broker. A workspace-purpose slot cannot mint a new GitHub registration
+through the fallback controller. Prior CI recovery still runs the shared teardown
+with the recorded attempt; it needs neither a new registration nor the current CI
+image. A workspace in-flight record refuses the CI path so owner/quota settlement
+cannot be skipped. Unknown purpose, foreign executor evidence and unready cells
+refuse before minting.
+
+Four focused controls pass under 6 GiB/no swap. The complete controller module
+loaded and typechecked from normal source roots under its existing 24 GiB modeled
+controller budget, then reached the deliberate missing-entry refusal without
+executing effects. Receipts: `receipts/allocation-purpose-2026-09-28/`.
+
+This closes one launch bypass, not the whole transfer. It does not fence an elected
+acquisition, establish a commissioned slot, or change the empty designation.
+The latest read-only srv1 census finds the storage and approval services running,
+the slot service failed, and the modeled cell slice absent with unbounded reported
+memory values. Credential/allocation/readiness paths were absent or inaccessible
+to the current account; this does not distinguish absence from denied traversal.
+The HTTPS listener returned 405 to GET; that is reachability, not authenticated
+protected-state acceptance.
