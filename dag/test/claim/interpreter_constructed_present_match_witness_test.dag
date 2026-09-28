@@ -1,0 +1,75 @@
+module test.claim.interpreter_constructed_present_match_witness_test
+
+import std.types { Bool, Int, String }
+
+// A MATCH OVER AN OPTIONAL SEES THE PRESENT VALUE WHERE THE CHECKER SAYS IT DOES, WHICHEVER WAY
+// THE OPTIONAL WAS BUILT. Which arms see it is ONE predicate, v1.compiler.infer
+// optional_match_arm_sees_present_value -- a bare binding after an unguarded `null` arm, and a
+// non-null literal arm -- read by the checker, the interpreter and every Rust match rendering. The
+// interpreter holds an optional in two representations -- a bare value when a host builtin produced
+// it, an Optional.Present variant when source wrote `Present { value }` -- and before the fix it
+// honoured the checker only for the first: over a constructed optional the literal arm missed and
+// the binding held the whole variant. Each claim below pairs a CONSTRUCTED optional with the same
+// match over a BUILTIN-produced one, so the constructed arm is the discriminating red and the
+// builtin arm is the positive control that the match itself is sound.
+
+fn constructed(s: String) -> String? { Present { value: s } }
+
+fn builtin_produced(s: String) -> String? { [s] |> first }
+
+fn classify(o: String?) -> String {
+  match o {
+    null => "n"
+    "x" => "ex"
+    v => v
+  }
+}
+
+fn constructed_int(n: Int) -> Int? { Present { value: n } }
+
+fn classify_int(o: Int?) -> Int {
+  match o {
+    null => 0
+    7 => 70
+    v => v + 1
+  }
+}
+
+test fn literal_arm_matches_a_constructed_present_string() -> Bool {
+  classify(o: constructed(s: "x")) == "ex" && classify(o: builtin_produced(s: "x")) == "ex"
+}
+
+test fn binding_arm_binds_the_payload_of_a_constructed_present_string() -> Bool {
+  classify(o: constructed(s: "q")) == "q" && classify(o: builtin_produced(s: "q")) == "q"
+}
+
+test fn absent_arm_still_takes_a_constructed_absent() -> Bool {
+  classify(o: none) == "n"
+}
+
+test fn literal_and_binding_arms_see_a_constructed_present_int() -> Bool {
+  classify_int(o: constructed_int(n: 7)) == 70 && classify_int(o: constructed_int(n: 2)) == 3
+}
+
+// THE EMITTED HALF OF THE SAME DECISION. The Rust emitter renders an arm the predicate says sees the
+// present value under `Some(..)`, so these pair with the interpreted claims above: mutating
+// optional_match_arm_sees_present_value moves both halves together. The Int literal arm is the case
+// the predicate newly owns -- before it, a non-String literal arm over an optional was emitted bare
+// (`7 =>` against an Option<i64>) while the interpreter compared it to the payload.
+test fn emitted_literal_and_binding_arms_over_an_optional_int_see_the_present_value() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pbint\n\nfn classify_int(o: Int?) -> Int {\n  match o {\n    null => 0\n    7 => 70\n    v => v + 1\n  }\n}\n",
+    "src/pbint.rs",
+    ["Some(7) =>", "Some(v) =>"],
+    ["    7 =>", "    v =>"]
+  )
+}
+
+test fn emitted_literal_and_binding_arms_over_an_optional_string_see_the_present_value() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pbstrlit\n\nfn classify(o: String?) -> String {\n  match o {\n    null => \"n\"\n    \"x\" => \"ex\"\n    v => v\n  }\n}\n",
+    "src/pbstrlit.rs",
+    ["Some(ref __s) if __s == \"x\"", "Some(v) =>"],
+    ["    ref __s if", "    v =>"]
+  )
+}

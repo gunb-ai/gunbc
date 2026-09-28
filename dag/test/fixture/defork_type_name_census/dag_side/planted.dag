@@ -1,0 +1,17 @@
+module test.fixture.defork_type_name_census.dag_side.planted
+
+import std.types { Int, Bool }
+
+// dag-side half of the planted fork: a shared record, a shared alias, a shared FUNCTION name
+// (which must stay out of a type census), and a name only this side declares.
+type CensusShared {
+  width: Int
+}
+
+type CensusAliased = Int
+
+type CensusDagOnly = Present | Absent
+
+fn census_shared_fn(x: Int) -> Int {
+  x
+}

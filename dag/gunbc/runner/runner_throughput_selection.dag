@@ -4,10 +4,8 @@ import std.types { NonEmptyStr }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply { SupplierOffer }
-import gunbc.runner_slot_allocation {
-  RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-  gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot,
-}
+import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound,
   HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable,

@@ -31,6 +31,7 @@ type TargetProducer
   | HeadsReadingDifferentialProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
+  | V2NativeFrontierProducer
   | EmittedCrateWorkspaceProducer
   | EvaluationStoreAddressExactHeadProducer
   | PrimitiveEgressCensusProducer
@@ -40,6 +41,7 @@ type TargetProducer
   | FloorMemoryQualificationProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
+  | SelfHostBehavioralEquivalenceProducer
   | NativeClaimProgramProducer { entry: String }
 
 type TargetBinding {

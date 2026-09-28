@@ -1,7 +1,7 @@
 module v2.compiler.normalize
 
-import v2.std.algebra { fold_list, list_snoc_item }
-import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree }
@@ -50,6 +50,7 @@ import v2.compiler.body_lowering_fold {
   no_wrapper_retentions,
   wrapper_retentions_concat,
   body_lower_fn_decl_to_census_arrow,
+  body_lower_service_decl,
   body_lower_is_deferred_lower_at_normalize,
   body_lower_type_decl_record_name_optional
 }
@@ -463,6 +464,11 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
     Present { value: emitted } =>
       if (emitted == ^dag_surface_data_decl) || (emitted == ^dag_surface_test_fn_decl) {
         Accepted { value: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()), diagnostics: None }
+      } else if emitted == ^dag_surface_service_decl {
+        body_lowered_tree_then(
+          t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
+          f: fn(shell) { body_lower_service_decl(shell: shell, admit_set_aside: true) }
+        )
       } else if emitted == ^dag_surface_fn_decl {
         match normalize_census_fold_children(n: n, under_fn_decl: true) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }

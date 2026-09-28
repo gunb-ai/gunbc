@@ -18,6 +18,9 @@ import gunbc.witness_v2_native_route {
   native_route_universe_member,
   required_v2_native_job_name
 }
+// THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
+// native_route_admission, and the emitted crate carries a module only when this closure reaches it.
+import gunbc.native_frontier_ratchet { native_frontier_verdict }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
@@ -27,7 +30,6 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes,
   floor_discovery_walk_state_zero
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
@@ -38,7 +40,7 @@ import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
-import v2.compiler.infer { infer, InferredTree }
+import v2.compiler.infer { InferredTree }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
@@ -118,8 +120,8 @@ import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr }
-import std.algebra { Cons, Empty, FreeMonoid, trim }
-import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
+import v2.std.algebra { contains, fold_list, is_empty, length, list_find_first, list_reverse }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -146,7 +148,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
@@ -164,6 +166,7 @@ import v2.std.text { String }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
+import v2.compiler.refinement_discharge { infer_and_discharge }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
 // by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
@@ -869,7 +872,7 @@ fn compile(
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   bind_outcome(
-    o: infer(tree: source),
+    o: infer_and_discharge(tree: source),
     f: fn(inferred) {
       compile_inferred(inferred: inferred, mode: mode)
     }
@@ -929,7 +932,7 @@ fn validate_then_compile(
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
   bind_outcome(
-    o: infer(tree: source),
+    o: infer_and_discharge(tree: source),
     f: fn(inferred) {
       bind_outcome(
         o: run_required_lens_gates_on_subtree(
@@ -1500,7 +1503,7 @@ fn native_test_infer_resolved(
   resolved: ResolvedTree
 ) -> Outcome<NativeTestPreparedModule> {
   bind_outcome(
-    o: infer(tree: resolved),
+    o: infer_and_discharge(tree: resolved),
     f: fn(inferred) {
       outcome_accepted(value: NativeTestPreparedModule {
         module: module,

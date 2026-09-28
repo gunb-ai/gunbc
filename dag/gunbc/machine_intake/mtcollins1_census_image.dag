@@ -6,6 +6,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import std.measure { Bandwidth, bandwidth, bandwidth_count }
+import extdeps.kmod.libkmod { libkmod_log_priority_env_name, libkmod_log_priority_info }
+import extdeps.systemd.udevd { udevd_log_level_cmdline_key, systemd_log_level_debug, systemd_log_target_env_name, systemd_log_target_kmsg }
+import extdeps.linux.kernel { linux_printk_devkmsg_on_cmdline_arg }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
@@ -31,9 +34,9 @@ import gunbc.seeded_install_media_publish {
 }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
-  host_capture_census_stages,
   host_capture_program,
 }
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages }
 
 // THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
 // that runs the host-capture census in the LIVE environment and powers off. It is a derived artifact
@@ -69,6 +72,29 @@ data mtcollins1_census_console_arg: NonEmptyStr = concat(
   "console=", mtcollins1_census_console_tty as String, ",",
   bandwidth_count(b: mtcollins1_census_console_baud) as String,
 ) as NonEmptyStr
+
+// THE MODULE-IDENTITY INSTRUMENT (gunbc.machine_intake_kernel_module_decompression_observation).
+// The kernel's "ZSTD-decompression failed" line names no module; the loader's record does, and in
+// this initrd (systemd-udevd 255.4, libkmod 31) it reaches the serial capture only when all four hold:
+//   KMOD_LOG=info            libkmod's path-bearing "Failed to insert module" line is INFO, and its
+//                            default priority is ERR (extdeps.kmod.libkmod). The kernel hands an
+//                            unrecognised KEY=value to /init's environment and initramfs-tools'
+//                            init does not scrub it, so udevd inherits it.
+//   udev.log_level=debug     overrides the SYSTEMD_LOG_LEVEL=info that init-top/udev sets.
+//   SYSTEMD_LOG_TARGET=kmsg  without it udevd writes to /dev/console, which is the LAST console= --
+//                            tty0 here, the KVM, not the SOL line (extdeps.systemd.udevd).
+//   printk.devkmsg=on        the default rate limit drops a burst of userspace kmsg records.
+// The INFO record reaches SOL at the default console loglevel; udev's per-device DEBUG records stay
+// in the kmsg ring, so the requesting device is unread on SOL by design (eager-owl-205, option A:
+// ignore_loglevel would flood the 115200 line and perturb the timing of a possible race).
+// It is a build input like any other: changing it changes the build key and the digest, so the
+// image is republished, read back and repinned; nothing edits GRUB by hand.
+data mtcollins1_census_module_identity_args: NonEmptyStr = join([
+  concat(libkmod_log_priority_env_name as String, "=", libkmod_log_priority_info as String),
+  concat(udevd_log_level_cmdline_key as String, "=", systemd_log_level_debug as String),
+  concat(systemd_log_target_env_name as String, "=", systemd_log_target_kmsg as String),
+  linux_printk_devkmsg_on_cmdline_arg as String,
+], " ") as NonEmptyStr
 
 // The seed directory the earlier census booted with (its /proc/cmdline in attempt=3 reads
 // ds=nocloud;s=/cdrom/gunbc-census/), kept so the two captures are comparable.
@@ -131,6 +157,8 @@ fn mtcollins1_seeded_image_input(
       ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: mtcollins1_census_nocloud_dir) as String,
       " ",
       mtcollins1_census_console_arg as String,
+      " ",
+      mtcollins1_census_module_identity_args as String,
     ) as NonEmptyStr,
     volume_id: volume_id,
     pinned_dates: seeded_install_media_pinned_dates,
@@ -158,7 +186,7 @@ fn mtcollins1_census_image_derivation(stages: List<HostCaptureStage>, image_stem
 }
 
 data mtcollins1_census_image: Mtcollins1CensusImage = mtcollins1_census_image_derivation(
-  stages: host_capture_census_stages,
+  stages: mtcollins1_census_stages,
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
 )

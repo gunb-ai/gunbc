@@ -249,6 +249,7 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
+    V2NativeFrontier,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -263,6 +264,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
+    SelfHostBehavioralEquivalence,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -328,6 +330,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::V2NativeCli,
         ),
         (
+            instrument_label("v2-native-frontier"),
+            TargetProducer::V2NativeFrontier,
+        ),
+        (
             instrument_label("emitted-crate-workspace"),
             TargetProducer::EmittedCrateWorkspace,
         ),
@@ -335,6 +341,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-crypto-vectors"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
+            },
+        ),
+        (
+            instrument_label("native-app-attest"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_app_attest.dag",
             },
         ),
         (
@@ -368,6 +380,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("bare-reference-channel-outcome"),
             TargetProducer::BareReferenceChannelOutcome,
+        ),
+        (
+            instrument_label("self-host-behavioral-equivalence"),
+            TargetProducer::SelfHostBehavioralEquivalence,
         ),
     ]
 }
@@ -510,6 +526,20 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     }
     for path in d.regressed.iter() {
         message.push_str(&format!("\nheads-reading-differential: REGRESSED {path}"));
+    }
+    // DECLARATION-NAME AGREEMENT, printed as host output beside the parse figures rather than
+    // folded into the verdict: `HeadsReadingDifferentialObservation` carries four populations and
+    // this is a fifth, so it has no home in the modeled standing yet. It is the population a pool
+    // name census consumes, which the whole-node `divergent` row cannot isolate. FOLD-IN TRIGGER:
+    // the first consumer that decides on this population (a gate, or step 1's reference-edge name
+    // index claiming its exactness) lands it as a field of `HeadsReadingDifferentialObservation`
+    // with `holds()` requiring it empty; until then it is a reading, not a verdict.
+    message.push_str(&format!(
+        "\nheads-reading-differential: declaration_names_divergent={}",
+        d.declaration_names_divergent.len()
+    ));
+    for row in d.declaration_names_divergent.iter() {
+        message.push_str(&format!("\nheads-reading-differential: NAMES {row}"));
     }
     // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
     // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
@@ -732,6 +762,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -756,6 +787,11 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
+            "self-host-behavioral-equivalence",
+            "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
+            "take_self_host_behavioral_equivalence_receipt",
+        ),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
             "dag/gunbc/required_lane_resolution_census_live.dag",
@@ -1008,6 +1044,56 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 held.door_refusal_reason,
             ),
         },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
+/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
+/// an unknown word is a harness defect, never a pass.
+///
+/// `held` and `advanced` are the observation holding: every planned identity reached a terminal
+/// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
+/// roster, which a reviewed pull request may carry (the nightly only publishes it). An owned
+/// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
+/// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
+/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
+/// `lost` and `unminted` are the observation
+/// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
+/// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
+/// clause or the pattern was narrower than the universe, so the subject was not reached.
+fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
+    let pattern = native_route_default_pattern_text();
+    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+        Ok(run) => {
+            let termination = match run.frontier.as_str() {
+                "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
+                "lost" | "unminted" => Termination::ObservationDidNotHold,
+                "not-a-measurement" => Termination::SubjectUnreached,
+                other => {
+                    return InvocationOutcome {
+                        termination: Termination::SubjectUnreached,
+                        message: format!(
+                            "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
+                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                        ),
+                    }
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!(
+                    "v2-native-frontier: frontier={} (lane qualification: {}); findings and any proposed \
+                     roster are the [native-frontier] and [native-frontier-roster] lines above",
+                    run.frontier, run.admission_summary
+                ),
+            }
+        }
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,

@@ -193,6 +193,6 @@ fn symbol_capture_declarers() -> List<SymbolCaptureDeclarer> {
     symbol_capture_declarer(module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_terminal_lexeme", symbol_position: "token_class"),
     symbol_capture_declarer(module_path: "v2.std.integer", decl_name: "integer_inhabitant_atom", symbol_position: "id"),
     symbol_capture_declarer(module_path: "v2.std.qualified_name", decl_name: "qualified_name_from_dotted_string", symbol_position: "return FreeMonoid<Symbol>"),
-    symbol_capture_declarer(module_path: "v2.compiler.translate", decl_name: "target_bundle_child", symbol_position: "edge_name")
+    symbol_capture_declarer(module_path: "v2.compiler.target_serialize", decl_name: "target_bundle_child", symbol_position: "edge_name")
   ]
 }

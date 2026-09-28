@@ -13,9 +13,9 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { Empty, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.cli.compile_cli {
   CliEmitClosure,
+  CliCensusRefused,
   CliEmitted,
   CliPlanParsed,
   CliRunRefused,
@@ -29,7 +29,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.diagnostic { Outcome, outcome_accepted }
@@ -278,8 +278,9 @@ fn door_probe_cli_detail() -> String {
     },
     ingest: [door_probe_read()]
   ) {
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => ""
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => ""
     CliRunRefused { reason: _, detail: detail } => detail
+    CliCensusRefused { reason: _, detail: detail, text: _ } => detail
     CliUsageRefused { reason: _, detail: detail } => detail
   }
 }

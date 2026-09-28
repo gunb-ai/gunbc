@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.plain_type_alias_left_as_a_parse_shell_in_v2
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data plain_type_alias_left_as_a_parse_shell_in_v2: RecurringFailureMode = RecurringFailureMode {
+  identity: "plain_type_alias_left_as_a_parse_shell_in_v2" as NonEmptyStr,
+  receipts: [
+    "**'alias' has two representations in v2: a GENERIC alias lowers to a wrapper, a PLAIN one stays its parse shell** (INVALID STATE: v2.compiler.body_lowering_fold body_lower_generic_eq_type_decl lowers `type List<T> = std.algebra.FreeMonoid<T>` to Conj { List: Conj { <type-parameters>: .., <type-alias>: <lowered type expression> } } (v2.std.type_binder type_alias_wrapper), and a bodyless generic `type MachineWidth<bits>` to its binders alone (type_opaque_wrapper). A plain alias `type Id = Int` and a plain bodyless `type PointerWidth` are returned from body_lower_type_decl_by_body as the unlowered type_decl production shell. So one fact -- 'this name aliases that type expression' -- is carried two ways, told apart by whether the declaration has type parameters.)",
+    "A SECTION 3 REPLACEMENT-MIGRATION DEBT, NOT A NICE-TO-HAVE (ruled by neat-boar-16 when the generic arm landed). The lowered wrapper is the terminal representation; the parse-shell alias is X, and it stays frozen: no new reader may learn to read it. HARM WHILE BOTH STAND: every reader that wants an alias's right-hand side must handle both, which is the attractor section 3 names -- nearby questions keep being answered in the shell's vocabulary. CONTAINMENT: v2.std.type_binder type_decl_view is the ONLY place a reader may tell a lowered generic alias from a plain one (GenericTypeAlias / GenericOpaqueTypeDecl vs PlainTypeDecl); no other reader pattern-matches an alias shell against an alias wrapper.",
+    "DISTINGUISHING FACTS. Not gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2: that class is a type parameter resolved in the wrong scope, and the generic alias arm is one of its climbs. This row is the representation split that climb leaves behind for NON-generic aliases, which carry no binder and so were never that class's subject. RECOGNITION RULE: a v2-lowered type declaration whose right-hand side is a single payload-less, where-less variant (v1.compiler.parse parse_type_body_after_eq type_item_from_alias_rhs), or which has no body, whose declaration target is a parse production shell rather than a lowered type expression.",
+    "RUNG: rung 1 by containment (one typed view is the only reader that may tell the two apart), not a wall: nothing mechanical stops a new reader from matching the shell. CEILING: structurally impossible -- one lowering for every alias, so the shell representation has no producer. NEXT-RUNG TRIGGER, naming the capability: plain aliases and plain bodyless declarations lower through the same path as generic ones -- the aliased type expression by body_lower_type_expr_lowered_optional under a declaration edge, a bodyless declaration to its own lowered form -- and the parse-shell alias representation is DELETED, with every reader of it re-pointed at the lowered form. A trigger that lowers plain aliases while any reader still reads the shell does not discharge this row.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_type_decl_by_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_generic_eq_type_decl", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "type_decl_view", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "type_alias_wrapper", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.type_binder", decl_name: "type_opaque_wrapper", field: WholeDeclaration },
+  ],
+}

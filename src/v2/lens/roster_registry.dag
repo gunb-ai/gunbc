@@ -15,7 +15,8 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { DeclarationRef }
 import std.disposition { SingleAuthority }
-import v2.std.algebra { count_where, fold_list, list_snoc_item, Empty }
+import v2.std.algebra { count_where, fold_list, Empty }
+import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }

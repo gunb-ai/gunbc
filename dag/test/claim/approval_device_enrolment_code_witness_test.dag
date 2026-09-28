@@ -18,7 +18,9 @@ import gunbc.auth.approval_device_redemption { observe_enrolment_slot, Enrolment
 import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_argv, enrolment_code_issue_refuses_off_srv1 }
-import gunbc.live_deploy.emit { RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus {
+  RevisionBoundAtEmission,
+}
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.fleet_converge_workflow {
@@ -65,7 +67,7 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
   let joined = join(argv, " ")
   string_contains(s: joined, pattern: "/usr/bin/sudo -n -u " + (fleet_posix_operator_user.name as String) + " ")
     && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
-    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code")
+    && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
 }
 
 // The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH

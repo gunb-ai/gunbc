@@ -63,6 +63,7 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
+import v2.std.compilers.body_lowering { declared_signature }
 import v2.std.compilers.lexing {
   AnnotationRule,
   CharClassPattern,
@@ -91,7 +92,6 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_member,
   lex_rule_set_token_class_member,
-  symbol_intern_lexeme
 }
 import v2.std.node {
   Arrow,
@@ -110,6 +110,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   is_empty_conj_root,
+  node_lowered_from,
+  symbol_intern_lexeme,
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
@@ -126,6 +128,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_sub,
   canonical_operation_op_mul,
   canonical_operation_op_div,
+  canonical_operation_op_coerce,
   canonical_operation_op_and,
   canonical_operation_op_or,
   canonical_operation_op_lt,
@@ -156,9 +159,9 @@ import v2.std.compilers.target_model {
   BlockEvaluationMode,
   ValueProducing,
   derive_bodied_arrow_scaffold}
-import v2.std.logic { Bool }
+import v2.std.logic { Bool, bool_node }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, for_all, is_empty, length, list_append, list_map, list_snoc_item }
+import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_map }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -173,13 +176,14 @@ import v2.std.diagnostic {
   outcome_rejected,
   invariant_port_locus
 }
-import std.algebra { Empty }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
   integer_decimal_magnitude_node_to_int,
+  integer_int_type_node,
   integer_string_to_decimal_digits_optional,
   DecimalMagnitude,
   DecimalNonZero,
@@ -407,6 +411,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_mul())
   } else if surface_token == ^dag_token_slash {
     outcome_accepted(canonical_operation_op_div())
+  } else if surface_token == ^dag_token_kw_as {
+    outcome_accepted(canonical_operation_op_coerce())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
@@ -2044,11 +2050,10 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // general type fields do not (see dag_grammar_io_field_decl_expr).
 // Service-level `config` follows v1 parse_service_config_block: `config` `{` (field `:` expr)* `}`
 // over v1's closed field set. The v2-inline operation form is v1-admitted and not yet in this
-// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
-// no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
-// (body_lowering_fold body_lower_wrapper_retained_shell, counted by body_lowering_retention_census)
-// and normalized_tree admit_normalized_tree refuses it before resolve. The refusal moved from parse
-// to normalize; it did not disappear.
+// nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl lowers
+// at declaration grade in v2.compiler.body_lowering_fold body_lower_service_decl, which reads the
+// interface and sets realization (transport, config, exit, response, mock_response) and unmodeled
+// interface members aside, typed and located.
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
@@ -2082,12 +2087,14 @@ fn dag_grammar_status_expr_entry_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_io_block_expr() -> GrammarExpr {
+// `input` and `output` are TWO productions, not one io_block over a choice of the two words. A
+// literal terminal is captured by its token class alone (v2.std.grammar StampLexeme keeps no
+// lexeme), so a single io_block's parse tree could not say which word it matched, and the
+// declaration-grade lowering (v2.compiler.body_lowering_fold body_lower_service_decl) needs exactly
+// that fact to build an operation's domain and codomain. The production identity carries it.
+fn dag_grammar_io_block_expr(keyword: String) -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "input")),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "output"))
-    ),
+    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: keyword)),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
       right: dag_grammar_sequence(
@@ -2173,16 +2180,19 @@ fn dag_grammar_mock_response_block_expr() -> GrammarExpr {
 
 fn dag_grammar_operation_body_entry_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_io_block),
+    left: dag_grammar_nonterminal(production: ^dag_production_input_block),
     right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
+      left: dag_grammar_nonterminal(production: ^dag_production_output_block),
       right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_transport),
+        left: dag_grammar_nonterminal(production: ^dag_production_op_modifier),
         right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+          left: dag_grammar_nonterminal(production: ^dag_production_transport),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_response_block),
-            right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+            left: dag_grammar_nonterminal(production: ^dag_production_exit_block),
+            right: dag_grammar_choice(
+              left: dag_grammar_nonterminal(production: ^dag_production_response_block),
+              right: dag_grammar_nonterminal(production: ^dag_production_mock_response_block)
+            )
           )
         )
       )
@@ -2584,10 +2594,15 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_transport_expr(),
     emitted: ^dag_surface_transport
   )
-  let io_block = dag_grammar_production(
-    name: ^dag_production_io_block,
-    expression: dag_grammar_io_block_expr(),
-    emitted: ^dag_surface_io_block
+  let input_block = dag_grammar_production(
+    name: ^dag_production_input_block,
+    expression: dag_grammar_io_block_expr(keyword: "input"),
+    emitted: ^dag_surface_input_block
+  )
+  let output_block = dag_grammar_production(
+    name: ^dag_production_output_block,
+    expression: dag_grammar_io_block_expr(keyword: "output"),
+    emitted: ^dag_surface_output_block
   )
   let op_modifier = dag_grammar_production(
     name: ^dag_production_op_modifier,
@@ -2823,7 +2838,8 @@ fn dag_grammar_root() -> GrammarRoot {
       operation,
       operation_body_entry,
       transport,
-      io_block,
+      input_block,
+      output_block,
       op_modifier,
       exit_block,
       response_block,
@@ -2872,29 +2888,31 @@ fn dag_grammar_root() -> GrammarRoot {
   }
 }
 
-// THE DECLARED GRAMMAR-PRODUCTION ROSTER, AS A NODE. Every production the grammar authority
-// declares, projected to its emitted surface atom and gathered under one Conj root keyed by the
-// production's name. This is the single authority an inference membership rule consults to ground
-// grammar-projection identity atoms (e.g. dag_surface_module) by lookup -- the same frame as the
-// declared-inhabitants roster: the roster root is the evidence, and it is never structurally equal
-// to any member atom, so the self-evidence wall holds by construction. The roster derives from
-// dag_grammar_root(), so a production added to the grammar joins the roster by construction.
+// THE DECLARED TYPE OF A GRAMMAR-PRODUCTION EMITTED ATOM. Each production's emitted node is the
+// surface atom a production emits into the parse tree, so its declared type is "a dag surface
+// production atom", named here by the grammar authority that emits it. An inference rule reads this
+// for a member; a production added to dag_grammar_root() is a member by construction.
 
-fn dag_grammar_production_roster_edge(production: GrammarProduction) -> Edge {
-  Edge {
-    label: Named { name: production.name },
-    target: production.emitted
-  }
+fn dag_grammar_surface_production_type_node() -> Node {
+  dag_grammar_atom(id: ^dag_grammar_surface_production_type_atom)
 }
 
-fn dag_grammar_productions_roster_root() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_map(
+fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool {
+  production.emitted == n
+}
+
+// The namespace graft's module-body marker is a surface identity atom of the same kind: it
+// occupies the grammar_production_identity_node_projection slot a production's emitted atom
+// occupies, so it shares that declared type.
+fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
+  if (n == namespace_graft_module_body_marker_node())
+    || any(
       xs: dag_grammar_root().productions,
-      f: dag_grammar_production_roster_edge
-    ),
-    occurrence_id: OccurrenceSynthetic
+      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
+    ) {
+    optional_present(value: dag_grammar_surface_production_type_node())
+  } else {
+    optional_absent()
   }
 }
 
@@ -3258,11 +3276,7 @@ fn dag_declared_inhabitants_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node()),
-      dag_named_edge(
-        name: ^dag_inhabitant_field_module_body,
-        target: namespace_graft_module_body_marker_node()
-      )
+      dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -3349,6 +3363,12 @@ fn dag_zip_fold_closure_edges() -> List<Edge> {
       target: dag_inhabitant_atom(id: ^dag_surface_spelling_int)
     )
   ]
+}
+
+// The field of an inhabitant record whose target is the type the record declares; every other
+// field states a fact about that type (std.kind roster_kind_index).
+fn dag_declared_inhabitants_subject_field() -> Symbol {
+  ^dag_inhabitant_field_atom
 }
 
 fn dag_declared_inhabitants_root() -> Node {
@@ -3665,7 +3685,11 @@ fn dag_int_type_binding() -> Symbol {
 
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
 // surface spelling "Int" to the canonical binding symbol (dag_binding_spellings); what that
-// binding DENOTES is the Int inhabitant declared at dag_declared_inhabitants_core. Every
+// binding DENOTES is the value type its std authority owns: v2.std.integer integer_int_type_node
+// for Int, v2.std.logic bool_node for Bool. A row points at the authority and never mints a node
+// of its own. Until 2026-09-26 the Int row returned dag_int_inhabitant_node -- the roster's
+// RECORD about Int, not the Int type -- while every value-type consumer used the atom; that fork
+// is what this join now closes (docs/plans/arrow-elimination-model.md). Every
 // hand-rolled fixture facts lookup re-authors this join (dag_add_canonical_grounding_for,
 // record_construct_canonical_grounding_for); the authority declares it once and infer consumes it
 // (v2.compiler.infer infer_node_facts). Specimen-scope interim in the same frame as
@@ -3674,7 +3698,9 @@ fn dag_int_type_binding() -> Symbol {
 // completed state).
 fn dag_binding_denotation(sym: Symbol) -> Optional<Node> {
   if sym == dag_int_type_binding() {
-    optional_present(value: dag_int_inhabitant_node())
+    optional_present(value: integer_int_type_node())
+  } else if sym == ^dag_binding_type_bool {
+    optional_present(value: bool_node())
   } else {
     optional_absent()
   }
@@ -3977,15 +4003,22 @@ fn dag_type_atom_node(identity: Symbol) -> Node {
   }
 }
 
+// A DECLARED ARROW FOR A FIXTURE, built the way the declared-signature lowering builds one: the
+// domain and its declared order come from one mint (v2.std.compilers.body_lowering
+// declared_signature), so a fixture
+// cannot build a domain and an order that disagree. `domain` is the AUTHORED parameter list, in the
+// order the fixture declares it; it is never a canonicalized node, whose label-sorted sequence is not
+// a declared order. A fixture that tests a malformed order builds its Arrow by hand, and says so.
 fn dag_arrow_with_body_node(
   domain: Node,
   return_type_binding: Symbol,
   body: Node
 ) -> Node {
+  let signature = declared_signature(params: domain.children, source: domain)
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: domain },
+      signature.domain,
       Edge {
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
@@ -3994,6 +4027,7 @@ fn dag_arrow_with_body_node(
         label: Positional,
         target: dag_type_atom_node(identity: return_type_binding)
       },
+      signature.order,
       Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -5505,8 +5539,17 @@ fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
 // body lowering's own read. Unfusing it is a body-lowering change, tracked as its own obligation
 // rather than performed from here.
 fn dag_named_arg_name_optional(arg_capture: Node) -> Optional<Symbol> {
+  match dag_named_arg_name_node_optional(arg_capture: arg_capture) {
+    Present { value: name_node } => node_atom_identity_optional(node: name_node)
+    Absent => Absent
+  }
+}
+
+// The name's token node itself, for a reader that must keep its occurrence
+// (v2.compiler.occurrence_role). The name-only decoder above is this one's projection.
+fn dag_named_arg_name_node_optional(arg_capture: Node) -> Optional<Node> {
   match find_named_child(root: arg_capture, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: name_node, diagnostics: _ } => node_atom_identity_optional(node: name_node)
+    Accepted { value: name_node, diagnostics: _ } => Present { value: name_node }
     Rejected { diagnostics: _ } => Absent
   }
 }
@@ -5614,19 +5657,31 @@ fn parse_qn_lexeme_segment(sym_node: Node, root: Node) -> Outcome<Symbol> {
   }
 }
 
-fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<Symbol> {
+// ONE SEGMENT WALKER, TWO READINGS. The walker validates each segment once (parse_qn_lexeme_segment)
+// and hands the segment's token node and its identity to `seg`; a caller that wants names takes
+// the identity, and body lowering takes an atom lowered from the token (v2.std.node
+// node_lowered_from) so each segment keeps its minted occurrence (XL-2 LoweringOccurrenceProjection;
+// docs/plans/lowering-occurrence-projection-design.md). Two walkers would be two authorities for
+// what a qualified name's segments are.
+fn parse_qn_segment_with<T>(sym_node: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
+  match parse_qn_lexeme_segment(sym_node: sym_node, root: root) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: id, diagnostics: _ } => outcome_accepted(value: seg(sym_node, id))
+  }
+}
+
+fn parse_qn_repeat_suffix_ident_with<T>(sequence_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
   match find_named_child(
     root: sequence_capture,
     name: ^grammar_sequence_right_node_projection
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: ident_node, diagnostics: _ } =>
-      parse_qn_lexeme_segment(sym_node: ident_node, root: root)
+      parse_qn_segment_with(sym_node: ident_node, root: root, seg: seg)
   }
 }
 
-fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
-
+fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
@@ -5636,21 +5691,21 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
     ) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: head_sequence, diagnostics: _ } =>
-        match parse_qn_repeat_suffix_ident(sequence_capture: head_sequence, root: root) {
+        match parse_qn_repeat_suffix_ident_with(sequence_capture: head_sequence, root: root, seg: seg) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: sym, diagnostics: _ } =>
+          Accepted { value: item, diagnostics: _ } =>
             match find_named_child(
               root: repeat_capture,
               name: ^grammar_sequence_right_node_projection
             ) {
               Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
               Accepted { value: tail, diagnostics: _ } =>
-                match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
+                match parse_qn_repeat_suffixes_with(repeat_capture: tail, root: root, seg: seg) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
                     outcome_with_diagnostics(
                       value: list_append(
-                        left: Cons { head: sym, tail: Empty },
+                        left: Cons { head: item, tail: Empty },
                         right: suffixes
                       ),
                       diagnostics: tail_diag
@@ -5662,25 +5717,25 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
   }
 }
 
-fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+fn parse_qualified_name_segments_from_capture_with<T>(qn_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
   match find_named_child(root: qn_capture, name: ^grammar_sequence_left_node_projection) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: head_node, diagnostics: _ } =>
-      match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
+      match parse_qn_segment_with(sym_node: head_node, root: root, seg: seg) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-        Accepted { value: head_sym, diagnostics: head_diag } =>
+        Accepted { value: head_item, diagnostics: _ } =>
           match find_named_child(
             root: qn_capture,
             name: ^grammar_sequence_right_node_projection
           ) {
             Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
             Accepted { value: repeat_node, diagnostics: _ } =>
-              match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
+              match parse_qn_repeat_suffixes_with(repeat_capture: repeat_node, root: root, seg: seg) {
                 Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
                   outcome_with_diagnostics(
                     value: list_append(
-                      left: Cons { head: head_sym, tail: Empty },
+                      left: Cons { head: head_item, tail: Empty },
                       right: suffixes
                     ),
                     diagnostics: tail_diag
@@ -5689,6 +5744,21 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
           }
       }
   }
+}
+
+fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+  parse_qn_repeat_suffixes_with(repeat_capture: repeat_capture, root: root, seg: fn(n, id) { id })
+}
+
+fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Symbol>> {
+  parse_qualified_name_segments_from_capture_with(qn_capture: qn_capture, root: root, seg: fn(n, id) { id })
+}
+
+// Each segment as an atom lowered from its own token.
+fn parse_qualified_name_segment_atoms_from_capture(qn_capture: Node, root: Node) -> Outcome<List<Node>> {
+  parse_qualified_name_segments_from_capture_with(qn_capture: qn_capture, root: root, seg: fn(n, id) {
+    node_lowered_from(kind: TypeNode { connective: Atom { identity: id } }, children: [], source: n)
+  })
 }
 
 fn parse_comma_ident_list_items(
@@ -6074,10 +6144,10 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
-// The one constructor of the marker node: emitted by namespace_graft_build_body_conj
-// and declared in dag_declared_inhabitants_core, so infer grounds it as a node the
-// dag language authority declares (infer_node_declared_in_language_inhabitants) and
-// a marked body stays a fully evidenced product.
+// The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
+// It is a surface identity atom, not a type denotation, so infer grounds it with the
+// grammar authority's surface-production type (dag_grammar_production_member_declared_type)
+// and a marked body stays a fully evidenced product.
 fn namespace_graft_module_body_marker_node() -> Node {
   dag_inhabitant_atom(id: namespace_graft_module_body_identity)
 }

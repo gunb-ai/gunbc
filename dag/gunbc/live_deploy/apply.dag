@@ -82,8 +82,12 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
-  approval_broker_tree_receipt_path_for, RevisionBoundAtEmission, ReleaseRevisionBinding,
   microvm_controller_vmm_receipt_path,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_tree_receipt_path_for,
+  RevisionBoundAtEmission,
+  ReleaseRevisionBinding,
 }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
