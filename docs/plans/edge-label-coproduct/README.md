@@ -41,14 +41,27 @@ type StructuralEdgeLabel
 ```
 Here `Production` is closed per grammar by construction. Its only constructor is the grammar's own projection (`v2.std.grammar` / `v2.compiler.02_parse` `parse_tree_projection_edge`, already a closed roster, is the precedent). Readers compare `Production` values minted from the same row, not `^text`.
 Alternative (B): one flat closed enum of every candidate in `v2.std.node`. Rejected for the layer inversion above.
-Needs a ruling: whether `Production.edge` can be a row reference rather than a Symbol. That depends on `v2.std.grammar` exposing a row identity type. If it cannot, `Production` is rung 3 per grammar (it is checked when the grammar is admitted), not rung 4.
+**Ruled (neat-boar-16, 2026-09-28): A.** Core markers live in `v2.std.node`; `Production { grammar, edge }` can be minted only by the grammar fold. Rung 4 is claimed only with a discriminating RED enrolled on the real acceptance path. Otherwise the claim is rung 3.
+Open for the cut: whether `Production.edge` can be a row reference rather than a Symbol. That depends on `v2.std.grammar` exposing a row identity type. If it cannot, `Production` is rung 3 per grammar (it is checked when the grammar is admitted), not rung 4.
 
 ### Other judgment calls flagged for review
 
-- **Hand-built type-node literals** (`^magma_field_op` in `v2.std.algebra`, `effects`, `testgen`, `target_model`, and others) model the AUTHORED field names of modeled records but are spelled like markers. The proposed disposition is `Authored`. If those nodes are meant to equal what ingest produces, their names are already wrong (`magma_field_op` ≠ `op`). That is a separate finding.
-- **`ReferenceSite.position`** must carry `EdgeLabel` segments, or only Authored segments plus a separate structural context. This is a model change to `v2.compiler.reference_site_collector`, not a rename.
+- **Hand-built type-node literals** (`^magma_field_op` in `v2.std.algebra`, `effects`, `testgen`, `target_model`, and others) model the AUTHORED field names of modeled records but are spelled like markers. **Ruled: `Authored`.** If those nodes are meant to equal what ingest produces, their names are already wrong (`magma_field_op` ≠ `op`). That is a separate finding.
+- **`ReferenceSite.position`** must carry `EdgeLabel` segments, or only Authored segments plus a separate structural context. This is a model change to `v2.compiler.reference_site_collector`, not a rename. **Ruled: it lands in the cut**, because `site_is_import_syntax_mention` is a consumer that needs it.
 - **Symbol-keyed query APIs** (`v2.std.node_query` `find_named_child`, `named_child_lookup`, `named_edge_target_lookup`, and `v2.std.node` `name_occurrences`) split into a structural lookup that takes a `StructuralEdgeLabel` and an authored lookup that takes a `Symbol`. A single Symbol-keyed lookup must not survive.
 - **named-args PR-B #12382** (vivid-ram-65): the Named edges for named actuals under Transform are `Authored`. `PositionalPlusOneNamedEdges` for Transform then counts `Structural { Core { CastTarget } }` separately from the authored actuals.
+
+## Consumers of each new declaration (DESIGN §3c)
+
+Every declaration below lands in the step-2 cut together with its consumers. None of them lands in this model PR.
+
+| declaration | consumer, executing route |
+|---|---|
+| `EdgeLabel.Structural` / `Authored` (replacing `Named`) | every current `Edge.label` reader and constructor. The fail-closed deletion refuses each one until it is dispositioned. `v2.std.node` `content_hash` hashes both arms. |
+| `StructuralEdgeLabel.Core` / `CoreEdgeLabel` | `v2.std.node` edge discipline (`kind_edge_discipline`, `arrow_signature_order_label`, the loop bound/carrier checks) and `v2.std.type_binder` `type_binder_labels_conform`, whose behavior-label arm dissolves |
+| `StructuralEdgeLabel.Production` | the grammar fold (`v2.compiler.02_parse` `parse_tree_projection_edge`, `v2.extdeps.languages.dag` productions) mints it. `dag_surface_module_header_metadata_edge`, `dag_node_is_module_root_conj` and `d1_edge_names_where_clause` read it. |
+| `ReferenceSite.position` segments carrying `EdgeLabel` | `v2.lens.module_graph` `site_is_import_syntax_mention` |
+| split structural/authored lookups | callers of `v2.std.node_query` `find_named_child` and its siblings |
 
 ## Census
 
