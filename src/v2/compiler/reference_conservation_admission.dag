@@ -99,7 +99,6 @@ fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestoratio
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_call_arg_value", field: WholeDeclaration },
       pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_named_argument_label_is_reported_dropped_holds", field: WholeDeclaration }
     }
-    }
     StatementLetBinder => DropRestorationTrigger {
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
       pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
@@ -195,8 +194,6 @@ fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
     NamedArgumentLabel =>
       match b {
         NamedArgumentLabel => true
-        _ => false
-      }
         _ => false
       }
     StatementLetBinder =>
