@@ -381,3 +381,4 @@ fn dpo_edge_is_atom(e: Edge) -> Bool {
     _ => false
   }
 }
+

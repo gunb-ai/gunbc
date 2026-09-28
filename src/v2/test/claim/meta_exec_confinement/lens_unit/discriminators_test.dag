@@ -96,3 +96,4 @@ test fn roster_stale_entry_red_holds() -> Bool {
   meta_exec_roster_stale_count(roster: stale_roster, live_leak_paths: live_leak_paths) == 2
     && !meta_exec_roster_sound(roster: stale_roster, live_leak_paths: live_leak_paths)
 }
+

@@ -136,3 +136,4 @@ test fn divergent_op_template_still_has_a_hole() -> Bool {
 test fn pure_duplication_template_has_no_hole() -> Bool {
   !template_has_hole(template: anti_unify_chain(steps: green_pure_duplication).template)
 }
+

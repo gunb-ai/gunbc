@@ -108,3 +108,4 @@ test fn producer_fault_refusals_retain_the_lookup_cause() -> Bool {
     && (decode_cause_count(value_set: carrier_interval_field_missing) == 1)
     && (decode_cause_count(value_set: carrier_interval_spec_malformed) == 0)
 }
+

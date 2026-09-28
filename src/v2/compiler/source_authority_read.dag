@@ -253,3 +253,4 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceR
       outcome_accepted(value: ingest)
   }
 }
+

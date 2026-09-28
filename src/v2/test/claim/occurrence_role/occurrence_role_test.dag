@@ -192,3 +192,4 @@ test fn an_unreadable_binder_is_counted_as_a_reader_refusal_holds() -> Bool {
     OccurrenceRolesRead { roles: r } => refused_at(roles: r, emitted: ^dag_surface_fn_decl) == 1 && length(xs: r.roles) == 0
   }
 }
+

@@ -1228,3 +1228,4 @@ test fn native_selected_witness_bundle_compiler_identity_keys_holds() -> Bool {
     right: native_witness_bundle_from_plan(plan: changed).identity.structural_fingerprint
   )
 }
+

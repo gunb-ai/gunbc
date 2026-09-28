@@ -245,3 +245,4 @@ test fn translate_error_profile_sg2_projected_instantiation_serialize_accepts() 
 test fn translate_error_profile_coproduct_mapping_perturb_red_holds() -> Bool {
   translate_error_profile_coproduct_swap_perturb_discriminates()
 }
+

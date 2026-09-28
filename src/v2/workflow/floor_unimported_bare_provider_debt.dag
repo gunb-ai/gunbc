@@ -207,3 +207,4 @@ fn unimported_bare_provider_roster_at_base(base: String, path: String) -> Unimpo
     BaseRosterUnreadable { stderr: shown.stderr }
   }
 }
+

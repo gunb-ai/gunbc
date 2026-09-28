@@ -102,3 +102,4 @@ fn refinement_obligation_undischargeable_diagnostic(site: Node) -> Diagnostic {
 fn infer_and_discharge(tree: ResolvedTree) -> Outcome<InferredTree> {
   bind_outcome(o: infer(tree: tree), f: fn(obligated) { discharge_refinement_obligations(t: obligated) })
 }
+

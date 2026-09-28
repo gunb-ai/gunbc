@@ -410,3 +410,4 @@ fn front_door_changed_surface_outcome() -> ChangedSurfaceImpactOutcome {
 fn changed_surface_impact_report() -> String {
   render_outcome(outcome: front_door_changed_surface_outcome())
 }
+

@@ -322,3 +322,4 @@ test fn bash_program_sequence_refuses_an_empty_non_final_part_holds() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+

@@ -1128,3 +1128,4 @@ fn bash_fold_pipe_wrong_target_model_witness() -> Witness<TargetModel> {
     rule_name: ^bash_relation_rule_fold_and_then
   )
 }
+

@@ -156,3 +156,4 @@ test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool 
 test fn witness_top_level_src_basenames_are_nonempty() -> Bool {
   length(xs: seed_retention_frontier_top_level_src_basenames()) > 0
 }
+

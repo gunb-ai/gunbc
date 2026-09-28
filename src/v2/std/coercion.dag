@@ -479,3 +479,4 @@ fn coercion_fold_refinement_widening_with_declared_priority(
     predicate: predicate
   )
 }
+

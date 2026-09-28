@@ -2172,3 +2172,4 @@ type TranslateDiagnosticReason
   | TargetTypeExprEmittedShapeMalformed
   | ArrowBodyNotATypeExpression
   | ModuleNotATypeExpression
+

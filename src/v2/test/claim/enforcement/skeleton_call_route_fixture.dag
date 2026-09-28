@@ -9,3 +9,4 @@ import v2.std.integer { Int }
 data skeleton_call_route_fixture_rows: List<Int> = []
 
 fn skeleton_call_route_fixture_caller() -> Int = count(skeleton_call_route_fixture_rows)
+

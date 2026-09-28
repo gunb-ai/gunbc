@@ -342,3 +342,4 @@ fn generated_idempotent_operation_run_rows() -> List<Outcome<TestClaimRun<Node, 
 fn generated_idempotent_operation_run_count_is_four() -> Bool {
   length(xs: generated_idempotent_operation_run_rows()) == 4
 }
+

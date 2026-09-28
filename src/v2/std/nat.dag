@@ -194,3 +194,4 @@ fn nat_declared_algebra_law_obligations() -> List<NatAlgebraLawObligation> {
     },
   ]
 }
+

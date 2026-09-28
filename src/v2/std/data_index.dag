@@ -32,3 +32,4 @@ fn lexeme_matches_literal_fp(lexeme: String, literal_fp: String) -> Bool {
 fn data_init_decl_facts_live() -> List<DataInitDecl> {
   data_init_decl_facts_live()
 }
+

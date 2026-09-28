@@ -165,3 +165,4 @@ fn shell_emission_authorization_is_authorized(auth: ShellEmissionAuthorization) 
     Refused { cause: _ } => false
   }
 }
+

@@ -2379,3 +2379,4 @@ fn required_floor_grandfathered_eval_step_budget() -> EvalStepCount {
 fn required_floor_new_witness_eval_step_budget() -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: NewWitnessTier {})
 }
+

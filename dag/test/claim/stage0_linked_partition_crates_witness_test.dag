@@ -106,3 +106,4 @@ test fn the_live_partition_model_renders_and_reaches_the_foundation_crate() -> B
     LinkedPartitionCratesRefused { reason: _ } => false
   }
 }
+

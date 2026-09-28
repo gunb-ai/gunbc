@@ -944,3 +944,4 @@ test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
     []
   )
 }
+

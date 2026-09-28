@@ -113,3 +113,4 @@ fn preflight_reexec_frontier(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

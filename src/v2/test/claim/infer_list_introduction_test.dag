@@ -240,3 +240,4 @@ fn ilt_outcome_text(tree: Node) -> String {
 fn ilt_report() -> ProcessExit {
   exit_failure(reason: "ints: " + ilt_outcome_text(tree: ilt_ints) + " | mixed: " + ilt_outcome_text(tree: ilt_mixed) + " | empty: " + ilt_outcome_text(tree: ilt_empty))
 }
+

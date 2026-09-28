@@ -773,3 +773,4 @@ data sql_fold_tasks_pk_table: SqlTableDefinition = SqlTableDefinition {
     },
     table_constraints: []
 }
+

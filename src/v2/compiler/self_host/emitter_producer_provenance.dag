@@ -648,3 +648,4 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     Present { value: _ } => false
   }
 }
+

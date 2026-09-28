@@ -374,3 +374,4 @@ fn live_fixture_lookup(segment: Symbol) -> Bool {
       }
   }
 }
+

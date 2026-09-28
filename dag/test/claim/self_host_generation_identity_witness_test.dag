@@ -410,3 +410,4 @@ test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
       ArtifactNotMaterialized => false
     }
 }
+

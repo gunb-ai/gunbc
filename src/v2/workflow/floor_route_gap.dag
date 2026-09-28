@@ -1859,3 +1859,4 @@ fn floor_route_gap_roster() -> List<String> {
   let located = floor_route_gap_expectations() |> map(row => row.identity)
   list_flat_map(xs: [legacy, located], f: fn(chunk) { chunk })
 }
+

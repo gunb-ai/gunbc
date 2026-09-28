@@ -359,3 +359,4 @@ fn arrow_named_labels_conform(n: Node) -> Bool {
 fn type_binder_labels_conform(root: Node) -> Bool {
   fold(node_subtree_nodes(root: root), init: true, f: fn(acc, n) { acc && type_binder_node_conforms(n: n) })
 }
+

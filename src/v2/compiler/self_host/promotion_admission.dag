@@ -980,3 +980,4 @@ fn behavioral_receipt_standing_holds(s: BehavioralReceiptStanding) -> Bool {
 fn behavioral_observation_holds(o: BehavioralComparisonObservation) -> Bool {
   behavioral_receipt_standing_holds(s: behavioral_receipt_standing(o: o))
 }
+

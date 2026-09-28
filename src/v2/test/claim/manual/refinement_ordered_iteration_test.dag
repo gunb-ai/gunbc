@@ -51,3 +51,4 @@ test fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
     Rejected { diagnostics: diags } => diags.head.reason == ^naming_the_leak
   }
 }
+

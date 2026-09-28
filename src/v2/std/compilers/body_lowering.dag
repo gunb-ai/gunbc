@@ -838,3 +838,4 @@ fn branch_view(site: Node) -> Outcome<BranchView> {
     _ => view_refusal(reason: ^body_view_not_branch, at: site)
   }
 }
+

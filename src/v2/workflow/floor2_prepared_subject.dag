@@ -179,3 +179,4 @@ data floor2_binding_strictness_regression: FloorBindingStrictnessRegression = Fl
     population: ^cross_module_references_without_a_declared_import,
     restoration_trigger: ^resolution_enforces_declared_import_narrowing
   }
+

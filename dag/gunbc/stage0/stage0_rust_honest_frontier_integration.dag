@@ -226,3 +226,4 @@ fn honest_frontier_decision_complete(observation: RustSourceHostObservation) -> 
     LifecycleTotalityObservationRefused => false
   }
 }
+

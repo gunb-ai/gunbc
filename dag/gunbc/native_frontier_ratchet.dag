@@ -803,3 +803,4 @@ fn native_frontier_proposal_file_lines(receipt: NativeRouteReceipt, v: NativeFro
     Present { value: p } => native_frontier_proposal_lines(receipt: receipt, proposal: p)
   }
 }
+

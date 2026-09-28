@@ -691,3 +691,4 @@ fn frontier_upstream_semantic_refusal_located_reason(
     _ => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
   }
 }
+

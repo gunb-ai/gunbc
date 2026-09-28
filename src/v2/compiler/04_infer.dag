@@ -3408,3 +3408,4 @@ fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
       }
   }
 }
+

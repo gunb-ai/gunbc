@@ -124,3 +124,4 @@ fn first_refusal_reason(source: String) -> Symbol {
 test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
   first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
 }
+

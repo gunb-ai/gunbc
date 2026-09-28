@@ -487,3 +487,4 @@ test fn the_same_lexeme_in_call_position_is_a_call_edge() -> Bool {
     )
   ) > 0
 }
+

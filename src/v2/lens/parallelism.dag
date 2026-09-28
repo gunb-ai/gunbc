@@ -213,3 +213,4 @@ fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

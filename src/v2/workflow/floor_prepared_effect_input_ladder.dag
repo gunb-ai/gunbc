@@ -253,3 +253,4 @@ fn the_minimized_demand_graph_is_green() -> Bool {
     acc && ladder_verdict_is_green(v: v)
   })
 }
+

@@ -342,3 +342,4 @@ fn all_refused_causes_attributed(rows: List<DoorLedgerRow>) -> Bool {
     cons: fn(acc, row) { acc && cause_is_attributed(cause: row.reason) }
   )
 }
+

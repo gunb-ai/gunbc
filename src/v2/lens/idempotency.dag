@@ -134,3 +134,4 @@ fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

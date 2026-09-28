@@ -394,3 +394,4 @@ data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_desc
 data claim_infer_add_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_compiles)
 
 data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)
+

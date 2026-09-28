@@ -256,3 +256,4 @@ fn witness_frontier_concat_built_path_not_classified() -> Bool {
 test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
   witness_frontier_concat_built_path_not_classified()
 }
+

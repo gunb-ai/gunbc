@@ -92,3 +92,4 @@ fn native_agreement_failure_receipt(
     Absent => ""
   }
 }
+

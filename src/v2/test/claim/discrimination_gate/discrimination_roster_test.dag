@@ -147,3 +147,4 @@ fn discrimination_family_gate() -> Bool {
     all_rows_discriminating(rows: rows)
   }
 }
+

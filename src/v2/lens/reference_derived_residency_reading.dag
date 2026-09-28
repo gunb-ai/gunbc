@@ -252,3 +252,4 @@ fn carrier_reading_from_type_decl(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

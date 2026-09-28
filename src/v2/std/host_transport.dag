@@ -180,3 +180,4 @@ fn emitted_family_runtime_row_gated(
     ShellExecRunFamily => HostRuntimeRowPresent { row: present }
   }
 }
+

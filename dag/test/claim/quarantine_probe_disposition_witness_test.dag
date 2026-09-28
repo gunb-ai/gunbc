@@ -396,3 +396,4 @@ test fn the_live_tree_declaration_read_discriminates() -> Bool {
   entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
     && !entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
 }
+

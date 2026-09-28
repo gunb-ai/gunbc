@@ -105,3 +105,4 @@ test fn witness_sequence_outcome_short_circuit_does_not_merge_second_reject() ->
     Rejected { diagnostics: d } => d.tail.length() == 0
   }
 }
+

@@ -152,3 +152,4 @@ test fn question_zero_fixture_redundant_leg_fails() -> Bool {
 test fn lens_closure_question_zero_live_matches_gate() -> Bool {
   lens_closure_question_zero_holds() == lens_module_gate_blocking_holds()
 }
+

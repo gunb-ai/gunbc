@@ -771,3 +771,4 @@ fn parse_path_helper_tautology_scan() -> DualRepModuleScan {
     ]
   }
 }
+

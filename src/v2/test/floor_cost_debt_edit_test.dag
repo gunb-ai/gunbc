@@ -222,3 +222,4 @@ test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool {
   let edit = decide(base: src_other_witness_only(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtBase {}) && rejudged_and_refused(edit: edit)
 }
+

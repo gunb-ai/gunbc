@@ -120,3 +120,4 @@ fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

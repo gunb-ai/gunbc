@@ -638,3 +638,4 @@ test fn scaffold_unregistered_direct_child_is_not_generated_under_the_declaratio
     )
   )
 }
+

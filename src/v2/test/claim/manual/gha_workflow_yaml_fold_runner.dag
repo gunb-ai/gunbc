@@ -33,3 +33,4 @@ fn gha_workflow_yaml_fold_plan() -> List<List<Runnable>> {
     ]
   ]
 }
+

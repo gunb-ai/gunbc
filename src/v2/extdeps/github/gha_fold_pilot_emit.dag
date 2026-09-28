@@ -116,3 +116,4 @@ fn gha_fold_pilot_emit_step(step: Step) -> Optional<GhaPilotStepEmit> {
       }
   }
 }
+

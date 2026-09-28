@@ -387,3 +387,4 @@ fn native_routing_row_membership_derived(
 fn native_routing_membership_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
   module_declaration_facts_live(pool_roots: pool_roots)
 }
+

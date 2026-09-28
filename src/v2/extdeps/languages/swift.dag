@@ -2364,3 +2364,4 @@ fn swift_language_model() -> LanguageModel {
     core: swift_model_core()
   }
 }
+

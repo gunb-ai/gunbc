@@ -51,3 +51,4 @@ fn find_wet_receipt_binding(module_path: String) -> Optional<SelfHostWetReceiptB
     }
   )
 }
+

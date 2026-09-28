@@ -43,3 +43,4 @@ fn app_attest_verifier_enrolment_dead_band_observed_only() -> List<EnrolmentDead
 fn enrolment_dead_band_identities() -> List<String> {
   app_attest_verifier_enrolment_dead_band_observed_only() |> map(o => o.identity)
 }
+

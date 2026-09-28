@@ -68,3 +68,4 @@ test fn a_swap_that_leaves_the_count_unmoved_still_refuses() -> Bool {
     && length(xs: non_verdict_added(observed: observed_swapped, roster: roster_fixture)) == 1
     && length(xs: non_verdict_repaid(observed: observed_swapped, roster: roster_fixture)) == 1
 }
+

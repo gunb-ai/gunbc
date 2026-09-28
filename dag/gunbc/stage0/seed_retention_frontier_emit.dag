@@ -40,3 +40,4 @@ fn expected_seed_retention_frontier_generated_rs() -> String {
     "\n];\n"
   )
 }
+

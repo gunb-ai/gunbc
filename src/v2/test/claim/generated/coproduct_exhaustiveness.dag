@@ -150,3 +150,4 @@ data witness_coproduct_exhaustiveness_uses_generated_anchor: Bool = witness_copr
 data witness_coproduct_exhaustiveness_all_variants_emit: Bool = witness_coproduct_exhaustiveness_roster_covers_testclaim()
 
 data witness_coproduct_exhaustiveness_generator_count: Bool = witness_coproduct_exhaustiveness_covers_second_coproduct()
+

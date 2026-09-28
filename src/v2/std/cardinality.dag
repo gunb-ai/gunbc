@@ -494,3 +494,4 @@ fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
+

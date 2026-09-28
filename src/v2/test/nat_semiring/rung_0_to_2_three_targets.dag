@@ -93,3 +93,4 @@ data phase1_nat_semiring_fixture_law_roster: List<TestClaim> = [
 ]
 
 data phase1_nat_semiring_rung_gate_canonical_subject: Node = nat_add_left_identity_input
+

@@ -277,3 +277,4 @@ test fn unreadable_root_is_counted_not_a_silent_leaf() -> Bool {
     && length(xs: fold.unreadable_roots) == 1
     && length(xs: fold.edges) == 0
 }
+

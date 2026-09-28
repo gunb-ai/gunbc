@@ -3689,3 +3689,4 @@ fn ts_language_model() -> LanguageModel {
     grammar: ts_grammar()
   }
 }
+

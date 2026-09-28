@@ -157,3 +157,4 @@ test fn lens_registry_singleton_row_counts_holds() -> Bool {
     && lens_registry_id_resolves(lens_id: StructuralResolution)
     && lens_registry_id_resolves(lens_id: TableDecisionTree)
 }
+

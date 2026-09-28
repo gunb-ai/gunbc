@@ -559,3 +559,4 @@ fn call_reachable_decls_from_root(
     refusals: empty_diagnostic_list
   )
 }
+

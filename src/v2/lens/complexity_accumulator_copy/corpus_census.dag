@@ -443,3 +443,4 @@ fn a_no_suspect_verdict_still_carries_its_refusal_census() -> Bool {
     CorpusCoverageSurplus { discovered: _, reported: _, extra: _ } => false
   }
 }
+

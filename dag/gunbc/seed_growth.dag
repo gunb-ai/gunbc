@@ -37,3 +37,4 @@ type SeedGrowthJustification {
   trigger: String
   current_boundary: String
 }
+

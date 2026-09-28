@@ -118,3 +118,4 @@ test fn unregistered_producer_lands_on_the_accepted_arm() -> Bool {
 test fn unregistered_producer_still_retains() -> Bool {
   finish_is_retained(id: ^probe_unregistered_surface_form)
 }
+

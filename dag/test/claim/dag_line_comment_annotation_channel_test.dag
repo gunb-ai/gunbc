@@ -148,3 +148,4 @@ test fn a_refusal_renders_as_refusal_not_an_empty_stream_RED() -> Bool {
 test fn string_content_is_not_captured_as_an_annotation_RED() -> Bool {
   annotation_count(source: url_in_string_source) == 0
 }
+

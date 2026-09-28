@@ -48,3 +48,4 @@ data synthesis_subject_rows: List<SynthesisSubjectRow> = [
   synthesis_subject_row_branch,
   synthesis_subject_row_loop
 ]
+

@@ -523,3 +523,4 @@ test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+

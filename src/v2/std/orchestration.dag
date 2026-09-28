@@ -159,3 +159,4 @@ data pipeline_steps_empty_arm_note: String = "Pipeline.steps is a plain FreeMono
 // (host-effect-orchestration.md section 1b; #6903 Wave A2).
 
 data orchestration_to_effect_plan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: v2.std.orchestration — bash-emit Pipeline/PipelineStep scaffold (Do-run string leaves). Composition authority for bounded external effects is v2.std.effect_plan (landed #6903). DISSOLVES WHEN host-effect-orchestration.md Phase B: module renames/merges into std.effect_plan, Run.command leaves migrate onto typed EffectPlan Do-effect leaves and extdeps operations, and foreign-executor")
+

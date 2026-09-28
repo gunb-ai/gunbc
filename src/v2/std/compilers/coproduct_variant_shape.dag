@@ -26,3 +26,4 @@ fn coproduct_all_variants_nullary(edges: List<Edge>) -> Bool {
     }
   )
 }
+

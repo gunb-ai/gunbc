@@ -358,3 +358,4 @@ fn effect_demand_floor_join_digest_text(join: FloorStandingJoin) -> String {
 fn effect_demand_floor_join_digest_live() -> String {
   effect_demand_floor_join_digest_text(join: effect_demand_floor_join_live_default())
 }
+

@@ -166,3 +166,4 @@ fn copied_port_index_from_registry(rows: List<CopiedPortFact>, combiner: Symbol)
     }
   )
 }
+

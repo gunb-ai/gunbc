@@ -966,3 +966,4 @@ test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool {
     )
   ) == "planned-and-passed"
 }
+

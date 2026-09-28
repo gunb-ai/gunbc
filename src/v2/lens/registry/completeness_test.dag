@@ -33,3 +33,4 @@ test fn lens_registry_completeness_clean_when_fully_bound() -> Bool {
     bound_module_paths: ["v2.lens.alpha_fixture", "v2.lens.beta_fixture"]
   ) == 0
 }
+

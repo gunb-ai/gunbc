@@ -2724,3 +2724,4 @@ fn bash_redir_to_file_target_model(path: String) -> TargetModel {
     binding_spellings: bash_redir_to_file_binding_spellings(path: path)
   )
 }
+

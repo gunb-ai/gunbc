@@ -283,3 +283,4 @@ test fn witness_bisect_unbound_reference_rejected() -> Bool {
 test fn witness_bisect_unbound_reference_no_binding_rejected() -> Bool {
   bisect_resolve_accepts_text(text: bisect_unbound_reference_no_binding_source.carried) == false
 }
+

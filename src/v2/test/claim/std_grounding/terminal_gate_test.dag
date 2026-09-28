@@ -63,3 +63,4 @@ test fn witness_grounding_terminal_gate_runtime_authoritative_discriminates() ->
       receipt: terminal_gate_receipt(status: AuthoringTimeVerdictSurface)
     ) == false)
 }
+

@@ -519,3 +519,4 @@ fn diagnostic_ledger_render(ds: NonEmptyDiagnostics) -> String {
     concat(to_string(folded.next_index - 1), concat("\n", concat(folded.text, "\n")))
   )
 }
+

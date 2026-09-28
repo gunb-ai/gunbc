@@ -564,3 +564,4 @@ fn loses_after_remint(standing: NativeFrontierRosterStanding) -> Bool {
   let v = judge_under(authority: owned_and_declared(), standing: standing, readings: flip_readings())
   lost_with(v: v, prefix: "ACCEPT-TO-REFUSE") && lost_with(v: v, prefix: "NEW DEBT") && proposes_nothing(v: v)
 }
+

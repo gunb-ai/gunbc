@@ -261,3 +261,4 @@ fn compiler_module_behavioral_receipt_for(module_path: String) -> Bool {
     licenses: fn(o) { compiler_module_receipt_outcome_licenses(outcome: o) }
   )
 }
+

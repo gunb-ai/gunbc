@@ -322,3 +322,4 @@ fn emit_produced_module(decls: List<Node>, target: TargetModel) -> Outcome<Mediu
     f: fn(joined) { target_source_medium(text: joined, target: target) }
   )
 }
+

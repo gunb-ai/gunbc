@@ -111,3 +111,4 @@ test fn emit_host_target_coverage_complete() -> Bool {
       && (emit_host_present_target_count() == emit_host_gate_declared_smoke_count)
   }
 }
+

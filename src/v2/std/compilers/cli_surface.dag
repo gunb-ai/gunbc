@@ -338,3 +338,4 @@ fn serialize_cli_arguments(
     }
   )
 }
+

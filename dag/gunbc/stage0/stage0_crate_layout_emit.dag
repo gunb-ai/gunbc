@@ -94,3 +94,4 @@ fn expected_stage0_crate_layout_generated_rs() -> String {
     "\n];\n"
   )
 }
+

@@ -82,3 +82,4 @@ data black_defaults: BlackConfig = BlackConfig {
 fn black_layer(base: BlackConfig, patch: ConfigPatchRecord<BlackConfig>) -> BlackConfig {
   config_patch_layer(base: base, patch: patch)
 }
+

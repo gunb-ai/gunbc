@@ -2543,3 +2543,4 @@ fn translate_diagnostic_reason_head(
 ) -> Optional<TranslateDiagnosticReason> {
   translate_diagnostic_reason_from_symbol(sym: diagnostics.head.reason)
 }
+

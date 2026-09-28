@@ -215,3 +215,4 @@ fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> Bool
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

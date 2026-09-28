@@ -1318,3 +1318,4 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   }
 ]
+

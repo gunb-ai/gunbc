@@ -69,3 +69,4 @@ test fn meta_exec_roster_soundness_planted_stale_red_holds() -> Bool {
     live_leak_paths: empty_live_leak_paths
   ) == false
 }
+

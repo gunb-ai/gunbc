@@ -1421,3 +1421,4 @@ fn repo_process_universe(pool_roots: List<String>) -> RepoProcessUniverse {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

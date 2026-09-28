@@ -132,3 +132,4 @@ test fn preflight_dead_wire_suggests_wiring_correction() -> Bool {
     ReasonSymbol { reason: _ } => false
   }
 }
+

@@ -420,3 +420,4 @@ fn c_semantic_decl_emission_bundle_node() -> Node {
     surface: c_semantic_decl_surface_projection()
   )
 }
+

@@ -390,3 +390,4 @@ fn quarantine_probe_admissions(rows: List<ExplicitWitnessAdmission>) -> List<Exp
     }
   )
 }
+

@@ -2186,3 +2186,4 @@ fn bootstrap_claim_generator_for_manual_anchor(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

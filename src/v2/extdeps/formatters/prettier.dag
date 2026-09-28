@@ -186,3 +186,4 @@ fn prettier_layer(base: PrettierConfig, patch: PrettierConfigPatch) -> PrettierC
     overrides: apply_field_patch(base: base.overrides, patch: patch.overrides),
   }
 }
+

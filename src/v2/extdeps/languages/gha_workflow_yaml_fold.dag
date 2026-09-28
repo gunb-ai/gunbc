@@ -954,3 +954,4 @@ fn gha_fold_job_wrong_production_target_model_witness(source_text: String) -> Wi
     rule_name: ^gha_relation_rule_fold_job
   )
 }
+

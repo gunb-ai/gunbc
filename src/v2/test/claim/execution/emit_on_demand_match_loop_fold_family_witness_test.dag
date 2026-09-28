@@ -623,3 +623,4 @@ test fn emit_on_demand_match_loop_fold_schedule_refuses_unreadable_budget_holds(
   }
 }
 
+

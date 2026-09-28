@@ -227,3 +227,4 @@ fn trait_derive_completeness_gate_for_collection_requirement(
     Absent => optional_absent()
   }
 }
+

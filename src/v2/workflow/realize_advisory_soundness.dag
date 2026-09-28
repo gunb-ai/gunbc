@@ -55,3 +55,4 @@ fn advisory_window_all_sound(observations: List<AdvisoryObservation>) -> Bool {
     }
   )
 }
+

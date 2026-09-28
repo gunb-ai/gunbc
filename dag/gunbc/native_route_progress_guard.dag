@@ -1622,3 +1622,4 @@ fn native_progress_finding_text(f: NativeProgressFinding) -> String {
       ], "")
   }
 }
+

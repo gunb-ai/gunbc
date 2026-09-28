@@ -404,3 +404,4 @@ fn dag_name_table_admission() -> NameProductionTableAdmission {
 fn dag_occurrence_roles(artifact: ParseArtifact) -> OccurrenceRoleOutcome {
   occurrence_roles_of_admitted(tree: artifact.tree, admission: dag_name_table_admission())
 }
+

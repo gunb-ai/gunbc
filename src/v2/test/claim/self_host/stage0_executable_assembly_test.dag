@@ -678,3 +678,4 @@ test fn w_live_wet_population_carries_both_declaration_routes() -> Bool {
     && any(xs: rows, predicate: fn(r) { (r.basename == "evaluation_budget_consequence_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
     && any(xs: rows, predicate: fn(r) { (r.basename == "gunbc_file_transport_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
 }
+

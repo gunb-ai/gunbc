@@ -425,3 +425,4 @@ data node_minimal_representation_scaffold: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+

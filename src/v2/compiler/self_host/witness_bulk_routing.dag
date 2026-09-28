@@ -256,3 +256,4 @@ fn witness_bulk_routing_total_holds() -> Bool {
 fn witness_bulk_routing_zero_native_at_landing_holds() -> Bool {
   length(xs: witness_bulk_routing_sample_partition.native_routed) == 0
 }
+

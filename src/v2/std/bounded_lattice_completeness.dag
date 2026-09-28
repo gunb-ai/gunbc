@@ -207,3 +207,4 @@ fn partial_bounded_lattice_instances_in_tree(tree: Node) -> List<Node> {
     }
   )
 }
+

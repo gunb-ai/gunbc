@@ -34,3 +34,4 @@ type NativeSelectedBundleProcessSpec {
   run: List<String>
   expected_stdout_octets: List<Int>
 }
+

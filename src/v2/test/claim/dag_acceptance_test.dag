@@ -402,3 +402,4 @@ test fn acceptance_frontier_pass_is_not_a_clean_pass() -> Bool {
           row: passed_row(obligation: InferStage, receipt: receipt, diagnostics: frontier_diagnostics())
         ) == ^row_passed_with_frontier)
 }
+

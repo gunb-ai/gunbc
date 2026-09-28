@@ -164,3 +164,4 @@ test fn authorization_predicate_is_bool_summarizable() -> Bool {
   )
   shell_emission_authorization_is_authorized(auth: authorized)
 }
+

@@ -434,3 +434,4 @@ fn bool_witness_matches_entry_function(
 ) -> Bool {
   w.entry == entry && w.function == function
 }
+

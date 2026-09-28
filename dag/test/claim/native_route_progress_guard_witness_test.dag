@@ -1912,3 +1912,4 @@ test fn a_cause_transition_row_the_run_confirms_is_admitted() -> Bool {
     ProgressUnobserved { reach: _, findings: _ } => false
   }
 }
+

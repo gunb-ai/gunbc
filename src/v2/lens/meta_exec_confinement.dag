@@ -231,3 +231,4 @@ fn meta_exec_roster_sound_live(scan_roots: List<String>) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

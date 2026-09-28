@@ -133,3 +133,4 @@ test fn distinct_scheme_discriminants_decode_to_distinct_schemes() -> Bool {
     == target_uri_scheme_discriminant(scheme: Https))
     && ((uri_scheme_wire(s: Http) as String) == "http://")
 }
+

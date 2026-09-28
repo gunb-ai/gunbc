@@ -509,3 +509,4 @@ fn corpus_gate(pool_roots: List<String>, population_floor: Int) -> CorpusGateDis
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
+

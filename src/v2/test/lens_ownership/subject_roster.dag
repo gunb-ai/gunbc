@@ -71,3 +71,4 @@ data lens_ownership_family_claim_ids: List<Symbol> = [
 ]
 
 data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = lens_ownership_subject_rows
+

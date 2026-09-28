@@ -100,3 +100,4 @@ fn spine_has_recoverable_parallelism(root: Node) -> Bool {
 fn spine_is_serial_chain(root: Node) -> Bool {
   independence_width(root: root) == 1
 }
+

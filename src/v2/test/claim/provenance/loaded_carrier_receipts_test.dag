@@ -382,3 +382,4 @@ test fn a_record_through_the_located_pool_is_a_declared_payload_holds() -> Bool 
 test fn a_record_through_the_loaded_corpus_index_is_a_declared_payload_holds() -> Bool {
   lcr_is_record_payload(index: lcr_index())
 }
+

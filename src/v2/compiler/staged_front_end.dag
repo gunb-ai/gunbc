@@ -348,3 +348,4 @@ fn front_end_incomplete_diagnostics() -> NonEmptyDiagnostics {
     }
   )
 }
+

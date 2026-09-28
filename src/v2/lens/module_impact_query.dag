@@ -1354,3 +1354,4 @@ fn changed_surface_skip_authority(outcome: ChangedSurfaceImpactOutcome) -> SkipA
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

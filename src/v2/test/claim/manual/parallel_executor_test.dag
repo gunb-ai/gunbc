@@ -185,3 +185,4 @@ test fn parallel_executor_claims_hold() -> Bool {
     && parallel_executor_missing_prerequisite_blocks
     && parallel_executor_layer_projection_reuses_frontiers
 }
+

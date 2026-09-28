@@ -29,3 +29,4 @@ fn run_merge_admission_capture_subprocess(
     args: args
   ).success
 }
+

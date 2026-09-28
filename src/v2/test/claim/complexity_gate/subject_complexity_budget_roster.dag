@@ -83,3 +83,4 @@ data complexity_subject_budget_rows: List<LensSubjectComplexityBudgetRow> = [
   complexity_budget_row_table_fixture_branch,
   complexity_budget_row_table_fixture_loop
 ]
+

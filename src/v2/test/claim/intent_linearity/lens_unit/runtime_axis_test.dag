@@ -63,3 +63,4 @@ test fn nested_loop_not_changetime_redundant() -> Bool {
 test fn flat_loop_is_linear() -> Bool {
   level_is_linear(level: flat_chain)
 }
+

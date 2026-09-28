@@ -271,3 +271,4 @@ test fn add_body_ts_fold_missing_catalog_rejects() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+

@@ -174,3 +174,4 @@ fn emit_compiler_import_closure_from_assembled(
     }
   )
 }
+

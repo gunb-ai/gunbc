@@ -671,3 +671,4 @@ fn probe_availability_conditioning_keystone_holds() -> Bool {
   probe_ipmi_ecc_stress_unselectable_on_cloud_vm_holds()
     && probe_ipmi_ecc_stress_selectable_on_srv1_holds()
 }
+

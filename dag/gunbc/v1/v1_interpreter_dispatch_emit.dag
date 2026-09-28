@@ -421,3 +421,4 @@ fn expected_v1_interpreter_dispatch_generated_rs() -> V1InterpreterDispatchEmitO
     V1InterpreterDispatchGenerated { content: render_dispatch_generated_rs(rows: rows) }
   }
 }
+

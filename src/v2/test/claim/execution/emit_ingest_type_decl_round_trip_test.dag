@@ -509,3 +509,4 @@ test fn emit_ingest_type_decl_round_trip_holds() -> Bool {
     && type_decl_emit_structural_not_fixture_lookup_holds()
     && type_decl_forward_class_spine_ambiguous_rejects_holds()
 }
+

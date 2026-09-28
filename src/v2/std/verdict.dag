@@ -228,3 +228,4 @@ fn verdict_establishes_divergence<Subj, T>(v: Verdict<Subj, T>) -> Bool {
 fn verdict_produced_a_comparison<Subj, T>(v: Verdict<Subj, T>) -> Bool {
   subject_evidence_produced_a_verdict(evidence: verdict_evidence(v: v))
 }
+

@@ -255,3 +255,4 @@ test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_hol
     && (product_introduction_hand_tree_grounding(tree: partial, n: frontier_child) == 1)
     && (product_introduction_hand_tree_grounding(tree: partial, n: partial) == 1)
 }
+

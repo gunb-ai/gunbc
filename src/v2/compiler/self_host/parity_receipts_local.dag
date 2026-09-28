@@ -44,3 +44,4 @@ fn meet_join_local_observations() -> List<ParityObservation> {
 fn complement_local_observations() -> List<ParityObservation> {
   local_observations_for(family: "complement")
 }
+

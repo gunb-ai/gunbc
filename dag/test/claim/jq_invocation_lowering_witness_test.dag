@@ -386,3 +386,4 @@ test fn empty_output_on_zero_exit_is_absence() -> Bool {
     expected: ExpectAbsent,
   )
 }
+

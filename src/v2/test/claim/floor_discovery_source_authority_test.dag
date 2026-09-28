@@ -163,3 +163,4 @@ test fn real_wire_contract_row_outside_contracts_sidecar_refuses() -> Bool {
     AcceptedRows { rows: _ } => false
   }
 }
+

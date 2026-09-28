@@ -131,3 +131,4 @@ type DeploymentUnit {
   endpoints: List<Endpoint>,
   wire_contracts: List<WireContract>
 }
+

@@ -152,3 +152,4 @@ test fn remedy_sizing_admits_exact_completions_and_refuses_censored_bounds() -> 
 
 test fn probe_exact_arm_only() -> Bool { exact_population_compiles() }
 test fn probe_censored_arm_only() -> Bool { censored_population_refuses_to_compile() }
+

@@ -425,3 +425,4 @@ test fn nullary_arrow_domain_is_typed_as_the_empty_product_holds() -> Bool {
       }
   }
 }
+

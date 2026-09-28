@@ -272,3 +272,4 @@ fn synthetic_emitted_artifact_has_fixture_source_produced_only(
       wanted: FixtureBehaviorallyEquivalent
     )
 }
+

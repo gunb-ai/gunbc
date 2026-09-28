@@ -216,3 +216,4 @@ data claim_timeseries_passive_map_fold_compiles: TestClaim = CompilesClaim {
   expected_value: timeseries_anchor_resistor,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+

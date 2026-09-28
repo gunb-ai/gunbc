@@ -115,3 +115,4 @@ test fn closure_emit_admission_refuses_committed_manifest_stub_holds() -> Bool {
     receipt: host_source_root_ingest_coverage_receipt
   ) == "closure_emit_driver_empty_population"
 }
+

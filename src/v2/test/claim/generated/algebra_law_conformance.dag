@@ -165,3 +165,4 @@ fn generated_algebra_law_claim_rows() -> List<Outcome<TestClaim>> {
 fn generated_algebra_law_sample_count_is_three() -> Bool {
   length(xs: generated_algebra_law_claim_rows()) == 3
 }
+

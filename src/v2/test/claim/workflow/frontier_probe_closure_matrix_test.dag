@@ -305,3 +305,4 @@ test fn frontier_probe_elided_cap_plus_one_coverage_gate_permitted_holds() -> Bo
     _ => false
   }
 }
+

@@ -82,3 +82,4 @@ test fn a_named_file_yields_its_own_declaration() -> Bool {
 test fn a_named_file_yields_only_its_own_declaration() -> Bool {
   length(xs: fn_arrow_decl_facts_live(pool_roots: no_roots, pool_files: alpha_file)) == 1
 }
+

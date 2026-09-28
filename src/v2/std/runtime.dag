@@ -536,3 +536,4 @@ type EffectReceipt {
 type EffectReceiptLog {
   entries: List<EffectReceipt>
 }
+

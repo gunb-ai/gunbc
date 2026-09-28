@@ -281,3 +281,4 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
 fn rustfmt_layer(base: RustfmtConfig, patch: ConfigPatchRecord<RustfmtConfig>) -> RustfmtConfig {
   config_patch_layer(base: base, patch: patch)
 }
+

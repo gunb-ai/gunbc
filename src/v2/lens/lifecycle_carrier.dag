@@ -143,3 +143,4 @@ fn lifecycle_carrier_gate(node: Node) -> Outcome<Witness<Node>> {
     Absent => outcome_accepted(value: Holds { value: node })
   }
 }
+

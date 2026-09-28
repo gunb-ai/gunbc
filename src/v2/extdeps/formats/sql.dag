@@ -545,3 +545,4 @@ fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {
       outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_raw))
   }
 }
+

@@ -2164,3 +2164,4 @@ fn go_language_model() -> LanguageModel {
     core: go_model_core()
   }
 }
+

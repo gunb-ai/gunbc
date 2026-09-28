@@ -661,3 +661,4 @@ fn witness_exclusion_frontier_carries_no_admission_holds() -> Bool {
     predicate: fn(row) { witness_exclusion_row_is_known_red(row: row) }
   )
 }
+

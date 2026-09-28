@@ -386,3 +386,4 @@ data stage0_rust_observation_seed_growth_justification: SeedGrowthJustification 
   trigger: "Delete all seven declarations when a modeled Cargo-manifest grammar/ingestion realization produces CargoManifestBinParse, or when the v1 interpreter and cli_run seed retire.",
   current_boundary: "gunbc.stage0_cargo_manifest CargoManifestBinParse -> v1_compiler.cli_run parse_stage0_cargo_manifest_bin_paths -> v1_compiler.v1_interpreter eval_builtin_inner"
 }
+

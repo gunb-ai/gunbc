@@ -258,3 +258,4 @@ fn derive_receipt(
     self_application_status: self_application_for(facts: facts, module_prefix: self_module_prefix)
   }
 }
+

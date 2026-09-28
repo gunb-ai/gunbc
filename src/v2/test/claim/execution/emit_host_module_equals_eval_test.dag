@@ -92,3 +92,4 @@ test fn emit_module_join_concatenates_two_decls() -> Bool {
     && !emit_module_two_text_matches(golden: emit_module_expected_single_source())
 }
 
+

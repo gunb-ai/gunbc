@@ -762,3 +762,4 @@ test fn a_positionally_bound_lambda_reads_its_declared_order_from_the_order_edge
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_declares_order(n: n, first: ^y, second: ^x) })
   })
 }
+

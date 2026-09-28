@@ -176,3 +176,4 @@ test fn program_partition_section_adapter_unavailable_rejects() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+

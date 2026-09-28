@@ -778,3 +778,4 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
 fn namespace_graft_strip_provenance_marker(root: Node) -> Node {
   namespace_graft_unwrap_module_working_root(root: root)
 }
+

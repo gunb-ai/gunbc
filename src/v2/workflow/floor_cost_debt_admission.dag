@@ -114,3 +114,4 @@ fn floor_cost_debt_typed_admitted_identities() -> List<String> {
     f: fn(acc, row) { concat([row.identity], acc) },
   ))
 }
+

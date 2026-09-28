@@ -127,3 +127,4 @@ fn render_linked_partition_crates(deps: List<String>, rows: List<Stage0Partition
 fn expected_stage0_linked_partition_crates_txt() -> LinkedPartitionCratesRender {
   render_linked_partition_crates(deps: stage0_host_shell_partition_dependencies, rows: stage0_partition_crate_rows())
 }
+

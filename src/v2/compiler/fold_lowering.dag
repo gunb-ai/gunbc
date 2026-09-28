@@ -695,3 +695,4 @@ fn fold_call_to_loop(fold_call: Node) -> Outcome<Node> {
     FoldCallStepShapeInvalid { diagnostic: d } => outcome_rejected(d: d)
   }
 }
+

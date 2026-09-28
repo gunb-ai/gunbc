@@ -116,3 +116,4 @@ fn roster_registry_declaration_refs() -> List<DeclarationRef> {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

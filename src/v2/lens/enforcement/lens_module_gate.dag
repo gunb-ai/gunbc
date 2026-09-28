@@ -773,3 +773,4 @@ fn lens_module_gate_holds() -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

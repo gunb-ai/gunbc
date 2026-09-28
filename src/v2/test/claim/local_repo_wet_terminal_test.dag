@@ -357,3 +357,4 @@ test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool
       candidate: fixture_candidate
     )
 }
+

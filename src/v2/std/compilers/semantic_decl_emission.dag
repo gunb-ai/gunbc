@@ -2237,3 +2237,4 @@ fn target_semantic_struct_surface_from_record_admitted(
           })
   }
 }
+

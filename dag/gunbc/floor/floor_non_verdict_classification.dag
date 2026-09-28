@@ -269,3 +269,4 @@ fn honest_debt_count() -> Int {
 fn every_row_carries_measured_evidence() -> Bool {
   !any(xs: classified_non_verdict_rows(), predicate: fn(row) { string_length(s: row.measured_evidence) == 0 })
 }
+

@@ -349,3 +349,4 @@ fn effect_io_host_runtime_hermetic(backend: EffectIoResourceBackend) -> V4Effect
     fixture: effect_io_pure_empty_fixture_store(backend: backend)
   )
 }
+

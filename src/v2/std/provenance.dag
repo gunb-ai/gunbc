@@ -170,3 +170,4 @@ fn span_index_textual_locus_optional(index: SpanIndex, id: OccurrenceId) -> Opti
 fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
   NodeArtifactProvenance { node: node, artifact: artifact }
 }
+

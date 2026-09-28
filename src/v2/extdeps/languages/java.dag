@@ -2010,3 +2010,4 @@ fn java_method_add_language_model() -> LanguageModel {
     core: java_model_core()
   }
 }
+

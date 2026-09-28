@@ -1002,3 +1002,4 @@ fn bash_nearest_ancestor_locate_body_command(spec: NearestAncestorContaining) ->
     Rejected { diagnostics: _ } => ""
   }
 }
+

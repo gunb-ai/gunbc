@@ -114,3 +114,4 @@ fn roster_kind_index(roster: Node, subject_field: Symbol) -> RosterKindIndex {
 fn roster_kind_index_lookup(index: RosterKindIndex, n: Node) -> Optional<Kind> {
   map_lookup(m: index.kinds, key: n)
 }
+

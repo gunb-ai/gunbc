@@ -191,3 +191,4 @@ test fn adjudicate_without_a_pattern_refuses_holds() -> Bool {
   (refusal_detail(argv: ["adjudicate", "f.tsv"]) == native_driver_adjudicate_needs_pattern)
   && plan_exit_is_misuse(argv: ["adjudicate", "f.tsv"])
 }
+

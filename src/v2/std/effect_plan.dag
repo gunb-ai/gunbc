@@ -45,3 +45,4 @@ type EffectPlan<E> {
 // host_effect_apply (host-effect-orchestration.md section 1b).
 
 data effect_plan_orchestration_succession_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.orchestration parallel — Predicate/FailurePolicy/ValueSource/EscalationLevel/Expr neighbor vocab and Pipeline/PipelineStep bash-emit scaffold remain in v2.std.orchestration until host-effect-orchestration.md Phase B rename absorbs them here; effect_plan owns generic EffectPlan<E>/Do-effect composition (#6903 Wave A2 keystone).")
+

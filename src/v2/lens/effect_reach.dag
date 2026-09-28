@@ -524,3 +524,4 @@ fn effect_reach_flow_count(classification: EffectReachClassification) -> Int {
     EffectReachRefused { refusals: _ } => 0
   }
 }
+

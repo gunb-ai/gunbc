@@ -106,3 +106,4 @@ test fn list_rows_with_different_elements_project_different_atoms() -> Bool {
 test fn record_rows_with_different_string_fields_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: rec_a, b: rec_b)
 }
+

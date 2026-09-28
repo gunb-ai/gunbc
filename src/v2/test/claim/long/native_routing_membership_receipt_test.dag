@@ -115,3 +115,4 @@ test fn native_routing_green_control_bound_entry_reaches_subject() -> Bool {
     facts: facts
   )
 }
+

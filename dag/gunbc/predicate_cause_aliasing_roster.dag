@@ -274,3 +274,4 @@ data bare_false_negative_controls: List<NegativeControlSite> = [
 fn negative_control_site_is_named(row: NegativeControlSite) -> Bool {
   row.module_path != "" && row.symbol != ""
 }
+

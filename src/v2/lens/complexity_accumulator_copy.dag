@@ -184,3 +184,4 @@ fn classify_call(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
+

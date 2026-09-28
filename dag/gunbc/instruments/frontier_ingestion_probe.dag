@@ -633,3 +633,4 @@ fn p_qualified_record_ctor() -> String { render_classified(source_outcome: class
 fn p_bare_record_ctor_control() -> String { render_classified(source_outcome: classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  C { id: 1 }\n}\n")) }
 fn p_where_refinement() -> String { render_classified(source_outcome: classify_source(source: "module frontier_probe\n\ntype H = String where lower_hex_16\n")) }
 fn p_type_alias_control() -> String { render_classified(source_outcome: classify_source(source: "module frontier_probe\n\ntype H = String\n")) }
+

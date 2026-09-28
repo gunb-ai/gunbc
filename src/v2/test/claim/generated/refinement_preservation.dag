@@ -84,3 +84,4 @@ data witness_refinement_preservation_scheduler_emits_one_generator: Bool = match
   Accepted { value: generators, diagnostics: _ } => length(xs: generators) == 1
   Rejected { diagnostics: _ } => false
 }
+

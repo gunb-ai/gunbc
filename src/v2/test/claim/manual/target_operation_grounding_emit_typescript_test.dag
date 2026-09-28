@@ -245,3 +245,4 @@ test fn op_grounding_equality_predicate_accepts_units() -> Bool {
   (equality_predicate_accepts(predicate: IsEqual) == true) &&
     (equality_predicate_accepts(predicate: IsNotEqual) == false)
 }
+

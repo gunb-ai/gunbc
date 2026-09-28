@@ -244,3 +244,4 @@ fn bash_emit_program_sequence_script(programs: List<String>) -> String {
     Rejected { diagnostics: _ } => bash_emit_program_sequence_refused_poison
   }
 }
+

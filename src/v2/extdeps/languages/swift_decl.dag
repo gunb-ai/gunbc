@@ -373,3 +373,4 @@ fn swift_semantic_decl_emission_bundle_node() -> Node {
     surface: swift_semantic_decl_surface_projection()
   )
 }
+

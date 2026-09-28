@@ -502,3 +502,4 @@ fn apply_advisory_lens(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

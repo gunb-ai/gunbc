@@ -119,3 +119,4 @@ test fn same_spelling_other_module_counts_toward_bare_target() -> Bool {
 test fn nullary_variant_construction_invisible_at_this_edge() -> Bool {
   census_count_for_decl(name: "census_probe_constructs_nullary", target: ^CensusNullaryProbeMode) == 0
 }
+

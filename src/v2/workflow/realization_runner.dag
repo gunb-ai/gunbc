@@ -465,3 +465,4 @@ fn runner_schedule_contains_batch(
 ) -> Bool {
   contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
 }
+

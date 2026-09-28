@@ -61,3 +61,4 @@ fn sql_create_table_fold_plan() -> List<List<Runnable>> {
     ]
   ]
 }
+

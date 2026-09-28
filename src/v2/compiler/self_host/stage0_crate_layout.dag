@@ -420,3 +420,4 @@ fn wet_actuator_generated_stage0_files() -> List<String> {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

@@ -587,3 +587,4 @@ data spice_io_contract: SpiceIoContract = SpiceIoContract {
   parse: spice_parse,
   emit: spice_emit
 }
+

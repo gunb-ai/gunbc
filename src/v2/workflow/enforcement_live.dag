@@ -160,3 +160,4 @@ fn witness_admission_inventory_live() -> List<WitnessAdmissionInventoryRow> {
     prepush_entries: enforcement_prepush_witness_entries()
   )
 }
+

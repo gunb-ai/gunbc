@@ -656,3 +656,4 @@ fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String
     }
   )
 }
+

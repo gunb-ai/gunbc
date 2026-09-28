@@ -120,3 +120,4 @@ fn anonymous_binder_mint_parameter_list(edges: List<Edge>) -> DeclaredParameterL
   })
   DeclaredParameterList { edges: list_reverse(xs: minted.edges), order: list_reverse(xs: minted.order) }
 }
+

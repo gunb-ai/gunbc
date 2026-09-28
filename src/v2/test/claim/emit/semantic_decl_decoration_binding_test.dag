@@ -53,3 +53,4 @@ test fn nullary_bool_uses_enum_copy_derive_binding() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+

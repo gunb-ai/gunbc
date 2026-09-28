@@ -370,3 +370,4 @@ test fn redundancy_region_deconflation_terminal_marks_nonempty() -> Bool {
 test fn redundancy_region_deconflation_all_are_terminal() -> Bool {
   terminal_count(dispositions: redundancy_region_deconflation_terminal_marks) == 4
 }
+

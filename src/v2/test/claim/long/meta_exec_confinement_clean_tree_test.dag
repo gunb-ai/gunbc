@@ -71,3 +71,4 @@ test fn meta_exec_roster_soundness_live_planted_stale_red_holds() -> Bool {
     live_leak_paths: meta_exec_live_leak_candidate_paths(scan_roots: meta_exec_consumer_scan_roots)
   ) == false
 }
+

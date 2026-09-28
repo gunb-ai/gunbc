@@ -93,3 +93,4 @@ test fn rust_fixture_descriptors_consume_the_rust_row() -> Bool {
 test fn a_flag_bearing_row_is_refused_by_the_control() -> Bool {
   !row_is_well_formed(names: ["PATH", "RUSTFLAGS"])
 }
+

@@ -858,3 +858,4 @@ fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     }
   }
 }
+

@@ -5121,3 +5121,4 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
     occurrence_id: OccurrenceSynthetic
 }
 }
+

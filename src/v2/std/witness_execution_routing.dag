@@ -55,3 +55,4 @@ type WitnessExecutionLeg
 // row at run time (construction), replacing post-hoc log inference.
 
 data witness_execution_disposition_predicate_dissolution_note: String = "disposition_is_native / disposition_is_interpreted_retained / disposition_is_emit_ineligible dissolved per review 41625 — roster consumers partition WitnessExecutionDisposition in one pass (WitnessEntryRoutingPartition) or match the coproduct directly; no sibling Bool predicates in std/. execution_leg_is_native dropped per review 41637 — WitnessExecutionLeg is typed vocabulary only until claim_executor derives legs at runtime (witness_execution_leg_note dissolve-on)."
+

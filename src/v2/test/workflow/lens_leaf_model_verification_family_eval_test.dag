@@ -76,3 +76,4 @@ fn lens_leaf_model_verification_family_gate() -> Bool {
 }
 
 test data witness_lens_leaf_model_verification_family_gate_closed: Bool = lens_leaf_model_verification_family_gate()
+

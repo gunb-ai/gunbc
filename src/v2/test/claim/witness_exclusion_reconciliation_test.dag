@@ -262,3 +262,4 @@ test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> B
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
+

@@ -405,3 +405,4 @@ fn changed_witness_blockers(rows: List<ChangedWitnessRow>) -> List<ChangedWitnes
     }
   }))
 }
+

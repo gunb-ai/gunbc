@@ -1555,3 +1555,4 @@ test fn duplicate_requirement_pairs_refuse_on_bundle_decode() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+

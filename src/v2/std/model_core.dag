@@ -272,3 +272,4 @@ fn primitive_fact_bundle_list_head_substrate(bundles: List<PrimitiveFactBundle>)
 fn model_core_first_primitive_substrate(core: ModelCore) -> Node {
   primitive_fact_bundle_list_head_substrate(bundles: core.primitives)
 }
+

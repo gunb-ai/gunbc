@@ -75,3 +75,4 @@ fn stamp_node_shape(shape: NodeShape, occurrence_id: NodeOccurrenceIdentity) -> 
 fn stamp_node_shape_synthetic(shape: NodeShape) -> Node {
   stamp_node_shape(shape: shape, occurrence_id: OccurrenceSynthetic)
 }
+

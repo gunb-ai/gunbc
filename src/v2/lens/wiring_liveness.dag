@@ -175,3 +175,4 @@ fn wiring_liveness_corpus_is_clean(pool_roots: List<String>) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

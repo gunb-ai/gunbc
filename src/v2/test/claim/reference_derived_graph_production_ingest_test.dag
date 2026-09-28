@@ -255,3 +255,4 @@ test fn production_tree_field_fixture_field_type_survives_today_holds() -> Bool 
 test fn production_route_callee_with_no_arguments_reaches_holds() -> Bool {
   production_edge_count(path: consumer_callee_only_path, target: provider_module) == 1
 }
+

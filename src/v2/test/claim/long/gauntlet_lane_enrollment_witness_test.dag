@@ -185,3 +185,4 @@ test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {
     roster: [synthetic_cadence_gate_row(), synthetic_bare_deenrolled_gate_row()]
   )
 }
+

@@ -87,3 +87,4 @@ type NativeFrontierRosterStanding
       cause_transitions: List<NativeCauseTransitionRow>
     }
 
+

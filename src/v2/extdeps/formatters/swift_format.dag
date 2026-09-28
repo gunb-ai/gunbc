@@ -105,3 +105,4 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
 fn swift_format_layer(base: SwiftFormatConfig, patch: ConfigPatchRecord<SwiftFormatConfig>) -> SwiftFormatConfig {
   config_patch_layer(base: base, patch: patch)
 }
+

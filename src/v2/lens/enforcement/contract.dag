@@ -617,3 +617,4 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_wiring_liveness,
   lens_contract_witness_cost_locality
 ]
+

@@ -362,3 +362,4 @@ fn coverage_frontier_all_native_claims_backed() -> Bool {
     f: fn(acc, row) { acc && coverage_row_backing_is_enrolled(row: row) }
   )
 }
+

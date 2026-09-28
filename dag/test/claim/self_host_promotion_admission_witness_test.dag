@@ -1976,3 +1976,4 @@ test fn a_subtree_obligation_observed_twice_promotes() -> Bool {
     PromotionRefused { causes: _ } => false
   }
 }
+

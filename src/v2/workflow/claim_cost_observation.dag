@@ -166,3 +166,4 @@ type RemedyPartition { exact: List<ExactCompletionCost> }
 fn remedy_partition(exact: List<ExactCompletionCost>) -> RemedyPartition {
   RemedyPartition { exact: exact }
 }
+

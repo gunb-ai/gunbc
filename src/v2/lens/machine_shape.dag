@@ -233,3 +233,4 @@ fn machine_shape_compile_gate(node: Node) -> Outcome<Witness<Node>> {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+

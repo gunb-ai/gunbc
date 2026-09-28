@@ -144,3 +144,4 @@ fn test_marked_declared_name(decl: Node) -> Optional<Symbol> {
       }
   }
 }
+

@@ -472,3 +472,4 @@ fn bash_build_subshell_from_stmts(stmts: List<Node>) -> Node {
 fn bash_build_word_concat_from_nodes(parts: List<Node>) -> Node {
   bash_build_word_concat_parts(parts: parts)
 }
+

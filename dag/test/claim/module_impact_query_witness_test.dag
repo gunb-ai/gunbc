@@ -652,3 +652,4 @@ test fn witness_a_deleted_path_present_in_both_lists_yields_one_base_subject() -
     ChangedSurfaceRefused { reason: _ } => false
   }
 }
+

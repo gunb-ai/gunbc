@@ -93,3 +93,4 @@ test fn body_lowering_rejects_non_binary() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+

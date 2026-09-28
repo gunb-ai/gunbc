@@ -604,3 +604,4 @@ test fn validation_five_hop_cycle_is_left_recursive() -> Bool {
 test fn validation_five_hop_chain_is_not_left_recursive() -> Bool {
   grammar_has_left_recursion(root: validation_chain_5_root) == false
 }
+

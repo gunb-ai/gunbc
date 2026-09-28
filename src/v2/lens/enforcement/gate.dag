@@ -253,3 +253,4 @@ fn intent_admissible(i: StandingIntent) -> Bool {
 fn all_intents_admissible(intents: List<StandingIntent>) -> Bool {
   for_all(xs: intents, predicate: fn(i) { intent_admissible(i: i) })
 }
+

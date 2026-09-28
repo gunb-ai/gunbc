@@ -527,3 +527,4 @@ test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool {
       p: fn(c) { is_foreign_entry(c: c) }
     )
 }
+

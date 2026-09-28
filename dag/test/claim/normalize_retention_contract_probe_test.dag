@@ -366,3 +366,4 @@ test fn roster_verdict_is_stable_under_row_reordering() -> Bool {
   }
   a && b
 }
+

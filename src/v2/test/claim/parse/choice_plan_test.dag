@@ -492,3 +492,4 @@ test fn a_literal_terminal_publishes_the_class_identity_not_its_word() -> Bool {
   let by_lexeme = pcp_observe_root(root: pcp_root(), expr: term_stamp(token_class: ^pcp_word, stamp: StampLexeme), tokens: tokens)
   literal == by_class && literal != by_lexeme && literal != ObservedRejected
 }
+

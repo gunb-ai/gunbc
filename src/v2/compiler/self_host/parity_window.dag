@@ -225,3 +225,4 @@ fn parity_routing_admitted(family: String, observations: List<ParityObservation>
     ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
+

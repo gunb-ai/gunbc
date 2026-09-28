@@ -1517,3 +1517,4 @@ fn integer_int_content_digest(value: Int) -> Fnv1a64Structural {
     payload: content_hash_atom(value: integer_int_to_decimal_string(value: value) as NonEmptyStr)
   )
 }
+

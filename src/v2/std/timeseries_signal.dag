@@ -413,3 +413,4 @@ fn inductor_fold_step(
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
+

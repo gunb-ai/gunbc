@@ -133,3 +133,4 @@ test fn live_populations_are_nonempty() -> Bool {
     && count(retained_declared_source_files()) > 0
     && count(discovered_legacy_behavior_ids()) > 0
 }
+

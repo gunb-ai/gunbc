@@ -316,3 +316,4 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
     ]
   ]
 }
+

@@ -353,3 +353,4 @@ fn wrap_decision_gate(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
+

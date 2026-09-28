@@ -218,3 +218,4 @@ test fn the_live_pending_candidates_are_decided_by_neither_roster() -> Bool {
 test fn the_pending_roster_carries_identities() -> Bool {
   length(xs: pending_share_producers(pending: floor_cross_claim_pending_candidates)) > 0
 }
+

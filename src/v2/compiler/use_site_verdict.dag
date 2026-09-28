@@ -105,3 +105,4 @@ fn attach_use_site_verdict(node: Node, verdict: UseSiteVerdict) -> Node {
     )
   )
 }
+

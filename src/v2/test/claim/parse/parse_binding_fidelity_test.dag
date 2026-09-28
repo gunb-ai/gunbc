@@ -320,3 +320,4 @@ test fn witness_ambiguous_export_fail_closed_holds() -> Bool {
   pbf_ambiguous_export_rejects()
     && ((pbf_ambiguous_export_rejects() == false) == false)
 }
+

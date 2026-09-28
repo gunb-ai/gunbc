@@ -334,3 +334,4 @@ fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustMani
 }
 
 data lifecycle_totality_retirement_trigger_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier")
+

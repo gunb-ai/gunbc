@@ -109,3 +109,4 @@ test fn add_slice_composition_accepts_holds() -> Bool {
     && (verdicts.composition_verdict == ^candidate_accepted)
     && is_empty(xs: verdicts.composition_carried_reasons)
 }
+

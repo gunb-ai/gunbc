@@ -259,3 +259,4 @@ fn placement_is_admissible(p: Placement) -> Bool {
       warm_cost_within_fast_lane(wc: wc) && classification_admits_pr_tier(c: c)
   }
 }
+

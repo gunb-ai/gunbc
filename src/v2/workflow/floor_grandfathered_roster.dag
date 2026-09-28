@@ -1208,3 +1208,4 @@ fn roster_change_admitted(verdict: RosterChangeVerdict) -> Bool {
     RosterRemovalWithoutDisposition { removed: _ } => false
   }
 }
+

@@ -147,3 +147,4 @@ test fn zero_exit_is_applied_even_with_verbose_stdout() -> Bool {
     _ => false
   }
 }
+

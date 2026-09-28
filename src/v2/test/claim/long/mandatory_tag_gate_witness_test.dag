@@ -198,3 +198,4 @@ test fn mandatory_tag_enrolled_in_root_roster_rejects_violating_module() -> Bool
     reason: ^mandatory_tag_missing_required_decl
   )
 }
+

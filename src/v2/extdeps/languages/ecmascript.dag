@@ -1335,3 +1335,4 @@ fn ecmascript_language_model() -> LanguageModel {
     core: ecmascript_model_core()
   }
 }
+

@@ -141,3 +141,4 @@ data bare_reference_scanner_seed_growth_justification: SeedGrowthJustification =
   trigger: "Delete all nine declarations when the parse phase publishes the binder and declaration facts this scanner re-derives from text — module-local declaration names, coproduct variant heads, declaration type parameters, and lambda binder names — so the source loader consults a parse-owned surface instead of scanning source. That is the same terminal construction bare_reference_scanner_presumption_note names, and it retires the scanner whole rather than shrinking it.",
   current_boundary: "gunbc.bare_reference_scanner_admission -> v1_compiler.cli_run module_self_declared_names -> v1_compiler.cli_run bare_reference_pull_paths_for_source -> the both-closure edge index"
 }
+

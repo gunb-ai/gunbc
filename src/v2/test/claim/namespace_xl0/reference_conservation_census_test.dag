@@ -197,3 +197,4 @@ test fn the_cap_counts_bytes_not_code_points_holds() -> Bool {
   !sample_file_within_cap(content: short_by_two + "x" + "\u{e9}")
     && sample_file_within_cap(content: short_by_two + "\u{e9}")
 }
+

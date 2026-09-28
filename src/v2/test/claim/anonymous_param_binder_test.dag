@@ -195,3 +195,4 @@ test fn apb_recogniser_separates_minted_from_authored() -> Bool {
     && !is_anonymous_param_label(sym: pattern_wildcard_name())
     && !is_anonymous_param_label(sym: ^x)
 }
+

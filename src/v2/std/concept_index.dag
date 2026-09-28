@@ -136,3 +136,4 @@ fn enumerate_coproduct_decls() -> List<ConceptDecl> {
     predicate: fn(decl) { node_is_coproduct(node: decl.node) }
   )
 }
+

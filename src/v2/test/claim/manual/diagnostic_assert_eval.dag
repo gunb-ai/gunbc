@@ -154,3 +154,4 @@ data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs:
     RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => true
 }
+

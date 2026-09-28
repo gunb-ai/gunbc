@@ -389,3 +389,4 @@ fn self_host_fixed_point_validate(
     }
   }
 }
+

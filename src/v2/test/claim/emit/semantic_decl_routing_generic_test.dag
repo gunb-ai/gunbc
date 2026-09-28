@@ -85,3 +85,4 @@ test fn semantic_generic_struct_routes_to_struct_emit() -> Bool {
     && !semantic_pair_matches(golden: semantic_pair_wrong_golden)
 }
 
+

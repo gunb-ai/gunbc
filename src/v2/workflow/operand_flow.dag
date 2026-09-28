@@ -105,3 +105,4 @@ fn operand_flow_for_edge(artifact: NodeKeyedGraphArtifact, edge: DependencyView)
 fn operand_flows(artifact: NodeKeyedGraphArtifact, edges: List<DependencyView>) -> List<OperandFlowRow> {
   list_map(xs: edges, f: fn(edge) { operand_flow_for_edge(artifact: artifact, edge: edge) })
 }
+

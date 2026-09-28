@@ -31,3 +31,4 @@ fn honest_frontier_projection_witness_observation(
 ) -> RustManifestObserved {
   lifecycle_totality_witness_observation(extra_paths: extra_paths)
 }
+

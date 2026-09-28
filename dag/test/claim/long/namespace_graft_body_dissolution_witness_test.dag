@@ -152,3 +152,4 @@ test fn witness_lowered_body_module_still_grafts() -> Bool {
 test fn witness_header_only_module_still_accepts() -> Bool {
   normalize_accepts(source: header_only_source)
 }
+

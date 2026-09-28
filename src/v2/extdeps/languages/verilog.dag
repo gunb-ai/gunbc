@@ -1366,3 +1366,4 @@ fn verilog_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     }
   }
 }
+

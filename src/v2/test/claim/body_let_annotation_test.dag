@@ -410,3 +410,4 @@ test fn bla_reordered_annotation_keeps_the_initializer_outside_its_binder() -> B
     && (bad.fatal == optional_present(value: ^resolve_reason_unbound_symbol))
     && (good.fatal == Absent)
 }
+

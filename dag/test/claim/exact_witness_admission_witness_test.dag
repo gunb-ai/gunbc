@@ -562,3 +562,4 @@ test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_r
     && (pre_verdict_count < known_red_count)
     && (pre_verdict_count > 0)
 }
+

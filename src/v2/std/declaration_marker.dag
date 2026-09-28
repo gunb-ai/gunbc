@@ -84,3 +84,4 @@ fn test_code_reach(index: TestCodeIndex, path: QualifiedName) -> TestCodeReach {
     Absent => ReachesNoTestCode
   }
 }
+

@@ -1212,3 +1212,4 @@ fn reference_conservation_report_lines(report: ReferenceConservationReport) -> F
     cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_line(path: report.path, row: row)) }
   )
 }
+

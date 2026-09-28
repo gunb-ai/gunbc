@@ -455,3 +455,4 @@ fn product_receipt_render(receipt: ProductReceipt) -> String {
 fn bool_to_string(b: Bool) -> String {
   if b { "true" } else { "false" }
 }
+

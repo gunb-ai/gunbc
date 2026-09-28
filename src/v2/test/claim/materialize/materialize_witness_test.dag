@@ -87,3 +87,4 @@ test fn node_content_hash_is_realization_plan_target() -> Bool {
   hashes_contain(hs: distinct_hashes(root: root), h: plan.target)
     && !hashes_contain(hs: distinct_hashes(root: other), h: plan.target)
 }
+

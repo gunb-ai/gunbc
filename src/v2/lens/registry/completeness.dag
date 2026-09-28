@@ -121,3 +121,4 @@ fn lens_registry_completeness_holds() -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+

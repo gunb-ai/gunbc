@@ -580,3 +580,4 @@ fn enrolment_margin_blockers(rows: List<EnrolmentMarginRow>) -> List<EnrolmentMa
     }
   }))
 }
+
