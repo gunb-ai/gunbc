@@ -1459,7 +1459,10 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: Conte
                       FencedRefusal { group: _, cause: _, disposition_authority: _ } => d0_pending_moved_refusal(current: current)
                       ReleasedToFleet { group: _, release_receipt: _ } => d0_pending_moved_refusal(current: current)
                     }
-                  _ => D0RecoverComplete { claim_generation: g, settled: mine }
+                  PairServingActive { group: _, exact_realization: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
+                  SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
+                  FencedRefusal { group: _, cause: _, disposition_authority: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
+                  ReleasedToFleet { group: _, release_receipt: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
                 }
             }
             }
