@@ -37,6 +37,8 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.emit { serialize_json_object, json_kv, json_string }
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import std.content_hash { content_hash_atom, content_hash_validate_lower_hex_syntax }
 import extdeps.tools { apt_package_of }
 import extdeps.apt { package_xz_utils }
@@ -779,11 +781,30 @@ data browser_toolchain_probe_title: String = "gunbc-browser-toolchain-inhabitanc
 
 data browser_toolchain_probe_width_px: String = "137"
 
-data browser_toolchain_probe_page: String = join([
-  "<!doctype html><html><head><title>", browser_toolchain_probe_title,
-  "</title></head><body><div id=\"probe\" style=\"width:", browser_toolchain_probe_width_px,
-  "px;height:11px\">rendered</div></body></html>",
-], "")
+// THE PROBE PAGE IS A MARKUP TREE, SERIALIZED BY extdeps.languages.html (review 72231): a document
+// whose title is the probe title and whose body holds one element of declared geometry. It carries
+// no doctype -- a fixed-width block's laid-out width is the same in either rendering mode, and no
+// Fragment node spells a doctype -- so nothing in it is hand-written markup.
+fn browser_toolchain_probe_fragment() -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [],
+    children: [
+      Element { tag: "head", attributes: [], children: [Element { tag: "title", attributes: [], children: [FragmentText { content: browser_toolchain_probe_title }] }] },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          Element {
+            tag: "div",
+            attributes: [attr(name: "id", value: "probe"), attr(name: "style", value: join(["width:", browser_toolchain_probe_width_px, "px;height:11px"], ""))],
+            children: [FragmentText { content: "rendered" }],
+          },
+        ],
+      },
+    ],
+  }
+}
 
 fn browser_toolchain_probe_page_path(scratch: String) -> String {
   join([scratch, "/inhabitance.html"], "")
@@ -908,7 +929,10 @@ fn plant_probe_wet(scratch: String) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: browser_toolchain_decoy_package_dir(scratch: scratch)), transport: LocalExec))
     && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/package.json"], ""), content: browser_toolchain_decoy_package_json).success
     && Filesystem.Write(path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/index.js"], ""), content: browser_toolchain_decoy_index).success
-    && Filesystem.Write(path: browser_toolchain_probe_page_path(scratch: scratch), content: browser_toolchain_probe_page).success
+    && match try_serialize_html_source(node: browser_toolchain_probe_fragment()) {
+      EmitOk { html: h } => Filesystem.Write(path: browser_toolchain_probe_page_path(scratch: scratch), content: h).success
+      EmitRejected { reason: _ } => false
+    }
 }
 
 fn libraries_resolved(libraries: List<HostLibraryReadback>) -> Bool {
