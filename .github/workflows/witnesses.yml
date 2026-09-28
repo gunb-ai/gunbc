@@ -154,6 +154,7 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
         continue-on-error: true
+        timeout-minutes: 50
   emit-build:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90

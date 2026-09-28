@@ -63,8 +63,10 @@ import v2.workflow.compile_door_cause_ownership {
 // `adjudicate` mode, beside `native_route_admission`, over the same receipt value. The per-identity
 // verdicts are typed values there, so the ratchet reads them as values. Anywhere else they would
 // first be written out as JSON and read back by a second decoder. The consumer that turns its
-// verdict into an exit status is the `//gunbc/instruments:v2-native-frontier` instrument, and the
-// nightly `native-frontier` workflow (gunbc.native_frontier_workflow) runs that instrument.
+// verdict into an exit status is the `//gunbc/instruments:v2-native-frontier` instrument. Its run
+// is bound to the native route's REQUIRED lane on the merge_group revision (operator ruling
+// 2026-09-27, which deleted the nightly `native-frontier` workflow that ran it on a schedule). Until
+// that lane is live nothing runs it, and gunbc.rung_drop v2_native_frontier_nightly_cadence says so.
 //
 // WHAT IT REUSES AND WHAT IT ADDS. The per-row comparison is gunbc#12049's guard, called row by
 // row: stage and cause regressions, subjects that left without a disposition, rename targets,
@@ -680,7 +682,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
 }
 
 // THE PROPOSED ROSTER, AS THE `.dag` MODULE IT WOULD BE. Present for every arm except `Held` and
-// `NotAMeasurement`. The nightly publishes it as a workflow artifact; it reaches
+// `NotAMeasurement`. The required native-route lane publishes it; it reaches
 // `dag/gunbc/native_frontier_roster.dag` only through a reviewed pull request that carries it. Dispositions and cause transitions are NOT carried forward, because each describes
 // a transition relative to the rows it was written against: once the roster is re-minted from the
 // run, a disposition for a subject with no row and a transition whose cause no longer moves are
