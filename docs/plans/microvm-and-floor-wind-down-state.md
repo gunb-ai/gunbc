@@ -183,7 +183,7 @@ kept as history; the demand is a single warm run's sampled maximum, so a later r
 back over the line, and the either-state witness is what would say so.
 
 Before 2026-09-23: `runner_microvm_floor_fit_stall` remained rostered: the floor's measured held-set
-peak exceeded `gunbc.runner_slot_allocation` `gunbc_runner_slot_memory_max_bytes` less the
+peak exceeded `gunbc.runner_slot_desired` `gunbc_runner_slot_memory_max_bytes` less the
 realization reserve. Both sides are derivable rather than transcribed — the cap is that declaration, and
 the demand is produced by `gunbc.floor_memory_demand`, whose qualification against readable
 limits is what the stall cites. The stall row itself carries the figures it was written

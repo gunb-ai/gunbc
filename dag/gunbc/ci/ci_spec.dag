@@ -65,7 +65,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.realization_schedule { RunnableBatchClamp }
 import std.decl_ref { decl_ref }
-import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count }
+import std.measure { Second, second, millisecond, Minute, minute, minute_count, second_count, Gibibyte, gibibyte, gibibyte_to_byte_size, byte_size_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
@@ -127,7 +127,7 @@ import extdeps.git {
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef, Int, String, List, NonEmptyStr }
-import v2.std.algebra { FreeSemigroup, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -620,65 +620,6 @@ fn ci_floor_build_verify_script() -> String {
 }
 
 data ci_release_bins_archive_name: String = "release-bins.tgz"
-
-data ci_release_bins_pack_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "ci_release_bins_pack_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_release_bins_pack_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
-
-fn ci_release_bins_pack_script() -> String {
-  let names = fold(
-    ci_floor_required_artifact_names(),
-    init: "",
-    f: (acc, name) => concat(acc, concat(" ", concat("\"", concat(name, "\""))))
-  )
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_release_bins_pack_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        concat(concat("tar -czf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\""),
-        concat(names, "\n")
-      )
-    )
-  )
-}
-
-data ci_release_bins_unpack_verify_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "ci_release_bins_unpack_verify_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_release_bins_unpack_verify_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability")
-
-fn ci_release_bins_unpack_verify_script() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: ci_release_bins_unpack_verify_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        "mkdir -p \"$ROOT/target/release\"\n",
-        concat(
-          concat(concat("tar -xzf \"$ROOT/", ci_release_bins_archive_name), "\" -C \"$ROOT/target/release\"\n"),
-          concat(
-            concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
-            ci_floor_build_verify_script()
-          )
-        )
-      )
-    )
-  )
-}
 
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
@@ -2039,19 +1980,42 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // not survive; moving the shell leaves the invocation untouched.
 data heal_publisher_cgroup_name: String = "gunbc-publish"
 
-// 12 GiB against the 4 vCPU / 16 GiB ubuntu-24.04-arm image, leaving the runner agent its own room.
-data heal_publisher_cgroup_memory_max_bytes: Int = 12884901888
+// THE HOSTED ubuntu-24.04-arm MEMORY BOUND, ONCE, for every caller of the bind below: 12 GiB
+// against the image's 4 vCPU / 16 GiB, leaving the runner agent its own room.
+fn hosted_arm_runner_cgroup_memory_max() -> Gibibyte {
+  gibibyte(count: 12)
+}
+
+// THE BIND ITSELF, ONCE, for every hosted-runner caller: the heal publisher below and the v1 unit
+// tests in the clippy lane (gunbc.compiler_gate_workflow). The callers differ in the leaf's name and
+// its bound, never in the sequence; the enclosing shell is what moves, so every process it starts
+// afterwards inherits a memory.max that gunbc.host_budget_source reads as an ordinary observation.
+// MARKED ON REQUEST (review 72000): the bind is hand-shell text shared by two callers, so its end is
+// named on the carrier, as native_frontier_workflow's hand-shell steps name theirs.
+data hosted_runner_memory_cgroup_bind_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: hosted_runner_memory_cgroup_bind_commands -- the GUNBC_CG / tee subtree_control / mkdir / tee memory.max / tee cgroup.procs strings shared by the heal publisher prelude and the clippy lane's rust_unit_tests step (gunbc.compiler_gate_workflow compiler_gate_unit_test_command) remain until the cgroup v2 leaf bind is a typed host effect rendered by the bash emitter (#5828 / shell-to-intent Phase 2), taking the leaf name and a Gibibyte bound as values; both callers then consume that op and this function is deleted")
+
+fn hosted_runner_memory_cgroup_bind_commands(cgroup_name: String, memory_max: Gibibyte) -> List<String> {
+  [
+    concat("GUNBC_CG=/sys/fs/cgroup/", cgroup_name),
+    "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null",
+    "sudo mkdir -p \"$GUNBC_CG\"",
+    concat(concat("echo ", to_string(byte_size_count(b: gibibyte_to_byte_size(g: memory_max)))), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null"),
+    "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null",
+    "cat \"$GUNBC_CG/memory.max\"",
+  ]
+}
 
 fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
-  [
-    app_mint_step(command: "set -euo pipefail"),
-    app_mint_step(command: concat("GUNBC_CG=/sys/fs/cgroup/", heal_publisher_cgroup_name)),
-    app_mint_step(command: "echo \"+memory\" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null"),
-    app_mint_step(command: "sudo mkdir -p \"$GUNBC_CG\""),
-    app_mint_step(command: concat(concat("echo ", to_string(heal_publisher_cgroup_memory_max_bytes)), " | sudo tee \"$GUNBC_CG/memory.max\" >/dev/null")),
-    app_mint_step(command: "echo $$ | sudo tee \"$GUNBC_CG/cgroup.procs\" >/dev/null"),
-    app_mint_step(command: "cat \"$GUNBC_CG/memory.max\""),
-  ]
+  concat(
+    [app_mint_step(command: "set -euo pipefail")],
+    list_map(
+      xs: hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: heal_publisher_cgroup_name,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
+      ),
+      f: fn(c) { app_mint_step(command: c) },
+    )
+  )
 }
 
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
