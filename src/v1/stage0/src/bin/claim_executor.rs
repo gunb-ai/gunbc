@@ -753,43 +753,30 @@ fn run() -> Result<ExitCode, ExitCode> {
             );
             let failures_before = phase_failures.len();
 
-            // MIRROR HALF. Production still precedes adjudication so a missing/stale mirror leaves
-            // the candidate needed to repair it. A refusal remains distinct from a mismatch, but
-            // both are failures of this one generated-artifact phase.
-            match v1_compiler::cli_run::run_required_regen(
-                &regen_candidate_dir,
-                &regen_receipt_path,
-            ) {
-                Ok(outcome) => {
-                    let fge = outcome
-                        .receipt
-                        .first_generation_equal()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unmeasured".to_string());
-                    let candidate = outcome.receipt.candidate_artifact().unwrap_or("unmeasured");
-                    eprintln!(
-                        "required-ci: generated-artifact population=stage0-mirrors \
-                         first_generation_equal={fge} candidate={candidate}"
-                    );
-                    for failure in &outcome.failures {
-                        eprintln!(
-                            "required-ci: generated-artifact population=stage0-mirrors FAIL {failure}"
-                        );
-                    }
-                    if !outcome.failures.is_empty() {
-                        phase_failures.push(format!(
-                            "generated-artifact stage0-mirrors ({} failure(s))",
-                            outcome.failures.len()
-                        ));
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "required-ci: generated-artifact population=stage0-mirrors REFUSED {e}"
-                    );
-                    phase_failures.push(format!("generated-artifact stage0-mirrors refused: {e}"));
-                }
-            }
+            // MIRROR HALF, AS A CHILD BESIDE THE OTHER TWO. The stage0 regeneration reads the src/v1
+            // universe and writes only its candidate and receipt under target/; the docs and
+            // registry halves below read dag and src/v2 and write nothing, and neither reads the
+            // other. Run in series they made the merge queue's generated job wait for their sum
+            // (merge-queue run 36357621284: regen 13 min, then docs 5.8 and registry 3.1). The
+            // regen is `claim_executor --required-regen` -- the same producer, candidate and
+            // receipt paths -- judged by its exit status once the in-process halves finish, so the
+            // phase still records ONE verdict after all three adjudicators ran, and the
+            // fixed-point phase after it still reads the receipt this child wrote.
+            // The child's argv validation requires the parent's source roots; the
+            // unscoped regeneration reads its own fixed v1 sweep, not these roots.
+            let mut stage0_regen_args: Vec<String> = source_roots
+                .iter()
+                .flat_map(|root| ["--source-root".to_string(), root.clone()])
+                .collect();
+            stage0_regen_args.extend([
+                "--required-regen".to_string(),
+                "--regen-candidate-dir".to_string(),
+                regen_candidate_dir.clone(),
+                "--regen-receipt".to_string(),
+                regen_receipt_path.clone(),
+            ]);
+            let stage0_regen =
+                spawn_required_child("stage0-regen", "claim_executor", &stage0_regen_args);
 
             // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
             // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
@@ -888,6 +875,17 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
             }
+            // The mirror half's verdict, joined after the in-process halves. Production still
+            // precedes adjudication inside the child, so a stale mirror leaves the candidate
+            // needed to repair it.
+            if !finish_required_child(stage0_regen, "stage0-regen") {
+                eprintln!(
+                    "required-ci: generated-artifact population=stage0-mirrors FAIL (the \
+                     regeneration child reported failures above or did not complete)"
+                );
+                phase_failures.push("generated-artifact stage0-mirrors".to_string());
+            }
+
             if phase_failures.len() == failures_before {
                 eprintln!(
                     "required-ci: generated-artifact OK populations=registry-projections,stage0-mirrors"
@@ -1633,20 +1631,22 @@ impl RequiredCiLane {
     }
 }
 
-// Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
-// The witnesses job already builds this sibling binary. Use a child so the extra src/v1
-// preparation and its process-wide caches are released before the ordinary floor starts.
+// A REQUIRED-CI CHECK RUN AS A CHILD PROCESS BESIDE THE PHASES AROUND IT. Two checks use it: the
+// primitive-runtime-body gate and the stage0 mirror regeneration. Each is already a whole process
+// of its own elsewhere (`gunbc run`, `claim_executor --required-regen`), reads the tree, and is
+// read by no phase that runs while it does, so starting it early and judging it at its phase's
+// place changes when it runs and nothing it decides.
 //
-// The child's output goes to a log under target/ rather than to the job's streams, so the lines
-// it prints while the phases in front of it run are replayed whole under its own phase header
-// instead of interleaving with theirs. A child still running when the parent unwinds is killed
-// rather than orphaned.
-struct SpawnedPrimitiveRuntimeBody {
+// Its output goes to a log under target/ rather than to the job's streams, so the lines it prints
+// while other phases run are replayed whole under its own phase header instead of interleaving
+// with theirs. A child still running when the parent unwinds is killed rather than orphaned.
+struct SpawnedRequiredChild {
+    label: &'static str,
     child: Option<std::process::Child>,
     log: PathBuf,
 }
 
-impl Drop for SpawnedPrimitiveRuntimeBody {
+impl Drop for SpawnedRequiredChild {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
@@ -1655,72 +1655,97 @@ impl Drop for SpawnedPrimitiveRuntimeBody {
     }
 }
 
-fn spawn_required_primitive_runtime_body() -> Result<SpawnedPrimitiveRuntimeBody, String> {
+fn spawn_required_child(
+    label: &'static str,
+    executable: &str,
+    args: &[String],
+) -> Result<SpawnedRequiredChild, String> {
     let executable = std::env::current_exe()
-        .map(|path| path.with_file_name("gunbc"))
-        .map_err(|error| format!("cannot locate sibling gunbc: {error}"))?;
+        .map(|path| path.with_file_name(executable))
+        .map_err(|error| format!("cannot locate sibling {executable}: {error}"))?;
     let log_dir = v1_compiler::cli_run::workspace_root().join("target");
     fs::create_dir_all(&log_dir)
         .map_err(|error| format!("cannot create {}: {error}", log_dir.display()))?;
-    let log = log_dir.join("required-ci-primitive-runtime-body.log");
+    let log = log_dir.join(format!("required-ci-{label}.log"));
     let stdout = fs::File::create(&log)
         .map_err(|error| format!("cannot create {}: {error}", log.display()))?;
     let stderr = stdout
         .try_clone()
         .map_err(|error| format!("cannot share {}: {error}", log.display()))?;
-    let mut command = std::process::Command::new(executable);
-    command.arg("run");
-    for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
-        command.args(["--source-root", root]);
-    }
-    // The producer spans v1 and v2. Keep it outside both default floor roots and
-    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
-    // parse/declaration universe above so the carrier citation is also checked.
-    command.args([
-        "--entry",
-        "test/primitive_runtime_body/producer.dag",
-        "--function",
-        "check",
-    ]);
-    command.stdout(stdout).stderr(stderr);
-    let child = command
+    let child = std::process::Command::new(&executable)
+        .args(args)
+        .stdout(stdout)
+        .stderr(stderr)
         .spawn()
-        .map_err(|error| format!("gunbc did not execute: {error}"))?;
-    Ok(SpawnedPrimitiveRuntimeBody {
+        .map_err(|error| format!("{} did not execute: {error}", executable.display()))?;
+    Ok(SpawnedRequiredChild {
+        label,
         child: Some(child),
         log,
     })
 }
 
-fn finish_required_primitive_runtime_body(
-    spawned: Result<SpawnedPrimitiveRuntimeBody, String>,
-) -> bool {
+/// Wait for the child, replay its log, and answer whether it exited zero. The exit status is the
+/// verdict; an unreadable log loses the child's diagnostics but not its verdict.
+fn finish_required_child(spawned: Result<SpawnedRequiredChild, String>, label: &str) -> bool {
     let mut spawned = match spawned {
         Ok(spawned) => spawned,
         Err(error) => {
-            eprintln!("primitive-runtime-body: {error}");
+            eprintln!("{label}: {error}");
             return false;
         }
     };
     let Some(mut child) = spawned.child.take() else {
-        eprintln!("primitive-runtime-body: the child was already reaped, so no verdict exists");
+        eprintln!(
+            "{}: the child was already reaped, so no verdict exists",
+            spawned.label
+        );
         return false;
     };
     let status = child.wait();
     match fs::read_to_string(&spawned.log) {
         Ok(text) => eprint!("{text}"),
         Err(error) => eprintln!(
-            "primitive-runtime-body: the child's log at {} could not be read ({error}); its exit status below is still the verdict",
+            "{}: the child's log at {} could not be read ({error}); its exit status below is still the verdict",
+            spawned.label,
             spawned.log.display()
         ),
     }
     match status {
         Ok(status) => status.success(),
         Err(error) => {
-            eprintln!("primitive-runtime-body: gunbc did not complete: {error}");
+            eprintln!("{}: the child did not complete: {error}", spawned.label);
             false
         }
     }
+}
+
+// Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
+// The witnesses job already builds this sibling binary. Use a child so the extra src/v1
+// preparation and its process-wide caches are released before the ordinary floor starts.
+fn spawn_required_primitive_runtime_body() -> Result<SpawnedRequiredChild, String> {
+    let mut args = vec!["run".to_string()];
+    for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
+        args.push("--source-root".to_string());
+        args.push(root.to_string());
+    }
+    // The producer spans v1 and v2. Keep it outside both default floor roots and
+    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
+    // parse/declaration universe above so the carrier citation is also checked.
+    args.extend(
+        [
+            "--entry",
+            "test/primitive_runtime_body/producer.dag",
+            "--function",
+            "check",
+        ]
+        .map(String::from),
+    );
+    spawn_required_child("primitive-runtime-body", "gunbc", &args)
+}
+
+fn finish_required_primitive_runtime_body(spawned: Result<SpawnedRequiredChild, String>) -> bool {
+    finish_required_child(spawned, "primitive-runtime-body")
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
