@@ -864,13 +864,35 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
+// ONE KEY, ONE FACT. The table is admitted here and nowhere else, so this is where a key carrying two
+// DIFFERENT facts refuses. Lookup returns the first entry under a key; without this refusal a second,
+// differing fact was dropped silently and every consumer read whichever gather produced first. Equal
+// facts under one key are one fact and merge.
+fn infer_facts_key_conflict_diagnostic(key: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_facts_key_conflict,
+    at: node_locus(node: key),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialFunction<Node, InferredFacts>> {
   match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
         if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
-          Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
+          match lookup_inferred_facts_in_entries(entries: ok_entries, key: entry.node) {
+            Absent => Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
+            Present { value: held } =>
+              if held == entry.facts {
+                acc
+              } else {
+                Rejected {
+                  diagnostics: diagnostics_singleton(d: infer_facts_key_conflict_diagnostic(key: entry.node))
+                }
+              }
+          }
         } else {
           Rejected {
             diagnostics: diagnostics_singleton(
