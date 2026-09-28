@@ -1,0 +1,133 @@
+module v2.zz_scratch.wf_probe
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_test_eval_one,
+  native_test_infer_resolved,
+  native_test_resolve_module,
+  NativeTestPreparedModule
+}
+import v2.compiler.native_test_vocabulary { native_test_verdict_text }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, NonEmptyDiagnostics, diagnostics_fatal_reason }
+import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Edge, Named, Positional, TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Cardinality, Instantiation, Value, Transform, Branch, Loop, Bind, Match, fold_node, NodeFold, locally_well_formed }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data smoke_source: String = "module v2.test.wfp\n\nimport v2.std.logic { Bool }\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn smoke() -> Bool {\n  true\n}\n"
+
+data local_with_data_source: String = "module v2.test.wfp\n\nimport v2.std.logic { Bool }\n\ntype D = A | B\n\ndata d: D = A\n\ntest fn smoke() -> Bool {\n  true\n}\n"
+
+data local_without_data_source: String = "module v2.test.wfp\n\nimport v2.std.logic { Bool }\n\ntype D = A | B\n\ntest fn smoke() -> Bool {\n  true\n}\n"
+
+fn read_of(src: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^wfp_read, file_path: "src/v2/test/wfp_test.dag" },
+    compilation_unit: ^wfp_cu,
+    source_root: DagTree
+  }
+}
+
+fn wfp_module() -> QualifiedName {
+  [^v2, ^test, ^wfp]
+}
+
+fn refusal_text(stage: String, d: NonEmptyDiagnostics) -> String {
+  concat(stage, concat(" rejected cause=", concat(symbol_lexeme(sym: diagnostics_fatal_reason(d: d)), concat(" chain: ", lens_verdict_diagnostics_located_chain_text(d: d)))))
+}
+
+fn kind_text(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } => concat("Atom(", concat(symbol_lexeme(sym: id), ")"))
+        Conj => "Conj"
+        Disj => "Disj"
+        Arrow => "Arrow"
+        Cardinality => "Cardinality"
+        Instantiation => "Instantiation"
+      }
+    ComputationNode { behavior: b } =>
+      match b {
+        Value => "Value"
+        Transform => "Transform"
+        Branch => "Branch"
+        Loop => "Loop"
+        Bind => "Bind"
+        Match => "Match"
+      }
+  }
+}
+
+fn edge_text(e: Edge) -> String {
+  let label = match e.label {
+    Named { name: s } => symbol_lexeme(sym: s)
+    Positional => "_"
+  }
+  concat(label, concat("->", kind_text(n: e.target)))
+}
+
+fn edges_text(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
+    concat(acc, concat(edge_text(e: e), " "))
+  })
+}
+
+fn shape_text(n: Node) -> String {
+  concat(kind_text(n: n), concat(" [ ", concat(edges_text(n: n), "]")))
+}
+
+fn first_bad(n: Node) -> Optional<Node> {
+  fold_node(n: n, algebra: NodeFold {
+    init: fn(n0) { if locally_well_formed(n: n0) { optional_absent() } else { optional_present(value: n0) } },
+    step: fn(acc, _, child) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => child
+      }
+    }
+  })
+}
+
+fn first_bad_text(n: Node) -> String {
+  match first_bad(n: n) {
+    Absent => "none"
+    Present { value: b } =>
+      let body = fold(b.children, init: "", f: fn(acc, e) {
+        concat(acc, concat(" <", concat(edge_text(e: e), concat(": ", concat(shape_text(n: e.target), ">")))))
+      })
+      concat(shape_text(n: b), concat(" children:", body))
+  }
+}
+
+fn report(src: String) -> String {
+  match native_test_context_from_ingest(ingest: [read_of(src: src)]) {
+    Rejected { diagnostics: d } => refusal_text(stage: "context", d: d)
+    Accepted { value: context, diagnostics: _ } =>
+      match native_test_resolve_module(context: context, module: wfp_module()) {
+        Rejected { diagnostics: d } => refusal_text(stage: "resolve", d: d)
+        Accepted { value: resolved, diagnostics: _ } =>
+          match native_test_infer_resolved(module: wfp_module(), resolved: resolved) {
+            Rejected { diagnostics: d } =>
+              concat(refusal_text(stage: "infer", d: d), concat(" || resolved first bad: ", first_bad_text(n: resolved)))
+            Accepted { value: p, diagnostics: _ } =>
+              concat("verdict: ", concat(
+                native_test_verdict_text(verdict: native_test_eval_one(prepared: p, declaration: ^smoke).verdict),
+                concat(" || first bad: ", first_bad_text(n: p.inferred.root))
+              ))
+          }
+      }
+  }
+}
+
+fn r_smoke() -> String { report(src: smoke_source) }
+fn r_local_with() -> String { report(src: local_with_data_source) }
+fn r_local_without() -> String { report(src: local_without_data_source) }
