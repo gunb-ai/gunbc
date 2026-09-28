@@ -48,10 +48,10 @@ import v2.std.diagnostic { Accepted, Rejected, None, Some }
 // gunbc_invoke_step_emit_pipeline since this paragraph was authored, so NINE/FOUR/FIVE no
 // longer hold; re-grep dissolve-on over the emitted tree before citing a population here
 // rather than trusting this sentence's arithmetic.
-//   (1) ci_release_build_script, ci_release_bins_pack_script and
-//       ci_release_bins_unpack_verify_script -- cargo and tar transports. Their leaves
-//       are not bin invocations at all, so binding them needs typed cargo/archive
-//       operations on host_effect_apply, which is their own stated trigger.
+//   (1) ci_release_build_script -- a cargo transport. Its leaves are not bin invocations
+//       at all, so binding it needs a typed cargo operation on host_effect_apply, which is
+//       its own stated trigger. (The release-bins pack and unpack scripts that stood here
+//       were replaced by bash_build node trees in gunbc.fleet_release_bins_key.)
 //   (2) gunbc_ci_fleet_key_agent_script -- DISSOLVED (2026-08-21): its Scaffold and
 //       DissolutionCondition rows named host_effect_apply, which cannot express a
 //       runner-local ephemeral target and so could never fire (see gunbc.ci_spec, at the

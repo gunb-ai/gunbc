@@ -7,10 +7,8 @@ import gunbc.site.markup { txt, el_class }
 import extdeps.languages.css.values { css_ch, css_length_wire }
 import product.placement_supply { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, provider_kind_label }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
-  gunbc_runner_slot_desired, host_width_binding_label,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, host_width_binding_label }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.fleet_capacity_control {
   capacity_controlled_hosts, capacity_controlled_providers,
   host_withdrawal_for, provider_withdrawal_for,
