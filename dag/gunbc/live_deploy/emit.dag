@@ -1865,6 +1865,12 @@ fn approval_broker_tree_digest_expr(root: String) -> String {
   ], "")
 }
 
+// THE DIGEST AS ONE QUOTED COMMAND SUBSTITUTION, shared by both receipt arms (the job-user copy and
+// the privileged per-file install) so the quoting that review 69066 found broken is spelled once.
+fn approval_broker_tree_digest_substitution(base_root: String, revision: ReleaseRevisionBinding) -> String {
+  join(["\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\""], "")
+}
+
 fn approval_broker_tree_copy_command(src_sub: String, root: String) -> String {
   join([
     "rsync -a --delete ", deployed_tree_rsync_exclude_flags(),
@@ -1906,7 +1912,7 @@ fn approval_broker_tree_receipt_command(base_root: String, revision: ReleaseRevi
   join([
     printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
     "\\ninstalled_digest=%s\\n' ",
-    "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+    approval_broker_tree_digest_substitution(base_root: base_root, revision: revision),
     " | ", install_program as String, " -m 0644 /dev/stdin ",
     approval_broker_tree_receipt_path_for(root: base_root, revision: revision),
   ], "")
@@ -2075,7 +2081,7 @@ fn release_locus_tree_receipt_step(copy: ReleaseLocusCopy, base_root: String, re
       deploy_raw(command: join([
         printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
         "\\ninstalled_digest=%s\\n' ",
-        "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+        approval_broker_tree_digest_substitution(base_root: base_root, revision: revision),
         " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", o as String, "-g", o as String, "/dev/stdin",
           approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
       ], ""))

@@ -113,6 +113,8 @@ import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
   ensure_managed_directory_command,
+  approval_broker_tree_digest_substitution,
+  approval_broker_tree_receipt_command,
   managed_directory_entry_repair_commands,
   approval_broker_tree_receipt_path_for,
   approval_broker_release_dir,
@@ -1710,10 +1712,15 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
 // exact bytes that shipped, and the second fails if the substitution is reintroduced unquoted, which
 // would word-split a digest containing whitespace. What it does NOT establish is that the script
 // parses; only executing it does, and the honest place for that is the stage-A run itself.
+// THE SUBJECT IS THE ONE SUBSTITUTION BOTH RECEIPT ARMS SHARE (gunbc.live_deploy.emit
+// approval_broker_tree_digest_substitution), supplied a root rather than read off the whole rendered
+// script: the dark-install claims above still render the real script, so the real path stays
+// executed, and this one no longer pays for building it (DESIGN §3 witness rule).
 test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> Bool {
-  let script = witness_approval_broker_dark_script_text
-  string_contains(s: script, pattern: "\"$(cd ")
-    && !string_contains(s: script, pattern: "%s\\n' (cd ")
+  let sub = approval_broker_tree_digest_substitution(base_root: "/opt/witness-broker", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let receipt = approval_broker_tree_receipt_command(base_root: "/opt/witness-broker", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  starts_with(s: sub, prefix: "\"$(cd ") && string_contains(s: receipt, pattern: sub)
+    && !string_contains(s: receipt, pattern: "%s\\n' (cd ")
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
