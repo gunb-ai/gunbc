@@ -4019,31 +4019,30 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
 // Every other shape is a typed refusal.
 
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
-  if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
-    outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
-  } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
-    outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
-  } else if dag_node_is_symbol_literal_atom(node: node) {
-    match dag_symbol_literal_name_optional(node: node) {
-      Present { value: name } =>
-        match node_atom_identity_optional(node: name) {
-          Present { value: symbol } => outcome_accepted(value: DagCanonicalSymbolLiteral { symbol: symbol })
-          Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+  match dag_symbol_literal_name_optional(node: node) {
+    Present { value: name } =>
+      match node_atom_identity_optional(node: name) {
+        Present { value: symbol } => outcome_accepted(value: DagCanonicalSymbolLiteral { symbol: symbol })
+        Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
+    Absent =>
+      if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
+        outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
+      } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
+        outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
+      } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
+        match dag_int_literal_magnitude_int_from_node(node: node) {
+          Accepted { value: magnitude, diagnostics: d } =>
+            Accepted {
+              value: DagCanonicalIntLiteral { magnitude: magnitude },
+              diagnostics: d
+            }
+          Rejected { diagnostics: _ } =>
+            outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
         }
-      Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
-    }
-  } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
-    match dag_int_literal_magnitude_int_from_node(node: node) {
-      Accepted { value: magnitude, diagnostics: d } =>
-        Accepted {
-          value: DagCanonicalIntLiteral { magnitude: magnitude },
-          diagnostics: d
-        }
-      Rejected { diagnostics: _ } =>
+      } else {
         outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
-    }
-  } else {
-    outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
   }
 }
 
