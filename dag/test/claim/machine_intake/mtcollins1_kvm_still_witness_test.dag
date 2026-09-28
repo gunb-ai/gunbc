@@ -2,6 +2,7 @@ module test.claim.machine_intake.mtcollins1_kvm_still_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { second }
 import v2.std.optional { Present, Absent }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -12,14 +13,14 @@ import extdeps.bmc.megarac {
   ScreenCaptureClientSideOnly, ScreenCaptureEventRetainedOnly, ScreenCaptureAbsent,
 }
 import gunbc.machine_intake_mtcollins1_kvm_still {
-  KvmStill, KvmStillOutcome, KvmStillCaptured, KvmStillRefused, KvmStillRefusal,
-  KvmStillSeatHeld, KvmStillDeadline, KvmStillToolchainUnavailable, KvmStillUnhashed, KvmStillNotConfigured,
-  KvmStillFirmwareUncatalogued, KvmStillFailed, KvmStillNoFrame,
-  KvmAtPowerOnVerified, KvmDuringWatch, KvmOnChannelLost, KvmAtTerminalVerdict,
-  kvm_still_outcome_of_run, kvm_still_refusal_of_exit, kvm_still_watch_due, kvm_stills_text, kvm_still_text,
-  mtcollins1_kvm_still_capture, mtcollins1_kvm_still_capture_bound, mtcollins1_kvm_still_watch_limit,
-  mtcollins1_kvm_still_path, mtcollins1_bmc_firmware, mtcollins1_kvm_still_provision_lines,
-  mtcollins1_kvm_still_toolchain,
+  KvmJournalEvent, KvmJournalEstablished, KvmJournalConnectionLost, KvmJournalStill, KvmJournalAcquisitionFailed, KvmJournalRefused,
+  KvmJournalStopped, KvmJournalUnparsed,
+  KvmSeatBusy, KvmNotConnected, KvmCanvasUnreadable,
+  KvmObserverEstablished, KvmObserverRefused, KvmObserverPending, KvmObserverNotStarted, KvmObserverStarted,
+  KvmStillHashed, KvmStillUnhashed, KvmInstant,
+  kvm_journal_event, kvm_journal_events, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
+  mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_still_provision_lines, mtcollins1_kvm_still_toolchain,
+  mtcollins1_kvm_observer_dir, kvm_observer_trigger, kvm_released_text,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
 
@@ -27,16 +28,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data a_digest_hex: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd"
 
-fn refusal_of(o: KvmStillOutcome) -> KvmStillRefusal? {
-  match o {
-    KvmStillRefused { refusal: r } => Present { value: r }
-    _ => none
-  }
-}
+// JOURNAL LINES AS THE OBSERVER WROTE THEM on the executed protocol run of 2026-09-28 (remote
+// runner, headless Chromium, playwright 1.62.1): the happy path, the seat-busy refusal, the dropped
+// WebSocket and the tainted canvas. Copied verbatim so the parser is held to the real spelling.
+data journal_ok: String = join(["1790558259028 2026-09-28T01:17:39.028Z connection-open url=\"ws://127.0.0.1:18080/kvm\"", "1790558259046 2026-09-28T01:17:39.046Z established host=\"http://127.0.0.1:18080\" session=7 attempt=36335369059", "1790558263062 2026-09-28T01:17:43.062Z still seq=1 reason=periodic file=still-1.jpg bytes=5652", "1790558264572 2026-09-28T01:17:44.572Z still seq=2 reason=trigger:0002-sol-channel-lost file=still-2.jpg bytes=5652", "1790558267083 2026-09-28T01:17:47.083Z still seq=3 reason=periodic file=still-3.jpg bytes=5652", "1790558269588 2026-09-28T01:17:49.588Z stop-requested by=stop-file", "1790558269633 2026-09-28T01:17:49.633Z stopped session=released", ""], "\n")
 
-// THE UPSTREAM FACT THE ROUTE STANDS ON: 0.32 serves no on-demand still, and the one route that
-// yields a still at any moment is the client-side canvas. A catalog that claimed a server-side still
-// would have to flip ServerSideOnDemandStill, and this goes red.
+data journal_seat: String = join(["1790558271042 2026-09-28T01:17:51.042Z refused cause=seat-busy viewer_count=1", "1790558271043 2026-09-28T01:17:51.043Z stop-requested by=refused", "1790558271085 2026-09-28T01:17:51.085Z stopped session=released", ""], "\n")
+
+data journal_drop: String = join(["1790558283072 2026-09-28T01:18:03.072Z connection-open url=\"ws://127.0.0.1:18080/kvm\"", "1790558283091 2026-09-28T01:18:03.091Z established host=\"http://127.0.0.1:18080\" session=7 attempt=36335369059", "1790558286075 2026-09-28T01:18:06.075Z connection-lost url=\"ws://127.0.0.1:18080/kvm\"", "1790558287099 2026-09-28T01:18:07.099Z acquisition-failed seq=1 reason=periodic cause=not-connected", ""], "\n")
+
+data journal_taint: String = join(["1790558295353 2026-09-28T01:18:15.353Z established host=\"http://127.0.0.1:18080\" session=7 attempt=36335369059", "1790558299366 2026-09-28T01:18:19.366Z acquisition-failed seq=1 reason=periodic cause=canvas-unreadable detail=\"page.evaluate: SecurityError: Failed to execute 'toDataURL' on 'HTMLCanvasElement': Tainted canvases may not be exported.\"", ""], "\n")
+
+// THE UPSTREAM FACT THE ROUTE STANDS ON: 0.32 serves no on-demand still; the viewer canvas is the
+// one route that yields a still at any moment.
 test fn firmware_0_32_serves_no_on_demand_still_and_the_viewer_is_client_side() -> Bool {
   let absent = match megarac_screen_capture_standing_at_0_32(route: ServerSideOnDemandStill) { ScreenCaptureAbsent => true  _ => false }
   let client = match megarac_screen_capture_standing_at_0_32(route: KvmClientCanvasJpeg) { ScreenCaptureClientSideOnly => true  _ => false }
@@ -45,89 +49,87 @@ test fn firmware_0_32_serves_no_on_demand_still_and_the_viewer_is_client_side() 
   absent && client && bsod && rec
 }
 
-// A HELD SEAT REFUSES WITH ITS COUNT AND IS NEVER EVICTED; a deadline says the release was not
-// observed; a missing toolchain is its own cause. Each is a refusal value, never a raised error.
-test fn capture_refusals_are_typed_by_the_scripts_exit() -> Bool {
-  let seat = match kvm_still_refusal_of_exit(exit_code: 10, stdout: "kvm-still: viewer_count=1; session released\n", stderr: "") {
-    KvmStillSeatHeld { detail: d } => string_contains(s: d, pattern: "viewer_count=1")
+// ESTABLISHED IS BOUND TO HOST, SESSION AND ATTEMPT, and every still carries its capture instant.
+test fn the_established_line_binds_host_session_and_attempt_and_stills_carry_instants() -> Bool {
+  let events = kvm_journal_events(text: journal_ok)
+  let bound = match kvm_observer_standing(events: events) {
+    KvmObserverEstablished { at: a, host: h, session: s, attempt: t } => a.ms == 1790558259046 && h == "\"http://127.0.0.1:18080\"" && s == "7" && t == "36335369059"
     _ => false
   }
-  let deadline = match kvm_still_refusal_of_exit(exit_code: 124, stdout: "", stderr: "") {
-    KvmStillDeadline { detail: d } => string_contains(s: d, pattern: "release was NOT observed")
-    _ => false
-  }
-  let tool = match kvm_still_refusal_of_exit(exit_code: 13, stdout: "kvm-still: chromium did not launch: missing deps; session released", stderr: "") {
-    KvmStillToolchainUnavailable { detail: _ } => true
-    _ => false
-  }
-  let frame = match kvm_still_refusal_of_exit(exit_code: 12, stdout: "kvm-still: Timeout 30000ms exceeded.; session released", stderr: "") {
-    KvmStillNoFrame { detail: _ } => true
-    _ => false
-  }
-  let other = match kvm_still_refusal_of_exit(exit_code: 1, stdout: "", stderr: "boom") {
-    KvmStillFailed { exit_code: 1, detail: d } => d == "boom"
-    _ => false
-  }
-  seat && deadline && tool && frame && other
+  let stills = filter(events, e => match e { KvmJournalStill { at: a, seq: _, reason: _, file: _ } => a.ms > 0 && a.iso != ""  _ => false })
+  let loss_still = count(filter(events, e => match e { KvmJournalStill { at: _, seq: _, reason: r, file: f } => string_contains(s: r, pattern: "sol-channel-lost") && f == "still-2.jpg"  _ => false }))
+  bound && count(stills) == 3 && loss_still == 1 && count(kvm_boundary_events(events: events)) == 0
 }
 
-// HASH-BOUND: a still is Captured only with the digest OUR sha256sum read took over the written
-// file; a written file whose digest is unavailable is refused as Unhashed, never kept unbound.
+// SEAT BUSY IS A TYPED REFUSAL WITH ITS COUNT, and the release after it is observed.
+test fn a_busy_seat_refuses_with_its_count_and_the_release_is_observed() -> Bool {
+  let events = kvm_journal_events(text: journal_seat)
+  let refused = match kvm_observer_standing(events: events) {
+    KvmObserverRefused { at: _, refusal: r } => match r { KvmSeatBusy { viewer_count: n } => n == "1"  _ => false }
+    _ => false
+  }
+  refused && string_contains(s: kvm_released_text(events: events), pattern: "session released")
+}
+
+// THE CONNECTION BOUNDARY, NOT PIXELS: a closed /kvm WebSocket is connection-lost, and a still asked
+// after it is acquisition-failed not-connected -- both boundary events the watch reports.
+test fn a_dropped_connection_is_a_boundary_event_and_no_still_is_claimed_after_it() -> Bool {
+  let events = kvm_journal_events(text: journal_drop)
+  let lost = count(filter(events, e => match e { KvmJournalConnectionLost { at: _ } => true  _ => false })) == 1
+  let not_connected = count(filter(events, e => match e { KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c } => match c { KvmNotConnected => true  _ => false }  _ => false })) == 1
+  let stills = count(filter(events, e => match e { KvmJournalStill { at: _, seq: _, reason: _, file: _ } => true  _ => false }))
+  lost && not_connected && stills == 0 && count(kvm_boundary_events(events: events)) == 2
+}
+
+// AN UNREADABLE CANVAS IS ITS OWN CAUSE, with the browser's own words.
+test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> Bool {
+  let events = kvm_journal_events(text: journal_taint)
+  count(filter(events, e => match e {
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c } => match c { KvmCanvasUnreadable { detail: d } => string_contains(s: d, pattern: "Tainted canvases may not be exported")  _ => false }
+    _ => false
+  })) == 1
+}
+
+// NO ESTABLISHED LINE IS PENDING, NEVER ESTABLISHED; an unparseable line is kept as such.
+test fn without_an_established_line_the_observer_is_pending_and_junk_is_kept() -> Bool {
+  let pending = match kvm_observer_standing(events: kvm_journal_events(text: "1790558259028 2026-09-28T01:17:39.028Z connection-open url=x\n")) { KvmObserverPending => true  _ => false }
+  let junk = match kvm_journal_event(line: "not a journal line") { KvmJournalUnparsed { line: l } => l == "not a journal line"  _ => false }
+  pending && junk
+}
+
+// GAPS ARE RETAINED: an interval over two cadences between stills is kept with both instants.
+test fn gaps_over_two_cadences_are_retained() -> Bool {
+  let text = join(["1000000 t0 established host=h session=1 attempt=a", "1060000 t1 still seq=1 reason=periodic file=still-1.jpg", "1300000 t2 still seq=2 reason=periodic file=still-2.jpg", "1360000 t3 stop-requested by=stop-file", ""], "\n")
+  let gaps = kvm_still_gaps(events: kvm_journal_events(text: text), cadence: second(count: 60))
+  count(gaps) == 1 && match gaps.first() { Present { value: g } => g.from.iso == "t1" && g.to.iso == "t2" && g.seconds == 240  Absent => false }
+}
+
+// HASH-BOUND: a still is retained only with the digest our own sha256sum read took.
 test fn a_still_is_retained_only_when_hash_bound() -> Bool {
-  let bound = kvm_still_outcome_of_run(path: "artifacts/mtcollins1-boot-kvm-1-1-at-power-on-verified.jpg", exit_code: 0, stdout: "kvm-still: captured 9 bytes; session released", stderr: "", digest: Sha256FileDigest { digest: sha256_digest(hex: a_digest_hex) })
-  let unbound = kvm_still_outcome_of_run(path: "artifacts/mtcollins1-boot-kvm-1-1-at-power-on-verified.jpg", exit_code: 0, stdout: "", stderr: "", digest: Sha256FileDigestUnavailable { path: "artifacts/x.jpg", reason: "sha256sum could not digest the input" })
-  let captured = match bound {
-    KvmStillCaptured { path: _, digest: d, format: f, session_note: _ } => d.hex == a_digest_hex && f == "image/jpeg"
-    _ => false
-  }
-  let refused = match refusal_of(o: unbound) {
-    Present { value: r } => match r { KvmStillUnhashed { path: _, reason: _ } => true  _ => false }
-    Absent => false
-  }
-  captured && refused
+  let at = KvmInstant { ms: 1, iso: "t" }
+  let bound = kvm_retained_still(dir: "artifacts/mtcollins1-boot-kvm-1", at: at, seq: "1", reason: "periodic", file: "still-1.jpg", digest: Sha256FileDigest { digest: sha256_digest(hex: a_digest_hex) })
+  let unbound = kvm_retained_still(dir: "artifacts/mtcollins1-boot-kvm-1", at: at, seq: "1", reason: "periodic", file: "still-1.jpg", digest: Sha256FileDigestUnavailable { path: "x", reason: "sha256sum could not digest the input" })
+  let ok = match bound { KvmStillHashed { at: _, seq: _, reason: _, path: p, digest: d } => d.hex == a_digest_hex && p == "artifacts/mtcollins1-boot-kvm-1/still-1.jpg"  _ => false }
+  let refused = match unbound { KvmStillUnhashed { at: _, seq: _, reason: _, path: _, why: _ } => true  _ => false }
+  ok && refused
 }
 
-// THE REAL CAPTURE FUNCTION, EXECUTED, WITH NOTHING TO DRIVE: an uncatalogued firmware and an unbound
-// credential each refuse before any process starts, so a still that cannot be taken costs no time
-// and never throws. The positive route (a live viewer) is the wet boot's; this is its refusal half.
-test fn the_capture_refuses_without_driving_when_firmware_or_credential_is_missing() -> Bool {
-  let other_fw = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.99")
-  let fw = mtcollins1_kvm_still_capture(firmware: other_fw, bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain_dir: "", attempt: "1", sequence: 1, phase: KvmAtPowerOnVerified)
-  let cred = mtcollins1_kvm_still_capture(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "", toolchain_dir: "", attempt: "1", sequence: 2, phase: KvmAtTerminalVerdict)
-  let fw_ok = match refusal_of(o: fw.outcome) { Present { value: r } => match r { KvmStillFirmwareUncatalogued { firmware: _ } => true  _ => false }  Absent => false }
-  let cred_ok = match refusal_of(o: cred.outcome) { Present { value: r } => match r { KvmStillNotConfigured { reason: _ } => true  _ => false }  Absent => false }
-  fw_ok && cred_ok && cred.sequence == 2
+// THE REAL START, EXECUTED, WITH NOTHING TO DRIVE: an uncatalogued firmware and an unbound credential
+// each refuse before any process starts, and a trigger on an observer that never started is refused.
+test fn the_start_refuses_without_driving_when_firmware_or_credential_is_missing() -> Bool {
+  let other = mtcollins1_kvm_observer_start(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.99"), bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain_dir: "", attempt: "1")
+  let nocred = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "", toolchain_dir: "", attempt: "1")
+  let a = match other { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "not catalogued")  _ => false }
+  let b = match nocred { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no BMC credential")  _ => false }
+  a && b && !kvm_observer_trigger(start: nocred, order: 1, reason: "power-on-verified")
 }
 
-// THE COUNT IS BOUNDED: the watch takes one still every stride ticks and stops at its limit, so the
-// whole attempt asks for at most power-on + limit + loss + verdict.
-test fn periodic_stills_are_bounded_by_count() -> Bool {
-  kvm_still_watch_due(tick: 8, taken: 0)
-    && !kvm_still_watch_due(tick: 9, taken: 0)
-    && !kvm_still_watch_due(tick: 8, taken: mtcollins1_kvm_still_watch_limit)
-    && mtcollins1_kvm_still_capture_bound() == mtcollins1_kvm_still_watch_limit + 3
+// RETAINED WITH THE BUNDLE: the observer's directory sits under the boot's upload prefix.
+test fn the_observer_directory_is_retained_with_the_boot_artifacts() -> Bool {
+  starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36335369059"), prefix: mtcollins1_boot_retained_artifact_prefix)
 }
 
-// RETAINED WITH THE BUNDLE: every still is named under the boot's artifact prefix, carrying the
-// attempt, its sequence and its phase; and the bundle's rendering shows the phase, instants, digest
-// or refusal of each.
-test fn stills_are_named_for_the_attempt_and_rendered_with_hash_and_phase() -> Bool {
-  let path = mtcollins1_kvm_still_path(attempt: "36335369059", sequence: 3, phase: KvmOnChannelLost)
-  let taken = KvmStill { attempt: "36335369059", sequence: 3, phase: KvmOnChannelLost, requested_at: "2026-09-27T20:00:12Z", completed_at: "2026-09-27T20:00:20Z",
-    outcome: KvmStillCaptured { path: path as NonEmptyStr, digest: sha256_digest(hex: a_digest_hex), format: "image/jpeg", session_note: "" } }
-  let seat = KvmStill { attempt: "36335369059", sequence: 4, phase: KvmAtTerminalVerdict, requested_at: "2026-09-27T20:01:00Z", completed_at: "2026-09-27T20:01:02Z",
-    outcome: KvmStillRefused { refusal: KvmStillSeatHeld { detail: "viewer_count=1" } } }
-  let text = kvm_stills_text(stills: [taken, seat])
-  starts_with(s: path, prefix: mtcollins1_boot_retained_artifact_prefix)
-    && string_contains(s: path, pattern: "36335369059-3-on-observation-channel-lost")
-    && string_contains(s: text, pattern: "1 of 2 captured")
-    && string_contains(s: text, pattern: concat("sha256=", a_digest_hex as String))
-    && string_contains(s: text, pattern: "requested=2026-09-27T20:00:12Z")
-    && string_contains(s: text, pattern: "KVM viewer seat already held, not evicted")
-}
-
-// THE TOOLCHAIN PIN HAS ONE HOME: the provisioning lines install exactly the declared Playwright
-// version, and install failure only warns.
+// THE TOOLCHAIN PIN HAS ONE HOME, and install failure only warns.
 test fn provisioning_installs_the_declared_playwright_and_only_warns_on_failure() -> Bool {
   let lines = join(mtcollins1_kvm_still_provision_lines(), "\n")
   let v = mtcollins1_kvm_still_toolchain.automation.version as String

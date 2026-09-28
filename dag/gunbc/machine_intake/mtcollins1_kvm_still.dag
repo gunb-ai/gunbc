@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_kvm_still
 
-import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String, Unit }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -18,11 +18,15 @@ import extdeps.bmc.megarac {
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import v2.std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.machine_intake_sol_hold
 
 // THE BMC KVM SCREEN AS BOOT EVIDENCE (operator ruling 2026-09-27; route A, eager-owl-205 the same
 // day). On run 36335369059 the SOL collector died about 12 s into Linux and the watch went blind,
 // while the KVM screen showed casper's "Unable to find a medium containing a live file system"
-// prompt. The screen was the only witness, so this module RETAINS it: one JPEG still per capture,
+// prompt. The screen was the only witness, so this module RETAINS it: JPEG stills from one held viewer,
 // bound to the attempt, the phase that asked for it, its instants and an independently taken
 // sha256. It does not READ the image: turning a still into text or a diagnosis is the frontier
 // named at the bottom of this file.
@@ -72,7 +76,7 @@ fn mtcollins1_kvm_still_provision_lines() -> List<String> {
   let version = mtcollins1_kvm_still_toolchain.automation.version as String
   [
     concat("KVM_STILL_DIR=\"$\{RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/gunbc-kvm-still-playwright-", version, "\""),
-    concat("timeout ", coreutils_duration_operand(d: mtcollins1_kvm_still_provision_allowance), " bash -c 'npm install --silent --no-save --prefix \"$1\" \"playwright@$2\" && \"$1/node_modules/.bin/playwright\" install chromium' kvm-still-provision \"$KVM_STILL_DIR\" ", version, " || echo \"::warning title=mtcollins1 KVM still toolchain::playwright ", version, " not provisioned; each still will record why it was not captured\""),
+    concat("timeout ", coreutils_duration_operand(d: mtcollins1_kvm_still_provision_allowance), " bash -c 'npm install --silent --no-save --prefix \"$1\" \"playwright@$2\" && \"$1/node_modules/.bin/playwright\" install chromium chromium-headless-shell' kvm-still-provision \"$KVM_STILL_DIR\" ", version, " || echo \"::warning title=mtcollins1 KVM still toolchain::playwright ", version, " not provisioned; each still will record why it was not captured\""),
     concat("export ", mtcollins1_kvm_still_toolchain_dir_env as String, "=\"$KVM_STILL_DIR\""),
   ]
 }
@@ -82,276 +86,550 @@ fn mtcollins1_kvm_still_provision_lines() -> List<String> {
 // /api/session and the sessionStorage keys its login handler sets; GET /api/settings/services and
 // the `kvm` row's viewer_count, which the UI's own launch() requires to be 0 before it opens
 // viewer.html (else "only one KVM session is allowed"); then viewer.html in the same tab, and
-// captureScreen()'s canvas#kvm.toDataURL("image/jpeg"). It is JavaScript handed to node as a string
-// because process-hold of a browser is not a Node in the grammar, which is the same standing as
-// gunbc.machine_intake_sol_hold's bash hold, marked the same way.
+// captureScreen()'s canvas#kvm.toDataURL("image/jpeg").
 //
-// THE SEAT (conditions 1 and 2 of the ruling). A held viewer seat refuses with its count -- an
-// operator's session is never evicted -- and the script's finally block DELETEs the web session and
-// closes the browser on every exit it reaches, success or refusal. The one exit it cannot reach is
-// the coreutils deadline's KILL: that arm is recorded as KvmStillDeadline, which says the release
-// was NOT observed, and the BMC's own session timeout is then what frees the seat.
-data mtcollins1_kvm_still_script_scaffold: Disposition = Scaffold {
+// ONE OBSERVER, HELD FOR THE WHOLE BOOT (side-chat acceptance (a), 2026-09-28). The observer is a
+// background process, started under the unit hold after the SOL acquire and BEFORE the handoff, that
+// logs in once, takes the seat once, opens the viewer once and keeps it. It writes a journal: one
+// line per event, each carrying the epoch-millisecond and ISO instant it was written --
+// established (bound to host, BMC web session id and attempt), connection-open, connection-lost,
+// still, acquisition-failed, refused, stop-requested, stopped. Stills are taken on a cadence (bounded
+// by count) and IMMEDIATELY on a trigger file the boot drops (power on verified, SOL channel lost,
+// terminal verdict).
+//
+// THE BOUNDARY IS OBSERVED, NEVER INFERRED FROM PIXELS (acceptance (b)). Connection is the viewer's
+// own /kvm WebSocket as the browser reports it: open, then close or error. After a close no still is
+// claimed; each asked-for still is journalled as acquisition-failed cause=not-connected. A canvas
+// that exists but cannot be read (toDataURL throws) is acquisition-failed cause=canvas-unreadable. An
+// unchanged picture is never read as a stale one: the observer does not compare pixels at all.
+//
+// THE SEAT. A held seat (viewer_count > 0) refuses with its count -- an operator's session is never
+// evicted -- and every exit the process reaches (stop file, SIGTERM, refusal, failure) DELETEs its web
+// session and closes the browser, journalling stopped session=<released|http-N|release-failed>. The
+// one exit it cannot reach is SIGKILL: the boot then records that no stopped line was written, so the
+// release was NOT observed, and the BMC's own session timeout frees the seat.
+//
+// It is JavaScript handed to node as a string because process-hold of a browser is not a Node in the
+// grammar -- the same standing as gunbc.machine_intake_sol_hold's bash hold, marked the same way.
+data mtcollins1_kvm_observer_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.machine_intake_mtcollins1_kvm_still",
-    decl_name: "mtcollins1_kvm_still_script_dissolution_trigger",
+    decl_name: "mtcollins1_kvm_observer_script_dissolution_trigger",
     field: WholeDeclaration
   }
 }
 
-data mtcollins1_kvm_still_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_still CaptureStill -- the headless MegaRAC H5 viewer is driven by a node -e script string (login, seat check, viewer.html, canvas toDataURL, session DELETE in finally). DISSOLVES WHEN a typed browser-automation realization (an extdeps.automation.playwright operation shape bound to a transport handler) can express navigate, evaluate-in-page, wait-for-predicate and a guaranteed release step, so the same sequence is rows over that shape rather than a medium-as-string script")
+data mtcollins1_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer Start -- the held MegaRAC H5 viewer is a node -e script string (login, seat check, viewer.html, WebSocket boundary events, canvas toDataURL on cadence and trigger files, journal, session DELETE on every reachable exit) launched as a bash background hold. DISSOLVES WHEN a typed browser-automation realization (an extdeps.automation.playwright operation shape bound to a transport handler) can express navigate, evaluate-in-page, WebSocket lifecycle events and a guaranteed release step, and a typed process-hold realization can hold it, so the sequence is rows over those shapes rather than medium-as-string scripts")
 
-data mtcollins1_kvm_still_script: String = "const fs=require('fs');const [host,user,pwFile,out,frameMs]=process.argv.slice(1);let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{console.log('kvm-still: credential unreadable: '+e.message);process.exit(14)}let chromium;try\{chromium=require('playwright').chromium}catch(e)\{console.log('kvm-still: toolchain unavailable: '+String(e.message).split('\\n')[0]);process.exit(13)}(async()=>\{let browser=null,page=null,code=1,msg='';const base='https://'+host;try\{try\{browser=await chromium.launch(\{headless:true})}catch(e)\{code=13;msg='chromium did not launch: '+String(e&&e.message).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300);return}const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();await page.goto(base+'/',\{waitUntil:'domcontentloaded'});const login=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let j=null;try\{j=await r.json()}catch(e)\{}return\{status:r.status,j:j}},[user,pw]);if(login.status!==200||!login.j||login.j.ok!==0)\{code=11;msg='login refused: http '+login.status;return}await page.evaluate(([j,u])=>\{sessionStorage.setItem('garc',j.CSRFToken);sessionStorage.setItem('privilege_id',String(j.privilege));sessionStorage.setItem('extended_privilege',String(j.extendedpriv));sessionStorage.setItem('session_id',String(j.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[login.j,user]);const seat=await page.evaluate(async()=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':sessionStorage.getItem('garc')}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null});if(seat===null||seat===undefined)\{code=15;msg='the services list names no kvm service';return}if(seat!==0)\{code=10;msg='viewer_count='+seat;return}await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)});const url=await page.evaluate(()=>document.getElementById('kvm').toDataURL('image/jpeg'));const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');fs.writeFileSync(out,b);code=0;msg='captured '+b.length+' bytes'}catch(e)\{if(e&&e.name==='TimeoutError')\{code=12}msg=String(e&&e.message).split('\\n')[0]}finally\{let released='released';try\{if(page)\{await page.evaluate(async()=>\{const t=sessionStorage.getItem('garc');if(t)\{await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}})}})}}catch(e)\{released='release failed: '+String(e&&e.message).split('\\n')[0];if(code===0)\{code=16}}try\{if(browser)\{await browser.close()}}catch(e)\{}console.log('kvm-still: '+msg+'; session '+released);process.exit(code)}})();"
+data mtcollins1_kvm_observer_script: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n');}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300);}let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j('refused','cause=credential-unreadable detail='+JSON.stringify(one(e)));process.exit(14)}let chromium;try\{chromium=require('playwright').chromium}catch(e)\{j('refused','cause=toolchain detail='+JSON.stringify(one(e)));process.exit(13)}let browser=null,page=null,stopping=false,connected=false,loggedIn=false,seq=0,periodic=0;async function teardown(why,code)\{if(stopping)return;stopping=true;j('stop-requested','by='+why);let rel='released'; try\{if(page&&loggedIn)\{rel=await page.evaluate(async()=>\{const t=sessionStorage.getItem('garc');if(!t)return 'no-token';const r=await fetch('/api/session',\{method:'DELETE',headers:\{'X-CSRFTOKEN':t}});return r.ok?'released':'http-'+r.status})}else\{rel='no-session'}}catch(e)\{rel='release-failed detail='+JSON.stringify(one(e))} try\{if(browser)await browser.close()}catch(e)\{} j('stopped','session='+rel);process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq; if(!connected)\{j('acquisition-failed','seq='+n+' reason='+reason+' cause=not-connected');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j('still','seq='+n+' reason='+reason+' file='+f+' bytes='+b.length)} catch(e)\{j('acquisition-failed','seq='+n+' reason='+reason+' cause=canvas-unreadable detail='+JSON.stringify(one(e)))}}(async()=>\{ try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j('refused','cause=toolchain detail='+JSON.stringify(one(e)));process.exit(13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});page=await ctx.newPage();  await page.goto(base+'/',\{waitUntil:'domcontentloaded'});  const login=await page.evaluate(async([u,p])=>\{const r=await fetch('/api/session',\{method:'POST',headers:\{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(\{username:u,password:p})});let b=null;try\{b=await r.json()}catch(e)\{}return\{status:r.status,b:b}},[user,pw]);  if(login.status!==200||!login.b||login.b.ok!==0)\{j('refused','cause=login http='+login.status);return teardown('refused',11)}  loggedIn=true;  await page.evaluate(([b,u])=>\{sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[login.b,user]);  const seat=await page.evaluate(async()=>\{const r=await fetch('/api/settings/services',\{headers:\{'X-CSRFTOKEN':sessionStorage.getItem('garc')}});const a=await r.json();const k=Array.isArray(a)?a.find(s=>s.service_name==='kvm'):null;return k?k.viewer_count:null});  if(seat===null||seat===undefined)\{j('refused','cause=no-kvm-service');return teardown('refused',15)}  if(seat!==0)\{j('refused','cause=seat-busy viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{if(!/\\/kvm(\\?|$)/.test(ws.url()))return;connected=true;j('connection-open','url='+JSON.stringify(ws.url()));   ws.on('close',()=>\{if(connected)\{connected=false;j('connection-lost','url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j('connection-error','detail='+JSON.stringify(one(e)))})});  await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j('refused','cause=no-frame detail='+JSON.stringify(one(e)));return teardown('refused',12)}  if(!connected)\{j('refused','cause=no-kvm-websocket');return teardown('refused',12)}  j('established','host='+JSON.stringify(base)+' session='+String(login.b.racsession_id)+' attempt='+attempt);  let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   const tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort();   for(const n of tf)\{const p=path.join(dir,n);let r=n.slice(8);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+r)}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j('failed','detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
 
-service gunbc.machine_intake.kvm_still {
-  operation CaptureStill {
+// THE LAUNCH: the observer in the background with its stdout/stderr beside the journal, and its
+// holder recorded as "<pid> <starttime>" -- the same holder record the SOL hold writes, so the one
+// release (gunbc.machine_intake_sol_hold mtcollins1_sol_hold_release_script, which signals only a
+// process whose (pid, start time) still match) stops it and nothing else.
+data mtcollins1_kvm_observer_launch_script: String = "js=\"$1\"; tc=\"$2\"; base=\"$3\"; u=\"$4\"; pw=\"$5\"; dir=\"$6\"; att=\"$7\"; cad=\"$8\"; fw=\"$9\"; mx=\"$\{10\}\"; pf=\"$dir/observer.pid\"; ( NODE_PATH=\"$tc\" node -e \"$js\" \"$base\" \"$u\" \"$pw\" \"$dir\" \"$att\" \"$cad\" \"$fw\" \"$mx\" >> \"$dir/observer.log\" 2>&1 < /dev/null & p=$!; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf\" || \{ kill \"$p\" 2>/dev/null; echo \"observer pid not published; stopped\" >> \"$dir/observer.log\"; \}; wait \"$p\"; echo \"observer exited status=$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$dir/observer.log\" ) > /dev/null 2>&1 &"
+
+service gunbc.machine_intake.kvm_observer {
+  operation Start {
     input {
-      bmc_host: NonEmptyStr
+      script: NonEmptyStr
+      toolchain_node_path: String
+      base_url: NonEmptyStr
       username: NonEmptyStr
       password_file: NonEmptyStr
-      out_path: NonEmptyStr
+      dir: NonEmptyStr
+      attempt: NonEmptyStr
+      cadence_ms: NonEmptyStr
       frame_wait_ms: NonEmptyStr
-      toolchain_node_path: String
-      deadline: NonEmptyStr
-      kill_after: NonEmptyStr
-      script: NonEmptyStr
+      periodic_limit: NonEmptyStr
     }
-    output {
-      stdout: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
+    output { stdout: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
     transport shell {
-      argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "env", "NODE_PATH={toolchain_node_path}", "node", "-e", "{script}", "{bmc_host}", "{username}", "{password_file}", "{out_path}", "{frame_wait_ms}"]
+      argv: ["bash", "-c", mtcollins1_kvm_observer_launch_script, "kvm-observer", "{script}", "{toolchain_node_path}", "{base_url}", "{username}", "{password_file}", "{dir}", "{attempt}", "{cadence_ms}", "{frame_wait_ms}", "{periodic_limit}"]
     }
     exit {
       0 => Unit
-      nonzero => String "kvm still not captured"
+      nonzero => String "kvm observer launch failed"
     }
   }
 }
 
-// THE SCRIPT'S EXIT CODES, one row each side reads.
-data kvm_still_exit_seat_held: Int = 10
-data kvm_still_exit_login_refused: Int = 11
-data kvm_still_exit_no_frame: Int = 12
-data kvm_still_exit_toolchain: Int = 13
-data kvm_still_exit_credential: Int = 14
-data kvm_still_exit_no_kvm_service: Int = 15
-data kvm_still_exit_release_failed: Int = 16
+// THE BOUNDS. A periodic still every cadence, at most periodic_limit of them; the boot waits at most
+// establish_wait for the observer to say established or refused, at most trigger_wait for a
+// triggered still to be journalled, and at most stop_wait for the stopped line before the release.
+data mtcollins1_kvm_observer_cadence: Second = second(count: 60)
+data mtcollins1_kvm_observer_periodic_limit: Int = 30
+data mtcollins1_kvm_observer_frame_wait: Second = second(count: 30)
+data mtcollins1_kvm_observer_establish_wait: Int = 45
+data mtcollins1_kvm_observer_trigger_wait: Int = 15
+data mtcollins1_kvm_observer_stop_wait: Int = 10
 
-// THE BOUNDS. One capture is at most deadline plus kill_after; the frame wait sits inside it so the
-// script, not the KILL, answers a viewer that never paints.
-data mtcollins1_kvm_still_deadline: Second = second(count: 60)
-data mtcollins1_kvm_still_kill_after: Second = second(count: 5)
-data mtcollins1_kvm_still_frame_wait: Second = second(count: 30)
-
-// WHEN A STILL IS ASKED FOR. The watch's periodic stills are bounded by count, not by the deadline:
-// one every mtcollins1_kvm_still_watch_stride ticks, at most mtcollins1_kvm_still_watch_limit of
-// them. The other three phases take exactly one each.
-type KvmStillPhase
-  = KvmAtPowerOnVerified
-  | KvmDuringWatch { tick: Int }
-  | KvmOnChannelLost
-  | KvmAtTerminalVerdict
-
-data mtcollins1_kvm_still_watch_stride: Int = 8
-data mtcollins1_kvm_still_watch_limit: Int = 6
-
-// Power on, the watch, one loss, the terminal verdict.
-fn mtcollins1_kvm_still_capture_bound() -> Int {
-  1 + mtcollins1_kvm_still_watch_limit + 1 + 1
-}
-
+// What the boot step's timeout must carry for the observer: the establishment wait, the terminal
+// trigger wait and the stop wait, all paid in the actuation; plus one second per poll tick for the
+// journal reads, bounded by the waits themselves.
 fn mtcollins1_kvm_still_allowance() -> Second {
-  second(count: mtcollins1_kvm_still_capture_bound() * ((second_count(s: mtcollins1_kvm_still_deadline) as Int) + (second_count(s: mtcollins1_kvm_still_kill_after) as Int)))
+  second(count: mtcollins1_kvm_observer_establish_wait + mtcollins1_kvm_observer_trigger_wait + mtcollins1_kvm_observer_stop_wait + 10)
 }
 
-// Whether a watch tick takes a periodic still: the tick index since power on, and the count taken.
-fn kvm_still_watch_due(tick: Int, taken: Int) -> Bool {
-  taken < mtcollins1_kvm_still_watch_limit && tick % mtcollins1_kvm_still_watch_stride == 0
+// THE OBSERVER'S DIRECTORY, one per attempt, under the boot's retained prefix so the upload that
+// carries the diagnostics carries the journal and every still
+// (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle mtcollins1_boot_retained_artifact_prefix).
+fn mtcollins1_kvm_observer_dir(attempt: String) -> String {
+  concat("artifacts/mtcollins1-boot-kvm-", attempt)
 }
 
-fn kvm_still_phase_text(phase: KvmStillPhase) -> String {
-  match phase {
-    KvmAtPowerOnVerified => "at-power-on-verified"
-    KvmDuringWatch { tick: t } => concat("during-watch-tick-", to_string(t))
-    KvmOnChannelLost => "on-observation-channel-lost"
-    KvmAtTerminalVerdict => "at-terminal-verdict"
-  }
+// ── THE JOURNAL, READ ────────────────────────────────────────────────────────────────────────────
+
+type KvmObserverRefusal
+  = KvmSeatBusy { viewer_count: String }
+  | KvmLoginRefused { detail: String }
+  | KvmNoKvmService
+  | KvmNoFrame { detail: String }
+  | KvmToolchainUnavailable { detail: String }
+  | KvmCredentialUnreadable { detail: String }
+  | KvmRefusedOther { cause: String, detail: String }
+
+type KvmAcquisitionCause
+  = KvmNotConnected
+  | KvmCanvasUnreadable { detail: String }
+  | KvmAcquisitionOther { cause: String, detail: String }
+
+// An instant as the observer wrote it: epoch milliseconds (for arithmetic) and ISO (for readers).
+type KvmInstant {
+  ms: Int
+  iso: String
 }
 
-// WHY A STILL WAS NOT TAKEN, typed. Each names what the run saw and never a guess past it.
-type KvmStillRefusal
-  = KvmStillFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
-  | KvmStillNotConfigured { reason: NonEmptyStr }
-  | KvmStillSeatHeld { detail: String }
-  | KvmStillLoginRefused { detail: String }
-  | KvmStillNoKvmService { detail: String }
-  | KvmStillNoFrame { detail: String }
-  | KvmStillToolchainUnavailable { detail: String }
-  | KvmStillCredentialUnreadable { detail: String }
-  | KvmStillDeadline { detail: String }
-  | KvmStillFailed { exit_code: Int, detail: String }
-  | KvmStillUnhashed { path: NonEmptyStr, reason: String }
-  | KvmStillRouteNotClientSide
+type KvmJournalEvent
+  = KvmJournalEstablished { at: KvmInstant, host: String, session: String, attempt: String }
+  | KvmJournalConnectionOpen { at: KvmInstant }
+  | KvmJournalConnectionLost { at: KvmInstant }
+  | KvmJournalConnectionError { at: KvmInstant, detail: String }
+  | KvmJournalStill { at: KvmInstant, seq: String, reason: String, file: String }
+  | KvmJournalAcquisitionFailed { at: KvmInstant, seq: String, reason: String, cause: KvmAcquisitionCause }
+  | KvmJournalRefused { at: KvmInstant, refusal: KvmObserverRefusal }
+  | KvmJournalFailed { at: KvmInstant, detail: String }
+  | KvmJournalStopRequested { at: KvmInstant, by: String }
+  | KvmJournalStopped { at: KvmInstant, session: String }
+  | KvmJournalUnparsed { line: String }
 
-// THE ARTIFACT IS HASH-BOUND BY OUR OWN READ: the digest is sha256sum over the file the script
-// wrote, taken after it exited, never a number the script reported about itself.
-type KvmStillOutcome
-  = KvmStillCaptured { path: NonEmptyStr, digest: Digest, format: NonEmptyStr, session_note: String }
-  | KvmStillRefused { refusal: KvmStillRefusal }
-
-type KvmStill {
-  attempt: String
-  sequence: Int
-  phase: KvmStillPhase
-  requested_at: NonEmptyStr
-  completed_at: NonEmptyStr
-  outcome: KvmStillOutcome
-}
-
-// Retained under the boot's artifact prefix so the upload that carries the diagnostics carries the
-// stills (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle mtcollins1_boot_retained_artifact_prefix,
-// whose glob the boot's upload uses).
-fn mtcollins1_kvm_still_path(attempt: String, sequence: Int, phase: KvmStillPhase) -> String {
-  concat("artifacts/mtcollins1-boot-kvm-", attempt, "-", to_string(sequence), "-", kvm_still_phase_text(phase: phase), ".jpg")
-}
-
-fn kvm_still_last_line(s: String) -> String {
-  match filter(map(split(s: s, delimiter: "\n"), l => trim(s: l)), l => l != "").last() {
-    Present { value: l } => l
+// A field's value: the word after " key=", or for the free-text keys (detail, url), the rest of the
+// line, which the observer always writes last.
+fn kvm_field(rest: String, key: String) -> String {
+  match split(s: concat(" ", rest), delimiter: concat(" ", concat(key, "="))).skip(n: 1).first() {
     Absent => ""
+    Present { value: v } =>
+      if key == "detail" || key == "url" { trim(s: v) }
+      else { match split(s: v, delimiter: " ").first() { Present { value: w } => w  Absent => "" } }
   }
 }
 
-// THE SCRIPT'S ANSWER, READ. Pure over what the operation returned, so every arm is exercised by a
-// claim without a BMC.
-fn kvm_still_refusal_of_exit(exit_code: Int, stdout: String, stderr: String) -> KvmStillRefusal {
-  let said = kvm_still_last_line(s: stdout)
-  let detail = if said == "" { kvm_still_last_line(s: stderr) } else { said }
-  if exit_code == kvm_still_exit_seat_held { KvmStillSeatHeld { detail: detail } }
-  else if exit_code == kvm_still_exit_login_refused { KvmStillLoginRefused { detail: detail } }
-  else if exit_code == kvm_still_exit_no_kvm_service { KvmStillNoKvmService { detail: detail } }
-  else if exit_code == kvm_still_exit_no_frame { KvmStillNoFrame { detail: detail } }
-  else if exit_code == kvm_still_exit_toolchain { KvmStillToolchainUnavailable { detail: detail } }
-  else if exit_code == kvm_still_exit_credential { KvmStillCredentialUnreadable { detail: detail } }
-  else if exit_code == coreutils_timeout_expired_exit_code || exit_code == 137 {
-    KvmStillDeadline { detail: concat("no answer within the capture deadline; the script's session release was NOT observed", if detail == "" { "" } else { concat("; ", detail) }) }
-  }
-  else { KvmStillFailed { exit_code: exit_code, detail: detail } }
+fn kvm_refusal_of(rest: String) -> KvmObserverRefusal {
+  let cause = kvm_field(rest: rest, key: "cause")
+  let detail = kvm_field(rest: rest, key: "detail")
+  if cause == "seat-busy" { KvmSeatBusy { viewer_count: kvm_field(rest: rest, key: "viewer_count") } }
+  else if cause == "login" { KvmLoginRefused { detail: concat("http ", kvm_field(rest: rest, key: "http")) } }
+  else if cause == "no-kvm-service" { KvmNoKvmService }
+  else if cause == "no-frame" || cause == "no-kvm-websocket" { KvmNoFrame { detail: if detail == "" { cause } else { detail } } }
+  else if cause == "toolchain" { KvmToolchainUnavailable { detail: detail } }
+  else if cause == "credential-unreadable" { KvmCredentialUnreadable { detail: detail } }
+  else { KvmRefusedOther { cause: cause, detail: detail } }
 }
 
-// The release-failed exit wrote a still and could not DELETE its session: the still is kept, and the
-// unreleased session is carried on it rather than discarding the evidence.
-fn kvm_still_wrote_file(exit_code: Int) -> Bool {
-  exit_code == 0 || exit_code == kvm_still_exit_release_failed
+fn kvm_acquisition_cause_of(rest: String) -> KvmAcquisitionCause {
+  let cause = kvm_field(rest: rest, key: "cause")
+  if cause == "not-connected" { KvmNotConnected }
+  else if cause == "canvas-unreadable" { KvmCanvasUnreadable { detail: kvm_field(rest: rest, key: "detail") } }
+  else { KvmAcquisitionOther { cause: cause, detail: kvm_field(rest: rest, key: "detail") } }
 }
 
-fn kvm_still_outcome_of_run(path: NonEmptyStr, exit_code: Int, stdout: String, stderr: String, digest: Sha256FileDigest) -> KvmStillOutcome {
-  if kvm_still_wrote_file(exit_code: exit_code) {
-    match digest {
-      Sha256FileDigest { digest: d } => KvmStillCaptured { path: path, digest: d, format: "image/jpeg", session_note: kvm_still_last_line(s: stdout) }
-      Sha256FileDigestUnavailable { path: _, reason: r } => KvmStillRefused { refusal: KvmStillUnhashed { path: path, reason: r } }
+fn kvm_journal_event(line: String) -> KvmJournalEvent {
+  let words = split(s: line, delimiter: " ")
+  let ms_word = match words.first() { Present { value: w } => w  Absent => "" }
+  let iso = match words.skip(n: 1).first() { Present { value: w } => w  Absent => "" }
+  let event = match words.skip(n: 2).first() { Present { value: w } => w  Absent => "" }
+  let rest = join(words.skip(n: 3), " ")
+  match parse_int(s: ms_word) {
+    Absent => KvmJournalUnparsed { line: line }
+    Present { value: ms } => {
+      let at = KvmInstant { ms: ms, iso: iso }
+      if event == "established" { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: "host"), session: kvm_field(rest: rest, key: "session"), attempt: kvm_field(rest: rest, key: "attempt") } }
+      else if event == "connection-open" { KvmJournalConnectionOpen { at: at } }
+      else if event == "connection-lost" { KvmJournalConnectionLost { at: at } }
+      else if event == "connection-error" { KvmJournalConnectionError { at: at, detail: kvm_field(rest: rest, key: "detail") } }
+      else if event == "still" { KvmJournalStill { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), file: kvm_field(rest: rest, key: "file") } }
+      else if event == "acquisition-failed" { KvmJournalAcquisitionFailed { at: at, seq: kvm_field(rest: rest, key: "seq"), reason: kvm_field(rest: rest, key: "reason"), cause: kvm_acquisition_cause_of(rest: rest) } }
+      else if event == "refused" { KvmJournalRefused { at: at, refusal: kvm_refusal_of(rest: rest) } }
+      else if event == "failed" { KvmJournalFailed { at: at, detail: kvm_field(rest: rest, key: "detail") } }
+      else if event == "stop-requested" { KvmJournalStopRequested { at: at, by: kvm_field(rest: rest, key: "by") } }
+      else if event == "stopped" { KvmJournalStopped { at: at, session: kvm_field(rest: rest, key: "session") } }
+      else { KvmJournalUnparsed { line: line } }
     }
-  } else {
-    KvmStillRefused { refusal: kvm_still_refusal_of_exit(exit_code: exit_code, stdout: stdout, stderr: stderr) }
   }
 }
 
-fn kvm_still_refused(attempt: String, sequence: Int, phase: KvmStillPhase, at: NonEmptyStr, refusal: KvmStillRefusal) -> KvmStill {
-  KvmStill { attempt: attempt, sequence: sequence, phase: phase, requested_at: at, completed_at: at, outcome: KvmStillRefused { refusal: refusal } }
+fn kvm_journal_events(text: String) -> List<KvmJournalEvent> {
+  map(filter(map(split(s: text, delimiter: "\n"), l => trim(s: l)), l => l != ""), l => kvm_journal_event(line: l))
 }
 
-// ONE CAPTURE. The firmware standing is asked first: a firmware whose capture route this repository
-// has not catalogued refuses rather than inheriting 0.32's viewer. Only the client-side route is
-// driven; any other standing is a refusal that names it.
-fn mtcollins1_kvm_still_capture(
+// WHERE THE OBSERVER STANDS after its journal so far. Established only on the established line;
+// a refusal or failure line before it is the answer; neither yet is Pending.
+type KvmObserverStanding
+  = KvmObserverEstablished { at: KvmInstant, host: String, session: String, attempt: String }
+  | KvmObserverRefused { at: KvmInstant, refusal: KvmObserverRefusal }
+  | KvmObserverFailed { at: KvmInstant, detail: String }
+  | KvmObserverPending
+
+fn kvm_observer_standing(events: List<KvmJournalEvent>) -> KvmObserverStanding {
+  fold(events, KvmObserverPending, (acc, e) =>
+    match acc {
+      KvmObserverPending =>
+        match e {
+          KvmJournalEstablished { at: a, host: h, session: s, attempt: t } => KvmObserverEstablished { at: a, host: h, session: s, attempt: t }
+          KvmJournalRefused { at: a, refusal: r } => KvmObserverRefused { at: a, refusal: r }
+          KvmJournalFailed { at: a, detail: d } => KvmObserverFailed { at: a, detail: d }
+          _ => acc
+        }
+      _ => acc
+    })
+}
+
+// THE BOUNDARY EVENTS: what the watch must report before any optional read. Connection lost or
+// errored, and every acquisition that failed.
+fn kvm_boundary_events(events: List<KvmJournalEvent>) -> List<KvmJournalEvent> {
+  filter(events, e => match e {
+    KvmJournalConnectionLost { at: _ } => true
+    KvmJournalConnectionError { at: _, detail: _ } => true
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: _ } => true
+    KvmJournalFailed { at: _, detail: _ } => true
+    _ => false
+  })
+}
+
+// GAPS ARE RETAINED, NOT SMOOTHED (acceptance (b)). Between consecutive successful stills -- and
+// from establishment to the first -- an interval longer than two cadences is a gap, kept with its
+// two instants whatever caused it.
+type KvmStillGap {
+  from: KvmInstant
+  to: KvmInstant
+  seconds: Int
+}
+
+type KvmGapFold {
+  last: KvmInstant?
+  gaps: List<KvmStillGap>
+}
+
+fn kvm_still_gaps(events: List<KvmJournalEvent>, cadence: Second) -> List<KvmStillGap> {
+  let bound_ms = 2 * (second_count(s: cadence) as Int) * 1000
+  let marks = filter(map(events, e => match e {
+    KvmJournalEstablished { at: a, host: _, session: _, attempt: _ } => Present { value: a }
+    KvmJournalStill { at: a, seq: _, reason: _, file: _ } => Present { value: a }
+    KvmJournalStopRequested { at: a, by: _ } => Present { value: a }
+    _ => none
+  }), m => match m { Present { value: _ } => true  Absent => false })
+  let start: KvmGapFold = KvmGapFold { last: none, gaps: [] }
+  let folded = fold(marks, start, (acc, m) =>
+    match m {
+      Absent => acc
+      Present { value: at } =>
+        match acc.last {
+          Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+          Present { value: prev } =>
+            if at.ms - prev.ms > bound_ms {
+              KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmStillGap { from: prev, to: at, seconds: (at.ms - prev.ms) / 1000 }]) }
+            } else {
+              KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+            }
+        }
+    })
+  folded.gaps
+}
+
+// A STILL IS RETAINED ONLY HASH-BOUND. The digest is sha256sum over the file, taken by the boot after
+// the observer stopped -- never a number the observer reported about itself. A file that cannot be
+// digested is kept in the record as Unhashed and is not claimed as evidence.
+type KvmRetainedStill
+  = KvmStillHashed { at: KvmInstant, seq: String, reason: String, path: NonEmptyStr, digest: Digest }
+  | KvmStillUnhashed { at: KvmInstant, seq: String, reason: String, path: String, why: String }
+
+fn kvm_retained_still(dir: String, at: KvmInstant, seq: String, reason: String, file: String, digest: Sha256FileDigest) -> KvmRetainedStill {
+  let path = concat(dir, concat("/", file))
+  match digest {
+    Sha256FileDigest { digest: d } => KvmStillHashed { at: at, seq: seq, reason: reason, path: path as NonEmptyStr, digest: d }
+    Sha256FileDigestUnavailable { path: _, reason: r } => KvmStillUnhashed { at: at, seq: seq, reason: reason, path: path, why: r }
+  }
+}
+
+// ── THE OBSERVER'S LIFE IN THE BOOT ──────────────────────────────────────────────────────────────
+
+// How the observer came to be (or not), taken before the handoff.
+type KvmObserverStart
+  = KvmObserverStarted { dir: NonEmptyStr, standing: KvmObserverStanding, checked_at: NonEmptyStr }
+  | KvmObserverNotStarted { reason: NonEmptyStr }
+
+// THE TEARDOWN, SEPARATELY TIMESTAMPED (acceptance (c)). Before anything is stopped the journal is
+// copied aside as it stands (pre_teardown_snapshot) and the boot writes its own instant for the stop
+// request; the observer's stop-requested/stopped lines are its own. Whether the release was observed
+// is the stopped line, never an assumption.
+type KvmObserverTeardown
+  = KvmTeardownRecorded { snapshot_path: String, snapshot_kept: Bool, requested_at: NonEmptyStr, stopped_seen: Bool, released: String, forced_release_at: String }
+  | KvmTeardownNotNeeded { reason: NonEmptyStr }
+
+// EVERYTHING THE ATTEMPT KEPT OF ITS SCREEN.
+type KvmObserverRecord {
+  attempt: String
+  start: KvmObserverStart
+  events: List<KvmJournalEvent>
+  stills: List<KvmRetainedStill>
+  gaps: List<KvmStillGap>
+  teardown: KvmObserverTeardown
+}
+
+fn kvm_observer_record_not_started(attempt: String, reason: NonEmptyStr) -> KvmObserverRecord {
+  KvmObserverRecord { attempt: attempt, start: KvmObserverNotStarted { reason: reason }, events: [], stills: [], gaps: [], teardown: KvmTeardownNotNeeded { reason: reason } }
+}
+
+fn kvm_journal_text_at(dir: String) -> String {
+  let r = Filesystem.Read(path: concat(dir, "/journal"))
+  if r.success { r.content } else { "" }
+}
+
+fn kvm_journal_events_at(dir: String) -> List<KvmJournalEvent> {
+  kvm_journal_events(text: kvm_journal_text_at(dir: dir))
+}
+
+// Poll the journal once a second until the predicate holds or the bound is spent.
+fn kvm_await_standing(dir: String, remaining: Int) -> KvmObserverStanding {
+  let standing = kvm_observer_standing(events: kvm_journal_events_at(dir: dir))
+  match standing {
+    KvmObserverPending =>
+      if remaining <= 0 { standing } else {
+        let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+        kvm_await_standing(dir: dir, remaining: remaining - 1)
+      }
+    _ => standing
+  }
+}
+
+// START, BEFORE THE HANDOFF. Firmware standing first: an uncatalogued firmware is not driven.
+fn mtcollins1_kvm_observer_start(
   firmware: BmcFirmwareReleaseIdentity,
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: String,
   toolchain_dir: String,
   attempt: String,
-  sequence: Int,
-  phase: KvmStillPhase,
-) -> KvmStill {
-  let requested = clock_now_probed_at_or_unknown()
+) -> KvmObserverStart {
   match megarac_screen_capture_standing(firmware: firmware, route: KvmClientCanvasJpeg) {
-    ScreenCaptureFirmwareUncatalogued { firmware: f } => kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillFirmwareUncatalogued { firmware: f })
-    ScreenCaptureFactKnown { firmware: _, standing: standing } =>
-      match standing {
+    ScreenCaptureFirmwareUncatalogued { firmware: _ } => KvmObserverNotStarted { reason: "the BMC firmware is not catalogued for screen capture; no viewer was driven" }
+    ScreenCaptureFactKnown { firmware: _, standing: s } =>
+      match s {
         ScreenCaptureClientSideOnly =>
-          if password_file == "" {
-            kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillNotConfigured { reason: "no BMC credential path is bound to this capture" })
-          } else if attempt == "" {
-            kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillNotConfigured { reason: "no attempt identity is bound, so the still could not be named for it" })
-          } else {
-            let path = mtcollins1_kvm_still_path(attempt: attempt, sequence: sequence, phase: phase)
-            let r = gunbc.machine_intake.kvm_still.CaptureStill(
-              bmc_host: bmc_host,
-              username: username,
-              password_file: password_file as NonEmptyStr,
-              out_path: path as NonEmptyStr,
-              frame_wait_ms: to_string((second_count(s: mtcollins1_kvm_still_frame_wait) as Int) * 1000) as NonEmptyStr,
-              toolchain_node_path: if toolchain_dir == "" { "" } else { concat(toolchain_dir, "/node_modules") },
-              deadline: coreutils_duration_operand(d: mtcollins1_kvm_still_deadline) as NonEmptyStr,
-              kill_after: coreutils_duration_operand(d: mtcollins1_kvm_still_kill_after) as NonEmptyStr,
-              script: mtcollins1_kvm_still_script as NonEmptyStr,
-            )
-            let digest = if kvm_still_wrote_file(exit_code: r.exit_code) { sha256sum_file_digest_via_shell(path: path as NonEmptyStr) } else { Sha256FileDigestUnavailable { path: path as NonEmptyStr, reason: "no file was written" } }
-            KvmStill {
-              attempt: attempt,
-              sequence: sequence,
-              phase: phase,
-              requested_at: requested,
-              completed_at: clock_now_probed_at_or_unknown(),
-              outcome: kvm_still_outcome_of_run(path: path as NonEmptyStr, exit_code: r.exit_code, stdout: r.stdout, stderr: r.transport_stderr, digest: digest),
-            }
-          }
-        _ => kvm_still_refused(attempt: attempt, sequence: sequence, phase: phase, at: requested, refusal: KvmStillRouteNotClientSide)
+          if password_file == "" { KvmObserverNotStarted { reason: "no BMC credential path is bound, so no viewer login was attempted" } }
+          else if attempt == "" { KvmObserverNotStarted { reason: "no attempt identity is bound, so the observer could not be named for it" } }
+          else { kvm_observer_launch(base_url: concat("https://", bmc_host as String), username: username, password_file: password_file, toolchain_dir: toolchain_dir, attempt: attempt) }
+        _ => KvmObserverNotStarted { reason: "the catalogued viewer route is not client-side; nothing was driven" }
       }
+  }
+}
+
+// THE LAUNCH OVER A BASE URL. The boot passes https://<bmc>; the protocol controls pass a local fake.
+fn kvm_observer_launch(base_url: String, username: NonEmptyStr, password_file: String, toolchain_dir: String, attempt: String) -> KvmObserverStart {
+  let dir = mtcollins1_kvm_observer_dir(attempt: attempt)
+  let made = shell.Mkdir.Parents(path: dir as FilePath)
+  if !made.success {
+    return KvmObserverNotStarted { reason: concat("the observer directory could not be made: ", dir) as NonEmptyStr }
+  }
+  kvm_observer_launch_in(dir: dir, base_url: base_url, username: username, password_file: password_file, toolchain_dir: toolchain_dir, attempt: attempt)
+}
+
+fn kvm_observer_launch_in(dir: String, base_url: String, username: NonEmptyStr, password_file: String, toolchain_dir: String, attempt: String) -> KvmObserverStart {
+  let launched = gunbc.machine_intake.kvm_observer.Start(
+    script: mtcollins1_kvm_observer_script as NonEmptyStr,
+    toolchain_node_path: if toolchain_dir == "" { "" } else { concat(toolchain_dir, "/node_modules") },
+    base_url: base_url as NonEmptyStr,
+    username: username,
+    password_file: password_file as NonEmptyStr,
+    dir: dir as NonEmptyStr,
+    attempt: attempt as NonEmptyStr,
+    cadence_ms: to_string((second_count(s: mtcollins1_kvm_observer_cadence) as Int) * 1000) as NonEmptyStr,
+    frame_wait_ms: to_string((second_count(s: mtcollins1_kvm_observer_frame_wait) as Int) * 1000) as NonEmptyStr,
+    periodic_limit: to_string(mtcollins1_kvm_observer_periodic_limit) as NonEmptyStr,
+  )
+  if !launched.success {
+    return KvmObserverNotStarted { reason: concat("the observer launch failed: ", trim(s: launched.transport_stderr)) as NonEmptyStr }
+  }
+  let standing = kvm_await_standing(dir: dir, remaining: mtcollins1_kvm_observer_establish_wait)
+  KvmObserverStarted { dir: dir as NonEmptyStr, standing: standing, checked_at: clock_now_probed_at_or_unknown() }
+}
+
+// A TRIGGER: one file the observer consumes and answers with one still or one acquisition failure.
+// Names sort in request order; the reason is the file name's tail.
+fn kvm_observer_trigger(start: KvmObserverStart, order: Int, reason: String) -> Bool {
+  match start {
+    KvmObserverStarted { dir: d, standing: s, checked_at: _ } =>
+      match s {
+        KvmObserverEstablished { at: _, host: _, session: _, attempt: _ } =>
+          Filesystem.Write(path: concat(d as String, concat("/trigger-", concat(to_string(1000 + order), concat("-", reason)))), content: "").success
+        _ => false
+      }
+    KvmObserverNotStarted { reason: _ } => false
+  }
+}
+
+fn kvm_answered(events: List<KvmJournalEvent>, reason: String) -> Bool {
+  count(filter(events, e => match e {
+    KvmJournalStill { at: _, seq: _, reason: r, file: _ } => string_contains(s: r, pattern: reason)
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: r, cause: _ } => string_contains(s: r, pattern: reason)
+    _ => false
+  })) > 0
+}
+
+fn kvm_await_answer(dir: String, reason: String, remaining: Int) -> Bool {
+  if kvm_answered(events: kvm_journal_events_at(dir: dir), reason: reason) { true }
+  else if remaining <= 0 { false }
+  else {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    kvm_await_answer(dir: dir, reason: reason, remaining: remaining - 1)
+  }
+}
+
+fn kvm_await_stopped(dir: String, remaining: Int) -> Bool {
+  let seen = count(filter(kvm_journal_events_at(dir: dir), e => match e { KvmJournalStopped { at: _, session: _ } => true  _ => false })) > 0
+  if seen { true }
+  else if remaining <= 0 { false }
+  else {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    kvm_await_stopped(dir: dir, remaining: remaining - 1)
+  }
+}
+
+// THE END: the terminal still, the pre-teardown snapshot, the timestamped stop, the bounded wait for
+// the observer's own stopped line, the owned-process release if it did not come, then the reading.
+fn mtcollins1_kvm_observer_finish(start: KvmObserverStart, attempt: String, terminal_order: Int) -> KvmObserverRecord {
+  match start {
+    KvmObserverNotStarted { reason: r } => kvm_observer_record_not_started(attempt: attempt, reason: r)
+    KvmObserverStarted { dir: d_, standing: _, checked_at: _ } => {
+      let d = d_ as String
+      let asked = kvm_observer_trigger(start: start, order: terminal_order, reason: "terminal-verdict")
+      let _answered = if asked { kvm_await_answer(dir: d, reason: "terminal-verdict", remaining: mtcollins1_kvm_observer_trigger_wait) } else { false }
+      let snapshot_path = concat(d, "/journal.pre-teardown")
+      let kept = Filesystem.Write(path: snapshot_path, content: kvm_journal_text_at(dir: d)).success
+      let requested_at = clock_now_probed_at_or_unknown()
+      let _teardown_event = Filesystem.Write(path: concat(d, "/workflow"), content: concat("gunbc-workflow: observer stop requested at=", concat(requested_at as String, "\n")))
+      let _stop = Filesystem.Write(path: concat(d, "/stop"), content: "")
+      let stopped = kvm_await_stopped(dir: d, remaining: mtcollins1_kvm_observer_stop_wait)
+      let forced_at = if stopped { "" } else {
+        let at = clock_now_probed_at_or_unknown() as String
+        let _released = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: concat(d, "/observer.pid") as NonEmptyStr)
+        at
+      }
+      let events = kvm_journal_events_at(dir: d)
+      KvmObserverRecord {
+        attempt: attempt,
+        start: start,
+        events: events,
+        stills: kvm_hash_stills(dir: d, events: events),
+        gaps: kvm_still_gaps(events: events, cadence: mtcollins1_kvm_observer_cadence),
+        teardown: KvmTeardownRecorded {
+          snapshot_path: snapshot_path,
+          snapshot_kept: kept,
+          requested_at: requested_at,
+          stopped_seen: stopped,
+          released: kvm_released_text(events: events),
+          forced_release_at: forced_at,
+        },
+      }
+    }
+  }
+}
+
+fn kvm_hash_stills(dir: String, events: List<KvmJournalEvent>) -> List<KvmRetainedStill> {
+  let stills = filter(events, e => match e { KvmJournalStill { at: _, seq: _, reason: _, file: _ } => true  _ => false })
+  map(stills, e => match e {
+    KvmJournalStill { at: a, seq: s, reason: r, file: f } =>
+      kvm_retained_still(dir: dir, at: a, seq: s, reason: r, file: f, digest: if f == "" { Sha256FileDigestUnavailable { path: dir as NonEmptyStr, reason: "the journal named no file" } } else { sha256sum_file_digest_via_shell(path: concat(dir, concat("/", f)) as NonEmptyStr) })
+    _ => KvmStillUnhashed { at: KvmInstant { ms: 0, iso: "" }, seq: "", reason: "", path: "", why: "not a still" }
+  })
+}
+
+fn kvm_released_text(events: List<KvmJournalEvent>) -> String {
+  match filter(events, e => match e { KvmJournalStopped { at: _, session: _ } => true  _ => false }).last() {
+    Present { value: e } => match e { KvmJournalStopped { at: a, session: s } => concat("session ", s, " at ", a.iso)  _ => "" }
+    Absent => "NO stopped line: the observer's session release was NOT observed"
   }
 }
 
 // ── RENDER ─────────────────────────────────────────────────────────────────────────────────────
 
-fn kvm_still_refusal_text(refusal: KvmStillRefusal) -> String {
-  match refusal {
-    KvmStillFirmwareUncatalogued { firmware: _ } => "firmware not catalogued for screen capture; nothing driven"
-    KvmStillNotConfigured { reason: r } => concat("not configured: ", r as String)
-    KvmStillSeatHeld { detail: d } => concat("KVM viewer seat already held, not evicted (", d, ")")
-    KvmStillLoginRefused { detail: d } => concat("web login refused: ", d)
-    KvmStillNoKvmService { detail: d } => concat("no kvm service listed: ", d)
-    KvmStillNoFrame { detail: d } => concat("the viewer painted no frame within the wait: ", d)
-    KvmStillToolchainUnavailable { detail: d } => concat("capture toolchain unavailable on the runner: ", d)
-    KvmStillCredentialUnreadable { detail: d } => concat("credential unreadable: ", d)
-    KvmStillDeadline { detail: d } => concat("deadline: ", d)
-    KvmStillFailed { exit_code: c, detail: d } => concat("failed (exit ", to_string(c), "): ", d)
-    KvmStillUnhashed { path: p, reason: r } => concat("written to ", p as String, " but NOT hashed, so not retained as evidence: ", r)
-    KvmStillRouteNotClientSide => "the catalogued standing of the viewer route is not client-side; nothing was driven"
+fn kvm_refusal_text(r: KvmObserverRefusal) -> String {
+  match r {
+    KvmSeatBusy { viewer_count: n } => concat("KVM viewer seat already held (viewer_count=", n, "); not evicted")
+    KvmLoginRefused { detail: d } => concat("web login refused: ", d)
+    KvmNoKvmService => "the services list names no kvm service"
+    KvmNoFrame { detail: d } => concat("the viewer painted no frame: ", d)
+    KvmToolchainUnavailable { detail: d } => concat("capture toolchain unavailable on the runner: ", d)
+    KvmCredentialUnreadable { detail: d } => concat("credential unreadable: ", d)
+    KvmRefusedOther { cause: c, detail: d } => concat(c, ": ", d)
   }
 }
 
-fn kvm_still_text(still: KvmStill) -> String {
-  concat("#", to_string(still.sequence), " ", kvm_still_phase_text(phase: still.phase),
-    " requested=", still.requested_at as String, " completed=", still.completed_at as String, ": ",
-    match still.outcome {
-      KvmStillCaptured { path: p, digest: d, format: f, session_note: n } =>
-        concat(p as String, " ", f as String, " sha256=", d.hex as String, if n == "" { "" } else { concat(" (", n, ")") })
-      KvmStillRefused { refusal: r } => concat("NOT CAPTURED: ", kvm_still_refusal_text(refusal: r))
+fn kvm_event_text(e: KvmJournalEvent) -> String {
+  match e {
+    KvmJournalEstablished { at: a, host: h, session: s, attempt: t } => concat(a.iso, " established host=", h, " session=", s, " attempt=", t)
+    KvmJournalConnectionOpen { at: a } => concat(a.iso, " connection open (viewer /kvm WebSocket)")
+    KvmJournalConnectionLost { at: a } => concat(a.iso, " CONNECTION LOST (viewer /kvm WebSocket closed)")
+    KvmJournalConnectionError { at: a, detail: d } => concat(a.iso, " connection error: ", d)
+    KvmJournalStill { at: a, seq: s, reason: r, file: f } => concat(a.iso, " still #", s, " (", r, ") ", f)
+    KvmJournalAcquisitionFailed { at: a, seq: s, reason: r, cause: c } => concat(a.iso, " ACQUISITION FAILED #", s, " (", r, "): ", match c {
+      KvmNotConnected => "not connected"
+      KvmCanvasUnreadable { detail: d } => concat("canvas unreadable: ", d)
+      KvmAcquisitionOther { cause: x, detail: d } => concat(x, ": ", d)
     })
+    KvmJournalRefused { at: a, refusal: r } => concat(a.iso, " REFUSED: ", kvm_refusal_text(r: r))
+    KvmJournalFailed { at: a, detail: d } => concat(a.iso, " FAILED: ", d)
+    KvmJournalStopRequested { at: a, by: b } => concat(a.iso, " stop requested by ", b)
+    KvmJournalStopped { at: a, session: s } => concat(a.iso, " stopped; session ", s)
+    KvmJournalUnparsed { line: l } => concat("unparsed journal line: ", l)
+  }
 }
 
-fn kvm_stills_text(stills: List<KvmStill>) -> String {
-  if count(stills) == 0 {
-    "no still was requested: the attempt ended before power on was verified"
-  } else {
-    concat("attempt=", match stills.first() { Present { value: s } => s.attempt  Absent => "" }, ", ",
-      to_string(count(filter(stills, s => match s.outcome { KvmStillCaptured { path: _, digest: _, format: _, session_note: _ } => true  _ => false }))), " of ", to_string(count(stills)), " captured\n",
-      join(map(stills, s => kvm_still_text(still: s)), "\n"))
+fn kvm_standing_text(s: KvmObserverStanding) -> String {
+  match s {
+    KvmObserverEstablished { at: a, host: h, session: se, attempt: t } => concat("established at ", a.iso, " (host ", h, ", session ", se, ", attempt ", t, ")")
+    KvmObserverRefused { at: a, refusal: r } => concat("REFUSED at ", a.iso, ": ", kvm_refusal_text(r: r))
+    KvmObserverFailed { at: a, detail: d } => concat("FAILED at ", a.iso, ": ", d)
+    KvmObserverPending => "NOT ESTABLISHED within the establishment wait (no established or refused line)"
+  }
+}
+
+fn kvm_retained_still_text(s: KvmRetainedStill) -> String {
+  match s {
+    KvmStillHashed { at: a, seq: q, reason: r, path: p, digest: d } => concat("#", q, " ", a.iso, " (", r, ") ", p as String, " sha256=", d.hex as String)
+    KvmStillUnhashed { at: a, seq: q, reason: r, path: p, why: w } => concat("#", q, " ", a.iso, " (", r, ") ", p, " NOT HASHED, not retained as evidence: ", w)
+  }
+}
+
+fn kvm_observer_record_text(rec: KvmObserverRecord) -> String {
+  match rec.start {
+    KvmObserverNotStarted { reason: r } => concat("observer NOT STARTED: ", r as String)
+    KvmObserverStarted { dir: d, standing: s, checked_at: c } =>
+      join([
+        concat("observer ", d as String, ": ", kvm_standing_text(s: s), "; checked before the handoff at ", c as String),
+        concat("stills: ", to_string(count(filter(rec.stills, x => match x { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }))), " hash-bound of ", to_string(count(rec.stills)), " written"),
+        join(map(rec.stills, x => concat("  ", kvm_retained_still_text(s: x))), "\n"),
+        concat("gaps over two cadences: ", to_string(count(rec.gaps))),
+        join(map(rec.gaps, g => concat("  ", g.from.iso, " -> ", g.to.iso, " (", to_string(g.seconds), " s)")), "\n"),
+        "boundary and lifecycle events:",
+        join(map(rec.events, e => concat("  ", kvm_event_text(e: e))), "\n"),
+        match rec.teardown {
+          KvmTeardownRecorded { snapshot_path: p, snapshot_kept: k, requested_at: q, stopped_seen: st, released: rl, forced_release_at: f } =>
+            concat("teardown: journal snapshot ", if k { concat("kept at ", p) } else { "NOT kept" }, "; stop requested by the boot at ", q as String, "; ", rl, if st { "" } else { concat("; owned-process release forced at ", f) })
+          KvmTeardownNotNeeded { reason: r } => concat("teardown: not needed: ", r as String)
+        },
+      ], "\n")
   }
 }
 

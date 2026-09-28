@@ -54,7 +54,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.machine_intake_mtcollins1_kvm_still { KvmStill, kvm_stills_text }
+import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
 // said about the machine around the attempt, recorded on every terminal arm so that a remote
@@ -489,10 +489,11 @@ type MtCollins1BootDiagnosticBundle {
   inventory: InventoryReading
   console: ConsoleReading
   run: MtCollins1BootRunRecord
-  // The KVM screen stills of the attempt, each a retained JPEG under the artifact prefix with its
-  // phase, instants and sha256 -- or its typed refusal. Evidence only: no finding and no verdict
-  // reads them (gunbc.machine_intake_mtcollins1_kvm_still).
-  screen: List<KvmStill>
+  // The attempt's KVM screen: the held observer's establishment, its journal of boundary and
+  // lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
+  // gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
+  // verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
+  screen: KvmObserverRecord
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -962,8 +963,8 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     memory_members_text(m: bundle.inventory.memory),
     "== pre-os console ==",
     console_text(c: bundle.console),
-    "== bmc kvm screen stills (retained, not interpreted) ==",
-    kvm_stills_text(stills: bundle.screen),
+    "== bmc kvm screen (held observer; stills retained, not interpreted) ==",
+    kvm_observer_record_text(rec: bundle.screen),
     "",
   ], "\n")
 }

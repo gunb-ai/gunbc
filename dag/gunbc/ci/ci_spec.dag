@@ -2800,7 +2800,7 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
     Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
     Do { run: ci_retry_body_run(command: concat("SOL_RELEASE='", concat(mtcollins1_sol_hold_release_script, "'"))) },
-    Do { run: ci_retry_body_run(command: "trap 'kill \"$\{SOL_LOSS_WATCH:-\}\" 2>/dev/null || true; if type sol_loss_notice >/dev/null 2>&1; then sol_loss_notice || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: "trap 'kill \"$\{SOL_LOSS_WATCH:-\}\" 2>/dev/null || true; if type sol_loss_notice >/dev/null 2>&1; then sol_loss_notice || true; fi; bash -c \"$SOL_RELEASE\" sol-release \"$SOL_PID_FILE\" || echo \"::error::mtcollins1 SOL collector survived KILL at step exit\"; for kf in \"$GITHUB_WORKSPACE\"/artifacts/mtcollins1-boot-kvm-*/observer.pid; do [ -f \"$kf\" ] || continue; bash -c \"$SOL_RELEASE\" kvm-release \"$kf\" || echo \"::error::mtcollins1 KVM observer survived KILL at step exit\"; done; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT") },
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
