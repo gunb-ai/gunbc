@@ -1,7 +1,7 @@
 module v2.test.emit.bool_literal_projection
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.c {
   CStage0EmitStandardC17,
   CValueExpressionEmitValidityUnderStandard,

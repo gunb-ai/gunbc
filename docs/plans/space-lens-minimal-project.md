@@ -86,4 +86,4 @@ This lane is operator-signed and multi-owner (`compute-envelope-model.md` names 
 | `floor_peak_pre` / `floor_peak_post` | cgroup `memory.peak` steps in `gunbc.ci_workflow` | Job-scoped peak; censored lower bound on OOM kill |
 | `floor_outcome` | post step | Step outcome paired with peak |
 
-**Dissolve-on:** skip-before-resolve (count selected resident subset); bash-emit (#5828) for cgroup shell; resolver graph-major / S2a node-keyed store shrinks the closure the calibration measures.
+**Dissolve-on:** skip-before-resolve (count selected resident subset); emitting the cgroup shell from v2.extdeps.languages.bash_build nodes (available route, migration unauthored); resolver graph-major / S2a node-keyed store shrinks the closure the calibration measures.

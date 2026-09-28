@@ -5,7 +5,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.github.actions { Job }
 import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
 import extdeps.languages.yaml.gha_workflow { job_yaml }
-import v2.compiler.translate { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.gha_workflow_yaml_fold {
   gha_fold_flat_steps_wrong_emitted,
   gha_fold_flat_steps_wrong_target_model_witness,
