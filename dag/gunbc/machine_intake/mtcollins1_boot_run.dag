@@ -452,10 +452,14 @@ fn mtcollins1_sol_acquire_under_unit_hold(
       ) {
         SolAcquireRefuse { reason: r } => exit_failure(reason: r as String)
         SolAcquireBindHeldCollector =>
+          match mtcollins1_sol_adopted_activation(pid_path: pid_path) {
+            SolNotEstablished { failure: f } => exit_failure(reason: concat(sol_establishment_failure_text(failure: f), "; not binding the capture to an unproven collector"))
+            SolEstablished { at: _ } =>
           if mtcollins1_sol_bind_capture_to_attempt(capture_path: capture_path) {
             ExitSuccess
           } else {
             exit_failure(reason: concat("mtcollins1 boot: a collector is held but the capture at ", capture_path, " could not be bound to this attempt; refusing rather than reading another attempt's lines"))
+          }
           }
         SolAcquireReleaseThenStart => {
           let _cleared = mtcollins1_sol_release(proof: proof, username: username, password_file: password_file)
@@ -481,6 +485,8 @@ type SolEstablishmentFailure
   | SolSessionRefused { cause: BmcReadCause }
   | SolCollectorLeftUnexplained { collector: SolCollectorObservation, last_line: String }
   | SolActivationUnconfirmed { collector: SolCollectorObservation, allowance: Second }
+  | SolActivationUnrecorded { detail: String }
+  | SolAdoptedActivationUnproven { collector: SolCollectorObservation, receipt: String }
 
 fn last_nonempty_line(s: String) -> String {
   match filter(map(split(s: s, delimiter: "\n"), l => trim(s: l)), l => l != "").last() {
@@ -512,6 +518,8 @@ fn sol_establishment_failure_text(failure: SolEstablishmentFailure) -> String {
     SolSessionRefused { cause: c } => bmc_read_cause_text(cause: c)
     SolCollectorLeftUnexplained { collector: o, last_line: l } => concat(sol_collector_observation_text(observation: o), "; its last line: ", if l == "" { "(none)" } else { l })
     SolActivationUnconfirmed { collector: o, allowance: a } => concat(sol_collector_observation_text(observation: o), concat(", but the session did not print its operational banner within ", concat(to_string(second_count(s: a)), " s, so activation is unconfirmed")))
+    SolActivationUnrecorded { detail: d } => concat("the banner was seen but the activation receipt could not be recorded: ", d)
+    SolAdoptedActivationUnproven { collector: o, receipt: r } => concat(sol_collector_observation_text(observation: o), concat("; no activation receipt names this instance, so an adopted collector is not taken as established (receipt: ", concat(if r == "" { "(none)" } else { r }, ")")))
   })
 }
 
@@ -545,6 +553,9 @@ fn mtcollins1_sol_activate_held(
     return exit_failure(reason: concat("mtcollins1 boot: could not establish an attempt-owned SOL capture at ", capture_path, "; refusing acquire"))
   }
   let client_diagnostic_path = mtcollins1_sol_client_diagnostic_path(capture_path: capture_path)
+  if !Filesystem.Write(path: concat(pid_path, mtcollins1_sol_activation_suffix), content: "").success {
+    return exit_failure(reason: concat("mtcollins1 boot: could not clear the activation receipt at ", concat(pid_path, concat(mtcollins1_sol_activation_suffix, "; refusing acquire"))))
+  }
   spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
@@ -582,25 +593,82 @@ fn sol_capture_opens_with_banner(capture: String) -> Bool {
   }
 }
 
+// PUBLICATION IS PART OF THE WAIT. ActivateHeld returns once the supervisor is backgrounded, before
+// it has published "<pid> <starttime>"; an unrecorded collector inside the allowance is therefore
+// publication pending, not a failure. The hold's own words end the wait early: its "pid not published"
+// line is SolPidNotPublished, and an exit record with nothing published is a collector that left. At
+// the deadline an unpublished collector is SolActivationUnconfirmed with that observation.
 fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, remaining: Int) -> SolEstablishment {
   let at = clock_now_probed_at_or_unknown()
   let collector = mtcollins1_sol_collector_observe(pid_path: pid_path)
-  match collector {
+  let pending = match collector {
     SolCollectorHeld => {
       let capture = Filesystem.Read(path: capture_path)
       if capture.success && sol_capture_opens_with_banner(capture: capture.content) {
-        SolEstablished { at: at }
-      } else if remaining <= 0 {
-        SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: mtcollins1_boot_sol_establish_allowance } }
-      } else {
-        let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
-        mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, remaining: remaining - 1)
+        return sol_record_activation(pid_path: pid_path, at: at)
       }
+      true
     }
-    other => {
+    SolCollectorUnrecorded => {
       let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
-      SolNotEstablished { failure: sol_establishment_failure(collector: other, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
+      let words = if client.success { client.content } else { "" }
+      if string_contains(s: words, pattern: sol_hold_pid_not_published_line) || string_contains(s: words, pattern: sol_hold_exit_record_prefix) {
+        return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: words, at: at) }
+      }
+      true
     }
+    _ => false
+  }
+  if !pending {
+    let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
+    return SolNotEstablished { failure: sol_establishment_failure(collector: collector, client_diagnostics: if client.success { client.content } else { "" }, at: at) }
+  }
+  if remaining <= 0 {
+    return SolNotEstablished { failure: SolActivationUnconfirmed { collector: collector, allowance: mtcollins1_boot_sol_establish_allowance } }
+  }
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  mtcollins1_sol_await_establishment(pid_path: pid_path, capture_path: capture_path, remaining: remaining - 1)
+}
+
+// THE ACTIVATION RECEIPT IS BOUND TO THE INSTANCE. Once the banner is seen for the held collector, its
+// published identity ("<pid> <starttime>", the pid file's own content) is written with the instant to
+// pid_path + mtcollins1_sol_activation_suffix. The adopted route (SolAcquireBindHeldCollector) binds the
+// capture only when that receipt names the collector it now observes -- it does not truncate the
+// capture and wait for a banner that ipmitool prints once, and a receipt left by another instance
+// (a reused pid, a restarted collector) does not match.
+data mtcollins1_sol_activation_suffix: String = ".activated"
+
+fn sol_published_identity(pid_path: String) -> String {
+  let r = Filesystem.Read(path: pid_path)
+  if r.success { trim(s: r.content) } else { "" }
+}
+
+fn sol_record_activation(pid_path: String, at: NonEmptyStr) -> SolEstablishment {
+  let identity = sol_published_identity(pid_path: pid_path)
+  let w = Filesystem.Write(path: concat(pid_path, mtcollins1_sol_activation_suffix), content: concat(identity, concat(" at=", concat(at as String, "\n"))))
+  if identity != "" && w.success {
+    SolEstablished { at: at }
+  } else {
+    SolNotEstablished { failure: SolActivationUnrecorded { detail: if identity == "" { "the pid file was unreadable when the banner was seen" } else { w.error } } }
+  }
+}
+
+fn sol_activation_receipt_names(receipt: String, identity: String) -> Bool {
+  identity != "" && starts_with(s: receipt, prefix: concat(identity, " at="))
+}
+
+fn mtcollins1_sol_adopted_activation(pid_path: String) -> SolEstablishment {
+  let collector = mtcollins1_sol_collector_observe(pid_path: pid_path)
+  let receipt = Filesystem.Read(path: concat(pid_path, mtcollins1_sol_activation_suffix))
+  let identity = sol_published_identity(pid_path: pid_path)
+  match collector {
+    SolCollectorHeld =>
+      if receipt.success && sol_activation_receipt_names(receipt: receipt.content, identity: identity) {
+        SolEstablished { at: clock_now_probed_at_or_unknown() }
+      } else {
+        SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: collector, receipt: if receipt.success { trim(s: receipt.content) } else { concat("unreadable: ", receipt.error) } } }
+      }
+    other => SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: other, receipt: if receipt.success { trim(s: receipt.content) } else { "" } } }
   }
 }
 

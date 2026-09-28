@@ -1,5 +1,7 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
+import gunbc.machine_intake_mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notice_of, sol_notice_annotation }
+import extdeps.github.log_annotations { log_annotation_message_line }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
@@ -910,4 +912,35 @@ test fn establishment_is_the_operational_banner_first_not_a_live_pid() -> Bool {
   sol_capture_opens_with_banner(capture: "[SOL Session operational.  Use ~? for help]\nhost\n")
     && !sol_capture_opens_with_banner(capture: "")
     && !sol_capture_opens_with_banner(capture: "host line\n[SOL Session operational.  Use ~? for help]\n")
+}
+
+// THE NOTICE'S ANNOTATION IS ONE WORKFLOW COMMAND, WHATEVER THE INCIDENT SAYS. A body carrying `%`, a
+// newline and a leading `::` is escaped per the runner's escapeData, so it cannot end the command early
+// or mint a second one; the incident arm is an error and the exit arm a warning.
+test fn a_sol_notice_is_one_escaped_workflow_command() -> Bool {
+  let lost = match sol_loss_notice_of(incident: "100% gone\n::error::forged\n") { Present { value: n } => n  Absent => SolNotice { kind: SolNoticeCollectorExited, identity: "", title: "", body: "" } }
+  let line = match log_annotation_message_line(annotation: sol_notice_annotation(notice: lost)) { Present { value: l } => l  Absent => "" }
+  line == "::error::mtcollins1 SOL observation lost: 100%25 gone%0A::error::forged"
+    && !string_contains(s: line, pattern: "\n")
+}
+
+// THE EXIT IS ORDERED AGAINST REQUESTS BY THEIR INSTANTS. A request a second before the exit precedes
+// it (at requested strength); one a second after is later and so not its cause; the same second, or an
+// instant that does not order, is unresolved; none at all says so; an incomplete record is no notice.
+fn exit_body(events: String) -> String {
+  match sol_exit_notice_of(client_diagnostics: "gunbc-sol-hold: collector exited status=143 at=2026-09-28T11:00:00Z\n", workflow_events: events) { Present { value: n } => n.body  Absent => "" }
+}
+
+test fn the_exit_notice_orders_requests_by_instant_not_by_reading() -> Bool {
+  let before = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=2026-09-28T10:59:59Z\n")
+  let after = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=2026-09-28T11:00:01Z\n")
+  let same = exit_body(events: "gunbc-workflow: collector release requested by the step exit trap at=2026-09-28T11:00:00Z\n")
+  let unknown = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=unknown\n")
+  let partial = sol_exit_notice_of(client_diagnostics: "gunbc-sol-hold: collector exited status=1", workflow_events: "")
+  string_contains(s: before, pattern: "after this run's request") && string_contains(s: before, pattern: "(requested, not proven to be the cause)")
+    && string_contains(s: after, pattern: "no request of this run preceded it") && string_contains(s: after, pattern: "which therefore did not cause it") && !string_contains(s: after, pattern: "after this run's request")
+    && string_contains(s: same, pattern: "in the same second as") && string_contains(s: same, pattern: "unresolved")
+    && string_contains(s: unknown, pattern: "order unresolved") && !string_contains(s: unknown, pattern: "after this run's request")
+    && string_contains(s: exit_body(events: ""), pattern: "no teardown or release had been requested by this run")
+    && (match partial { Present { value: _ } => false  Absent => true })
 }

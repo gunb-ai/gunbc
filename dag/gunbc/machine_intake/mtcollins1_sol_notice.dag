@@ -1,0 +1,334 @@
+module gunbc.machine_intake_mtcollins1_sol_notice
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { trim }
+import std.measure { second }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.github.log_annotations { LogAnnotation, AnnotationError, AnnotationWarning, log_annotation_message_line }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker }
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path,
+  mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix,
+}
+
+// THE SOL NOTICES, AS THEIR OWN PROCESS (operator ruling 2026-09-27: the admitted route is this run's
+// log and step summary -- not ntfy, no new credential). The boot's .dag watch cannot report while it
+// is blocked in an SMpro pass, the attach, the handoff or a BMC read, so the step starts THIS fold as a
+// second `gunbc run`, beside the boot, before the collector is launched. It polls once a second and
+// publishes two facts other authorities establish:
+//   (1) THE COLLECTOR'S EXIT, as the hold's supervisor recorded it (gunbc.machine_intake_sol_hold
+//       sol_hold_exit_record_prefix: status and instant), with the last act this run had RECORDED
+//       requesting (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_workflow_event_prefix) at
+//       requested strength -- a preceding request is not proven to be the cause;
+//   (2) THE CLASSIFIED INCIDENT the boot's watch freezes (mtcollins1_sol_loss_freeze, renamed into
+//       place whole, so it is never read half-written).
+// The observation is the other modules'; this fold only presents and delivers it: the annotation is
+// encoded by extdeps.github.log_annotations log_annotation_message_line, and each notice is delivered
+// on two channels, the live log (an annotation line on this process's stdout) and the step summary.
+//
+// DELIVERY IS A PER-(NOTICE, CHANNEL) FACT, RECORDED ONLY AFTER THE WRITE SUCCEEDED. The marker is
+// written after the channel write returned success, so a failed write leaves no marker and is retried
+// on the next pass, and an interruption between the write and the marker produces a duplicate on the
+// next pass, never a drop. Every outcome -- delivered or FAILED, with its error -- is appended to the
+// delivery ledger (capture + mtcollins1_sol_delivery_suffix), which is uploaded with the capture.
+// This process is the only writer of the step summary, the markers and the ledger during the step.
+//
+// STOPPING IS A REQUEST, NOT A KILL. The step's EXIT trap releases the collector and then creates the
+// stop file; this fold then keeps passing until every notice whose source exists is delivered on both
+// channels, or its final allowance ends, and returns. A kill between a write and its marker is the one
+// interruption left, and it yields a duplicate.
+
+type SolNoticeKind
+  = SolNoticeCollectorExited
+  | SolNoticeObservationLost
+
+type SolNotice {
+  kind: SolNoticeKind
+  identity: String
+  title: String
+  body: String
+}
+
+type SolNoticeChannel
+  = SolNoticeLiveLog
+  | SolNoticeStepSummary
+
+type SolNoticeDelivery
+  = SolNoticeDelivered { kind: SolNoticeKind, identity: String, channel: SolNoticeChannel }
+  | SolNoticeDeliveryFailed { kind: SolNoticeKind, identity: String, channel: SolNoticeChannel, error: String }
+  | SolNoticeAlreadyDelivered { kind: SolNoticeKind, identity: String, channel: SolNoticeChannel }
+
+type SolNoticePaths {
+  capture: String
+  summary: String
+  live_log: String
+}
+
+fn sol_notice_kind_key(kind: SolNoticeKind) -> String {
+  match kind {
+    SolNoticeCollectorExited => "collector-exited"
+    SolNoticeObservationLost => "observation-lost"
+  }
+}
+
+fn sol_notice_channel_key(channel: SolNoticeChannel) -> String {
+  match channel {
+    SolNoticeLiveLog => "annotation"
+    SolNoticeStepSummary => "summary"
+  }
+}
+
+// Every file this fold owns is named capture + this infix, so the step clears them all with one glob
+// before the run (a self-hosted workspace outlives the run that wrote it).
+data mtcollins1_sol_notice_file_infix: String = ".notice."
+
+data mtcollins1_sol_notice_stop_suffix: String = concat(mtcollins1_sol_notice_file_infix, "stop")
+
+// A MARKER IS PER NOTICE IDENTITY, NOT PER KIND: an exit notice's identity carries its record's own
+// instant, so a second collector exit in the same step (an adopted or restarted collector) is a new
+// notice rather than one a stale marker suppresses.
+fn sol_notice_marker_path(paths: SolNoticePaths, identity: String, channel: SolNoticeChannel) -> String {
+  concat(paths.capture, concat(mtcollins1_sol_notice_file_infix, concat(identity, concat(".", sol_notice_channel_key(channel: channel)))))
+}
+
+fn sol_notice_stop_path(capture: String) -> String {
+  concat(capture, mtcollins1_sol_notice_stop_suffix)
+}
+
+fn sol_notice_ledger_path(paths: SolNoticePaths) -> String {
+  concat(paths.capture, mtcollins1_sol_delivery_suffix)
+}
+
+// A LINE IS READ ONLY ONCE IT IS COMPLETE. The supervisor appends its exit record with one echo; a
+// line not yet followed by its newline is not a record yet, so the last split element is never read.
+fn complete_lines(text: String) -> List<String> {
+  let parts = split(s: text, delimiter: "\n")
+  take(parts, n: parts.length() - 1)
+}
+
+// THE INSTANT A LINE CARRIES, read from its " at=" field (the ISO-8601 UTC second both writers use).
+// Two such instants order lexically; one that is absent or "unknown" does not order at all.
+fn line_instant(line: String) -> String {
+  let parts = split(s: line, delimiter: sol_hold_exit_record_instant_marker)
+  match parts.last() {
+    Present { value: v } => if parts.length() > 1 { trim(s: v) } else { "" }
+    Absent => ""
+  }
+}
+
+fn instant_comparable(t: String) -> Bool {
+  t.length() == 20 && ends_with(s: t, suffix: "Z") && substring(t, 10, 11) == "T"
+}
+
+// THE EXIT IS ORDERED AGAINST THIS RUN'S RECORDED REQUESTS BY THEIR INSTANTS, never by which one was
+// read last. Only a request strictly before the exit is reported as preceding it (and still only at
+// requested strength); the same second, or an instant that does not order, is unresolved; a request
+// after the exit is reported as later, so it cannot be read as the cause.
+fn sol_exit_request_context(exit_at: String, requests: List<String>) -> String {
+  if requests.length() == 0 {
+    return "no teardown or release had been requested by this run; the boot watch classifies it against the capture at its next observation"
+  }
+  if !instant_comparable(t: exit_at) {
+    return concat("its instant does not order against this run's requests, so their order is unresolved; last recorded request: ", match requests.last() { Present { value: r } => r  Absent => "" })
+  }
+  let before = filter(requests, r => instant_comparable(t: line_instant(line: r)) && line_instant(line: r) < exit_at)
+  let same = filter(requests, r => line_instant(line: r) == exit_at)
+  let unordered = filter(requests, r => !instant_comparable(t: line_instant(line: r)))
+  let later = filter(requests, r => instant_comparable(t: line_instant(line: r)) && line_instant(line: r) > exit_at)
+  join(flat_map([
+    match before.last() { Present { value: r } => [concat("after this run's request ", concat(r, " (requested, not proven to be the cause)"))]  Absent => ["no request of this run preceded it"] },
+    match same.last() { Present { value: r } => [concat("in the same second as ", concat(r, ", so their order is unresolved"))]  Absent => [] },
+    match unordered.last() { Present { value: r } => [concat("a request with no orderable instant, order unresolved: ", r)]  Absent => [] },
+    match later.first() { Present { value: r } => [concat("before this run's later request ", concat(r, ", which therefore did not cause it"))]  Absent => [] },
+  ], l => l), "; ")
+}
+
+fn sol_workflow_requests(events: String) -> List<String> {
+  filter(complete_lines(text: events), l => starts_with(s: l, prefix: mtcollins1_sol_workflow_event_prefix))
+}
+
+fn sol_notice_identity_part(t: String) -> String {
+  if instant_comparable(t: t) { replace(replace(t, ":", ""), "-", "") } else { "unknown" }
+}
+
+fn sol_exit_notice_of(client_diagnostics: String, workflow_events: String) -> SolNotice? {
+  match filter(complete_lines(text: client_diagnostics), l => starts_with(s: l, prefix: sol_hold_exit_record_prefix)).last() {
+    Absent => Absent
+    Present { value: record } => {
+      let exit_at = line_instant(line: record)
+      let context = sol_exit_request_context(exit_at: exit_at, requests: sol_workflow_requests(events: workflow_events))
+      Present { value: SolNotice { kind: SolNoticeCollectorExited, identity: concat("collector-exited-", sol_notice_identity_part(t: exit_at)), title: "mtcollins1 SOL collector exited", body: concat("mtcollins1 SOL collector exited -- ", concat(record, concat(" -- ", context))) } }
+    }
+  }
+}
+
+fn sol_loss_notice_of(incident: String) -> SolNotice? {
+  let body = trim(incident)
+  if body == "" {
+    return Absent
+  }
+  Present { value: SolNotice { kind: SolNoticeObservationLost, identity: "observation-lost", title: "mtcollins1 SOL observation lost", body: body } }
+}
+
+fn sol_notice_annotation(notice: SolNotice) -> LogAnnotation {
+  let message = concat(notice.title, concat(": ", notice.body))
+  match notice.kind {
+    SolNoticeCollectorExited => AnnotationWarning { message: message, file: Absent, line: Absent, col: Absent }
+    SolNoticeObservationLost => AnnotationError { message: message, file: Absent, line: Absent, col: Absent }
+  }
+}
+
+fn sol_notice_summary_block(notice: SolNotice) -> String {
+  concat("### ", concat(notice.title, concat("\n\n", concat(notice.body, "\n\n"))))
+}
+
+fn read_or_empty(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  if r.success { r.content } else { "" }
+}
+
+fn sol_notice_ledger_line(delivery: SolNoticeDelivery) -> String {
+  let at = clock_now_probed_at_or_unknown() as String
+  match delivery {
+    SolNoticeDelivered { kind: _, identity: i, channel: c } => join([i, " ", sol_notice_channel_key(channel: c), " delivered at=", at, "\n"], "")
+    SolNoticeDeliveryFailed { kind: _, identity: i, channel: c, error: e } => join([i, " ", sol_notice_channel_key(channel: c), " FAILED at=", at, ": ", replace(e, "\n", " "), "\n"], "")
+    SolNoticeAlreadyDelivered { kind: _, identity: _, channel: _ } => ""
+  }
+}
+
+// The ledger is best-effort evidence: a failure to append it is not a delivery failure, and it never
+// blocks the channel writes it describes.
+fn sol_notice_record(paths: SolNoticePaths, delivery: SolNoticeDelivery) -> SolNoticeDelivery {
+  let line = sol_notice_ledger_line(delivery: delivery)
+  if line != "" {
+    let ledger = sol_notice_ledger_path(paths: paths)
+    let _kept = Filesystem.Write(path: ledger, content: concat(read_or_empty(path: ledger), line)).success
+  }
+  delivery
+}
+
+fn sol_notice_channel_write(paths: SolNoticePaths, notice: SolNotice, channel: SolNoticeChannel) -> SolNoticeDelivery {
+  match channel {
+    SolNoticeLiveLog => match log_annotation_message_line(annotation: sol_notice_annotation(notice: notice)) {
+      Absent => SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: "annotation arm has no message encoding" }
+      Present { value: line } => {
+        let w = Filesystem.Write(path: paths.live_log, content: concat(line, "\n"))
+        if w.success { SolNoticeDelivered { kind: notice.kind, identity: notice.identity, channel: channel } } else { SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: w.error } }
+      }
+    }
+    SolNoticeStepSummary => {
+      if paths.summary == "" {
+        return SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: "GITHUB_STEP_SUMMARY is unset" }
+      }
+      // The summary is read-modified-written; a read that failed for any reason but absence refuses,
+      // so an unreadable summary is never overwritten with this block alone.
+      let prior = Filesystem.Read(path: paths.summary)
+      if !prior.success && prior.error_kind != "not_found" {
+        return SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: concat("the step summary could not be read: ", prior.error) }
+      }
+      let w = Filesystem.Write(path: paths.summary, content: concat(if prior.success { prior.content } else { "" }, sol_notice_summary_block(notice: notice)))
+      if w.success { SolNoticeDelivered { kind: notice.kind, identity: notice.identity, channel: channel } } else { SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: w.error } }
+    }
+  }
+}
+
+fn sol_notice_deliver(paths: SolNoticePaths, notice: SolNotice, channel: SolNoticeChannel) -> SolNoticeDelivery {
+  let marker = sol_notice_marker_path(paths: paths, identity: notice.identity, channel: channel)
+  if Filesystem.Read(path: marker).success {
+    return SolNoticeAlreadyDelivered { kind: notice.kind, identity: notice.identity, channel: channel }
+  }
+  let written = sol_notice_channel_write(paths: paths, notice: notice, channel: channel)
+  match written {
+    SolNoticeDelivered { kind: _, identity: _, channel: _ } => {
+      if !Filesystem.Write(path: marker, content: "").success {
+        return sol_notice_record(paths: paths, delivery: SolNoticeDeliveryFailed { kind: notice.kind, identity: notice.identity, channel: channel, error: concat("delivered, but its marker could not be written (a duplicate may follow): ", marker) })
+      }
+      sol_notice_record(paths: paths, delivery: written)
+    }
+    _ => sol_notice_record(paths: paths, delivery: written)
+  }
+}
+
+fn sol_notices_present(paths: SolNoticePaths) -> List<SolNotice> {
+  let exited = match sol_exit_notice_of(client_diagnostics: read_or_empty(path: mtcollins1_sol_client_diagnostic_path(capture_path: paths.capture)), workflow_events: read_or_empty(path: mtcollins1_sol_workflow_events_path(capture_path: paths.capture))) {
+    Present { value: n } => [n]
+    Absent => []
+  }
+  let lost = match sol_loss_notice_of(incident: read_or_empty(path: mtcollins1_sol_incident_path(capture_path: paths.capture))) {
+    Present { value: n } => [n]
+    Absent => []
+  }
+  exited.concat(lost)
+}
+
+fn sol_notice_delivery_settled(d: SolNoticeDelivery) -> Bool {
+  match d {
+    SolNoticeDeliveryFailed { kind: _, identity: _, channel: _, error: _ } => false
+    _ => true
+  }
+}
+
+// One pass: every present notice on both channels. The live log goes first, so the prompt channel is
+// never waiting on the summary's read-modify-write.
+fn sol_notice_pass(paths: SolNoticePaths) -> List<SolNoticeDelivery> {
+  flat_map(sol_notices_present(paths: paths), n => [
+    sol_notice_deliver(paths: paths, notice: n, channel: SolNoticeLiveLog),
+    sol_notice_deliver(paths: paths, notice: n, channel: SolNoticeStepSummary),
+  ])
+}
+
+fn sol_notice_pass_settled(deliveries: List<SolNoticeDelivery>) -> Bool {
+  deliveries.all(d => sol_notice_delivery_settled(d: d))
+}
+
+// THE FINAL ALLOWANCE. After the stop request the fold passes until a pass settles with the collector's
+// exit already recorded (the trap releases the collector before it asks to stop, and the supervisor
+// appends its record just after the reap), or until the allowance ends.
+fn sol_notice_finish(paths: SolNoticePaths, remaining: Int) -> Bool {
+  let deliveries = sol_notice_pass(paths: paths)
+  let exit_seen = sol_notices_present(paths: paths).any(n => match n.kind { SolNoticeCollectorExited => true  _ => false })
+  if sol_notice_pass_settled(deliveries: deliveries) && exit_seen {
+    return true
+  }
+  if remaining <= 0 {
+    return sol_notice_pass_settled(deliveries: deliveries)
+  }
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  sol_notice_finish(paths: paths, remaining: remaining - 1)
+}
+
+fn mtcollins1_sol_notice_watch(paths: SolNoticePaths, remaining: Int) -> Bool {
+  if Filesystem.Read(path: sol_notice_stop_path(capture: paths.capture)).success || remaining <= 0 {
+    return sol_notice_finish(paths: paths, remaining: mtcollins1_sol_notice_final_passes)
+  }
+  let _pass = sol_notice_pass(paths: paths)
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  mtcollins1_sol_notice_watch(paths: paths, remaining: remaining - 1)
+}
+
+// Twelve hours of one-second passes bounds the loop well past the job's own timeout; the stop request
+// is the ordinary end.
+data mtcollins1_sol_notice_watch_passes: Int = 43200
+
+data mtcollins1_sol_notice_final_passes: Int = 5
+
+data github_step_summary_variable_name: NonEmptyStr = "GITHUB_STEP_SUMMARY"
+
+data mtcollins1_sol_notice_live_log: String = "/dev/stdout"
+
+fn mtcollins1_sol_notice_wet() -> ProcessExit
+{
+  let capture = actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)
+  if capture == "" {
+    return exit_failure(reason: concat("mtcollins1 SOL notice: ", concat(mtcollins1_boot_sol_capture_path_env as String, " is unset; nothing to watch")))
+  }
+  let paths = SolNoticePaths { capture: capture, summary: actions_variable_trimmed(name: github_step_summary_variable_name), live_log: mtcollins1_sol_notice_live_log }
+  if mtcollins1_sol_notice_watch(paths: paths, remaining: mtcollins1_sol_notice_watch_passes) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 SOL notice: a notice was not delivered on every channel; see ", sol_notice_ledger_path(paths: paths)))
+  }
+}
