@@ -1,0 +1,244 @@
+module v2.test.claim.callexec.declaration_reference_eval
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NodeLocus,
+  Outcome,
+  Rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Symbol,
+  symbol_eq,
+  Conj,
+  Edge,
+  Node,
+  NodeFold,
+  TypeNode,
+  ComputationNode,
+  Transform,
+  fold_node
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.collection { List, list_at_optional }
+
+import v2.std.runtime { RuntimeValue }
+import v2.std.algebra { fold_list }
+import v2.std.qualified_name {
+  declaration_reference_path_optional,
+  declaration_reference_spine_optional
+}
+
+// THE EVALUATOR BOUNDARY FOR A NAMED CALL, ISOLATED FROM THE NATIVE ROUTE. The reference-evidence
+// repair made a named call GROUND under infer; it did not make one EXECUTE. The native qualification
+// (v2.test.callexec.named_call_execution) refused at eval with
+// eval_rejected_grounding_not_derived anchored on a node the renderer prints as a synthetic
+// occurrence, and a synthetic occurrence is a PROVENANCE CATEGORY rather than an identity -- so the
+// native log alone cannot say WHICH node. This file supplies the same call shape at the eval
+// boundary and reads the anchor directly, which is the one comparison that decides it.
+//
+// WHAT THE SOURCE ALREADY ESTABLISHES, so the claims below only have to confirm it. eval's callee
+// classifier (v2.compiler.eval eval_node_is_callee_reference) admits an Arrow and a bare Atom and
+// nothing else, while a resolved reference is a MARKED CONJ (v2.compiler.resolve
+// resolved_reference_node -> v2.std.qualified_name declaration_reference_node). So the callee edge is
+// not recognized as a callee reference, eval_fold_child_for_edge takes its ordinary recursive arm,
+// and the walk descends into the reference's encoded declaring path -- whose spine
+// declaration_reference_node deliberately builds at OccurrenceSynthetic, because the authored
+// occurrence belongs to the marker node that stands where the reference stood. Those spine nodes are
+// visited by infer too, so each holds an entry with grounding UNDERIVED rather than no entry at all,
+// which is why the gate reports grounding_not_derived and not a facts lookup miss.
+data cref_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^declaration_reference_eval_artifact,
+  file_path: "src/v2/pilot/declaration_reference_eval_pilot.dag"
+}
+
+fn cref_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: cref_artifact,
+        compilation_unit: ^declaration_reference_eval_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// A LITERAL ARGUMENT, so the call is evaluable on its own: a parameter use would be unbound in the
+// empty environment and would refuse for a reason that is not this subject.
+fn cref_source() -> Outcome<ResolvedTree> {
+  cref_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n")
+}
+
+fn cref_inferred() -> Optional<InferredTree> {
+  match cref_source() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } => optional_present(value: inferred)
+      }
+  }
+}
+
+// THE CALL IS THE TRANSFORM WHOSE CHILD 0 DECODES TO A DECLARATION PATH ENDING IN `callee`. Keyed on
+// the decoded path rather than on a spelling, so an annotation or an unrelated reference cannot be
+// selected instead.
+fn cref_callee_reference_optional(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+        Absent => optional_absent()
+        Present { value: child } =>
+          match declaration_reference_path_optional(node: child) {
+            Absent => optional_absent()
+            Present { value: _ } => optional_present(value: child)
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
+fn cref_first_call_optional(root: Node) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match cref_callee_reference_optional(n: n0) {
+          Present { value: _ } => optional_present(value: n0)
+          Absent => optional_absent()
+        }
+      },
+      step: fn(acc, _e, child) {
+        match acc { Present { value: _ } => acc  Absent => child }
+      }
+    }
+  )
+}
+
+// EVERY NODE STRICTLY UNDER THE REFERENCE MARKER -- the encoded declaring path and nothing else. The
+// marker itself is excluded, because the marker IS the node that stands where the reference stood and
+// a refusal anchored there would be a different finding from a refusal anchored on path data.
+fn cref_spine_nodes(reference: Node) -> List<Node> {
+  match declaration_reference_spine_optional(node: reference) {
+    Absent => Empty
+    Present { value: spine } =>
+      fold_node(
+        n: spine,
+        algebra: NodeFold {
+          init: fn(n0) { Cons { head: n0, tail: Empty } },
+          step: fn(acc, _e, child) { list_append_nodes(left: acc, right: child) }
+        }
+      )
+  }
+}
+
+fn list_append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
+  fold_list(
+    xs: left,
+    empty: right,
+    cons: fn(rest, item) { Cons { head: item, tail: rest } }
+  )
+}
+
+fn cref_node_in(xs: List<Node>, wanted: Node) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(rest, item) { if item == wanted { true } else { rest } }
+  )
+}
+
+fn cref_diagnostic_node_optional(d: Diagnostic) -> Optional<Node> {
+  match d.at {
+    NodeLocus { anchor: a } => optional_present(value: a.at)
+    _ => optional_absent()
+  }
+}
+
+fn cref_eval_of_the_call() -> Optional<Outcome<RuntimeValue>> {
+  match cref_inferred() {
+    Absent => optional_absent()
+    Present { value: inferred } =>
+      match cref_first_call_optional(root: inferred.root) {
+        Absent => optional_absent()
+        Present { value: call } =>
+          optional_present(
+            value: eval(
+              tree: inferred,
+              interpretation: v2_evaluator_interpretation(),
+              inputs: inputs_root_only(root: call)
+            )
+          )
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE FIXTURE ITSELF, so a red below is a statement about eval and not about
+// an assembly that never produced a call. Without this, every claim in this file would pass vacuously
+// on a source that stopped resolving.
+test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
+  match cref_inferred() {
+    Absent => false
+    Present { value: inferred } =>
+      match cref_first_call_optional(root: inferred.root) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+// WHAT THE NATIVE LOG COULD NOT SAY. The anchor of eval's refusal is a node INSIDE the callee
+// reference's encoded declaring path -- so eval is demanding value-grounding for the internal
+// representation of a declaration identity rather than consuming that identity as a reference. This
+// claim is the comparison that attributes the native refusal, and it is expected to hold until the
+// classifier and the executable-binding connection land; when they do it becomes the regression
+// control that the walk no longer descends into path data.
+test fn cref_the_eval_refusal_anchors_inside_the_declaring_path_holds() -> Bool {
+  match cref_inferred() {
+    Absent => false
+    Present { value: inferred } =>
+      match cref_first_call_optional(root: inferred.root) {
+        Absent => false
+        Present { value: call } =>
+          match cref_callee_reference_optional(n: call) {
+            Absent => false
+            Present { value: reference } =>
+              match cref_eval_of_the_call() {
+                Absent => false
+                Present { value: outcome } =>
+                  match outcome {
+                    Accepted { value: _, diagnostics: _ } => false
+                    Rejected { diagnostics: ds } =>
+                      match cref_diagnostic_node_optional(d: ds.head) {
+                        Absent => false
+                        Present { value: anchor } =>
+                          symbol_eq(a: ds.head.reason, b: ^eval_rejected_grounding_not_derived)
+                            && cref_node_in(xs: cref_spine_nodes(reference: reference), wanted: anchor)
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
