@@ -30,7 +30,7 @@ import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundar
 fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
   BmcWorld {
     power: BmcPowerOn,
-    pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at_seconds: close_at, event: BmcKvmStreamClosed {} }] },
+    pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at: second(count: close_at), event: BmcKvmStreamClosed {} }] },
     fired: [],
     web: BmcWebWorld {
       account: BmcWebAccount { username: "admin", password: "pw", privilege: 4 },
