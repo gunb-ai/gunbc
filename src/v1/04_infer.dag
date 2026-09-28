@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import std.conversion_plan { conversion_plans, conversion_plan_for, PlanFound, ProveRefinement }
+import std.conversion_plan { conversion_plans, conversion_plan_for, PlanFound, PlanUnknown, PlanDuplicated, ProveRefinement }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
@@ -52,7 +52,7 @@ import v1.std.core { Unmarked,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, TypeParameterInValuePosition, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, TypeParameterInValuePosition, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, CastPlanRefused, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -2610,33 +2610,46 @@ fn where_refinement_brand_nominal_verdict(
   }
 }
 
-// A cast naming a plan (`e as T via <plan>`) must be able to discharge every phase of that plan.
-// v1 realizes exactly one phase, ProveRefinement, through where_refinement_mismatch_diags, and only
-// when the target carries a where-refinement: a ProveRefinement plan onto a target with no
-// refinement would claim a proof nothing performs, so it refuses. Any other phase is not modeled
-// by the seed and refuses rather than passing as a plain cast. The plan is read from
-// std.conversion_plan, the one roster, by the identity parse recorded.
-fn cast_plan_phase_diags(plan_nodes: List<Node>, target_type: Node, target_name: String, span: SourceSpan, module_name: String, type_env: TypeEnv) -> List<ErrorNode> {
-  plan_nodes |> flat_map(pn => match expr_literal_string_optional(expr: pn) {
-    Present { value: plan_name } =>
-      match conversion_plan_for(plans: conversion_plans, identity: plan_name) {
-        PlanFound { plan: plan } =>
-          plan.phases |> flat_map(ph => match ph {
-            ProveRefinement => {
-              let formal_resolved = match lookup_type_for(env: type_env, node: target_type) {
-                Present { value: resolved } => resolved
-                Absent => target_type
-              }
-              if type_where_refinement_predicates_transitive(ty: formal_resolved, type_env: type_env) |> count == 0 {
-                [make_error_node(diagnostic: InternalError { message: concat("cast via '", plan_name, "' onto ", target_name, ": the plan's ProveRefinement phase has no where-refinement to prove on the target"), span: pn.span }, module_name: module_name)]
-              } else { [] }
+// A cast naming a plan (`e as T via <plan>`) resolves that name against std.conversion_plan
+// conversion_plans -- the one roster, looked up here and nowhere else -- and must be able to
+// discharge every phase of the plan. v1 realizes exactly one phase, ProveRefinement, through
+// where_refinement_mismatch_diags, and only when the target carries a where-refinement: a
+// ProveRefinement plan onto a target with no refinement would claim a proof nothing performs.
+// Each refusal is a CastPlanRefused located at the plan name.
+fn cast_plan_phase_diags(plan_nodes: List<Node>, target_type: Node, target_name: String, module_name: String, type_env: TypeEnv) -> List<ErrorNode> {
+  plan_nodes |> flat_map(pn => {
+    let plan_name = authored_plan_identity(node: pn)
+    match conversion_plan_for(plans: conversion_plans, identity: plan_name) {
+      PlanFound { plan: plan } =>
+        plan.phases |> flat_map(ph => match ph {
+          ProveRefinement => {
+            let formal_resolved = match lookup_type_for(env: type_env, node: target_type) {
+              Present { value: resolved } => resolved
+              Absent => target_type
             }
-            _ => [make_error_node(diagnostic: InternalError { message: concat("cast via '", plan_name, "' onto ", target_name, ": the v1 seed realizes only the ProveRefinement phase of a conversion plan"), span: pn.span }, module_name: module_name)]
-          })
-        _ => [make_error_node(diagnostic: InternalError { message: concat("cast via '", plan_name, "': not exactly one row of std.conversion_plan conversion_plans"), span: pn.span }, module_name: module_name)]
-      }
-    Absent => [make_error_node(diagnostic: InternalError { message: "malformed cast plan child", span: pn.span }, module_name: module_name)]
+            if type_where_refinement_predicates_transitive(ty: formal_resolved, type_env: type_env) |> count == 0 {
+              cast_plan_refusal(plan: plan_name, target_name: target_name, reason: "its ProveRefinement phase has no where-refinement to prove on the target", span: pn.span, module_name: module_name)
+            } else { [] }
+          }
+          _ => cast_plan_refusal(plan: plan_name, target_name: target_name, reason: "the v1 seed realizes only the ProveRefinement phase of a conversion plan", span: pn.span, module_name: module_name)
+        })
+      PlanUnknown => cast_plan_refusal(plan: plan_name, target_name: target_name, reason: "not a row of std.conversion_plan conversion_plans", span: pn.span, module_name: module_name)
+      PlanDuplicated { count: c } => cast_plan_refusal(plan: plan_name, target_name: target_name, reason: concat("declared ", to_string(value: c), " times in std.conversion_plan conversion_plans"), span: pn.span, module_name: module_name)
+    }
   })
+}
+
+fn cast_plan_refusal(plan: String, target_name: String, reason: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  [make_error_node(diagnostic: CastPlanRefused { plan: plan, target_type: target_name, reason: reason, span: span }, module_name: module_name)]
+}
+
+// The plan child is built only by v1.compiler.parse parse_cast_via, as a string literal. Any other
+// shape yields "", which is no row of the roster, so it refuses as PlanUnknown rather than passing.
+fn authored_plan_identity(node: Node) -> String {
+  match node.expr_data {
+    ExprLiteral { value: LitStr { value: n } } => n
+    _ => ""
+  }
 }
 
 fn where_refinement_mismatch_diags(
@@ -8731,7 +8744,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         type_env: scope.type_env
       )
       let plan_nodes = cast_plan(texpr: texpr)
-      let cast_plan_diags = cast_plan_phase_diags(plan_nodes: plan_nodes, target_type: target_type, target_name: target_name, span: span, module_name: scope.module_name, type_env: scope.type_env)
+      let cast_plan_diags = cast_plan_phase_diags(plan_nodes: plan_nodes, target_type: target_type, target_name: target_name, module_name: scope.module_name, type_env: scope.type_env)
       let cast_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: concat([inner_typed, target_type], plan_nodes), inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,

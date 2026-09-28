@@ -14,8 +14,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE v1 HALF OF THE `e as T via <plan>` CONTROL (node adhoc-f71b7e28-075). The v1 seed parses the
-// suffix in v1.compiler.parse parse_cast_via against std.conversion_plan conversion_plans -- the one
-// roster v2 resolves plan names against -- and carries the plan as the cast's optional `plan` child. v1.compiler.infer cast_plan_phase_diags
+// suffix in v1.compiler.parse parse_cast_via, resolves the name once against std.conversion_plan
+// conversion_plans -- the one roster v2 resolves plan names against -- and carries the plan as the cast's optional `plan` child. v1.compiler.infer cast_plan_phase_diags
 // discharges the plan's ProveRefinement phase through the existing checked as-cast into a
 // where-refinement (decidable_where_string_predicate_holds) and refuses any phase it cannot
 // discharge. SEED LIMITATION: v1 matches v2 only for the literal-into-refinement cases. The v2 half runs the SAME two sources below and cites
@@ -57,15 +57,15 @@ test fn v1_via_refine_empty_literal_refuses() -> Bool {
   blocking_count(source: via_refine_fail_source, wanted: "TypeMismatch") == 1
 }
 
-// RED: a name that is not a row of std.conversion_plan conversion_plans refuses at parse.
-test fn v1_via_unknown_plan_refuses_at_parse() -> Bool {
-  blocking_count(source: via_unknown_plan_source, wanted: "ParseError") == 1
+// RED: a name that is not a row of std.conversion_plan conversion_plans refuses, located.
+test fn v1_via_unknown_plan_refuses() -> Bool {
+  blocking_count(source: via_unknown_plan_source, wanted: "CastPlanRefused") == 1
 }
 
 // RED: `refine`'s ProveRefinement phase onto a target with no where-refinement proves nothing, so
 // v1 refuses rather than accepting it as a plain cast (review 72012).
 test fn v1_via_refine_without_a_refinement_refuses() -> Bool {
-  blocking_count(source: via_refine_no_refinement_source, wanted: "InternalError") == 1
+  blocking_count(source: via_refine_no_refinement_source, wanted: "CastPlanRefused") == 1
 }
 
 // GREEN: `via` stays an ordinary identifier as a record field and a binding.

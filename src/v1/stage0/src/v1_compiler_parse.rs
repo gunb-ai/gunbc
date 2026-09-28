@@ -10,9 +10,6 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_conversion_plan::ConversionPlanLookup;
-use crate::std_conversion_plan::ConversionPlanLookup::{PlanDuplicated, PlanFound, PlanUnknown};
-pub use crate::std_conversion_plan::{conversion_plan_for, conversion_plans};
 use crate::std_import::ImportStatementParseCause::{
     ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
     SourceHasNoModuleDeclaration,
@@ -14278,35 +14275,24 @@ pub fn parse_cast_via(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Cast
                         })
                     } else {
                         {
-                            let after = token_stream_advance(rest.clone(), 1);
-                            match (*crate::std_conversion_plan::conversion_plan_for(conversion_plans(), nt.text.clone())).clone() {
-    ConversionPlanLookup::PlanFound { plan: _, .. } => {
-                        let minted = mint_parsed_node_identity(ctx.clone());
-let plan_node = crate::v1_std_core::make_expr_node(minted.identity.clone(), Rc::new(ExprData::ExprLiteral {
-    value: Rc::new(LiteralValue::LitStr {
-    value: nt.text.clone(),
-}),
-}), Rc::new(vec![]), std::option::Option::None, name_span.clone());
-Rc::new(CastViaResult {
-    tokens: after.clone(),
-    ctx: minted.ctx.clone(),
-    plan: Rc::new(vec![plan_node.clone()]),
-    err: std::option::Option::None,
-})
-},
-    ConversionPlanLookup::PlanUnknown => Rc::new(CastViaResult {
-    tokens: after.clone(),
-    ctx: ctx.clone(),
-    plan: Rc::new(vec![]),
-    err: Some(parse_error(v1_rt::concat(v1_rt::concat("unknown conversion plan '".to_string(), nt.text.clone()), "' after `via`: not a row of std.conversion_plan conversion_plans".to_string()), name_span.clone())),
-}),
-    ConversionPlanLookup::PlanDuplicated { count: c, .. } => Rc::new(CastViaResult {
-    tokens: after.clone(),
-    ctx: ctx.clone(),
-    plan: Rc::new(vec![]),
-    err: Some(parse_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("conversion plan '".to_string(), nt.text.clone()), "' is declared ".to_string()), (c.clone()).to_string()), " times in std.conversion_plan conversion_plans".to_string()), name_span.clone())),
-}),
-}
+                            let minted = mint_parsed_node_identity(ctx.clone());
+                            let plan_node = crate::v1_std_core::make_expr_node(
+                                minted.identity.clone(),
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitStr {
+                                        value: nt.text.clone(),
+                                    }),
+                                }),
+                                Rc::new(vec![]),
+                                std::option::Option::None,
+                                name_span.clone(),
+                            );
+                            Rc::new(CastViaResult {
+                                tokens: token_stream_advance(rest.clone(), 1),
+                                ctx: minted.ctx.clone(),
+                                plan: Rc::new(vec![plan_node.clone()]),
+                                err: std::option::Option::None,
+                            })
                         }
                     }
                 }

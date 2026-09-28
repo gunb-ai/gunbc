@@ -1076,6 +1076,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
         OptionalCastNotEliminated { source_type: s(), target_type: s(), span: no_span() },
+        CastPlanRefused { plan: s(), target_type: s(), reason: s(), span: no_span() },
         BareNoneNotAdmittedByFieldType { field: s(), type_name: s(), declared_type: s(), span: no_span() },
         SourceAnnotationRefused {
             refusal: Rc::new(crate::std_source_annotation::AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: no_span() }),
@@ -1563,6 +1564,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
+        CompilerDiagnostic::CastPlanRefused { .. } => "CastPlanRefused",
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
             "BareNoneNotAdmittedByFieldType"
         }
@@ -1670,6 +1672,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
+        CompilerDiagnostic::CastPlanRefused { plan, .. } => plan.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
             constructor_decl_name,

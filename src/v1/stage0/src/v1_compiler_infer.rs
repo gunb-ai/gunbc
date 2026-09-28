@@ -30,7 +30,7 @@ pub use crate::std_content_hash::{
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 use crate::std_conversion_plan::ConversionPhase::ProveRefinement;
-use crate::std_conversion_plan::ConversionPlanLookup::PlanFound;
+use crate::std_conversion_plan::ConversionPlanLookup::{PlanDuplicated, PlanFound, PlanUnknown};
 pub use crate::std_conversion_plan::{conversion_plan_for, conversion_plans};
 pub use crate::std_conversion_plan::{ConversionPhase, ConversionPlanLookup};
 pub use crate::std_decl_ref::DeclarationRef;
@@ -243,7 +243,7 @@ use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
-    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
+    CallPositionalDeficit, CallPositionalSurplus, CastPlanRefused, ConstructorCallAdmissionRefused,
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
@@ -3556,48 +3556,68 @@ pub fn cast_plan_phase_diags(
     plan_nodes: Rc<Vec<Rc<Node>>>,
     target_type: Rc<Node>,
     target_name: String,
-    span: Rc<SourceSpan>,
     module_name: String,
     type_env: Rc<TypeEnv>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for pn in plan_nodes.iter().cloned() {
-            __result.extend((*match crate::v1_std_core::expr_literal_string_optional(pn.clone()) {
-    Some(plan_name) => match (*crate::std_conversion_plan::conversion_plan_for(conversion_plans(), plan_name.clone())).clone() {
+            __result.extend((*{
+        let plan_name = authored_plan_identity(pn.clone());
+match (*crate::std_conversion_plan::conversion_plan_for(conversion_plans(), plan_name.clone())).clone() {
     ConversionPlanLookup::PlanFound { plan: plan, .. } => Rc::new({ let mut __result = Vec::new(); for ph in plan.phases.clone().iter().cloned() { __result.extend((*match (*ph.clone()).clone() {
     ConversionPhase::ProveRefinement => {
-        let formal_resolved = match crate::v1_compiler_infer_env::lookup_type_for(type_env.clone(), target_type.clone()) {
+            let formal_resolved = match crate::v1_compiler_infer_env::lookup_type_for(type_env.clone(), target_type.clone()) {
     Some(resolved) => resolved.clone(),
     std::option::Option::None => target_type.clone(),
 };
 if ((type_where_refinement_predicates_transitive(formal_resolved.clone(), type_env.clone()).len() as i64) == 0) {
-            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cast via '".to_string(), plan_name.clone()), "' onto ".to_string()), target_name.clone()), ": the plan's ProveRefinement phase has no where-refinement to prove on the target".to_string()),
-    span: pn.span.clone(),
-}), module_name.clone())])
-        } else {
-            Rc::new(vec![])
-        }
+                cast_plan_refusal(plan_name.clone(), target_name.clone(), "its ProveRefinement phase has no where-refinement to prove on the target".to_string(), pn.span.clone(), module_name.clone())
+            } else {
+                Rc::new(vec![])
+            }
 },
-    _ => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cast via '".to_string(), plan_name.clone()), "' onto ".to_string()), target_name.clone()), ": the v1 seed realizes only the ProveRefinement phase of a conversion plan".to_string()),
-    span: pn.span.clone(),
-}), module_name.clone())]),
+    _ => cast_plan_refusal(plan_name.clone(), target_name.clone(), "the v1 seed realizes only the ProveRefinement phase of a conversion plan".to_string(), pn.span.clone(), module_name.clone()),
 }).iter().cloned()); } __result }),
-    _ => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat("cast via '".to_string(), plan_name.clone()), "': not exactly one row of std.conversion_plan conversion_plans".to_string()),
-    span: pn.span.clone(),
-}), module_name.clone())]),
-},
-    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: "malformed cast plan child".to_string(),
-    span: pn.span.clone(),
-}), module_name.clone())]),
+    ConversionPlanLookup::PlanUnknown => cast_plan_refusal(plan_name.clone(), target_name.clone(), "not a row of std.conversion_plan conversion_plans".to_string(), pn.span.clone(), module_name.clone()),
+    ConversionPlanLookup::PlanDuplicated { count: c, .. } => cast_plan_refusal(plan_name.clone(), target_name.clone(), v1_rt::concat(v1_rt::concat("declared ".to_string(), (c.clone()).to_string()), " times in std.conversion_plan conversion_plans".to_string()), pn.span.clone(), module_name.clone()),
+}
 }).iter().cloned());
         }
         __result
     })
+}
+
+pub fn cast_plan_refusal(
+    plan: String,
+    target_name: String,
+    reason: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new(vec![crate::v1_std_core::make_error_node(
+        Rc::new(CompilerDiagnostic::CastPlanRefused {
+            plan: plan.clone(),
+            target_type: target_name.clone(),
+            reason: reason.clone(),
+            span: span.clone(),
+        }),
+        module_name.clone(),
+    )])
+}
+
+pub fn authored_plan_identity(node: Rc<Node>) -> String {
+    match (*node.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+        {
+            let LiteralValue::LitStr { value: n, .. } = value.as_ref() else {
+                unreachable!()
+            };
+            n.clone()
+        }
+        _ => "".to_string(),
+    }
 }
 
 pub fn where_refinement_mismatch_diags(
@@ -13980,7 +14000,6 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 plan_nodes.clone(),
                 target_type.clone(),
                 target_name.clone(),
-                span.clone(),
                 scope.module_name.clone(),
                 scope.type_env.clone(),
             );

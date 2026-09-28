@@ -420,6 +420,7 @@ type CompilerDiagnostic
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
+  | CastPlanRefused { plan: String, target_type: String, reason: String, span: SourceSpan }
   | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
   | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
@@ -648,6 +649,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
     OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
+    CastPlanRefused { plan: _, target_type: _, reason: _, span: s } => s
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
     ConstructorCallAdmissionRefused {
@@ -733,6 +735,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     OptionalCastNotEliminated { source_type: st, target_type: tt, span: _ } =>
       concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
+    CastPlanRefused { plan: p, target_type: t, reason: r, span: _ } =>
+      concat("cast via '", p, "' onto '", t, "' refused: ", r)
     BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
       concat("bare 'None' cannot inhabit field '", f, "' of '", t, "': declared type '", dt, "' carries no absence — it is not optional and declares no 'None' variant")
     SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_message(refusal: r)
@@ -899,6 +903,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     OptionalCastNotEliminated { source_type: _, target_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CastPlanRefused { plan: _, target_type: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SourceAnnotationRefused { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

@@ -83,7 +83,6 @@ import std.occurrence_identity {
   node_occurrence_identity_minted,
 }
 import std.algebra { FreeMonoid, Empty, Cons }
-import std.conversion_plan { conversion_plans, conversion_plan_for, PlanFound, PlanUnknown, PlanDuplicated }
 import std.import {
   ParsedImportStatement,
   ParsedImportStatements,
@@ -5307,11 +5306,9 @@ type CastViaResult {
 }
 
 // `e as T via <plan>`: `via` is read only in this position, so it stays an ordinary identifier
-// everywhere else. The plan name must resolve in std.conversion_plan conversion_plans -- the one
-// roster v2 reads too. The named plan rides on the cast as its optional third child (the `plan`
-// ChildRole), a string literal carrying the plan identity, so infer can refuse a plan whose phases
-// the cast cannot discharge. v1 realizes the ProveRefinement phase through its existing checked
-// as-cast into a where-refinement.
+// everywhere else. Parse records the plan identity as the cast's optional `plan` child and decides
+// nothing about it: v1.compiler.infer cast_plan_phase_diags resolves it against
+// std.conversion_plan conversion_plans once, and refuses there.
 fn parse_cast_via(tokens: TokenStream, ctx: ParseContext) -> CastViaResult {
   if !tok_is_ident_text(tok: token_stream_first(stream: tokens), text: "via") {
     CastViaResult { tokens: tokens, ctx: ctx, plan: [], err: none }
@@ -5324,16 +5321,9 @@ fn parse_cast_via(tokens: TokenStream, ctx: ParseContext) -> CastViaResult {
         if !is_ident_shape(shape: nt.shape) {
           CastViaResult { tokens: rest, ctx: ctx, plan: [], err: Present { value: parse_error(msg: "expected a conversion plan name after `via`", span: name_span) } }
         } else {
-          let after = token_stream_advance(stream: rest, n: 1)
-          match conversion_plan_for(plans: conversion_plans, identity: nt.text) {
-            PlanFound { plan: _ } => {
-              let minted = mint_parsed_node_identity(ctx: ctx)
-              let plan_node = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprLiteral { value: LitStr { value: nt.text } }, children: [], inferred: none, span: name_span)
-              CastViaResult { tokens: after, ctx: minted.ctx, plan: [plan_node], err: none }
-            }
-            PlanUnknown => CastViaResult { tokens: after, ctx: ctx, plan: [], err: Present { value: parse_error(msg: concat("unknown conversion plan '", nt.text, "' after `via`: not a row of std.conversion_plan conversion_plans"), span: name_span) } }
-            PlanDuplicated { count: c } => CastViaResult { tokens: after, ctx: ctx, plan: [], err: Present { value: parse_error(msg: concat("conversion plan '", nt.text, "' is declared ", to_string(value: c), " times in std.conversion_plan conversion_plans"), span: name_span) } }
-          }
+          let minted = mint_parsed_node_identity(ctx: ctx)
+          let plan_node = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprLiteral { value: LitStr { value: nt.text } }, children: [], inferred: none, span: name_span)
+          CastViaResult { tokens: token_stream_advance(stream: rest, n: 1), ctx: minted.ctx, plan: [plan_node], err: none }
         }
       }
       Absent => CastViaResult { tokens: rest, ctx: ctx, plan: [], err: Present { value: parse_error(msg: "expected a conversion plan name after `via`", span: name_span) } }
