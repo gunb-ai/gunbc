@@ -858,42 +858,10 @@ fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn target_lex_rule_literal_step(
-  acc: Outcome<String>,
-  rule: LexRule,
-  token_class: Symbol
-) -> Outcome<String> {
-  match acc {
-    Accepted { value: _, diagnostics: _ } => acc
-    Rejected { diagnostics: _ } =>
-      match rule {
-        TokenRule { token_class: c, pattern: pattern } =>
-          if c == token_class {
-            match pattern {
-              LiteralPattern { text: text } =>
-                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
-              KeywordPattern { text: text } =>
-                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
-              _ =>
-                Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-                  )
-                }
-            }
-          } else {
-            acc
-          }
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
-      }
-  }
-}
-
-// A TARGET'S FIXED-TOKEN SPELLINGS, INDEXED BY CLASS ONCE PER SERIALIZATION. lex_rules_literal_for_class
-// folds over every lex rule for every fixed token it spells -- the same fact (which literal a class
-// has) recomputed per token (DESIGN §2). The index holds, for each class, the first literal or keyword
-// rule, exactly the one that fold selects; a class with none refuses with the same diagnostic.
+// A TARGET'S FIXED-TOKEN SPELLINGS, INDEXED BY CLASS. The one authority for which spelling a class
+// has: the first literal or keyword rule for it; a class with none refuses. A serializer builds the
+// index once and reads it per token; a single lookup (lex_rules_literal_for_class) reads the same
+// index, so there is no second selection rule to drift from this one (DESIGN §3).
 type LexLiteralIndex {
   by_class: Map<Symbol, String>
 }
@@ -935,24 +903,7 @@ fn lex_literal_indexed(index: LexLiteralIndex, token_class: Symbol) -> Outcome<S
 }
 
 fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
-  match rules {
-    VoidLexRules =>
-      outcome_rejected(
-        target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-      )
-    ModeledLexRules { root: set } =>
-      fold_list(
-        xs: set.rules,
-        empty: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-          )
-        },
-        cons: fn(acc, rule) {
-          target_lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
-        }
-      )
-  }
+  lex_literal_indexed(index: lex_literal_index(rules: rules), token_class: token_class)
 }
 
 fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
