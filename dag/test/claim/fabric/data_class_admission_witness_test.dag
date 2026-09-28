@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
-import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims, OidcIdTokenVerdict, OidcIdTokenVerified }
 import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision, PermittedJurisdictionsEnumerated }
 import product.data_category { BuildOutput, PersonalIdentity, build_output_ref, personal_identity_ref }
 import product.data_class {
@@ -23,7 +23,10 @@ import gunbc.fabric_m0_origin_commit {
   job_output_bytes, fabric_durable_origin_route, origin_write_permit_standing,
   PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherOperation,
 }
-import gunbc.principal_projection { oidc_projection }
+import gunbc.principal_projection {
+  VerifiedOidcProjectionResult, VerifiedOidcProjectionProjected, VerifiedOidcProjectionRefused,
+  verified_oidc_projection,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -119,13 +122,21 @@ fn fx_claims() -> OidcIdTokenClaims {
     audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
     expires_at: NumericDateWholeSeconds { seconds: 2000 },
     issued_at: NumericDateWholeSeconds { seconds: 1000 },
-    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
-    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: Present { value: true }, name: Present { value: "A Person" } },
+    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none, hosted_domain: none,
+    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: Present { value: true }, name: Present { value: "A Person" }, picture: none },
   }
 }
 
-fn fx_pii() -> Classified<PersonalIdentity, OidcStandardClaims> {
-  oidc_projection(claims: fx_claims()).standard
+// THE FIXTURE VERDICT IS CONSTRUCTED AS THE VERIFIED ARM DIRECTLY: this witness discriminates
+// the classification boundary, not the verdict fold (that fold's subject is
+// test.claim.google_oidc_verdict_witness), and the sealed principal mint keeps this constructed
+// verdict inert for identity -- it classifies claims, it mints no principal.
+fn fx_verdict() -> OidcIdTokenVerdict {
+  OidcIdTokenVerified { claims: fx_claims() }
+}
+
+fn fx_pii_result() -> VerifiedOidcProjectionResult {
+  verified_oidc_projection(verdict: fx_verdict())
 }
 
 fn admit_output(handling_map: DataHandlingMap, posture: CompliancePostureRevision, sink: Sink<BuildOutput>) -> DataEffectAdmission<BuildOutput, FilePath> {
@@ -215,7 +226,10 @@ test fn a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_
     fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture()),
     fx_row(category: personal_identity_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture()),
   ])
-  match admit_data_effect(classified: fx_pii(), sink: fx_output_sink(), operation: StoreDurably, handling_map: m, posture: fx_posture()) {
+  match fx_pii_result() {
+    VerifiedOidcProjectionRefused { cause: _ } => false
+    VerifiedOidcProjectionProjected { projection: p } =>
+      match admit_data_effect(classified: p.standard, sink: fx_output_sink(), operation: StoreDurably, handling_map: m, posture: fx_posture()) {
     DataEffectAdmitted { permit: _ } => false
     DataEffectRefused { cause: c } =>
       match c {
@@ -224,26 +238,37 @@ test fn a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_
         other => false
       }
   }
+  }
 }
 
 // LABEL PRESERVATION AND ERASURE. A projection of a classified value is classified in the same
 // category; the erased form keeps the category and the basis and has no payload at all.
 test fn a_projection_of_classified_data_keeps_its_category() -> Bool {
-  let email_length = classified_map(c: fx_pii(), f: fn(claims) {
+  match fx_pii_result() {
+    VerifiedOidcProjectionRefused { cause: _ } => false
+    VerifiedOidcProjectionProjected { projection: p } => {
+  let email_length = classified_map(c: p.standard, f: fn(claims) {
     match claims.email {
       Present { value: e } => count(e as String)
       Absent => 0
     }
   })
   declaration_ref_eq(a: classified_category(c: email_length), b: personal_identity_ref())
+  }
+  }
 }
 
 test fn a_redacted_value_keeps_the_category_and_the_basis_and_nothing_else() -> Bool {
-  let r = redact(c: fx_pii(), basis: fx_ref(name: "fixture_lawful_basis"))
+  match fx_pii_result() {
+    VerifiedOidcProjectionRefused { cause: _ } => false
+    VerifiedOidcProjectionProjected { projection: p } => {
+  let r = redact(c: p.standard, basis: fx_ref(name: "fixture_lawful_basis"))
   declaration_ref_eq(a: r.category, b: personal_identity_ref())
     && match r.erasure {
       ErasureApplied { basis: b } => declaration_ref_eq(a: b, b: fx_ref(name: "fixture_lawful_basis"))
     }
+  }
+  }
 }
 
 // THE WRITE IS BOUND TO ITS OWN EFFECT (review 65175). A permit's type binds category and payload
@@ -351,8 +376,12 @@ test fn a_recipient_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
 test fn the_standard_claims_survive_classification_intact() -> Bool {
   let sink = durable_origin_sink(category: personal_identity_category(), route: fx_other_route(), purpose: fx_ref(name: "fixture_purpose"), recipient: fx_ref(name: "fixture_recipient"))
   let m = fx_map(rows: [fx_row(category: personal_identity_ref(), sink: DurableOrigin { route: fx_other_route() }, posture: fx_posture())])
-  match admit_data_effect(classified: fx_pii(), sink: sink, operation: StoreDurably, handling_map: m, posture: fx_posture()) {
+  match fx_pii_result() {
+    VerifiedOidcProjectionRefused { cause: _ } => false
+    VerifiedOidcProjectionProjected { projection: p } =>
+      match admit_data_effect(classified: p.standard, sink: sink, operation: StoreDurably, handling_map: m, posture: fx_posture()) {
     DataEffectRefused { cause: _ } => false
     DataEffectAdmitted { permit: p } => p.value == fx_claims().standard
+  }
   }
 }
