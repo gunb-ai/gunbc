@@ -819,10 +819,6 @@ fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
-fn loop_domain_value_target(children: List<Edge>) -> NamedEdgeTargetLookup {
-  named_edge_target_lookup(children: children, name: ^loop_domain_edge)
-}
-
 // Only the iterated body repeats. The domain is evaluated once, the bound is a measure and the
 // carrier is a binder, so none of the three is part of what the iteration folds.
 fn loop_edge_is_iterated_body(e: Edge) -> Bool {
