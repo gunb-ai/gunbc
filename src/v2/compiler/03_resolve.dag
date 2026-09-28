@@ -286,19 +286,19 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
   }
 }
 
+// THE MODULE'S OWN DECLARATIONS BIND AT THE ROOT OF A SINGLE-TREE NAMESPACE. A grafted module
+// keeps them in its marked body under the containment spine, not as the root's named edges, so
+// harvesting the root alone left every module-level declaration unbound on this route: a module's
+// own `type Int` fell through to the kernel spelling and was silently bound to the kernel Int
+// (review 5342739525 on #12540). The body is selected by the graft's own mark
+// (v2.compiler.namespace_graft namespace_graft_module_body_optional), never by walking names, so
+// a missing or ambiguous step stops and a record that shares a segment's name is not a body.
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   let declared_in = namespace_tree_module_qn(tree: tree)
   let root_bindings = namespace_bindings_augment_from_module_atoms(
     root: tree.root,
     bindings: empty_map()
   )
-  // THE MODULE'S OWN DECLARATIONS BIND AT THE ROOT OF A SINGLE-TREE NAMESPACE. A grafted module
-  // keeps them in its marked body under the containment spine, not as the root's named edges, so
-  // harvesting the root alone left every module-level declaration unbound on this route: a module's
-  // own `type Int` fell through to the kernel spelling and was silently bound to the kernel Int
-  // (review 5342739525 on #12540). The body is selected by the graft's own mark
-  // (v2.compiler.namespace_graft namespace_graft_module_body_optional), never by walking names, so
-  // a missing or ambiguous step stops and a record that shares a segment's name is not a body.
   let bindings = match namespace_graft_module_body_optional(root: tree.root) {
     Present { value: body } => harvest_conj_named_bindings(root: body, acc: root_bindings)
     Absent => root_bindings
