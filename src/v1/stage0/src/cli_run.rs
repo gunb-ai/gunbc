@@ -9014,6 +9014,11 @@ const BUILTIN_REQUIRED_SERVICE_KEYS: &[(&str, &str)] = &[("filesystem_read", "Fi
 struct BareCandidates {
     names: BTreeSet<String>,
     call_position: BTreeSet<String>,
+    /// Names with at least one occurrence NOT in call position -- a value reference such as
+    /// the `get` in `map(xs, get)`. Kept apart from `call_position` because a name can carry
+    /// both, and the builtin exemption below is for calls alone: a builtin passed as a value
+    /// still resolves through the census, so its provider edge must survive.
+    value_position: BTreeSet<String>,
     /// Full dotted chains (`cron.Tab.List` in `cron.Tab.List()`): the dotted
     /// module-path scan owns chains whose prefix is a module path, but a
     /// SERVICE reference's prefix is a services-census key (`cron.Tab`,
@@ -9175,6 +9180,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
     let mut out = BareCandidates {
         names: BTreeSet::new(),
         call_position: BTreeSet::new(),
+        value_position: BTreeSet::new(),
         dotted_chains: BTreeSet::new(),
         bound: BTreeSet::new(),
     };
@@ -9386,6 +9392,8 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         }
         if i < bytes.len() && bytes[i] == b'(' {
             out.call_position.insert(name.to_string());
+        } else {
+            out.value_position.insert(name.to_string());
         }
         out.names.insert(name.to_string());
         prev_token = Some(name);
@@ -9840,7 +9848,8 @@ fn visit_bare_reference_providers(
         }
         let in_call_position = candidates.call_position.contains(&name);
         // A BARE CALL TO A BUILTIN BINDS NO MODULE (`bare_call_binds_no_module`).
-        if !service_head && bare_call_binds_no_module(&name, in_call_position) {
+        let in_value_position = candidates.value_position.contains(&name);
+        if !service_head && bare_call_binds_no_module(&name, in_call_position, in_value_position) {
             continue;
         }
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
@@ -32937,9 +32946,15 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
 /// Wrap<S>)` in `v2.test.manual.fn_as_value`, told each file to import that test helper, and so
 /// refused the builtin list lookup to every new file that declares imports. Only the call position
 /// is exempt, exactly as in the resolver: a bare VALUE reference spelled like a builtin still asks
-/// the census.
-pub(crate) fn bare_call_binds_no_module(name: &str, in_call_position: bool) -> bool {
-    in_call_position && infer_builtin_call_type(name.to_string()).is_some()
+/// the census -- and because the candidate sets are per NAME, a name that occurs both as a call
+/// and as a value is not exempt at all, so the value occurrence keeps its provider edge (Codex
+/// review on gunbc#12390).
+pub(crate) fn bare_call_binds_no_module(
+    name: &str,
+    in_call_position: bool,
+    in_value_position: bool,
+) -> bool {
+    in_call_position && !in_value_position && infer_builtin_call_type(name.to_string()).is_some()
 }
 
 pub(crate) fn is_substrate_vocabulary(name: &str) -> bool {
@@ -45891,19 +45906,44 @@ mod bare_builtin_call_provider {
 
     #[test]
     fn a_bare_call_to_a_builtin_binds_no_module() {
-        assert!(bare_call_binds_no_module("get", true));
-        assert!(bare_call_binds_no_module("list_push", true));
+        assert!(bare_call_binds_no_module("get", true, false));
+        assert!(bare_call_binds_no_module("list_push", true, false));
     }
 
     #[test]
     fn a_bare_value_reference_spelled_like_a_builtin_still_asks_the_census() {
-        assert!(!bare_call_binds_no_module("get", false));
+        assert!(!bare_call_binds_no_module("get", false, true));
+    }
+
+    /// The value occurrence is the one that needs its provider, and the sets are per name, so a
+    /// name carrying both a call and a value is judged as a value.
+    #[test]
+    fn a_builtin_name_used_both_as_a_call_and_as_a_value_still_asks_the_census() {
+        assert!(!bare_call_binds_no_module("get", true, true));
     }
 
     #[test]
     fn a_call_to_a_declared_function_still_asks_the_census() {
-        assert!(!bare_call_binds_no_module("append", true));
-        assert!(!bare_call_binds_no_module("filter", true));
+        assert!(!bare_call_binds_no_module("append", true, false));
+        assert!(!bare_call_binds_no_module("filter", true, false));
+    }
+
+    /// The scanner keeps the two positions apart for one name.
+    #[test]
+    fn the_scanner_records_call_and_value_positions_separately() {
+        let c = bare_identifier_candidates(
+            "module fixture\n\nfn f(xs: List<Int>) -> Int {\n  get(xs, 0) + length(map(xs, get))\n}\n",
+        );
+        assert!(c.call_position.contains("get"), "get is called");
+        assert!(
+            c.value_position.contains("get"),
+            "get is also passed as a value"
+        );
+        assert!(c.call_position.contains("length"), "length is called");
+        assert!(
+            !c.value_position.contains("length"),
+            "length is never a value"
+        );
     }
 
     /// The whole route, on a file of the real tree that carries both kinds of pair as rostered
