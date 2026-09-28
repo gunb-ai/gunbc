@@ -75,8 +75,8 @@ test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
 // (v2.compiler.02_parse symbol_intern_lexeme), whichever of the three token classes lexed it.
 // DECLARED FLIP (MQ-1 PR-2, true->false of caret_referenced_ident_does_not_publish_the_lexeme_holds):
 // the caret site USED to be the one exception -- class-stamped, publishing the generic
-// ^dag_token_ident for every caret literal (the grammar limitation
-// v2.lens.identity_captured_navigation.analyze node_source_symbol_note recorded), which is how two
+// ^dag_token_ident for every caret literal (a grammar limitation the identity_captured_navigation
+// lens worked around by re-reading source spans, a route now deleted), which is how two
 // different caret symbols reached one lowered node. That claim is inverted below as
 // caret_referenced_ident_publishes_the_lexeme_holds: the caret tree and the data-decl tree now both
 // carry the word, so reverting the caret site to a class stamp turns it red.
