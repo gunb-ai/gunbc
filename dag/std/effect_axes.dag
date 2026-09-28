@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.effect_grant {
   NamespacePosition, filesystem_position, position_under,
   Grant, Envelope, Read, Write, verb_eq,
-  RealTransport, Replay,
+  RealTransport, Replay, ModeledRealization,
 }
 
 // P-C derived axes (docs/plans/effect-namespace-grants.md lines 27-30, 62, owned silent-ibex-417):
@@ -53,6 +53,7 @@ fn classify_region(root: NamespacePosition) -> EffectRegion {
 fn read_grant_replayable(g: Grant) -> Bool {
   match g.binding {
     Replay { fixture_store: s } => true
+    ModeledRealization { realization: r } => true
     RealTransport =>
       match classify_region(root: g.root) {
         SubstrateClosure => true
@@ -75,6 +76,7 @@ fn write_grant_isolated(g: Grant) -> Bool {
 fn read_grant_intersects_live_tree(g: Grant) -> Bool {
   match g.binding {
     Replay { fixture_store: s } => false
+    ModeledRealization { realization: r } => false
     RealTransport =>
       match classify_region(root: g.root) {
         RepoTree => true

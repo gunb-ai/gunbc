@@ -1,0 +1,85 @@
+module gunbc.bmc_model
+
+import std.types { Bool, Int, List }
+import extdeps.bmc.ipmi_chassis_control {
+  IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
+}
+
+// THE ONE BMC MODEL: scenario state and its transitions, nothing else. The controller operations and
+// their response shapes are interface facts owned by extdeps.bmc (ipmi, ipmi_chassis_control,
+// megarac); this module never re-declares one. It is consumed by the dry operation realization
+// (gunbc.bmc_dry_realization) today and is written to be consumed unchanged by a protocol-speaking
+// simulator later: every transition is pure, time is an INPUT, and persistence is the world value,
+// so whoever runs the model supplies the clock and the storage.
+//
+// THIS IS THE FIRST SLICE: chassis power and one scheduled external event. Media rows, boot
+// parameters, the SOL session and notification delivery arrive with the acceptance matrix that
+// consumes them, as rows of this world, not as a second model.
+type BmcPower
+  = BmcPowerOn
+  | BmcPowerOff
+
+// An event the world undergoes on its own, independent of any request: the SEL on the Mt. Collins
+// unit records `Power Unit ChassisPwrStatus | AC lost` (run 36335369059, mtcollins1-boot-diagnostics.txt
+// sha256 eda19cde2e60d90d3d04946273e615eb5bf774496b9907e03d3bc15dbedc2c1c), which is the grounding for
+// modeling power loss as an event rather than as the answer to a command.
+type BmcEvent
+  = BmcAcPowerLost {}
+
+type BmcScheduledEvent {
+  at_seconds: Int
+  event: BmcEvent
+}
+
+type BmcWorld {
+  power: BmcPower
+  pending: List<BmcScheduledEvent>
+  fired: List<BmcScheduledEvent>
+}
+
+// A COMMAND'S EFFECT AND ITS REPLY ARE SEPARATE FACTS. effect_taken says whether the world changed;
+// the reply is the adapter's to render from the new world. §28.3 recommends a controller refuse a
+// power cycle at an OFF host with completion code D5h; the Mt. Collins MegaRAC does not, and answers
+// success doing nothing (extdeps.bmc.ipmi_chassis_control, run 36023602469). The model follows the
+// observed unit, and that departure from the recommendation is the reason the arm exists.
+type BmcChassisControlStep {
+  world: BmcWorld
+  effect_taken: Bool
+}
+
+fn bmc_power_is_on(world: BmcWorld) -> Bool {
+  match world.power {
+    BmcPowerOn => true
+    BmcPowerOff => false
+  }
+}
+
+fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
+  BmcWorld { power: power, pending: world.pending, fired: world.fired }
+}
+
+fn bmc_chassis_control(world: BmcWorld, action: IpmiChassisControlAction) -> BmcChassisControlStep {
+  match action {
+    IpmiChassisPowerUp => BmcChassisControlStep { world: bmc_with_power(world: world, power: BmcPowerOn), effect_taken: !bmc_power_is_on(world: world) }
+    IpmiChassisPowerDown => BmcChassisControlStep { world: bmc_with_power(world: world, power: BmcPowerOff), effect_taken: bmc_power_is_on(world: world) }
+    IpmiChassisPowerCycle => BmcChassisControlStep { world: world, effect_taken: bmc_power_is_on(world: world) }
+    IpmiChassisHardReset => BmcChassisControlStep { world: world, effect_taken: bmc_power_is_on(world: world) }
+  }
+}
+
+fn bmc_apply_event(world: BmcWorld, event: BmcEvent) -> BmcWorld {
+  match event {
+    BmcAcPowerLost {} => bmc_with_power(world: world, power: BmcPowerOff)
+  }
+}
+
+// Every event due at or before `now` fires, in schedule order, and moves from pending to fired.
+fn bmc_advance(world: BmcWorld, now: Int) -> BmcWorld {
+  fold(world.pending, init: BmcWorld { power: world.power, pending: [], fired: world.fired }, f: fn(acc, e) {
+    if e.at_seconds <= now {
+      BmcWorld { power: bmc_apply_event(world: acc, event: e.event).power, pending: acc.pending, fired: list_append(acc.fired, e) }
+    } else {
+      BmcWorld { power: acc.power, pending: list_append(acc.pending, e), fired: acc.fired }
+    }
+  })
+}
