@@ -11,11 +11,11 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_model { BmcWorld, BmcPowerOff, bmc_world, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
+import gunbc.bmc_model { BmcWorld, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile }
 import gunbc.process_environment_model { ModeledVariable }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
-import gunbc.wall_clock_model { ModeledWallClock }
+import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd }
 import gunbc.machine_intake_mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
@@ -500,6 +500,150 @@ test fn pinned_an_interrupted_attempt_locks_out_the_next_one() -> Bool {
           _ => false
         }
     }
+    _ => false
+  }
+}
+
+// ─── TIME ─────────────────────────────────────────────────────────────────────────────────────────
+// The media readiness wait is bounded by the WALL clock (gunbc.machine_intake_megarac_media_attach
+// megarac_await_readiness over extdeps.clock clock_unix_millis_read). In this scenario the attach's
+// readiness looks run from t=16 to t=35 of virtual time, so a jump at t=20 lands inside the wait.
+fn with_clock_jump(w: MtCollins1BootWorld, at: Int, by: Int) -> MtCollins1BootWorld {
+  match std.checked_arithmetic.checked_int_to_nat(n: at) {
+    Absent => w
+    Present { value: t } => MtCollins1BootWorld {
+      bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
+      clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: second(count: t), by: std.measure.second_displacement(count: by) }) },
+      worker: w.worker, console: w.console, media: w.media,
+    }
+  }
+}
+
+// THE WALL CLOCK STEPS BACK A MINUTE DURING THE READINESS WAIT. Virtual time keeps moving; the wall
+// reading goes backwards. The wait refuses as unable to bound itself -- the production
+// ReadinessClockIncoherent arm -- rather than waiting on a window it can no longer measure, and
+// nothing after the attach is written.
+test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bool {
+  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: 20, by: 0 - 60)) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the clock cannot bound the readiness wait")
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// THE WALL CLOCK JUMPS TEN MINUTES FORWARD DURING THE READINESS WAIT. The window reads as closed at the
+// next look, and the attempt refuses without a handoff: a forward step shortens the wait, it never
+// buys an unbounded one.
+test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
+  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: 20, by: 600)) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
+        && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// ─── CD ERROR CODE ────────────────────────────────────────────────────────────────────────────────
+// cd_error_code on the general route: 16 is the value the Mt. Collins MegaRAC answered on 2026-09-27
+// with nothing presented (test.claim.machine_intake.megarac_media_convergence_witness_test
+// mtcollins1_media_general_2026_09_27). Its meaning is not catalogued. Whether a stop clears it is
+// not observed, so the stale-image cases run both arms of the model's parameter.
+fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -> MegaRacMediaWorld {
+  MegaRacMediaWorld {
+    sessions: [], next_session: 1, share: real_share, mount_cd: 1, cd_error_code: code,
+    images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], cd: cd,
+    ready_after: second(count: 12), withdraw_at: none, withdraw_after_ready: none,
+    error_after_ready: after_ready, error_clears_on_stop: clears,
+  }
+}
+
+fn no_error_after_ready() -> Int? {
+  none
+}
+
+// Another census image of this lane: the same name stem with a different digest prefix.
+data stale_lane_image: String = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-0000000000000000.iso"
+
+fn presenting(image_name: String) -> MegaRacCdRow {
+  MegaRacCdRow { image_name: image_name, redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
+}
+
+// CODE 16 WITH NOTHING PRESENTED AND THE HOST OFF -- the 2026-09-27 state. The attach proceeds and the
+// presentation reaches Started, but the code is still 16 at readiness, so the attempt refuses as unable
+// to establish the media state, with no handoff.
+test fn cd_error_16_with_nothing_presented_refuses_before_the_handoff() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "cannot establish the media state")
+        && string_contains(s: outcome_reason(a: value), pattern: "cd_error_code before any write was 16")
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// CODE 16 WITH THE HOST ALREADY ON. Stopping the medium could withdraw what the host is running from,
+// so the fresh-presentation experiment is not admitted and nothing is written at all.
+test fn cd_error_16_with_the_host_on_writes_nothing() -> Bool {
+  let w = media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "the host is powered on; stopping the medium would withdraw what it may be running from")
+        && count(filter(route, r => is_controller_write(r: r) && r.invocation.at.service == "megarac.Media")) == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A CODE THAT APPEARS WITH READINESS. The presentation reads Started while the general route reports
+// 16 at readiness; the attempt refuses before the handoff.
+test fn cd_error_appearing_with_readiness_refuses_before_the_handoff() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd()))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "cd_error_code before any write was 0 and at readiness 16")
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A STALE IMAGE OF THIS LANE IS PRESENTED WITH CODE 16 AND THE HOST OFF, AND THE STOP CLEARS THE CODE.
+// The attempt stops the stale image, attaches the desired one, and proceeds to the boot: stop, then
+// start, then the override, then power.
+test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
+        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE SAME STALE IMAGE, BUT THE STOP DOES NOT CLEAR THE CODE. The replacement reaches Started with the
+// code still 16, and the attempt refuses before the handoff.
+test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "cannot establish the media state")
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A FOREIGN IMAGE IS PRESENTED -- not a census image of this lane. It is not this workflow's to stop:
+// the attempt refuses and writes nothing to the media.
+test fn a_foreign_presented_image_is_not_stopped() -> Bool {
+  match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: "gunbc-mtcollins1-census-older.iso")))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "it is not this workflow's to stop, so nothing was written")
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
     _ => false
   }
 }

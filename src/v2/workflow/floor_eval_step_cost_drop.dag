@@ -235,7 +235,7 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
 ]
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
-// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Eight identities, each running the real boot
+// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Fourteen identities, each running the real boot
 // entry end to end over the dry operation realization, which is the subject #12423 requires. The
 // matrix cases whose own subject stops before the boot's long loops -- the unit hold, the SOL acquire,
 // the share and listing refusals, the interrupted attempt -- measure under the budget and are not
@@ -272,6 +272,30 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_two_socket_answer_is_a_truthful_topology_refusal" as NonEmptyStr,
     measured_by: "PR required floor run 36419407813 of gunbc#12533, the [over-cost] and changed-witness lines for this identity (planned_as_changed_witness, verdict pass, wall under 500ms, over the new-witness eval-step budget); the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded" as NonEmptyStr,
+    measured_by: "claim_batch over dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag on the stacked matrix branch (eval_steps are host-independent), and the required floor of the pull request that adds it; the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_wall_clock_jumping_forward_during_readiness_closes_the_window" as NonEmptyStr,
+    measured_by: "claim_batch over dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag on the stacked matrix branch (eval_steps are host-independent), and the required floor of the pull request that adds it; the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_nothing_presented_refuses_before_the_handoff" as NonEmptyStr,
+    measured_by: "claim_batch over dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag on the stacked matrix branch (eval_steps are host-independent), and the required floor of the pull request that adds it; the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_appearing_with_readiness_refuses_before_the_handoff" as NonEmptyStr,
+    measured_by: "claim_batch over dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag on the stacked matrix branch (eval_steps are host-independent), and the required floor of the pull request that adds it; the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted" as NonEmptyStr,
+    measured_by: "claim_batch over dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag on the stacked matrix branch (eval_steps are host-independent), and the required floor of the pull request that adds it; the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_does_not_clear_refuses_after_the_replace" as NonEmptyStr,
+    measured_by: "claim_batch over dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag on the stacked matrix branch (eval_steps are host-independent), and the required floor of the pull request that adds it; the billed work is the real gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 evaluated end to end in the seed interpreter over the dry realization" as NonEmptyStr,
   },
 ]
 
