@@ -268,10 +268,17 @@ fn fleet_converge_job_roster_extra(edges: List<FleetConvergeJobEdge>, expected: 
   filter(map(edges, e => e.id as String), id => !any(expected, x => x == id))
 }
 
+// A DUPLICATED EDGE ROW IS ITS OWN RED: the set join cannot see it, and the builders' lookup takes
+// the first match, so a second row with different needs would be silently ignored.
+fn fleet_converge_job_roster_duplicated(edges: List<FleetConvergeJobEdge>) -> List<String> {
+  filter(map(edges, e => e.id as String), id => length(filter(edges, e => (e.id as String) == id)) > 1)
+}
+
 fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: List<String>) -> Bool {
   let build = [fleet_converge_release_bins_job_id as String]
   fleet_converge_job_roster_missing(edges: edges, expected: expected) == []
     && fleet_converge_job_roster_extra(edges: edges, expected: expected) == []
+    && fleet_converge_job_roster_duplicated(edges: edges) == []
     && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
       e.needs == []
     } else {
@@ -295,6 +302,13 @@ test fn fleet_converge_job_roster_red_names_a_rostered_mode_job_with_no_edge() -
   let edges = filter(fleet_converge_job_edges, e => (e.id as String) != "namecheap-observe")
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
     && fleet_converge_job_roster_missing(edges: edges, expected: fleet_converge_expected_job_ids()) == ["namecheap-observe"]
+}
+
+test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool {
+  let edges = concat(fleet_converge_job_edges,
+    [FleetConvergeJobEdge { id: "namecheap-observe" as NonEmptyStr, needs: [] }])
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+    && fleet_converge_job_roster_duplicated(edges: edges) == ["namecheap-observe", "namecheap-observe"]
 }
 
 test fn fleet_converge_job_roster_red_on_an_edge_that_skips_build() -> Bool {
