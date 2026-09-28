@@ -307,7 +307,7 @@ fn serve_issue_comment_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let plan = roadmap_authority_projection()
+  let plan = gunbc.roadmap_live_projection.roadmap_live_authority_projection()
   if !issue_detail_node_exists(proj: plan, node_id: node_id) {
     serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["issue not found: ", node_id, "\n"], ""))
   } else {

@@ -3,7 +3,7 @@ module gunbc.roadmap_page
 import gunbc.roadmap.roadmap_task_projection { roadmap_task_projection, RoadmapTaskCurrent, RoadmapTaskAbsent, RoadmapTaskUnreadable }
 import extdeps.google.issue_tracker { issue_status_wire }
 
-import gunbc.roadmap.roadmap_event_log { TaskCreated, TaskRevised }
+import gunbc.roadmap.roadmap_event_log { PlanningApplied, TaskCreated, TaskRevised }
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
@@ -1808,6 +1808,7 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
       }
     TaskCreated { task: _ } => "created the issue"
     TaskRevised { task: _ } => "updated the issue"
+    PlanningApplied { candidate, task: _ } => join(["accepted planning candidate ", candidate as String], "")
     Released => "released the issue"
     Progress { note } => join(["progress: ", note as String], "")
     Blocked { reason } => join(["blocked: ", reason as String], "")

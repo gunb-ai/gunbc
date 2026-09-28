@@ -1,5 +1,7 @@
 module gunbc.roadmap_serve
 
+import gunbc.auth.approval_broker_transport_request { approval_broker_transport_request }
+
 import gunbc.roadmap_planning_refresh { planning_accept_and_refresh }
 import gunbc.roadmap_planning_routes { planning_get, planning_post }
 import gunbc.roadmap_planning_page { planning_editor_script }
@@ -828,7 +830,7 @@ fn roadmap_serve_invoke_over(
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
     ApprovalBrokerCutoverHandler { route: r } =>
-      approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
+      approval_broker_invoke(handler: r, params: params, request: approval_broker_transport_request(request: request), process: RoadmapProcess)
   }
 }
 
@@ -1089,7 +1091,7 @@ fn roadmap_serve_respond_over(
             daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
             cookie_header: cookie_header,
-            request: ServeHttpRequest<RequestAuthenticationEvidence> {
+            request: ServeHttpRequest {
               method: m,
               path: path,
               body: body,
