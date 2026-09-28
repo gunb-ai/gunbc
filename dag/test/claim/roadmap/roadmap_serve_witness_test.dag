@@ -592,7 +592,6 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
     attempts_refused: none,
     standings: StandingsUnobserved { reason: "witness render: the event carrier is not consulted" },
     launch: launch_host_unobserved_static_render(),
-    profiles: [],
   )) {
     EmitOk { html } => html
     EmitRejected { reason } => reason
@@ -744,13 +743,13 @@ test fn witness_human_assignment_never_dispatches() -> Bool {
 test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> Bool {
   let blocked = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee: fabric_workflow_principal,
     event_id: "evt-2",
     outcome: na(r: LaunchDependenciesBlocked { blockers: ["dep-a", "dep-b"] }),
   )
   let no_capacity = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee: fabric_workflow_principal,
     event_id: "evt-3",
     outcome: na(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }),
   )
@@ -771,7 +770,7 @@ test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> 
 test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee: fabric_workflow_principal,
     event_id: "evt-4",
     outcome: Spawned { node_id: "some-node", session_name: "gunbc-some-node-abc", provider: "codex", launch: launch_identity_exemplar() },
   )
@@ -787,7 +786,7 @@ test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
 test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
-    assignee_display: principal_ref_label(p: fabric_workflow_principal),
+    assignee: fabric_workflow_principal,
     event_id: "evt-5",
     outcome: na(r: LaunchAlreadyLive { session_name: "gunbc-some-node-abc" }),
   )

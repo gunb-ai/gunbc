@@ -442,16 +442,7 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // the top:auto fallback had rendered the menu at its static flex position above the viewport).
 // Derived by execution (roadmap_css_derived_digest on this tree,
 // 0e4185ec41c585f2); this digest only pins bytes.
-// Re-pinned 2026-09-28 for the profile-bound assignee identity slice (owner ask): the assignee
-// chip pairs its circular avatar with the person's real identity — the .issue-assignee-text span
-// (margin-left var(--space-4), font-size var(--text-13), color var(--issue-text)) rides beside
-// the chip on the defined tokens; no undefined vars. Behavioral receipts:
-// witness_assignee_chip_renders_the_profile_identity_when_known,
-// witness_issue_detail_rail_and_comments_render_the_profile_identity,
-// witness_inline_assignment_context_chip_html_carries_the_profile_display, the register censuses
-// unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
-// 13bfe2bf4b369f2f); this digest only pins bytes.
-data roadmap_css_lift_parity_digest: String = "13bfe2bf4b369f2f"
+data roadmap_css_lift_parity_digest: String = "0e4185ec41c585f2"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

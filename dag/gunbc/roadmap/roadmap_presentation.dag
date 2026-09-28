@@ -31,7 +31,6 @@ import gunbc.roadmap_provider_events {
   ProviderEventsRefused,
 }
 import extdeps.google.issue_tracker { fleet_component_hosts }
-import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -403,7 +402,6 @@ type WorkRowView {
   worker_alive: Bool
   standing: RoadmapNodeStanding?
   attempt_stale: Bool
-  profiles: List<PrincipalProfile>
 }
 
 // STALENESS DIMS (operator ruling 2026-09-20): an attempt launched against a revision that is no
@@ -1013,10 +1011,6 @@ fn worker_alive_from_process(process: WorkerProcessEvidence) -> Bool {
   }
 }
 
-// profiles is the read-once profile roster the render entries thread from the auth profile store
-// (gunbc.auth.profile_projection): the decided row carries it so every assignee surface the row
-// renders (table cell, rail, return-to) projects real identity — name/email/photo — under the
-// never-blocks law (an empty roster renders the label fallback exactly as before).
 fn work_row_view(
   rn: RoadmapNode,
   nodes: List<RoadmapNode>,
@@ -1028,7 +1022,6 @@ fn work_row_view(
   worker_alive: Bool,
   standing: RoadmapNodeStanding?,
   attempt_stale: Bool,
-  profiles: List<PrincipalProfile>,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
   let scheduling = work_scheduling(rn: rn, nodes: nodes, edges: edges)
@@ -1047,7 +1040,6 @@ fn work_row_view(
     worker_alive: worker_alive,
     standing: standing,
     attempt_stale: attempt_stale,
-    profiles: profiles,
   }
 }
 
@@ -2224,7 +2216,6 @@ fn family_subject_row(row: WorkRowView, subject: String) -> WorkRowView {
     worker_alive: row.worker_alive,
     standing: row.standing,
     attempt_stale: row.attempt_stale,
-    profiles: row.profiles,
   }
 }
 

@@ -31,16 +31,29 @@ Reported by me · To be verified · Bookmark groups · Saved searches · Hotlist
 - Backgrounds: `#f1f3f4` · `#f8f9fa` · highlight blue `#e8f0fe` · `#d2e3fc`
 - Type: Roboto, Arial, sans-serif · Google Sans, Roboto, Arial, sans-serif (headings)
 
-## Issue-row anatomy (CONVENTION — pending a saved results page)
-Results table columns: ID (linked) · Component · Title · Status · Priority (P0–P4) ·
-Severity (S0–S4) · Assignee · Stars (+1 count) · Modified. Row is one line, dense,
-single-click to detail; star toggles inline.
+## Issue-row anatomy (VERIFIED — saved results page 2026-09-24)
+Source: `/home/briansrls/chromium-565764076/test - Chromium.html` (50 live rows).
+Results table column headers, in order: **P (priority) · TYPE · TITLE · ASSIGNEE ·
+STATUS · D VIEWS · ID · LAST MODIFIED**. A column picker exists
+(`bv2-column-picker-container`) — the column set is user-adjustable. Rows are dense
+single lines; the ID cell links to the detail page; the star cell toggles inline.
+Sample verified titles include the ordinary chromium row shapes.
 
-## Issue detail anatomy (CONVENTION)
-Header: issue id + title + action overflow. Field panel: Status, Priority, Severity,
-Assignee, CC, Reporter, Components, Blocking/Blocked-by, Stars/Votes, Created/Modified.
-Tabs: Comments (default, the discussion) · History (field-change log) · plus
-duplicate/mark actions. Our Work tab maps onto the History half + execution receipts.
+## Create-issue form (VERIFIED — saved page 2026-09-24)
+Source: `/home/briansrls/chromium-565764076/New issue - Issue Tracker.html`.
+Fields: **Title** and **Description** (Markdown-supported, with a "Use Markdown for
+this comment" hint). Actions: **Create** · **Create & Start Another** · **Discard**.
+(The captured form shows the minimal state; component/assignee/priority are the same
+metadata fields from the detail page's editable sidebar, assigned after creation.)
+
+## Issue detail anatomy (VERIFIED — saved page capture 2026-09-24)
+Source: `/home/briansrls/chromium-565764076/` (real issue page: header + tabs + metadata + comments).
+
+- **Header**: "Issue <id>" title row; component breadcrumb (`IO (Do Not Use, Use Subcomponents) > Keyboard`); the issue id repeated; vote/star counts (+1 / 0); "Mark as Duplicate" action.
+- **Tab row**: `Comments` (default) · `Dependencies` · `Duplicates (n)` · `Blocking` · `Resources` — the issue's relations live in their own tabs.
+- **Main column**: Description (the body) then numbered comments (`#1 …`, each with author + timestamp + body).
+- **Right sidebar**: metadata field rows (class `bv2-issue-metadata-field` / `bv2-issue-metadata-list-field`): Status (e.g. New), Priority (P3), Severity, Assignee, CC, Reporter, Components, Blocking/Blocked-by, Hotlists, Created/Modified, plus field-level edit affordances (`issue-metadata-field-edit-icon`, `bv2-field-user-action-footer`).
+- The metadata fields are editable in place (bv2-editable-title / bv2-editable-value) — the detail page IS the edit surface.
 
 ## Mapping notes for the frontend (workflow policy, not extdeps)
 - Issue = roadmap node; Component = domain placement (owner/lane); Blocking edges =
