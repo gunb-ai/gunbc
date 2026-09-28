@@ -1,0 +1,76 @@
+module gunbc.bmc_megarac_web_adapter
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.optional { Present, Absent }
+import extdeps.bmc.megarac {
+  MegaRacSessionReply, MegaRacSessionOpened, MegaRacSessionRefused,
+  megarac_session_reply_status, megarac_session_reply_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
+}
+import gunbc.bmc_model {
+  BmcWorld, BmcKvmStreamClosed, BmcKvmClosedByController, BmcWebLoginAccepted, BmcWebLoginRefused,
+  bmc_web_login, bmc_kvm_viewer_count, bmc_kvm_connect, bmc_web_logout, bmc_advance,
+}
+
+// THE PROTOCOL ADAPTER BETWEEN THE ONE BMC MODEL AND A REAL HTTP+WebSocket CLIENT: the second
+// adapter over gunbc.bmc_model, beside gunbc.bmc_dry_realization. It holds no controller state and
+// decides nothing: every answer is a gunbc.bmc_model transition, encoded with the extdeps.bmc.megarac
+// wire renderers. What it adds is the SEQUENCE a MegaRAC web client drives -- login, services, the
+// /kvm connect, the controller's own events against the stream, logout -- rendered as the script the
+// transport below serves, so a browser can be pointed at the model.
+//
+// TIME IS AN INPUT. The controller's stream close is a BmcKvmStreamClosed event in the world's
+// schedule; the adapter asks bmc_advance whether the stream is closed at that instant and hands the
+// transport the offset, counted from the connect. The browser-side canvas_readable flag is read
+// straight from the world and rendered into the page the transport serves.
+fn megarac_web_protocol_script(initial: BmcWorld, username: String, password: String, extended_privilege: Int) -> String {
+  let login = bmc_web_login(world: initial, username: username, password: password)
+  let opened = match login.reply {
+    BmcWebLoginAccepted { session: s } => Present { value: s }
+    BmcWebLoginRefused {} => none
+  }
+  let reply = match opened {
+    Present { value: s } => MegaRacSessionOpened { csrf_token: s.csrf_token, privilege: s.privilege, extended_privilege: extended_privilege, racsession_id: s.id }
+    Absent => MegaRacSessionRefused {}
+  }
+  let token = match opened { Present { value: s } => s.csrf_token  Absent => "" }
+  let connect = bmc_kvm_connect(world: login.world, csrf_token: token)
+  let close_at = match filter(connect.world.pending, e => match e.event { BmcKvmStreamClosed {} => true  _ => false }).first() {
+    Absent => "none"
+    Present { value: e } =>
+      match bmc_advance(world: connect.world, now: e.at_seconds).web.kvm {
+        BmcKvmClosedByController { session: _ } => to_string(e.at_seconds)
+        _ => "none"
+      }
+  }
+  let logout = bmc_web_logout(world: connect.world, csrf_token: token)
+  join([
+    concat("login_status=", to_string(megarac_session_reply_status(reply: reply))),
+    concat("login_body=", megarac_session_reply_json(reply: reply)),
+    concat("services_body=", megarac_services_kvm_json(viewer_count: bmc_kvm_viewer_count(world: login.world))),
+    concat("kvm_path=", megarac_kvm_websocket_path as String),
+    concat("kvm_accept=", if connect.accepted { "1" } else { "0" }),
+    concat("kvm_close_after_seconds=", close_at),
+    concat("canvas_readable=", if initial.web.canvas_readable { "1" } else { "0" }),
+    concat("logout_status=", if logout.released { "200" } else { "401" }),
+    "",
+  ], "\n")
+}
+
+// THE TRANSPORT: node's http server and a hand-rolled RFC 6455 handshake, serving the script above
+// and a stand-in viewer page (a canvas#kvm painted from the /kvm stream; the vendor's viewer is not
+// redistributable). It only encodes: it reads its answers from the script line by line.
+data megarac_web_transport_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.bmc_megarac_web_adapter",
+    decl_name: "megarac_web_transport_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data megarac_web_transport_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.bmc_megarac_web_adapter megarac_web_transport_script -- the HTTP+WebSocket transport over the model's rendered script is a node -e string. DISSOLVES WHEN `gunbc serve` (or a typed serve realization) answers WebSocket upgrades and holds a connection open across requests, so each request is decoded, handed to the gunbc.bmc_model transition and encoded in .dag per request, rather than replayed from a pre-rendered script")
+
+data megarac_web_transport_script: String = "const http=require('http');const crypto=require('crypto');const fs=require('fs');const [port,port2,scriptPath,logPath]=process.argv.slice(1);const S=\{};for(const l of fs.readFileSync(scriptPath,'utf8').split('\\n'))\{const i=l.indexOf('=');if(i>0)S[l.slice(0,i)]=l.slice(i+1)}function log(m)\{fs.appendFileSync(logPath,Date.now()+' '+m+'\\n')}const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64');http.createServer((q,r)=>\{r.writeHead(200,\{'Content-Type':'image/png'});r.end(png)}).listen(+port2,'127.0.0.1');const taint=S.canvas_readable!=='1'?\"const i=new Image();i.onload=()=>x.drawImage(i,0,0);i.src='http://localhost:\"+port2+\"/x.png';\":'';const viewer=\"<!doctype html><canvas id=\\\"kvm\\\" width=\\\"1\\\" height=\\\"1\\\"></canvas><script>const c=document.getElementById('kvm');const x=c.getContext('2d');const ws=new WebSocket('ws://'+location.host+'\"+S.kvm_path+\"');ws.onmessage=()=>\{c.width=800;c.height=600;x.fillStyle='#036';x.fillRect(0,0,800,600);\"+taint+\"};</script>\";const s=http.createServer((q,r)=>\{ if(q.url==='/')\{r.end('<html></html>');return} if(q.url==='/viewer.html')\{r.writeHead(200,\{'Content-Type':'text/html'});r.end(viewer);return} if(q.url==='/api/session'&&q.method==='POST')\{log('login');r.writeHead(+S.login_status,\{'Content-Type':'application/json'});r.end(S.login_body);return} if(q.url==='/api/session'&&q.method==='DELETE')\{log('logout');r.writeHead(+S.logout_status,\{'Content-Type':'application/json'});r.end('\{}');return} if(q.url==='/api/settings/services')\{log('services');r.writeHead(200,\{'Content-Type':'application/json'});r.end(S.services_body);return} r.writeHead(404);r.end()});s.on('upgrade',(q,sock)=>\{if(q.url!==S.kvm_path||S.kvm_accept!=='1')\{log('kvm-refused');sock.destroy();return} const k=crypto.createHash('sha1').update(q.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64'); sock.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: '+k+'\\r\\n\\r\\n'); sock.write(Buffer.from([0x81,0x05,0x66,0x72,0x61,0x6d,0x65]));log('kvm-open'); if(S.kvm_close_after_seconds!=='none')\{setTimeout(()=>\{log('kvm-closed-by-controller');sock.destroy()},1000*Number(S.kvm_close_after_seconds))}});s.listen(+port,'127.0.0.1',()=>log('listening'));"

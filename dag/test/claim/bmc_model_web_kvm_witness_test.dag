@@ -1,0 +1,83 @@
+module test.claim.bmc_model_web_kvm_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, String }
+import gunbc.bmc_model {
+  BmcWorld, BmcWebWorld, BmcWebAccount, BmcPowerOn, BmcScheduledEvent, BmcKvmStreamClosed, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController,
+  BmcWebLoginAccepted, BmcWebLoginRefused,
+  bmc_web_login, bmc_kvm_viewer_count, bmc_kvm_connect, bmc_web_logout, bmc_advance,
+}
+import gunbc.bmc_megarac_web_adapter { megarac_web_protocol_script }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn web(other_viewers: Int, canvas_readable: Bool) -> BmcWebWorld {
+  BmcWebWorld {
+    account: BmcWebAccount { username: "admin", password: "pw", privilege: 4 },
+    sessions: [],
+    next_session_id: 7,
+    other_kvm_viewers: other_viewers,
+    kvm: BmcKvmIdle {},
+    canvas_readable: canvas_readable,
+  }
+}
+
+fn world(other_viewers: Int, close_at: Int, canvas_readable: Bool) -> BmcWorld {
+  BmcWorld {
+    power: BmcPowerOn,
+    pending: if close_at < 0 { [] } else { [BmcScheduledEvent { at_seconds: close_at, event: BmcKvmStreamClosed {} }] },
+    fired: [],
+    web: web(other_viewers: other_viewers, canvas_readable: canvas_readable),
+  }
+}
+
+// A MATCHING ACCOUNT OPENS A SESSION; ANY OTHER IS REFUSED AND CHANGES NOTHING.
+test fn login_opens_a_session_only_for_the_account() -> Bool {
+  let ok = bmc_web_login(world: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "pw")
+  let bad = bmc_web_login(world: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "nope")
+  let opened = match ok.reply { BmcWebLoginAccepted { session: s } => s.id == 7 && count(ok.world.web.sessions) == 1  _ => false }
+  let refused = match bad.reply { BmcWebLoginRefused {} => count(bad.world.web.sessions) == 0  _ => false }
+  opened && refused
+}
+
+// THE VIEWER COUNT IS EVERY VIEWER THE CONTROLLER SERVES; OUR STREAM COUNTS ONCE CONNECTED, AND A
+// LOGOUT ENDS THE STREAM ITS SESSION OWNED.
+test fn viewer_count_connect_and_logout_move_the_stream() -> Bool {
+  let login = bmc_web_login(world: world(other_viewers: 1, close_at: -1, canvas_readable: true), username: "admin", password: "pw")
+  let before = bmc_kvm_viewer_count(world: login.world)
+  let c = bmc_kvm_connect(world: login.world, csrf_token: "csrf-7")
+  let during = bmc_kvm_viewer_count(world: c.world)
+  let out = bmc_web_logout(world: c.world, csrf_token: "csrf-7")
+  let idle = match out.world.web.kvm { BmcKvmIdle {} => true  _ => false }
+  let foreign = bmc_kvm_connect(world: login.world, csrf_token: "csrf-99")
+  before == 1 && during == 2 && c.accepted && out.released && idle && !foreign.accepted
+}
+
+// THE CONTROLLER CLOSES THE STREAM ON ITS OWN SCHEDULE: before the event it streams, at it the stream
+// is closed by the controller, and the web session survives.
+test fn a_scheduled_close_ends_the_stream_not_the_session() -> Bool {
+  let login = bmc_web_login(world: world(other_viewers: 0, close_at: 30, canvas_readable: true), username: "admin", password: "pw")
+  let c = bmc_kvm_connect(world: login.world, csrf_token: "csrf-7")
+  let early = match bmc_advance(world: c.world, now: 29).web.kvm { BmcKvmStreaming { session: k } => k == 7  _ => false }
+  let late = bmc_advance(world: c.world, now: 30)
+  let closed = match late.web.kvm { BmcKvmClosedByController { session: k } => k == 7  _ => false }
+  early && closed && count(late.web.sessions) == 1
+}
+
+// THE ADAPTER RENDERS THE MODEL'S ANSWERS, NOT ITS OWN: seat busy, a controller close and an
+// unreadable canvas each reach the script only through the world.
+test fn the_protocol_script_is_the_models_answers_encoded() -> Bool {
+  let happy = megarac_web_protocol_script(initial: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "pw", extended_privilege: 259)
+  let busy = megarac_web_protocol_script(initial: world(other_viewers: 1, close_at: -1, canvas_readable: true), username: "admin", password: "pw", extended_privilege: 259)
+  let drop = megarac_web_protocol_script(initial: world(other_viewers: 0, close_at: 3, canvas_readable: true), username: "admin", password: "pw", extended_privilege: 259)
+  let taint = megarac_web_protocol_script(initial: world(other_viewers: 0, close_at: -1, canvas_readable: false), username: "admin", password: "pw", extended_privilege: 259)
+  let refused = megarac_web_protocol_script(initial: world(other_viewers: 0, close_at: -1, canvas_readable: true), username: "admin", password: "wrong", extended_privilege: 259)
+  string_contains(s: happy, pattern: "login_body=\{\"ok\":0,\"CSRFToken\":\"csrf-7\",\"privilege\":4,\"extendedpriv\":259,\"racsession_id\":7}")
+    && string_contains(s: happy, pattern: "services_body=[\{\"service_name\":\"kvm\",\"viewer_count\":0}]")
+    && string_contains(s: happy, pattern: "kvm_close_after_seconds=none")
+    && string_contains(s: busy, pattern: "\"viewer_count\":1}")
+    && string_contains(s: drop, pattern: "kvm_close_after_seconds=3")
+    && string_contains(s: taint, pattern: "canvas_readable=0")
+    && string_contains(s: refused, pattern: "login_status=401")
+    && string_contains(s: refused, pattern: "kvm_accept=0")
+}

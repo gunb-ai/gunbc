@@ -1,6 +1,7 @@
 module gunbc.bmc_model
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, String }
+import v2.std.optional { Present, Absent }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
@@ -25,6 +26,7 @@ type BmcPower
 // modeling power loss as an event rather than as the answer to a command.
 type BmcEvent
   = BmcAcPowerLost {}
+  | BmcKvmStreamClosed {}
 
 type BmcScheduledEvent {
   at_seconds: Int
@@ -35,6 +37,49 @@ type BmcWorld {
   power: BmcPower
   pending: List<BmcScheduledEvent>
   fired: List<BmcScheduledEvent>
+  web: BmcWebWorld
+}
+
+// THE WEB AND KVM SURFACE OF A MegaRAC SP-X CONTROLLER (firmware 0.32; operations and wire shapes in
+// extdeps.bmc.megarac, cited there to the served source.min.js and viewer.min.js). World state only:
+// the web sessions the controller holds, the account it accepts, the KVM viewers other clients hold,
+// and the one KVM stream this world's client may open. `canvas_readable` is a BROWSER-side fact the
+// protocol adapter reads -- whether the page's canvas can be exported -- and no transition changes it.
+type BmcWebSession {
+  id: Int
+  csrf_token: String
+  privilege: Int
+}
+
+type BmcWebAccount {
+  username: String
+  password: String
+  privilege: Int
+}
+
+type BmcKvmStream
+  = BmcKvmIdle {}
+  | BmcKvmStreaming { session: Int }
+  | BmcKvmClosedByController { session: Int }
+
+type BmcWebWorld {
+  account: BmcWebAccount
+  sessions: List<BmcWebSession>
+  next_session_id: Int
+  other_kvm_viewers: Int
+  kvm: BmcKvmStream
+  canvas_readable: Bool
+}
+
+// A world whose web surface nobody has touched and whose account matches no login: the first slice's
+// worlds carry it unchanged.
+data bmc_web_world_untouched: BmcWebWorld = BmcWebWorld {
+  account: BmcWebAccount { username: "", password: "", privilege: 0 },
+  sessions: [],
+  next_session_id: 1,
+  other_kvm_viewers: 0,
+  kvm: BmcKvmIdle {},
+  canvas_readable: true,
 }
 
 // A COMMAND'S EFFECT AND ITS REPLY ARE SEPARATE FACTS. effect_taken says whether the world changed;
@@ -55,7 +100,91 @@ fn bmc_power_is_on(world: BmcWorld) -> Bool {
 }
 
 fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
-  BmcWorld { power: power, pending: world.pending, fired: world.fired }
+  BmcWorld { power: power, pending: world.pending, fired: world.fired, web: world.web }
+}
+
+fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
+  BmcWorld { power: world.power, pending: world.pending, fired: world.fired, web: web }
+}
+
+fn bmc_web_with(web: BmcWebWorld, sessions: List<BmcWebSession>, next_session_id: Int, kvm: BmcKvmStream) -> BmcWebWorld {
+  BmcWebWorld { account: web.account, sessions: sessions, next_session_id: next_session_id, other_kvm_viewers: web.other_kvm_viewers, kvm: kvm, canvas_readable: web.canvas_readable }
+}
+
+// ── WEB SESSION AND KVM TRANSITIONS ──────────────────────────────────────────────────────────────
+
+type BmcWebLoginReply
+  = BmcWebLoginAccepted { session: BmcWebSession }
+  | BmcWebLoginRefused {}
+
+type BmcWebLoginStep {
+  world: BmcWorld
+  reply: BmcWebLoginReply
+}
+
+// POST /api/session. An account match opens a session with a fresh id and CSRF token; anything else
+// is refused and the world is unchanged.
+fn bmc_web_login(world: BmcWorld, username: String, password: String) -> BmcWebLoginStep {
+  let web = world.web
+  if username == web.account.username && password == web.account.password && username != "" {
+    let session = BmcWebSession { id: web.next_session_id, csrf_token: concat("csrf-", to_string(web.next_session_id)), privilege: web.account.privilege }
+    BmcWebLoginStep {
+      world: bmc_with_web(world: world, web: bmc_web_with(web: web, sessions: list_append(web.sessions, session), next_session_id: web.next_session_id + 1, kvm: web.kvm)),
+      reply: BmcWebLoginAccepted { session: session },
+    }
+  } else {
+    BmcWebLoginStep { world: world, reply: BmcWebLoginRefused {} }
+  }
+}
+
+fn bmc_web_session_of_token(world: BmcWorld, csrf_token: String) -> List<BmcWebSession> {
+  filter(world.web.sessions, s => s.csrf_token == csrf_token)
+}
+
+// GET /api/settings/services, the kvm row: every viewer the controller is serving, ours included.
+fn bmc_kvm_viewer_count(world: BmcWorld) -> Int {
+  world.web.other_kvm_viewers + match world.web.kvm {
+    BmcKvmStreaming { session: _ } => 1
+    _ => 0
+  }
+}
+
+type BmcKvmConnectStep {
+  world: BmcWorld
+  accepted: Bool
+}
+
+// The /kvm WebSocket for a session this world holds. A token naming no session is refused.
+fn bmc_kvm_connect(world: BmcWorld, csrf_token: String) -> BmcKvmConnectStep {
+  match bmc_web_session_of_token(world: world, csrf_token: csrf_token).first() {
+    Absent => BmcKvmConnectStep { world: world, accepted: false }
+    Present { value: s } => BmcKvmConnectStep {
+      world: bmc_with_web(world: world, web: bmc_web_with(web: world.web, sessions: world.web.sessions, next_session_id: world.web.next_session_id, kvm: BmcKvmStreaming { session: s.id })),
+      accepted: true,
+    }
+  }
+}
+
+type BmcWebLogoutStep {
+  world: BmcWorld
+  released: Bool
+}
+
+// DELETE /api/session: the session goes, and a KVM stream it owned ends with it.
+fn bmc_web_logout(world: BmcWorld, csrf_token: String) -> BmcWebLogoutStep {
+  match bmc_web_session_of_token(world: world, csrf_token: csrf_token).first() {
+    Absent => BmcWebLogoutStep { world: world, released: false }
+    Present { value: s } => {
+      let kvm = match world.web.kvm {
+        BmcKvmStreaming { session: k } => if k == s.id { BmcKvmIdle {} } else { world.web.kvm }
+        other => other
+      }
+      BmcWebLogoutStep {
+        world: bmc_with_web(world: world, web: bmc_web_with(web: world.web, sessions: filter(world.web.sessions, x => x.id != s.id), next_session_id: world.web.next_session_id, kvm: kvm)),
+        released: true,
+      }
+    }
+  }
 }
 
 fn bmc_chassis_control(world: BmcWorld, action: IpmiChassisControlAction) -> BmcChassisControlStep {
@@ -67,19 +196,26 @@ fn bmc_chassis_control(world: BmcWorld, action: IpmiChassisControlAction) -> Bmc
   }
 }
 
+// A stream the controller closes on its own (the dropped /kvm connection) ends the stream but not
+// the web session that opened it.
 fn bmc_apply_event(world: BmcWorld, event: BmcEvent) -> BmcWorld {
   match event {
     BmcAcPowerLost {} => bmc_with_power(world: world, power: BmcPowerOff)
+    BmcKvmStreamClosed {} => match world.web.kvm {
+      BmcKvmStreaming { session: k } => bmc_with_web(world: world, web: bmc_web_with(web: world.web, sessions: world.web.sessions, next_session_id: world.web.next_session_id, kvm: BmcKvmClosedByController { session: k }))
+      _ => world
+    }
   }
 }
 
 // Every event due at or before `now` fires, in schedule order, and moves from pending to fired.
 fn bmc_advance(world: BmcWorld, now: Int) -> BmcWorld {
-  fold(world.pending, init: BmcWorld { power: world.power, pending: [], fired: world.fired }, f: fn(acc, e) {
+  fold(world.pending, init: BmcWorld { power: world.power, pending: [], fired: world.fired, web: world.web }, f: fn(acc, e) {
     if e.at_seconds <= now {
-      BmcWorld { power: bmc_apply_event(world: acc, event: e.event).power, pending: acc.pending, fired: list_append(acc.fired, e) }
+      let applied = bmc_apply_event(world: acc, event: e.event)
+      BmcWorld { power: applied.power, pending: acc.pending, fired: list_append(acc.fired, e), web: applied.web }
     } else {
-      BmcWorld { power: acc.power, pending: list_append(acc.pending, e), fired: acc.fired }
+      BmcWorld { power: acc.power, pending: list_append(acc.pending, e), fired: acc.fired, web: acc.web }
     }
   })
 }
