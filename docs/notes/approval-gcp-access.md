@@ -78,3 +78,23 @@ These cover exact grant/beneficiary/role/run binding, empty-plan refusal and ret
 identity separation. The earlier shared approval utility's three admission tests
 passed separately; they were not re-executed by this entry. Source adapters and
 common diagnostic changes remain uncommitted in the isolated integration tree.
+
+
+## Explicit operator bootstrap, 2026-09-28
+
+The user subsequently supplied a temporary operator token and explicitly authorized
+using it to complete initial setup. The dedicated
+`fabric_storage_state_bootstrap` entries were added for this authorization; normal
+app-gated entries do not fall back to that credential. The material and accessor
+steps completed separately, with real version and policy readbacks. Receipts are
+in `../plans/receipts/fabric-state-bootstrap-2026-09-28/`.
+
+This supersedes the earlier statement that neither provisioning entry had run only
+for the explicit bootstrap entries. The normal workload credential flow remains
+uncommissioned. The material approval now describes only key material and hashes
+the run attempt; access policy has its own request via the shared grant authority.
+
+The permanent IAM bootstrap is isolated on `codex/gcp-iam-bootstrap`, based on main,
+so it can be reviewed independently of allocation HOLD. Live metadata showed the
+two modeled IAM accounts absent. Creating the storage key did not create them or
+make the approval workflow operational.
