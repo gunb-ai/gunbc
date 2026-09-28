@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_kvm_still
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, String, Unit }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count }
+import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -131,15 +131,20 @@ service gunbc.machine_intake.kvm_observer {
 data mtcollins1_kvm_observer_cadence: Second = second(count: 60)
 data mtcollins1_kvm_observer_periodic_limit: Int = 30
 data mtcollins1_kvm_observer_frame_wait: Second = second(count: 30)
-data mtcollins1_kvm_observer_establish_wait: Int = 45
-data mtcollins1_kvm_observer_trigger_wait: Int = 15
-data mtcollins1_kvm_observer_stop_wait: Int = 10
+data mtcollins1_kvm_observer_establish_wait: Second = second(count: 45)
+data mtcollins1_kvm_observer_trigger_wait: Second = second(count: 15)
+data mtcollins1_kvm_observer_stop_wait: Second = second(count: 10)
+
+// The journal is polled once a second, so a wait is spent as that many polls.
+fn kvm_polls_within(wait: Second) -> Int {
+  second_count(s: wait) as Int
+}
 
 // What the boot step's timeout must carry for the observer: the establishment wait, the terminal
 // trigger wait and the stop wait, all paid in the actuation; plus one second per poll tick for the
 // journal reads, bounded by the waits themselves.
 fn mtcollins1_kvm_still_allowance() -> Second {
-  second(count: mtcollins1_kvm_observer_establish_wait + mtcollins1_kvm_observer_trigger_wait + mtcollins1_kvm_observer_stop_wait + 10)
+  second(count: second_count(s: mtcollins1_kvm_observer_establish_wait) + second_count(s: mtcollins1_kvm_observer_trigger_wait) + second_count(s: mtcollins1_kvm_observer_stop_wait) + 10)
 }
 
 // THE OBSERVER'S DIRECTORY, one per attempt, under the boot's retained prefix so the upload that
@@ -302,13 +307,13 @@ fn kvm_gap_mark(e: KvmJournalEvent) -> List<KvmInstant> {
   }
 }
 
-fn kvm_gap_step(acc: KvmGapFold, at: KvmInstant, bound_ms: Int) -> KvmGapFold {
+fn kvm_gap_step(acc: KvmGapFold, at: KvmInstant, bound: Millisecond) -> KvmGapFold {
   match acc.last {
     Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
     Present { value: prev } =>
       match checked_int_to_nat(n: (millisecond_count(m: at.since_epoch) as Int) - (millisecond_count(m: prev.since_epoch) as Int)) {
         Present { value: d } =>
-          if (d as Int) > bound_ms {
+          if (d as Int) > (millisecond_count(m: bound) as Int) {
             KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmStillGap { from: prev, to: at, length: millisecond(count: d) }]) }
           } else {
             KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
@@ -319,10 +324,10 @@ fn kvm_gap_step(acc: KvmGapFold, at: KvmInstant, bound_ms: Int) -> KvmGapFold {
 }
 
 fn kvm_still_gaps(events: List<KvmJournalEvent>, cadence: Second) -> List<KvmStillGap> {
-  let bound_ms = 2 * (second_count(s: cadence) as Int) * 1000
+  let bound = second_to_millisecond(s: second(count: 2 * second_count(s: cadence)))
   let marks: List<KvmInstant> = fold(events, [], (acc, e) => acc.concat(kvm_gap_mark(e: e)))
   let start: KvmGapFold = KvmGapFold { last: none, gaps: [] }
-  let folded: KvmGapFold = fold(marks, start, (acc, m) => kvm_gap_step(acc: acc, at: m, bound_ms: bound_ms))
+  let folded: KvmGapFold = fold(marks, start, (acc, m) => kvm_gap_step(acc: acc, at: m, bound: bound))
   folded.gaps
 }
 
@@ -444,8 +449,8 @@ fn kvm_observer_launch_in(dir: String, base_url: String, username: NonEmptyStr, 
     script: mtcollins1_kvm_observer_script,
     operands: [
       base_url, username as String, password_file, dir, attempt,
-      to_string((second_count(s: mtcollins1_kvm_observer_cadence) as Int) * 1000),
-      to_string((second_count(s: mtcollins1_kvm_observer_frame_wait) as Int) * 1000),
+      to_string(millisecond_count(m: second_to_millisecond(s: mtcollins1_kvm_observer_cadence)) as Int),
+      to_string(millisecond_count(m: second_to_millisecond(s: mtcollins1_kvm_observer_frame_wait)) as Int),
       to_string(mtcollins1_kvm_observer_periodic_limit),
       toolchain.playwright_module as String,
     ],
@@ -454,7 +459,7 @@ fn kvm_observer_launch_in(dir: String, base_url: String, username: NonEmptyStr, 
   if !launched.success {
     return KvmObserverNotStarted { reason: concat("the observer launch failed: ", trim(s: launched.transport_stderr)) as NonEmptyStr }
   }
-  let standing = kvm_await_standing(dir: dir, remaining: mtcollins1_kvm_observer_establish_wait)
+  let standing = kvm_await_standing(dir: dir, remaining: kvm_polls_within(wait: mtcollins1_kvm_observer_establish_wait))
   KvmObserverStarted { dir: dir as NonEmptyStr, standing: standing, checked_at: clock_now_probed_at_or_unknown() }
 }
 
@@ -507,13 +512,13 @@ fn mtcollins1_kvm_observer_finish(start: KvmObserverStart, attempt: String, term
     KvmObserverStarted { dir: d_, standing: _, checked_at: _ } => {
       let d = d_ as String
       let asked = kvm_observer_trigger(start: start, order: terminal_order, reason: "terminal-verdict")
-      let _answered = if asked { kvm_await_answer(dir: d, reason: "terminal-verdict", remaining: mtcollins1_kvm_observer_trigger_wait) } else { false }
+      let _answered = if asked { kvm_await_answer(dir: d, reason: "terminal-verdict", remaining: kvm_polls_within(wait: mtcollins1_kvm_observer_trigger_wait)) } else { false }
       let snapshot_path = concat(d, "/journal.pre-teardown")
       let kept = Filesystem.Write(path: snapshot_path, content: kvm_journal_text_at(dir: d)).success
       let requested_at = clock_now_probed_at_or_unknown()
       let _teardown_event = Filesystem.Write(path: concat(d, "/workflow"), content: concat("gunbc-workflow: observer stop requested at=", concat(requested_at as String, "\n")))
       let _stop = Filesystem.Write(path: concat(d, "/stop"), content: "")
-      let stopped = kvm_await_stopped(dir: d, remaining: mtcollins1_kvm_observer_stop_wait)
+      let stopped = kvm_await_stopped(dir: d, remaining: kvm_polls_within(wait: mtcollins1_kvm_observer_stop_wait))
       let forced_at = if stopped { "" } else {
         let at = clock_now_probed_at_or_unknown() as String
         let _released = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: concat(d, "/observer.pid") as NonEmptyStr)
