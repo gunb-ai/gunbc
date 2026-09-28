@@ -47,7 +47,6 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 // THE CORPUS ENTRY FOR v2.compiler.reference_conservation: the host reads the file, the pure check

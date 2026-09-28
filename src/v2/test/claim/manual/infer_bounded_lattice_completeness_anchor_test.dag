@@ -18,7 +18,6 @@ import v2.std.algebra {
 }
 import v2.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 fn anchor_atom_node(s: Symbol) -> Node {

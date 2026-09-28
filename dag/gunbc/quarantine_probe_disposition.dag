@@ -4,7 +4,6 @@ import gunbc.explicit_witness_admission { ExplicitWitnessAdmission }
 import std.witness_admission { WitnessConsumerCadence, QuarantineProbeExpectRed }
 import v2.std.algebra { Cons, Empty, fold_list }
 import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // WHICH MECHANISM HOLDS A QUARANTINE PROBE, DERIVED TOTALLY -- NOT "IS IT IN THE ROSTER".

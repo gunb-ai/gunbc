@@ -20,7 +20,6 @@ import std.witness_admission {
   NoConsumer
 }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"

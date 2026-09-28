@@ -22,7 +22,6 @@ import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }

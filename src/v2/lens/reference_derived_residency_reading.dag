@@ -18,7 +18,6 @@ import std.decl_ref { DeclarationRef }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node {
   Arrow,

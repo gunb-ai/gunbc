@@ -28,7 +28,6 @@ import gunbc.floor_cost_distribution {
   implied_clean_run_budget,
 }
 import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

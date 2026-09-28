@@ -40,7 +40,6 @@ import v2.std.diagnostic {
   Unavailable,
   None
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.model_core {
   EffectSignature,

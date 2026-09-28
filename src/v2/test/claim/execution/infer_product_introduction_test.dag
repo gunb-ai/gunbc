@@ -14,7 +14,6 @@ import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   node_inferred_subtree_nodes,
   Arrow,

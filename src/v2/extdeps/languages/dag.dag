@@ -159,7 +159,6 @@ import v2.std.compilers.target_model {
   BlockEvaluationMode,
   ValueProducing,
   derive_bodied_arrow_scaffold}
-import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_map }
 import v2.std.diagnostic {

@@ -3,7 +3,6 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 
 import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import extdeps.filesystem.filesystem_io
 import test.retirement.model {

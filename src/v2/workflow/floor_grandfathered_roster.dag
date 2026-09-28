@@ -3,7 +3,6 @@ module v2.workflow.floor_grandfathered_roster
 import v2.std.algebra { Cons, Empty, list_flat_map, length, contains, filter }
 import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -125,6 +124,22 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.bool_row_is_found_by_exact_destination" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so the row this asserted no longer exists by ruling; its RED successor is v2.test.claim.self_host.peano_nat_structural_realization_test.no_bool_literal_row_exists" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.removing_the_bool_row_returns_the_literal_to_direct" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so its destination declaration (v2.std.logic Bool) no longer exists; the Direct answer at the one Bool stays asserted by v2.test.claim.self_host.peano_nat_structural_realization_test.prelude_bool_destination_is_direct" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.logical_connective_on_a_structural_operand_stays_host" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so a structural operand under a connective now refuses with no admission list; the RED is v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_an_undeclared_structural_operand_refuses" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_the_declared_bool_carrier_stays_host" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so its carrier no longer exists; the positive control is re-pointed at the native Bool operand as v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_a_native_bool_operand_stays_host" as NonEmptyStr
+  },
   WitnessDeleted {
     identity: "v2.test.claim.parse_engine_hooks_test.parse_engine_hooks_symbols_match_grammar_productions" as NonEmptyStr,
     deleted_in: "parse_engine_hooks deletion (follow-up to gunbc#12376): v2.compiler.parse_engine_hooks was unconsumed -- v2.compiler.parse imported its three Symbols and read none -- and one of them named dag_production_match_arm_body, a production extdeps.languages.dag does not declare. The module is deleted, so the claim comparing its constants to literals has no subject" as NonEmptyStr

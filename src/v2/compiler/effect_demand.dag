@@ -8,7 +8,6 @@ import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.std.algebra { Cons, Empty, any, fold_list, length, list_reverse }
 import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 

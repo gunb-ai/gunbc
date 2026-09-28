@@ -1,7 +1,6 @@
 module test.claim.long.namespace_graft_body_dissolution_witness_test
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
 import v2.std.node { Node, Symbol }

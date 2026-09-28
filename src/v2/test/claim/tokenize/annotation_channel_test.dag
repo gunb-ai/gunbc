@@ -1,7 +1,6 @@
 module v2.test.tokenize.annotation_channel
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {

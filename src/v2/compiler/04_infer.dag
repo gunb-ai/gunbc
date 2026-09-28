@@ -114,7 +114,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
-import v2.std.logic { Bool, bool_node }
+import v2.std.logic { bool_node }
 import v2.std.node {
   Arrow,
   Atom,

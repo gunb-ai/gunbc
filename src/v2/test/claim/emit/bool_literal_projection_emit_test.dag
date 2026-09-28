@@ -44,7 +44,6 @@ import v2.std.compilers.target_model {
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node, TypeNode, Atom }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

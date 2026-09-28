@@ -44,7 +44,6 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
 import v2.std.node { Edge, Named, Node, Positional }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.verification {

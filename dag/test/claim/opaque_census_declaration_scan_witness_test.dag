@@ -4,7 +4,6 @@ import tools.opaque_realization_census {
   DeclarationBodyStanding, DeclaredOpaque, DeclaredWithBody, declaration_body_standing_in
 }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 

@@ -3,7 +3,6 @@ module v2.test.claim.namespace_graft.zero_metadata_test
 import v2.extdeps.languages.dag {
   dag_surface_module_header_metadata_edge
 }
-import v2.std.logic { Bool }
 import v2.compiler.namespace_graft {
   namespace_graft_is_metadata_edge,
   namespace_graft_module_root_edge_disposition,

@@ -41,9 +41,6 @@ import extdeps.languages.rust.emit {
   rust_supplemental_impls_group_completion,
   rust_supplemental_impls_bool_coproduct
 }
-import v2.std.logic {
-  Bool
-}
 
 // Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates →
 // extdeps.languages.rust.emit spellings (same authorities v1.compiler.trait_derive_emit composes

@@ -4,7 +4,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalize { normalize }
 
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

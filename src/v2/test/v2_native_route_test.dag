@@ -74,7 +74,6 @@ import v2.std.diagnostic {
 import v2.std.collection { List }
 import std.algebra { Cons }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
 
