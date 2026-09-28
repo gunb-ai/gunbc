@@ -1,5 +1,7 @@
 module gunbc.roadmap_belt_actuate
 
+import gunbc.roadmap_authority { declared_roadmap_memberships }
+
 import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
@@ -2036,7 +2038,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
   continuation_decision(
     prior: Present { value: PriorAttemptFacts {
       node_id: node.node as String,
-      edges: declared_roadmap_edges(),
+      memberships: declared_roadmap_memberships(),
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worker_terminal: belt_provider_is_terminal(provider: progress.provider),
@@ -5992,10 +5994,10 @@ fn belt_scm_capture_candidate_tree(
   attempt_key: String,
   message: String,
 ) -> BeltScmCapture {
-  match project_key_for_node(node_id: node_id as String, edges: declared_roadmap_edges()) {
+  match project_key_for_node(node_id: node_id as String, memberships: declared_roadmap_memberships()) {
     Absent =>
       ScmCapturePoisoned {
-        detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges: the authority must name one owning arc before a candidate can be captured",
+        detail: "multiple memberships claim this node: the authority must name one owning project before a candidate can be captured",
       }
     Present { value: project_key } =>
   let projects_dir = belt_scm_projects_dir(instance: instance)
@@ -10043,11 +10045,10 @@ fn belt_integrate_candidate_core_for_instance(
             VerificationNotPassed { reason } => IntegrationCoreDeferred { reason: reason }
             VerificationUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
             VerificationPassedConfirmed => {
-              let edges = declared_roadmap_edges()
-              match node_project_membership(node_id: node_id, edges: edges) {
+              match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
                 MembershipAmbiguous { arcs: _ } =>
                   IntegrationCoreUnreadable {
-                    detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges",
+                    detail: "multiple declared memberships claim this node, so its owning project is ambiguous",
                   }
                 membership => {
                   let project_key = match membership {
@@ -10089,10 +10090,9 @@ fn belt_integrate_candidate_for_instance(
     IntegrationCoreUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
     IntegrationCoreBlocked { detail } => IntegrationStepBlocked { detail: detail }
     IntegrationCoreIntegrated { project_key } => {
-      let edges = declared_roadmap_edges()
-      let members = match node_project_membership(node_id: node_id, edges: edges) {
+      let members = match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
         MembershipStandalone => [node_id]
-        MembershipMember { arc } => project_member_ids(arc: arc, edges: edges)
+        MembershipMember { arc } => project_member_ids(arc: arc, memberships: declared_roadmap_memberships())
         MembershipAmbiguous { arcs: _ } => [node_id]
       }
       match belt_integration_census(instance: instance, member_ids: members) {
@@ -10209,7 +10209,7 @@ fn belt_publish_attempt_for_instance(
           ], ""),
         }
       } else {
-        match node_project_membership(node_id: node_id, edges: declared_roadmap_edges()) {
+        match node_project_membership(node_id: node_id, memberships: declared_roadmap_memberships()) {
           MembershipMember { arc } =>
             belt_publish_project_for_instance(
               instance: instance,

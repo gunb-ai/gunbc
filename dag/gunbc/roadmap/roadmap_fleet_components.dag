@@ -1,0 +1,88 @@
+module gunbc.roadmap_fleet_components
+
+import std.types { String, Int, List }
+import product.placement_supply { HostIdentity }
+import extdeps.google.issue_tracker { Component }
+import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire }
+
+// Allocated tracker identities are stable keys, not array indices or hashes of display paths.
+// Enrollment comes from fleet subjects; placement comes from fabric observations. Neither is
+// a fact about Google's issue tracker. A new subject without an allocated key refuses.
+type FleetComponentIdentity { host: HostIdentity, id: Int, serving_id: Int? }
+type FleetComponentPlacement { host: HostIdentity, group: FabricGroup }
+type FleetComponentProjection
+  = FleetComponentsProjected { hosts: List<Component>, arms: List<Component> }
+  | FleetComponentsRefused { reason: String }
+
+data fleet_component_identities: List<FleetComponentIdentity> = [
+  FleetComponentIdentity { host: operator_host_srv1, id: 1, serving_id: none },
+  FleetComponentIdentity { host: operator_host_srv2, id: 2, serving_id: none },
+  FleetComponentIdentity { host: operator_host_srv3, id: 3, serving_id: none },
+  FleetComponentIdentity { host: operator_host_srv4, id: 4, serving_id: none },
+  FleetComponentIdentity { host: operator_host_srv5, id: 5, serving_id: Present { value: 105 } },
+  FleetComponentIdentity { host: operator_host_srv6, id: 6, serving_id: Present { value: 106 } },
+  FleetComponentIdentity { host: operator_host_srv7, id: 7, serving_id: Present { value: 107 } },
+  FleetComponentIdentity { host: operator_host_srv8, id: 8, serving_id: Present { value: 108 } },
+  FleetComponentIdentity { host: operator_host_srv9, id: 9, serving_id: Present { value: 109 } },
+  FleetComponentIdentity { host: operator_host_srv10, id: 10, serving_id: Present { value: 110 } },
+  FleetComponentIdentity { host: operator_host_srv11, id: 11, serving_id: Present { value: 111 } },
+  FleetComponentIdentity { host: operator_host_srv12, id: 12, serving_id: Present { value: 112 } },
+]
+
+fn spark_component_hosts() -> List<HostIdentity> {
+  concat(fabric_group_hosts(g: FabricGroupA), fabric_group_hosts(g: FabricGroupB))
+}
+
+fn fleet_component_placements() -> List<FleetComponentPlacement> {
+  concat(
+    map(fabric_group_hosts(g: FabricGroupA), h => FleetComponentPlacement { host: h, group: FabricGroupA }),
+    map(fabric_group_hosts(g: FabricGroupB), h => FleetComponentPlacement { host: h, group: FabricGroupB }))
+}
+
+fn fleet_components_for(subjects: List<HostIdentity>, identities: List<FleetComponentIdentity>, placements: List<FleetComponentPlacement>) -> FleetComponentProjection {
+  let allocated = flat_map(identities, slot => concat([slot.id], match slot.serving_id { Present { value: id } => [id]  Absent => [] }))
+  if any(allocated, id => count(allocated |> filter(other => other == id)) != 1)
+    || any(subjects, host => count(subjects |> filter(other => other == host)) != 1)
+    || any(placements, p => !any(subjects, host => host == p.host)) {
+    FleetComponentsRefused { reason: "duplicate component identity or unenrolled placement subject" }
+  } else {
+  fold(subjects, init: FleetComponentsProjected { hosts: [], arms: [] } as FleetComponentProjection,
+    f: (acc, host) => match acc {
+      FleetComponentsRefused { reason } => FleetComponentsRefused { reason: reason }
+      FleetComponentsProjected { hosts, arms } => {
+        let slots = identities |> filter(slot => slot.host == host)
+        let assigned = placements |> filter(p => p.host == host)
+        if count(slots) != 1 || count(assigned) > 1 {
+          FleetComponentsRefused { reason: "component identity or placement is missing or ambiguous" }
+        } else {
+          match slots.first() {
+            Absent => FleetComponentsRefused { reason: "component identity is missing" }
+            Present { value: slot } => {
+              let next_hosts = concat(hosts, [Component { id: slot.id, path: [host as String] }])
+              match assigned.first() {
+                Absent => match slot.serving_id {
+                  Absent => FleetComponentsProjected { hosts: next_hosts, arms: arms }
+                  Present { value: _ } => FleetComponentsRefused { reason: "serving component placement is missing" }
+                }
+                Present { value: placement } => match slot.serving_id {
+                  Absent => FleetComponentsRefused { reason: "serving component identity is missing" }
+                  Present { value: id } => FleetComponentsProjected {
+                    hosts: next_hosts,
+                    arms: concat(arms, [Component { id: id, path: [host as String, "serving", fabric_group_wire(g: placement.group) as String] }]),
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+  }
+}
+
+fn fleet_components() -> FleetComponentProjection {
+  fleet_components_for(subjects: concat(fleet_hosts(), spark_component_hosts()),
+    identities: fleet_component_identities, placements: fleet_component_placements())
+}

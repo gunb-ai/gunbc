@@ -1,18 +1,20 @@
 module gunbc.roadmap_presentation
 
+import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, MembershipStandalone, MembershipMember, MembershipAmbiguous }
+
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding,
   NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
 }
-import gunbc.roadmap_model {
+import gunbc.roadmap_model { RoadmapMembership,
   RoadmapNode, RoadmapEdge, Pointer,
-  roadmap_parent_ids, roadmap_primary_parent,
-  RoadmapParent, TopLevel, UnderParent,
+  roadmap_parent_ids,
   NodeSizing, Unsized, Sized,
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
   Volume, VolumeSmall, VolumeMedium, VolumeLarge,
 }
 import gunbc.roadmap_status {
+  TicketField, ticket_field_value, ticket_field_label, TicketBrief, TicketDisplacedCost, TicketCurrentState, TicketFirstSlice, TicketRedControl, TicketOutOfScope, TicketHandback, TicketVerified,
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
   item_superseded_by, item_is_done, signoff_accepts,
   line_ticket, TicketFields, TicketUpdate,
@@ -30,7 +32,7 @@ import gunbc.roadmap_provider_events {
   provider_execution_activity,
   ProviderEventsRefused,
 }
-import extdeps.google.issue_tracker { fleet_component_hosts }
+import gunbc.roadmap_fleet_components { spark_component_hosts }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -369,6 +371,7 @@ type SupportingFact {
 // Markdown-inline serialization of these strings is the renderer's job — serialization, not
 // decision.
 type DisclosureField {
+  field: TicketField
   label: String
   value: String
 }
@@ -474,7 +477,7 @@ fn carrier_facts(carriers: List<Pointer>) -> List<SupportingFact> {
 // carrier-derivable; the browse tree carries the arms, the issue's field names the hosts its lane
 // touches.
 fn spark_host_component_paths() -> List<String> {
-  map(filter(fleet_component_hosts, c => c.id >= 5), c => join(c.path, "/"))
+  map(spark_component_hosts(), host => host as String)
 }
 
 fn component_fact(carriers: List<Pointer>) -> List<SupportingFact> {
@@ -530,8 +533,8 @@ fn row_summary(line: RoadmapItem) -> String? {
   none
 }
 
-fn disclosure_field(label: String, value: String) -> List<DisclosureField> {
-  if value == "" { [] } else { [ DisclosureField { label: label, value: value } ] }
+fn disclosure_field(field: TicketField, value: String) -> List<DisclosureField> {
+  if value == "" { [] } else { [ DisclosureField { field: field, label: ticket_field_label(field: field), value: value } ] }
 }
 
 // THE VERIFIED ROW'S LAW (owner mandate 2026-09-25): an empty `verified · last verified` row
@@ -542,24 +545,24 @@ fn verified_disclosure_field(t: TicketFields) -> List<DisclosureField> {
   if t.last_verified_on == "" {
     []
   } else {
-    disclosure_field(label: "verified", value: join([t.authored_on, " · last verified ", t.last_verified_on], ""))
+    disclosure_field(field: TicketVerified, value: join([t.authored_on, " · last verified ", t.last_verified_on], ""))
   }
 }
 
 fn ticket_disclosure_fields(t: TicketFields) -> List<DisclosureField> {
-  concat(disclosure_field(label: "displaced cost", value: t.displaced_cost),
-    concat(disclosure_field(label: "current state", value: t.current_state),
-      concat(disclosure_field(label: "first slice", value: t.first_slice),
-        concat(disclosure_field(label: "red control", value: t.red_control),
-          concat(disclosure_field(label: "out of scope", value: t.out_of_scope),
-            concat(disclosure_field(label: "hand-back", value: t.handback),
+  concat(disclosure_field(field: TicketDisplacedCost, value: ticket_field_value(ticket: t, field: TicketDisplacedCost)),
+    concat(disclosure_field(field: TicketCurrentState, value: ticket_field_value(ticket: t, field: TicketCurrentState)),
+      concat(disclosure_field(field: TicketFirstSlice, value: ticket_field_value(ticket: t, field: TicketFirstSlice)),
+        concat(disclosure_field(field: TicketRedControl, value: ticket_field_value(ticket: t, field: TicketRedControl)),
+          concat(disclosure_field(field: TicketOutOfScope, value: ticket_field_value(ticket: t, field: TicketOutOfScope)),
+            concat(disclosure_field(field: TicketHandback, value: ticket_field_value(ticket: t, field: TicketHandback)),
               verified_disclosure_field(t: t)))))))
 }
 
 fn row_disclosure(line: RoadmapItem) -> DisclosureView {
   match line_ticket(item: line) {
     Present { value: t } => TicketDisclosure {
-      brief: t.brief,
+      brief: ticket_field_value(ticket: t, field: TicketBrief),
       fields: ticket_disclosure_fields(t: t),
       updates: map(t.updates, u => DisclosureNote { on: u.on, note: u.note }),
     }
@@ -1169,13 +1172,13 @@ fn row_activity_erred(row: WorkRowView) -> Bool {
   }
 }
 
-fn project_subtree_errored(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+fn project_subtree_errored(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
   if fuel <= 0 {
     false
   } else {
-    any(project_task_rows(rows: rows, edges: edges, members: members, node_id: node_id), r =>
+    any(project_task_rows(rows: rows, memberships: memberships, members: members, node_id: node_id), r =>
       row_activity_erred(row: r)
-        || project_subtree_errored(rows: rows, edges: edges, members: members, node_id: r.node_id, fuel: fuel - 1))
+        || project_subtree_errored(rows: rows, memberships: memberships, members: members, node_id: r.node_id, fuel: fuel - 1))
   }
 }
 
@@ -1659,63 +1662,12 @@ type WorkFamilyView {
   rows: List<WorkRowView>
 }
 
-// PROJECT HIERARCHY (operator request 2026-09-20: "see what projects are being worked on at a
-// glance, expand them to see progress bars"). A PROJECT is a rendered row with at least one
-// rendered TASK, and a row's tasks are its PREREQUISITES — the derivation direction is the edge
-// law's, never its inverse: edge(child: X, parent: Y) says X depends on Y and Y must close before
-// X launches (roadmap_spawner.node_unmet_parent_ids), so display_children(P) =
-// roadmap_parent_ids(edges, P) restricted to rows this page actually renders. The exemplar is the
-// arc shell-typed-invocation: the authority declares edge(child: "shell-typed-invocation", parent:
-// "shell-dag-X") for each of its ten migration tasks, so the arc is the project and the ten
-// shell-dag-* rows are its tasks. Nesting is RECURSIVE — a task that itself has rendered
-// prerequisites is an intermediate project (the shell-residue-zero → shell-gate-migration →
-// shell-effectplan-to-bash chain above the arc).
-//
-// The placement rules, each a pure function of the decided rows and the declared edges:
-// RENDERED-ONLY — a task joins a tree (and a progress denominator) only if its row renders
-// somewhere today: active work (the Active band) or a scheduling band. An unplanned prerequisite
-// renders nowhere today, so counting it would report invisible work (the focus law's "an edge
-// survives only when both endpoints render" applied to progress). FAMILY-FIRST — a family member
-// never nests and never counts: the closing-contract family is the established presentation
-// authority for generated task rows (typed membership, stated-once claim), and edge-nesting it
-// under its gated node would double-render it. GROUP-EVERYWHERE (operator feedback 2026-09-21,
-// amending ACTIVE-SURFACES: "I'm not seeing the grouping") — grouping is the organizing principle
-// in EVERY band, including the Active band: a task row nests under its project row REGARDLESS of
-// attempts, keeping its full hero treatment (stage strip, live pulse) in its nested position. The
-// flattened first cut pushed every row with a live attempt out of its tree into a flat Active
-// band, which is exactly why the shell→dag batch read as ten loose rows; instead, a top-level row
-// now joins the Active band when its SUBTREE carries live work (itself or any display
-// descendant), so the Active band's top level is projects — auto-open by the live-subtree pulse,
-// red-flagged by subtree_error — plus genuinely projectless rows. Every row still renders exactly
-// once: the nested position is the only position. PRIMARY-PARENT — a task that is a prerequisite
-// of several rendered projects renders under the FIRST one in edge declaration order (never
-// duplicated), while counting toward every project's progress. roadmap_primary_parent was
-// consulted and does NOT fit: it selects a node's own first PREREQUISITE, the opposite direction
-// of the display parent needed here. NOTHING-VANISHES — a row whose display-parent chain does not
-// reach a top-level entry (only possible on a cycle, which the authority's acyclicity witness
-// refuses upstream) renders as an ordinary top-level row, so no input can make a row disappear;
-// the fuel parameters bound the recursion but never bind on an acyclic graph.
-//
-// Closed = accepted or superseded (node_closes_dependency), read off the row's DECIDED lifecycle:
-// DoneLifecycle and SupersededLifecycle close; ReviewLifecycle — a merged PR without an accepting
-// signoff — does not. "Has a PR" is never progress.
-//
-// SINGLE-CHILD CHAIN COLLAPSE (operator ruling 2026-09-21): a project with EXACTLY ONE display
-// child which is itself a project collapses — the chain renders as one project row carrying the
-// TOPMOST project's identity and headline, whose tasks and k-of-n counts are the chain END's
-// display children. The exemplar is the reason: shell-residue-zero → shell-gate-migration →
-// shell-effectplan-to-bash → shell-typed-invocation are four single-child links, so the arc's ten
-// shell-dag-* tasks sat two disclosures deep; collapsed, the residue-zero row carries the arc's
-// bar and its ten tasks render one click down. Multi-child projects never collapse. A project
-// collapses THROUGH a child only it OWNS (the child's primary display parent is the collapsing
-// project): fleet-closed-loop-converge's single display child is shell-gate-migration, whose
-// primary parent is shell-residue-zero (first declared edge), so fleet-closed-loop-converge does
-// not collapse — its "k of 1" stays honest and gate-migration joins exactly one chain. The
-// swallowed intermediates are not lost: the collapsed row carries them as its CHAIN (rendered as
-// the chain line inside the task disclosure, identity plus lifecycle chip each), so every node
-// still renders exactly once. The depth cap counts collapsed rows once and applies after
-// collapsing — a collapsed chain is one level, its tasks the next.
-
+// The project tree projects declared delivery membership. Blocking edges are scheduling
+// facts and never tree parents or progress denominators. Ambiguous membership leaves a row
+// unnested; the issue panel reports the refusal and worker alignment refuses it. Family-owned
+// generated rows keep their existing family placement. Cycle fuel prevents rows disappearing.
+// Accepted and superseded children count closed; a merged PR alone never means acceptance.
+// Single-child chains may collapse only through their uniquely owned member.
 type ProjectTreeEntry
   = ProjectLeaf { row: WorkRowView }
   | ProjectNested { project: ProjectTreeView }
@@ -1765,11 +1717,15 @@ fn row_is_family_member(members: List<WorkFamilyMemberFact>, node_id: String) ->
   }
 }
 
-fn project_task_rows(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String) -> List<WorkRowView> {
-  fold(edges, init: [] as List<WorkRowView>, f: (acc, e) =>
-    if (e.child as String) == node_id && !((e.parent as String) == node_id) {
+fn project_task_rows(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String) -> List<WorkRowView> {
+  fold(memberships, init: [] as List<WorkRowView>, f: (acc, e) =>
+    if (e.project as String) == node_id && !((e.member as String) == node_id)
+      && (match node_project_membership(node_id: e.member as String, memberships: memberships) {
+        MembershipMember { arc } => arc == node_id
+        _ => false
+      }) {
       match rows |> filter(r =>
-        r.node_id == (e.parent as String)
+        r.node_id == (e.member as String)
           && row_is_rendered(row: r)
           && !row_is_family_member(members: members, node_id: r.node_id)) |> first {
         Absent => acc
@@ -1781,47 +1737,41 @@ fn project_task_rows(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members:
     })
 }
 
-fn row_display_parent_id(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String) -> String? {
-  fold(edges, init: none, f: (acc, e) => match acc {
-    Present { value: v } => Present { value: v }
-    Absent =>
-      if (e.parent as String) == node_id
-        && !((e.child as String) == node_id)
-        && any(rows, r =>
-          r.node_id == (e.child as String)
-            && row_is_rendered(row: r)
-            && !row_is_family_member(members: members, node_id: r.node_id)) {
-        Present { value: e.child as String }
-      } else {
-        none
-      }
-  })
+fn row_display_parent_id(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String) -> String? {
+  match node_project_membership(node_id: node_id, memberships: memberships) {
+    MembershipMember { arc } =>
+      if arc != node_id && any(rows, r => r.node_id == arc && row_is_rendered(row: r)
+        && !row_is_family_member(members: members, node_id: r.node_id)) {
+        Present { value: arc }
+      } else { none }
+    _ => none
+  }
 }
 
-fn row_nest_chain_reaches_top(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+fn row_nest_chain_reaches_top(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
   if fuel <= 0 {
     false
   } else {
-    match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: node_id) {
+    match row_display_parent_id(rows: rows, memberships: memberships, members: members, node_id: node_id) {
       Absent => true
       Present { value: p } =>
-        row_nest_chain_reaches_top(rows: rows, edges: edges, members: members, node_id: p, fuel: fuel - 1)
+        row_nest_chain_reaches_top(rows: rows, memberships: memberships, members: members, node_id: p, fuel: fuel - 1)
     }
   }
 }
 
-fn row_is_nested(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String) -> Bool {
-  match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: node_id) {
+fn row_is_nested(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String) -> Bool {
+  match row_display_parent_id(rows: rows, memberships: memberships, members: members, node_id: node_id) {
     Absent => false
     Present { value: _ } =>
-      row_nest_chain_reaches_top(rows: rows, edges: edges, members: members, node_id: node_id, fuel: count(rows))
+      row_nest_chain_reaches_top(rows: rows, memberships: memberships, members: members, node_id: node_id, fuel: count(rows))
   }
 }
 
-fn row_is_project(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
+fn row_is_project(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
   row_is_rendered(row: row)
     && !row_is_family_member(members: members, node_id: row.node_id)
-    && count(project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)) > 0
+    && count(project_task_rows(rows: rows, memberships: memberships, members: members, node_id: row.node_id)) > 0
 }
 
 fn row_pulses(row: WorkRowView) -> Bool {
@@ -1844,13 +1794,13 @@ fn row_pulses(row: WorkRowView) -> Bool {
   }
 }
 
-fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+fn project_subtree_pulses(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
   if fuel <= 0 {
     false
   } else {
-    any(project_task_rows(rows: rows, edges: edges, members: members, node_id: node_id), r =>
+    any(project_task_rows(rows: rows, memberships: memberships, members: members, node_id: node_id), r =>
       row_pulses(row: r)
-        || project_subtree_pulses(rows: rows, edges: edges, members: members, node_id: r.node_id, fuel: fuel - 1))
+        || project_subtree_pulses(rows: rows, memberships: memberships, members: members, node_id: r.node_id, fuel: fuel - 1))
   }
 }
 
@@ -1868,21 +1818,21 @@ fn project_subtree_pulses(rows: List<WorkRowView>, edges: List<RoadmapEdge>, mem
 // two chains). The walk stops at the chain end: a node with zero or several display children, or
 // one whose single display child is a leaf or owned elsewhere. chain carries every swallowed
 // project INCLUDING the end; an uncollapsed project has chain [] and end == its own row.
-fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, fuel: Int) -> ProjectChainWalk {
+fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, fuel: Int) -> ProjectChainWalk {
   if fuel <= 0 {
     ProjectChainWalk { end: row, chain: [] }
   } else {
-    let disp = project_task_rows(rows: rows, edges: edges, members: members, node_id: row.node_id)
+    let disp = project_task_rows(rows: rows, memberships: memberships, members: members, node_id: row.node_id)
     if count(disp) == 1 {
       match disp.first() {
         Absent => ProjectChainWalk { end: row, chain: [] }
         Present { value: c } =>
-          if row_is_project(rows: rows, edges: edges, members: members, row: c)
-            && (match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: c.node_id) {
+          if row_is_project(rows: rows, memberships: memberships, members: members, row: c)
+            && (match row_display_parent_id(rows: rows, memberships: memberships, members: members, node_id: c.node_id) {
               Present { value: p } => p == row.node_id
               Absent => false
             }) {
-            let rest = project_chain_walk(row: c, rows: rows, edges: edges, members: members, fuel: fuel - 1)
+            let rest = project_chain_walk(row: c, rows: rows, memberships: memberships, members: members, fuel: fuel - 1)
             ProjectChainWalk { end: rest.end, chain: concat([c], rest.chain) }
           } else {
             ProjectChainWalk { end: row, chain: [] }
@@ -1894,38 +1844,39 @@ fn project_chain_walk(row: WorkRowView, rows: List<WorkRowView>, edges: List<Roa
   }
 }
 
-fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, depth: Int, fuel: Int) -> ProjectTreeView {
-  let walk = project_chain_walk(row: row, rows: rows, edges: edges, members: members, fuel: fuel)
+fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, depth: Int, fuel: Int) -> ProjectTreeView {
+  let walk = project_chain_walk(row: row, rows: rows, memberships: memberships, members: members, fuel: fuel)
   let end = walk.end
-  let tasks = project_task_rows(rows: rows, edges: edges, members: members, node_id: end.node_id)
+  let tasks = project_task_rows(rows: rows, memberships: memberships, members: members, node_id: end.node_id)
   let nested = if fuel <= 0 {
     []
   } else {
     tasks |> filter(t =>
       row_is_rendered(row: t)
-        && (match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: t.node_id) {
+        && (match row_display_parent_id(rows: rows, memberships: memberships, members: members, node_id: t.node_id) {
           Present { value: p } => p == end.node_id
           Absent => false
         }))
   }
-  let linked = tasks |> filter(t =>
-    match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: t.node_id) {
-      Present { value: p } => !(p == end.node_id)
-      Absent => false
-    })
+  let blockers = match end.scheduling {
+    SchedulingUpcoming { blockers: ids } => ids
+    _ => []
+  }
+  let linked = rows |> filter(r => any(blockers, id => id == r.node_id)
+    && !any(tasks, t => t.node_id == r.node_id))
   ProjectTreeView {
     row: row,
     chain: walk.chain,
     depth: depth,
     closed_count: count(tasks |> filter(t => row_is_closed(row: t))),
     total_count: count(tasks),
-    auto_open: project_subtree_pulses(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
+    auto_open: project_subtree_pulses(rows: rows, memberships: memberships, members: members, node_id: row.node_id, fuel: count(rows)),
     subtree_error: row_activity_erred(row: row)
-      || project_subtree_errored(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
+      || project_subtree_errored(rows: rows, memberships: memberships, members: members, node_id: row.node_id, fuel: count(rows)),
     linked: linked,
     entries: map(nested, t =>
-      if row_is_project(rows: rows, edges: edges, members: members, row: t) {
-        ProjectNested { project: project_tree_view(row: t, rows: rows, edges: edges, members: members, depth: depth + 1, fuel: fuel - 1) }
+      if row_is_project(rows: rows, memberships: memberships, members: members, row: t) {
+        ProjectNested { project: project_tree_view(row: t, rows: rows, memberships: memberships, members: members, depth: depth + 1, fuel: fuel - 1) }
       } else {
         ProjectLeaf { row: t }
       }),
@@ -2031,16 +1982,11 @@ type IssueLinkView {
   headline: String
 }
 
-// PARENT AND BLOCKING STAY SEPARATE (owner ruling 2026-09-24): the panel carries DECOMPOSITION
-// (parent — where the issue nests) and DEPENDENCY (blocking / blocked-by — what it obstructs and
-// what obstructs it) as distinct fields, never one merged list. THE NAMED GAP, not papered over:
-// the roadmap graph carries ONLY dependency edges today (the chain-ambiguity finding), so the
-// decomposition side rides the tree derivation's primary-parent rule — the first edge target read
-// as the display parent — which is a presentation approximation, not a modeled decomposition
-// relation. When decomposition edges land, the parent field rebinds to them and the blocking
-// fields stay exactly as they are.
+// Nesting and blocking are independent dimensions with separate typed inputs.
 type IssueLinkPanel {
   parent: IssueLinkView?
+  parent_problem: String?
+  children: List<IssueLinkView>
   blocking: List<IssueLinkView>
   blocked_by: List<IssueLinkView>
 }
@@ -2056,15 +2002,28 @@ fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Ro
     any(roadmap_parent_ids(edges: edges, node: n.node), p => p == parent))
 }
 
-fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> IssueLinkPanel {
+fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership>) -> IssueLinkPanel {
   IssueLinkPanel {
-    parent: match roadmap_primary_parent(edges: edges, node: rn.node) {
-      TopLevel => none
-      UnderParent { parent: pid } => match find_node(nodes: nodes, node_id: pid as String) {
+    parent: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
+      MembershipMember { arc } => match find_node(nodes: nodes, node_id: arc) {
         Present { value: p } => Present { value: issue_link_view_of(rn: p) }
         Absent => none
       }
+      _ => none
     },
+    parent_problem: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
+      MembershipAmbiguous { arcs } => Present { value: join(["ambiguous membership: ", join(arcs, ", ")], "") }
+      MembershipMember { arc } => match find_node(nodes: nodes, node_id: arc) {
+        Present { value: _ } => none
+        Absent => Present { value: join(["undeclared parent: ", arc], "") }
+      }
+      MembershipStandalone => none
+    },
+    children: flat_map(project_member_ids(arc: rn.node as String, memberships: memberships), id =>
+      match find_node(nodes: nodes, node_id: id) {
+        Present { value: n } => [issue_link_view_of(rn: n)]
+        Absent => []
+      }),
     blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),
     blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
       match find_node(nodes: nodes, node_id: pid) {
@@ -2159,38 +2118,38 @@ fn row_is_active_work(row: WorkRowView) -> Bool {
 // in its display subtree — itself or any descendant — so a project whose tasks are being worked
 // surfaces as ONE grouped row at the top, with the live tasks nested inside it. Family members
 // keep their established law: active work leaves the group for the Active band as a flat row.
-fn project_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
+fn project_subtree_active(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, node_id: String, fuel: Int) -> Bool {
   if fuel <= 0 {
     false
   } else {
-    any(project_task_rows(rows: rows, edges: edges, members: members, node_id: node_id), r =>
+    any(project_task_rows(rows: rows, memberships: memberships, members: members, node_id: node_id), r =>
       row_is_active_work(row: r)
-        || project_subtree_active(rows: rows, edges: edges, members: members, node_id: r.node_id, fuel: fuel - 1))
+        || project_subtree_active(rows: rows, memberships: memberships, members: members, node_id: r.node_id, fuel: fuel - 1))
   }
 }
 
-fn row_subtree_active(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
+fn row_subtree_active(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
   row_is_active_work(row: row)
-    || project_subtree_active(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows))
+    || project_subtree_active(rows: rows, memberships: memberships, members: members, node_id: row.node_id, fuel: count(rows))
 }
 
-fn row_is_active_root(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
+fn row_is_active_root(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, row: WorkRowView) -> Bool {
   !row_is_family_member(members: members, node_id: row.node_id)
-    && !row_is_nested(rows: rows, edges: edges, members: members, node_id: row.node_id)
-    && row_subtree_active(rows: rows, edges: edges, members: members, row: row)
+    && !row_is_nested(rows: rows, memberships: memberships, members: members, node_id: row.node_id)
+    && row_subtree_active(rows: rows, memberships: memberships, members: members, row: row)
 }
 
-fn rows_for_active_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>) -> List<WorkRowView> {
+fn rows_for_active_band(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>) -> List<WorkRowView> {
   rows |> filter(r =>
     (row_is_family_member(members: members, node_id: r.node_id) && row_is_active_work(row: r))
-      || row_is_active_root(rows: rows, edges: edges, members: members, row: r))
+      || row_is_active_root(rows: rows, memberships: memberships, members: members, row: r))
 }
 
-fn rows_for_scheduling_band(rows: List<WorkRowView>, edges: List<RoadmapEdge>, members: List<WorkFamilyMemberFact>, key: String) -> List<WorkRowView> {
+fn rows_for_scheduling_band(rows: List<WorkRowView>, memberships: List<RoadmapMembership>, members: List<WorkFamilyMemberFact>, key: String) -> List<WorkRowView> {
   rows |> filter(r =>
     work_scheduling_key(s: r.scheduling) == key
       && !(row_is_family_member(members: members, node_id: r.node_id) && row_is_active_work(row: r))
-      && !row_is_active_root(rows: rows, edges: edges, members: members, row: r))
+      && !row_is_active_root(rows: rows, memberships: memberships, members: members, row: r))
 }
 
 fn family_member_for(members: List<WorkFamilyMemberFact>, node_id: String) -> WorkFamilyMemberFact? {
@@ -2232,19 +2191,19 @@ fn family_band_rows(rows: List<WorkRowView>, members: List<WorkFamilyMemberFact>
 fn band_entries(
   rows: List<WorkRowView>,
   all_rows: List<WorkRowView>,
-  edges: List<RoadmapEdge>,
+  memberships: List<RoadmapMembership>,
   families: List<WorkFamilyDecl>,
   members: List<WorkFamilyMemberFact>,
 ) -> List<WorkBandEntry> {
   let grouped = fold(rows, init: BandEntriesAcc { entries: [], emitted_family_ids: [] }, f: (acc, r) =>
     match family_member_for(members: members, node_id: r.node_id) {
       Absent =>
-        if row_is_nested(rows: all_rows, edges: edges, members: members, node_id: r.node_id) {
+        if row_is_nested(rows: all_rows, memberships: memberships, members: members, node_id: r.node_id) {
           acc
-        } else if row_is_project(rows: all_rows, edges: edges, members: members, row: r) {
+        } else if row_is_project(rows: all_rows, memberships: memberships, members: members, row: r) {
           BandEntriesAcc {
             entries: append(acc.entries, items: [BandProject { project: project_tree_view(
-              row: r, rows: all_rows, edges: edges, members: members, depth: 1, fuel: count(all_rows)) }]),
+              row: r, rows: all_rows, memberships: memberships, members: members, depth: 1, fuel: count(all_rows)) }]),
             emitted_family_ids: acc.emitted_family_ids,
           }
         } else {
@@ -2290,17 +2249,17 @@ fn family_decl_for(families: List<WorkFamilyDecl>, family_id: String) -> WorkFam
 
 fn daily_workspace_view(
   rows: List<WorkRowView>,
-  edges: List<RoadmapEdge>,
+  memberships: List<RoadmapMembership>,
   program: ProgramProgressView?,
   observation: ObservationImpactView,
   families: List<WorkFamilyDecl>,
   members: List<WorkFamilyMemberFact>,
 ) -> DailyWorkspaceView {
-  let active_entries = band_entries(rows: rows_for_active_band(rows: rows, edges: edges, members: members), all_rows: rows, edges: edges, families: [], members: [])
-  let ready_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "ready"), all_rows: rows, edges: edges, families: families, members: members)
-  let upcoming_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "upcoming"), all_rows: rows, edges: edges, families: families, members: members)
-  let done_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "done"), all_rows: rows, edges: edges, families: families, members: members)
-  let superseded_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "superseded"), all_rows: rows, edges: edges, families: families, members: members)
+  let active_entries = band_entries(rows: rows_for_active_band(rows: rows, memberships: memberships, members: members), all_rows: rows, memberships: memberships, families: [], members: [])
+  let ready_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, memberships: memberships, members: members, key: "ready"), all_rows: rows, memberships: memberships, families: families, members: members)
+  let upcoming_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, memberships: memberships, members: members, key: "upcoming"), all_rows: rows, memberships: memberships, families: families, members: members)
+  let done_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, memberships: memberships, members: members, key: "done"), all_rows: rows, memberships: memberships, families: families, members: members)
+  let superseded_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, memberships: memberships, members: members, key: "superseded"), all_rows: rows, memberships: memberships, families: families, members: members)
   DailyWorkspaceView {
     program: program,
     observation: observation,

@@ -8,7 +8,7 @@ import gunbc.roadmap_document {
 import std.types { NonEmptyStr, Set }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.roadmap_model {
+import gunbc.roadmap_model { RoadmapMembership,
   RoadmapNode,
   RoadmapNodeIdentity,
   RoadmapEdge,
@@ -991,10 +991,8 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 // left it mid-stack, so the node carries what remains at the grain actually established. The ticket
 // briefs and rulings live on the dashboard and are not restated here.
 // SHELL→DAG MIGRATION BATCH 1 (operator ruling 2026-09-20). Ten verified shell-in-decision-code
-// sites, one node each, sharing the shell-dag- id prefix because the roadmap model carries NO
-// project/component grouping mechanism yet — dependency edges are the only parent relationship
-// declared_roadmap_edges knows, and grouping for fanout/fanin delivery is slice 2's publication
-// structure, not authored here. Every row is a child of shell-typed-invocation (its completed
+// sites, one node each. declared_roadmap_memberships owns their delivery grouping separately
+// from the dependency edges. Every row is a member of shell-typed-invocation (its completed
 // exemplar) and closes on a NEW witness dag/test/claim/shell/<id>_witness_test.dag asserting
 // the rendered surface contains no shell control word (set -e, ||, &&, ;, 2>/dev/null) beside a
 // typed-form positive control — the exact oracle idiom of
@@ -3101,6 +3099,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // live-deploy-install-owned/live-deploy-restart-tailscale) carry NO edge between them — they are
 // independent edits whose staggering constraint is a dispatch-scheduling fact recorded in their
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
+// The operator's ten-task shell migration batch owns these deliveries. Other blocking edges
+// establish prerequisites only; no membership is inferred from them.
+fn declared_roadmap_memberships() -> List<RoadmapMembership> {
+  [
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-cron-entry-line-builder" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-floor-peak-calibration-rows" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-ci-fmt-gate-line" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-ci-deploy-invoke-prelude" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-ci-heal-regen-invoke" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-compile-pool-slice-install" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-slot-population-census-read" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-codex-app-server-trip-script" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-live-deploy-install-owned" as RoadmapNodeId },
+    RoadmapMembership { project: "shell-typed-invocation" as RoadmapNodeId, member: "shell-dag-live-deploy-restart-tailscale" as RoadmapNodeId },
+  ]
+}
+
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),

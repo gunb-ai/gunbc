@@ -165,7 +165,7 @@ test fn witness_family_fixture_typed_structure_exact() -> Bool {
   let entries = band_entries(
     rows: fixture_family_rows(),
     all_rows: fixture_family_rows(),
-    edges: [],
+    memberships: [],
     families: [fixture_family_decl()],
     members: fixture_family_members(),
   )

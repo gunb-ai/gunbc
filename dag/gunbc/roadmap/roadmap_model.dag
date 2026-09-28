@@ -57,6 +57,12 @@ type RoadmapNode {
   signoff: Signoff
 }
 
+// Decomposition owns delivery; dependency edges only constrain readiness.
+type RoadmapMembership {
+  project: RoadmapNodeId
+  member: RoadmapNodeId
+}
+
 type RoadmapEdge {
   child: RoadmapNodeId
   parent: RoadmapNodeId

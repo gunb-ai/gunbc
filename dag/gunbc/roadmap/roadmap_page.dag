@@ -1,5 +1,9 @@
 module gunbc.roadmap_page
 
+import gunbc.roadmap_authority { declared_roadmap_memberships }
+
+import gunbc.roadmap_status { TicketSection, ticket_field_section, TicketAcceptance, TicketPlan, TicketScope }
+
 import gunbc.roadmap_allocation_location { allocation_page_path }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
@@ -176,12 +180,14 @@ fn finish_line_progress_markup() -> Fragment {
   }
 }
 
+fn dashboard_instance_banner_with_progress(progress: List<Fragment>) -> Fragment {
+  el_class("section", dashboard_instance_class, concat([
+    el_class("span", dashboard_instance_label_class, [txt("instance · observing")]),
+  ], progress))
+}
+
 fn dashboard_instance_banner() -> Fragment {
-  el_class("section", dashboard_instance_class, [
-    el_class("span", dashboard_instance_label_class, [
-      txt("instance · observing"),
-    ]),
-  ])
+  dashboard_instance_banner_with_progress(progress: [])
 }
 
 // The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a
@@ -1045,14 +1051,8 @@ fn inspect_attempt_evidence(view: WorkRowView) -> List<Fragment> {
   }
 }
 
-// DEPENDENCY LINKS (the requires-vs-contains ruling, 2026-09-21): nested members are the
-// decomposition the tree derives; a display child placed ELSEWHERE — a shared prerequisite owned
-// by another project (fleet-closed-loop-converge's shell-gate-migration is the exemplar) or a
-// family-owned closing-contract task — renders as a LINK to the one place the task renders, never
-// as a counted copy or a fake member. The bar's denominator still counts them (the declared
-// aggregate); the link is the pointer to the single rendering. The model carries only dependency
-// edges, so decomposition IS the primary-parent derivation — the named gap is that an authored
-// decomposition edge would be a first-class relation, not a presentation rule.
+// Unmet prerequisite links come from the scheduling projection. They are not membership
+// and contribute nothing to the project's completion denominator.
 fn inspect_dependency_link_nodes(project: ProjectTreeView?) -> List<Fragment> {
   match project {
     Absent => []
@@ -1525,14 +1525,14 @@ fn issue_component_value(view: WorkRowView) -> String {
   if component == "" { issue_owner_value(view: view) } else { component }
 }
 
-// THE PARENT FIELD renders DECOMPOSITION separately from dependency (owner ruling 2026-09-24):
-// the panel's parent is the tree derivation's display link; top-level reads honestly as such.
-// The named modeling gap — decomposition rides the primary-parent rule over dependency edges
-// until decomposition edges land — is stated on the panel type, not papered over here.
+// Parent navigation uses declared membership; ambiguity is rendered as a refusal.
 fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
-  match panel.parent {
+  match panel.parent_problem {
+    Present { value: reason } => [txt(reason)]
+    Absent => match panel.parent {
     Present { value: p } => issue_link_value(links: [ p ])
     Absent => [ txt("top-level") ]
+    }
   }
 }
 
@@ -1550,6 +1550,7 @@ fn issue_parent_value(panel: IssueLinkPanel) -> List<Fragment> {
 // the attempt evidence itself lives in the Work tab) — else the standing's holder principal. An
 // IDENTITY, never a bare string, so the chip and the rail render through the display projection.
 // Absent names no holder.
+
 fn issue_assignee_holder(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> EventPrincipal? {
   match attempts.first() {
     Present { value: _ } => Present { value: EventPrincipalAuthenticated { ref: fabric_workflow_principal } }
@@ -1892,10 +1893,9 @@ fn issue_authored_section(heading: String, rows: List<Fragment>) -> Fragment {
     rows))
 }
 
-// THE FIELDS OF ONE LABEL, in the label order the caller names — the fold groups by the
-// interface's own field labels, never re-derives their content.
-fn ticket_fields_labeled(fields: List<DisclosureField>, labels: List<String>) -> List<DisclosureField> {
-  fold(labels, init: [], f: (acc, label) => concat(acc, filter(fields, f => f.label == label)))
+// Section selection uses the field identity even when display labels change.
+fn ticket_fields_in_section(fields: List<DisclosureField>, section: TicketSection) -> List<DisclosureField> {
+  filter(fields, f => ticket_field_section(field: f.field) == section)
 }
 
 // THE AUTHORED FIELDS, FOLDED PER THE MANDATE (owner 2026-09-25,
@@ -1913,15 +1913,15 @@ fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
       markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
     TicketDisclosure { brief, fields, updates } =>
       let description = issue_authored_section(heading: "Description", rows: [ el_class("div", "ticket-brief", inline_md_nodes(text: brief)) ])
-      let acceptance_fields = ticket_fields_labeled(fields: fields, labels: ["red control", "hand-back"])
+      let acceptance_fields = ticket_fields_in_section(fields: fields, section: TicketAcceptance)
       let acceptance = if count(acceptance_fields) == 0 { [] } else {
         [ issue_authored_section(heading: "Acceptance criteria", rows: map(acceptance_fields, f => disclosure_field_row(f: f))) ]
       }
-      let plan_fields = ticket_fields_labeled(fields: fields, labels: ["current state", "first slice", "displaced cost"])
+      let plan_fields = ticket_fields_in_section(fields: fields, section: TicketPlan)
       let plan = if count(plan_fields) == 0 { [] } else {
         [ issue_authored_details(summary: "Current plan", open: !done, rows: map(plan_fields, f => disclosure_field_row(f: f))) ]
       }
-      let scope_fields = ticket_fields_labeled(fields: fields, labels: ["out of scope"])
+      let scope_fields = ticket_fields_in_section(fields: fields, section: TicketScope)
       let scope = if count(scope_fields) == 0 { [] } else {
         [ issue_authored_details(summary: "Scope", open: false, rows: map(scope_fields, f => disclosure_field_row(f: f))) ]
       }
@@ -1931,15 +1931,15 @@ fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
   }
 }
 
-// THE DESCRIPTION, pinned above the comment stream (owner mandate 2026-09-25,
-// docs/plans/issue-page-architecture.md): the issue's authored content leads the page's narrative.
-// THE NAMED GAP, not papered over: the roadmap authority rows carry one content string today (the
-// headline the header also wears), so the description renders THAT content until the authority
-// grows a separate body field — never a fabricated empty section.
+// The typed brief is the description; legacy rows retain their authored body.
 fn issue_description_node(view: WorkRowView) -> Fragment {
   el_class("div", "issue-description", [
     el_class("h2", "issue-description-heading", [ txt("Description") ]),
-    el_class("div", "issue-description-body", inline_md_nodes(text: view.headline)),
+    el_class("div", "issue-description-body", inline_md_nodes(text: match view.disclosure {
+      TicketDisclosure { brief, fields: _, updates: _ } => brief
+      LegacyBodyDisclosure { content } => content
+      NoDisclosure => view.headline
+    })),
   ])
 }
 
@@ -2245,13 +2245,7 @@ fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope
     disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
 }
 
-// THE DEPENDENCIES TAB, dimensional per the owner mandate: parent/children (nesting), blocked
-// by/blocking (must-complete-first), related, and supersedes — separate sections, never one
-// flattened list. THE NAMED GAP, stated not papered over: the roadmap graph carries only
-// dependency edges today, so BOTH nesting sides ride the primary-parent rule over those edges
-// (the capture-verified decomposition approximation from the qualified-identity ruling) — the
-// section labels keep the dimensions distinct for when decomposition edges land, and "related"
-// is declared with no relation kind yet (the section renders its emptiness honestly).
+// Nesting and blocking render their independently derived relations.
 fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> List<Fragment> {
   [
     el_class("div", "issue-deps-section", [
@@ -2260,7 +2254,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> Lis
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("children") ]),
-      el_class("div", "issue-deps-body", if count(panel.blocking) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocking) }),
+      el_class("div", "issue-deps-body", if count(panel.children) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.children) }),
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("blocked by") ]),
@@ -2268,7 +2262,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, panel: IssueLinkPanel) -> Lis
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("blocking") ]),
-      el_class("div", "issue-deps-body", [ txt("rides the same primary-parent rule until dependency-reverse edges are declared — named, not fabricated") ]),
+      el_class("div", "issue-deps-body", if count(panel.blocking) == 0 { [ txt("none") ] } else { issue_link_value(links: panel.blocking) }),
     ]),
     el_class("div", "issue-deps-section", [
       el_class("h3", "issue-deps-heading", [ txt("related") ]),
@@ -2461,7 +2455,7 @@ fn issue_detail_page_for(
               standing: standing_for_node(standings: standings, node_id: node_id),
               launch: ctx,
               attempt_stale: any(stale_nodes, s => s == node_id)),
-            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges),
+            panel: gunbc.roadmap_presentation.issue_link_panel(rn: rn, nodes: nodes, edges: edges, memberships: declared_roadmap_memberships()),
             observation: observation,
             attempts: attempts,
             events: events,
@@ -2519,11 +2513,9 @@ fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>,
 
 fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
   el_class("section", "program-progress", [
-    el_class("span", "program-progress-name", [ txt(v.name) ]),
     el_class("span", "program-progress-count", [
       txt(join([
-        to_string(v.completed), " of ", to_string(v.total), " finish lines complete",
-        " · ", to_string(v.ready_obligation_count), " ready now",
+        to_string(v.ready_obligation_count), " ready",
       ], "")),
     ]),
   ])
@@ -2622,7 +2614,7 @@ fn daily_workspace_view_of_for_accepted(
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   daily_workspace_view(
     rows: rows,
-    edges: edges,
+    memberships: declared_roadmap_memberships(),
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),
@@ -2652,7 +2644,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     stale_nodes: stale_nodes,
   )
   let program_strip = match ws.program {
-    Present { value: v } => [ program_progress_markup_of(v: v) ]
+    Present { value: v } => [ txt(" · "), program_progress_markup_of(v: v) ]
     Absent => []
   }
   Element {
@@ -2667,7 +2659,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
       ]),
       el("body", [
         roadmap_header(page: "daily workspace"),
-        el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
+        el_class("main", "daily-workspace", concat([dashboard_instance_banner_with_progress(progress: program_strip)], concat(main_prefix, concat(
           workspace_observation_banner(observation: ws.observation),
           [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc))])))),
         dispatch_client_script(),
@@ -2879,7 +2871,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         accepted_ids: [],
         withheld: [],
         main_prefix: [
-          dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
         ],
         attempts: attempts,
@@ -2895,7 +2886,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale(
         accepted_ids: accepted,
         withheld: withheld,
         main_prefix: [
-          dashboard_instance_banner(),
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,

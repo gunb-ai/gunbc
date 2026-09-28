@@ -1,5 +1,7 @@
 module test.claim.roadmap.roadmap_attempt_continuation_witness_test
 
+import gunbc.roadmap_model { RoadmapMembership }
+
 import std.types { Bool, String, Int }
 import gunbc.roadmap_model { RoadmapEdge, RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -42,7 +44,7 @@ fn pri(
 ) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: "n1",
-    edges: [te(child: "arc-1", parent: "n1")],
+    memberships: fixture_memberships(dependencies: [te(child: "arc-1", parent: "n1")]),
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
     worker_terminal: true,
@@ -350,18 +352,18 @@ fn nominal_receipt(turn: Int) -> SupervisorVerdictObservation {
 // project-of-one leaf to its own node's supervisor, a root arc (standalone with members) to the
 // top, and an ambiguous membership derives nothing at all.
 test fn the_escalation_target_is_derived_never_rostered() -> Bool {
-  match supervisor_target_for(node_id: "leaf", edges: [te(child: "arc", parent: "leaf")]) {
+  match supervisor_target_for(node_id: "leaf", memberships: fixture_memberships(dependencies: [te(child: "arc", parent: "leaf")])) {
     Present { value: SupervisorForNode { node_id } } =>
       node_id == "arc"
-        && (match supervisor_target_for(node_id: "solo", edges: [te(child: "arc", parent: "leaf")]) {
+        && (match supervisor_target_for(node_id: "solo", memberships: fixture_memberships(dependencies: [te(child: "arc", parent: "leaf")])) {
           Present { value: SupervisorForNode { node_id: own } } => own == "solo"
           _ => false
         })
-        && (match supervisor_target_for(node_id: "arc", edges: [te(child: "arc", parent: "leaf")]) {
+        && (match supervisor_target_for(node_id: "arc", memberships: fixture_memberships(dependencies: [te(child: "arc", parent: "leaf")])) {
           Present { value: SupervisorAtTop } => true
           _ => false
         })
-        && (match supervisor_target_for(node_id: "leaf", edges: [te(child: "arc", parent: "leaf"), te(child: "arc2", parent: "leaf")]) {
+        && (match supervisor_target_for(node_id: "leaf", memberships: fixture_memberships(dependencies: [te(child: "arc", parent: "leaf"), te(child: "arc2", parent: "leaf")])) {
           Absent => true
           Present { value: _ } => false
         })
@@ -486,7 +488,7 @@ fn running_prior() -> PriorAttemptFacts {
   let p = failed_prior()
   PriorAttemptFacts {
     node_id: p.node_id,
-    edges: p.edges,
+    memberships: p.memberships,
     attempt_key: p.attempt_key,
     branch: p.branch,
     worker_terminal: false,
@@ -537,4 +539,10 @@ test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_
       ContinuationRefused { reason } => reason.contains("does not inhabit")
       _ => false
     })
+}
+
+// Fixture notation only: these preexisting specimens explicitly describe nesting. Production
+// never converts dependencies into ownership.
+fn fixture_memberships(dependencies: List<gunbc.roadmap_model.RoadmapEdge>) -> List<RoadmapMembership> {
+  dependencies |> map(e => RoadmapMembership { project: e.child, member: e.parent })
 }

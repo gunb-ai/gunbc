@@ -6,6 +6,8 @@ module test.claim.roadmap.roadmap_alignment_witness_test
 // Cadence claims pin the magnitudinal bases, the verdict step function's floor/ceiling walls, the
 // per-lineage state codec, and the due evaluation over an adaptive state.
 
+import gunbc.roadmap_model { RoadmapMembership }
+
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_eq, WholeDeclaration }
@@ -19,7 +21,7 @@ import gunbc.roadmap.roadmap_alignment {
   AlignmentResolvedChain,
   alignment_levels, alignment_levels_due,
   AlignmentRefusal,
-  AlignmentChainForked, AlignmentRowUndeclared,
+  AlignmentChainForked, AlignmentRowUndeclared, AlignmentMembershipCycle,
   alignment_refusal_reason,
   AlignmentResolution,
   AlignmentReady, AlignmentUnresolved,
@@ -132,7 +134,7 @@ fn ambiguous_edges() -> List<RoadmapEdge> {
 // ------------------------------------------------------------------------------------------------
 
 test fn a_linear_chain_runs_task_then_projects_then_the_root_pointer() -> Bool {
-  match alignment_chain(node_id: "task-a", edges: linear_edges(), nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: linear_edges()), nodes: fixture_nodes()) {
     AlignmentChained { task, projects, root } =>
       task.node_id == "task-a"
         && task.purpose == "Task A headline"
@@ -150,7 +152,7 @@ test fn a_linear_chain_runs_task_then_projects_then_the_root_pointer() -> Bool {
 // DERIVATION CONTROL: same rows, one rewired middle edge (arc-two now hangs off arc-mid). The
 // derived chain follows the edge; nothing beside it is edited, because nothing beside it exists.
 test fn an_edge_edit_re_renders_the_chain_there_is_no_second_list() -> Bool {
-  match alignment_chain(node_id: "task-a", edges: deep_linear_edges(), nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: deep_linear_edges()), nodes: fixture_nodes()) {
     AlignmentChained { task, projects, root: _ } =>
       task.node_id == "task-a"
         && (map(projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two"]
@@ -159,7 +161,7 @@ test fn an_edge_edit_re_renders_the_chain_there_is_no_second_list() -> Bool {
 }
 
 test fn a_projectless_node_chains_straight_from_its_task_to_the_root() -> Bool {
-  match alignment_chain(node_id: "lone-task", edges: [], nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "lone-task", memberships: fixture_memberships(dependencies: []), nodes: fixture_nodes()) {
     AlignmentChained { task, projects, root } =>
       task.node_id == "lone-task"
         && count(projects) == 0
@@ -173,7 +175,7 @@ test fn two_dependents_at_one_step_is_a_typed_ambiguity_not_a_first_choice() -> 
     fixture_edge(child: "arc-one", parent: "task-a"),
     fixture_edge(child: "arc-two", parent: "task-a"),
   ]
-  match alignment_chain(node_id: "task-a", edges: edges, nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: edges), nodes: fixture_nodes()) {
     AlignmentChainAmbiguous { walked, at, dependents } =>
       count(walked) == 0
         && at == "task-a"
@@ -183,7 +185,7 @@ test fn two_dependents_at_one_step_is_a_typed_ambiguity_not_a_first_choice() -> 
 }
 
 test fn an_ambiguity_carries_the_walked_prefix_the_fork_erases_nothing() -> Bool {
-  match alignment_chain(node_id: "task-a", edges: ambiguous_edges(), nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: ambiguous_edges()), nodes: fixture_nodes()) {
     AlignmentChainAmbiguous { walked, at, dependents } =>
       (map(walked, l => l.node_id)) == ["arc-one", "arc-mid"]
         && at == "arc-mid"
@@ -193,7 +195,7 @@ test fn an_ambiguity_carries_the_walked_prefix_the_fork_erases_nothing() -> Bool
 }
 
 test fn an_undeclared_task_row_refuses_the_chain() -> Bool {
-  match alignment_chain(node_id: "ghost", edges: [], nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "ghost", memberships: fixture_memberships(dependencies: []), nodes: fixture_nodes()) {
     AlignmentChainRowUndeclared { node_id } => node_id == "ghost"
     _ => false
   }
@@ -201,7 +203,7 @@ test fn an_undeclared_task_row_refuses_the_chain() -> Bool {
 
 test fn an_undeclared_arc_row_mid_walk_refuses_rather_than_projecting_nothing() -> Bool {
   let edges = [fixture_edge(child: "arc-missing", parent: "task-a")]
-  match alignment_chain(node_id: "task-a", edges: edges, nodes: fixture_nodes()) {
+  match alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: edges), nodes: fixture_nodes()) {
     AlignmentChainRowUndeclared { node_id } => node_id == "arc-missing"
     _ => false
   }
@@ -217,13 +219,11 @@ test fn an_undeclared_arc_row_mid_walk_refuses_rather_than_projecting_nothing() 
 // edge is exactly what flips it.
 // ------------------------------------------------------------------------------------------------
 
-test fn the_production_example_is_derived_and_the_real_chain_refuses_at_the_fork() -> Bool {
+test fn the_production_batch_owns_tasks_without_inheriting_blocking_ancestors() -> Bool {
   match alignment_chain_for(node_id: "shell-dag-cron-entry-line-builder") {
-    AlignmentChainAmbiguous { walked, at, dependents } =>
-      at == "shell-gate-migration"
-        && (map(walked, l => l.node_id)) == ["shell-typed-invocation", "shell-effectplan-to-bash", "shell-gate-migration"]
-        && dependents == ["shell-residue-zero", "fleet-closed-loop-converge"]
-        && fold(walked, init: true, f: fn(ok, l) { ok && l.purpose != "" && l.boundary != "" })
+    AlignmentChained { task: _, projects, root: _ } =>
+      map(projects, p => p.node_id) == ["shell-typed-invocation"]
+        && fold(projects, init: true, f: fn(ok, p) { ok && p.purpose != "" && p.boundary != "" })
     _ => false
   }
 }
@@ -568,7 +568,7 @@ test fn a_state_that_predates_a_level_starts_that_level_at_its_declared_base() -
 // carrying the typed cause and no levels answer at all.
 test fn a_refused_chain_resolves_unresolved_naming_the_fork_by_its_dependents() -> Bool {
   match alignment_resolve_chain(
-    chain: alignment_chain(node_id: "task-a", edges: ambiguous_edges(), nodes: fixture_nodes()),
+    chain: alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: ambiguous_edges()), nodes: fixture_nodes()),
     turns_elapsed: 200,
     state: base_state(),
   ) {
@@ -578,6 +578,7 @@ test fn a_refused_chain_resolves_unresolved_naming_the_fork_by_its_dependents() 
           at == "arc-mid"
             && dependents == ["arc-two", "arc-three"]
             && (map(walked, l => l.node_id)) == ["arc-one", "arc-mid"]
+        AlignmentMembershipCycle { at: _ } => false
         AlignmentRowUndeclared { node_id: _ } => false
       }
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
@@ -588,13 +589,14 @@ test fn an_undeclared_referenced_row_resolves_unresolved_refused_by_name() -> Bo
   let edges = [fixture_edge(child: "arc-missing", parent: "task-a")]
   let refusal_text = alignment_refusal_reason(cause: AlignmentRowUndeclared { node_id: "arc-missing" })
   match alignment_resolve_chain(
-    chain: alignment_chain(node_id: "task-a", edges: edges, nodes: fixture_nodes()),
+    chain: alignment_chain(node_id: "task-a", memberships: fixture_memberships(dependencies: edges), nodes: fixture_nodes()),
     turns_elapsed: 200,
     state: base_state(),
   ) {
     AlignmentUnresolved { cause } =>
       match cause {
         AlignmentRowUndeclared { node_id } => node_id == "arc-missing"
+        AlignmentMembershipCycle { at: _ } => false
         AlignmentChainForked { at: _, dependents: _, walked: _ } => false
       }
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
@@ -714,38 +716,21 @@ test fn the_chain_fingerprint_moves_when_any_link_moves() -> Bool {
     && base != ""
 }
 
-// THE PRODUCTION FORK, THROUGH THE ONE AUTHORITY. The real declared edges refuse the
-// shell-dag-cron-entry-line-builder chain at the shell-gate-migration fork; the resolution names
-// the fork and both dependents — and carries no levels answer any consumer could misread as
-// "nothing due" (the negative control the review finding demanded: the derived refusal is typed,
-// named, and reaches no worker-start effect downstream).
-test fn the_production_resolution_refuses_the_real_fork_by_name() -> Bool {
+// Production ownership comes from declared membership, not shared blocking prerequisites.
+test fn the_production_resolution_uses_the_explicit_batch_owner() -> Bool {
   match alignment_resolve(node_id: "shell-dag-cron-entry-line-builder", turns_elapsed: 1, state: alignment_base_cadence_state()) {
-    AlignmentUnresolved { cause } =>
-      match cause {
-        AlignmentChainForked { at, dependents, walked } =>
-          at == "shell-gate-migration"
-            && dependents == ["shell-residue-zero", "fleet-closed-loop-converge"]
-            && (map(walked, l => l.node_id)) == ["shell-typed-invocation", "shell-effectplan-to-bash", "shell-gate-migration"]
-        AlignmentRowUndeclared { node_id: _ } => false
-      }
-    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+    AlignmentReady { chain, due_levels: _, rendered_prompt } =>
+      map(chain.projects, p => p.node_id) == ["shell-typed-invocation"]
+        && !string_contains(s: rendered_prompt, pattern: "this task serves project shell-residue-zero")
+    AlignmentUnresolved { cause: _ } => false
   }
 }
 
-// A CLEAN PRODUCTION CHAIN RESOLVES READY, EVERY LEVEL DERIVED: the corpus's real rows climb two
-// live arcs — extended-admission-cardinality serves accepted-extended-obligation-closure, which
-// serves guarantee-residual-prevalence, a standalone root — and the render carries each derived
-// level: the positive inhabitance claim pairing with the fork refusal above. (The roadmap-runtime
-// rows refuse instead: their chain walks through superseded rows, and the walk names the halt —
-// both answers are the one authority reading the live authority.)
-test fn a_clean_production_chain_resolves_ready_rendering_every_derived_level() -> Bool {
+test fn a_production_prerequisite_without_membership_has_no_project_ancestors() -> Bool {
   match alignment_resolve(node_id: "extended-admission-cardinality", turns_elapsed: 1, state: alignment_base_cadence_state()) {
     AlignmentReady { chain, due_levels: _, rendered_prompt } =>
       chain.task.node_id == "extended-admission-cardinality"
-        && (map(chain.projects, p => p.node_id)) == ["accepted-extended-obligation-closure", "guarantee-residual-prevalence"]
-        && string_contains(s: rendered_prompt, pattern: "accepted-extended-obligation-closure")
-        && string_contains(s: rendered_prompt, pattern: "guarantee-residual-prevalence")
+        && count(chain.projects) == 0
         && string_contains(s: rendered_prompt, pattern: "extended-admission-cardinality")
         && alignment_chain_fingerprint(chain: chain) != ""
     AlignmentUnresolved { cause: _ } => false
@@ -791,4 +776,10 @@ test fn a_binding_without_the_schema_wall_refuses() -> Bool {
       AlignmentBindingNotDecodable { reason: _ } => true
       AlignmentBindingDecoded { binding: _ } => false
     })
+}
+
+// Fixture notation only: these preexisting specimens explicitly describe nesting. Production
+// never converts dependencies into ownership.
+fn fixture_memberships(dependencies: List<gunbc.roadmap_model.RoadmapEdge>) -> List<RoadmapMembership> {
+  dependencies |> map(e => RoadmapMembership { project: e.child, member: e.parent })
 }

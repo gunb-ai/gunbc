@@ -1,0 +1,91 @@
+module test.claim.roadmap.roadmap_cut2_witness_test
+
+import std.types { String, List }
+import gunbc.roadmap_model { RoadmapMembership, RoadmapNodeId }
+import gunbc.roadmap.roadmap_project { node_project_membership, MembershipStandalone, MembershipMember, MembershipAmbiguous }
+import gunbc.roadmap.roadmap_alignment { alignment_chain, AlignmentChained, AlignmentChainCycle, AlignmentChainRowUndeclared }
+import test.claim.roadmap.roadmap_alignment_witness_test { fixture_node }
+import gunbc.roadmap_presentation { issue_link_panel, DisclosureField }
+import gunbc.roadmap_page { ticket_fields_in_section }
+import gunbc.roadmap_status { TicketRedControl, TicketAcceptance, TicketPlan }
+import gunbc.roadmap_authority { edge }
+import gunbc.roadmap_fleet_components { fleet_components, fleet_components_for, FleetComponentsProjected, FleetComponentsRefused, FleetComponentIdentity, FleetComponentPlacement }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+
+fn membership(project: String, member: String) -> RoadmapMembership {
+  RoadmapMembership { project: project as RoadmapNodeId, member: member as RoadmapNodeId }
+}
+
+test fn nesting_and_blocking_have_independent_inverses() -> Bool {
+  let task = fixture_node(id: "task", headline: "task", brief: "task brief")
+  let nodes = [task, fixture_node(id: "project", headline: "project", brief: "project brief"), fixture_node(id: "child", headline: "child", brief: "child brief"), fixture_node(id: "dependent", headline: "dependent", brief: "dependent brief")]
+  let nesting = [membership(project: "project", member: "task"), membership(project: "task", member: "child")]
+  let panel = issue_link_panel(rn: task, nodes: nodes, memberships: nesting, edges: [edge(child: "dependent", parent: "task")])
+  map(panel.children, n => n.node_id) == ["child"]
+    && map(panel.blocking, n => n.node_id) == ["dependent"]
+    && count(panel.blocked_by) == 0
+    && (match panel.parent { Present { value: p } => p.node_id == "project"  Absent => false })
+    && (match alignment_chain(node_id: "task", memberships: nesting, nodes: nodes) {
+      AlignmentChained { task: _, projects, root: _ } => map(projects, p => p.node_id) == ["project"]
+      _ => false
+    })
+    && (match alignment_chain(node_id: "task", memberships: [], nodes: nodes) {
+      AlignmentChained { task: _, projects, root: _ } => count(projects) == 0
+      _ => false
+    })
+}
+
+test fn membership_cycle_refuses_instead_of_returning_a_truncated_chain() -> Bool {
+  let nodes = [fixture_node(id: "a", headline: "A", brief: "A brief"), fixture_node(id: "b", headline: "B", brief: "B brief")]
+  match alignment_chain(node_id: "a", nodes: nodes, memberships: [membership(project: "b", member: "a"), membership(project: "a", member: "b")]) {
+    AlignmentChainCycle { at: _ } => true
+    _ => false
+  }
+}
+
+test fn label_changes_do_not_remove_acceptance_fields() -> Bool {
+  let renamed = DisclosureField { field: TicketRedControl, label: "Proof required", value: "red witness" }
+  let acceptance = ticket_fields_in_section(fields: [renamed], section: TicketAcceptance)
+  count(acceptance) == 1
+    && count(ticket_fields_in_section(fields: [renamed], section: TicketPlan)) == 0
+    && (match acceptance.first() { Present { value: f } => f.value == "red witness" && f.label == "Proof required"  Absent => false })
+}
+
+test fn fleet_component_projection_preserves_existing_allocated_ids() -> Bool {
+  match fleet_components() {
+    FleetComponentsProjected { hosts, arms } =>
+      count(hosts) == 12 && count(arms) == 8
+        && (match (arms |> filter(c => c.id == 111)).first() {
+          Present { value: c } => c.path == ["srv11", "serving", "group-b"]
+          Absent => false
+        })
+    FleetComponentsRefused { reason: _ } => false
+  }
+}
+
+test fn changing_placement_changes_path_without_changing_identity() -> Bool {
+  let slots = [FleetComponentIdentity { host: operator_host_srv5, id: 5, serving_id: Present { value: 105 } }]
+  let moved = fleet_components_for(subjects: [operator_host_srv5], identities: slots,
+    placements: [FleetComponentPlacement { host: operator_host_srv5, group: FabricGroupB }])
+  match moved {
+    FleetComponentsProjected { hosts, arms } =>
+      (match hosts.first() { Present { value: c } => c.id == 5 && c.path == ["srv5"]  Absent => false })
+        && (match arms.first() { Present { value: c } => c.id == 105 && c.path == ["srv5", "serving", "group-b"]  Absent => false })
+    _ => false
+  }
+}
+
+test fn missing_component_identity_refuses_projection() -> Bool {
+  match fleet_components_for(subjects: [operator_host_srv5], identities: [], placements: []) {
+    FleetComponentsRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn missing_serving_placement_refuses_instead_of_shrinking_the_tree() -> Bool {
+  match fleet_components_for(subjects: [operator_host_srv5], identities: [FleetComponentIdentity { host: operator_host_srv5, id: 5, serving_id: Present { value: 105 } }], placements: []) {
+    FleetComponentsRefused { reason: _ } => true
+    _ => false
+  }
+}
