@@ -303,20 +303,15 @@ test fn release_bins_RED_restore_altered_member_with_valid_manifest_refuses() ->
 }
 
 // ── P1-2: the pack is exactly the roster of self-contained executable regular files ─────────────
-data mutation_symlinked_gunbc_with_matching_digest: Outcome<String> = e(statements: concat(
-  repack(
-    edit: [
-      write_file(path: in_t(path: "/outside"), lines: ["outside the pack"]),
-      cmd(ws: [fx(t: "rm"), in_t(path: "/re/gunbc")]),
-      cmd(ws: [fx(t: "ln"), fx(t: "-s"), in_t(path: "/outside"), in_t(path: "/re/gunbc")]),
-    ],
-    names: ci_floor_required_artifact_names(),
-  ),
-  [
-    bash_build_with_redir_to_file(inner: cmd(ws: [fx(t: "sha256sum"), in_t(path: "/outside")]), path: in_t(path: "/outside.sum")),
-    assign_sub(name: "OUTSIDE_SUM", body: cmd(ws: [fx(t: "cut"), fx(t: "-c"), fx(t: "1-64"), in_t(path: "/outside.sum")])),
-    cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), words(ws: [fx(t: "s/^[0-9a-f]{64}  gunbc$/"), var(n: "OUTSIDE_SUM"), fx(t: "  gunbc/")]), in_t(path: join(["/store/", release_bins_manifest_name], ""))]),
+// The link's target is a copy of the member's own bytes, so its digest already matches the manifest:
+// only the member's TYPE is wrong, which is exactly what the claim exists to discriminate.
+data mutation_symlinked_gunbc_with_matching_digest: Outcome<String> = e(statements: repack(
+  edit: [
+    cmd(ws: [fx(t: "cp"), in_t(path: "/re/gunbc"), in_t(path: "/outside")]),
+    cmd(ws: [fx(t: "rm"), in_t(path: "/re/gunbc")]),
+    cmd(ws: [fx(t: "ln"), fx(t: "-s"), in_t(path: "/outside"), in_t(path: "/re/gunbc")]),
   ],
+  names: ci_floor_required_artifact_names(),
 ))
 
 data mutation_extra_member: Outcome<String> = e(statements: repack(
