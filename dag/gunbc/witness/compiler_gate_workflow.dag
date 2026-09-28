@@ -25,6 +25,7 @@ module gunbc.compiler_gate_workflow
 // reused across runs, or preparation scoped to a diff's closure) and its runtime fits the fleet;
 // then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
 
+import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
@@ -79,6 +80,8 @@ import gunbc.witness_floor_workflow {
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
+  hosted_runner_memory_cgroup_bind_commands,
+  hosted_arm_runner_cgroup_memory_max,
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -95,7 +98,7 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -193,6 +196,75 @@ fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
 data compiler_gate_clippy_job_id: String = "clippy"
 data compiler_gate_clippy_step_name: String = "Lint every target"
 
+// THE v1 UNIT TESTS RUN HERE, AFTER THE LINT (operator ruling 2026-09-27). That ruling orders ONE
+// wall-time measurement on this runner BEFORE the step is required, so it lands NON-REQUIRED
+// (continue_on_error) under its own job timeout long enough to complete once. The first run was
+// cancelled at the shared 45-minute cap (the first run on PR #12450), and
+// tests were red on main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop stays
+// Standing until the population is green and the complete wall is measured; then this step turns
+// required and the drop retires in the same change. It is a STEP on the hosted lane, so it adds no
+// job to the closed roster and claims no fleet slot.
+//
+// THE BOUND IS REAL, NOT DECLARED. The regeneration-host tests read their budget through
+// gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup binds the process, which
+// is every hosted runner. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
+// refuse, so the step's shell moves itself into a leaf with memory.max set -- the same bind the heal
+// publisher performs, at the one hosted-runner bound gunbc.ci_spec hosted_arm_runner_cgroup_memory_max
+// -- and cargo, and every test binary it starts, inherits it.
+data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
+data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
+data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
+// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT. continue_on_error covers a
+// step FAILURE, not a JOB timeout: with the step uncapped, a slow unit run consumed the whole job cap,
+// GitHub cancelled the clippy job inside the non-required step, and the required witnesses aggregate
+// failed on it (merge_group run 36431733521). A step-level timeout expires as a step failure, which
+// continue_on_error does cover, so the job's conclusion no longer depends on the unit step's wall.
+// The job cap is the sum of the step cap and a reserve for everything before it, so the step ends
+// inside the job by construction rather than by two literals agreeing. Both are sized from the
+// clippy job records of witnesses runs 36424259908 and 36434277095 (completed unit walls) and
+// 36431733521 (a unit wall past the job cap), re-read there rather than copied here; they are
+// re-derived when the step turns required or the live-tree tests are reshaped.
+fn compiler_gate_unit_test_timeout() -> Minute {
+  minute(count: 50)
+}
+
+// Checkout, toolchain install and the lint run before the unit step; their measured sum is a small
+// fraction of this reserve.
+fn compiler_gate_clippy_pre_unit_reserve() -> Minute {
+  minute(count: 10)
+}
+
+fn compiler_gate_clippy_timeout() -> Minute {
+  minute(count: minute_count(compiler_gate_unit_test_timeout()) + minute_count(compiler_gate_clippy_pre_unit_reserve()))
+}
+
+fn compiler_gate_unit_test_command() -> String {
+  join(
+    list_append(
+      hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: compiler_gate_unit_test_cgroup_name,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
+      ),
+      [repo_self_test_command()],
+    ),
+    "; "
+  )
+}
+
+fn compiler_gate_unit_test_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_unit_test_step_name },
+    id: Present { value: compiler_gate_unit_test_step_id },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: compiler_gate_unit_test_command()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: Present { value: true },
+    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_timeout()) }
+  }
+}
+
 fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
   [
     CompilerGateBoundStep {
@@ -223,6 +295,11 @@ fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: compiler_gate_clippy_step_name,
     },
+    CompilerGateBoundStep {
+      step: compiler_gate_unit_test_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_unit_test_step_name,
+    },
   ]
 }
 
@@ -248,7 +325,7 @@ fn compiler_gate_clippy_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: compiler_gate_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(compiler_gate_clippy_timeout()) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: compiler_gate_permissions }
@@ -388,7 +465,7 @@ fn compiler_gate_floor_run_step() -> Step {
 }
 
 // THE STEP NAME STATES ITS POPULATION, AND THE POPULATION IS NARROWER THAN "GENERATED ARTIFACTS".
-// generated_artifact_gate main reads gunbc.generated_artifact committed_generated_artifacts only. The
+// generated_artifact_gate main reads gunbc.generated_artifact_registry committed_generated_artifacts only. The
 // ~157 stage0 mirrors (src/v1/stage0/src/std_measure.rs and the rest of the compile_stage0 emitted
 // population) are adjudicated by claim_executor's GeneratedArtifact phase, which routes to
 // --required-lane build, and no job has invoked that lane since #11742. The earlier name,

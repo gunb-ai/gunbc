@@ -645,7 +645,7 @@ fn convergence_slice_refusal_text(slice: NonEmptyStr, serving: NonEmptyStr) -> S
 
 // THE PRODUCTION UNIT IS THE ADMITTED RENDERING OVER THE DECLARED CONVERGENCE SLICE. The refused arm
 // is unreachable from the declared row -- the witness pins that -- and it renders a poison marker
-// rather than a unit, in the same shape as gunbc.live_deploy.emit release_revision_not_installed_poison:
+// rather than a unit, in the same shape as gunbc.live_deploy.release_locus release_revision_not_installed_poison:
 // systemd refuses to load it and the restart step's diagnosis prints the reason, so an edit that moved
 // the declared row into a serving slice fails the deploy loudly instead of installing a throttled unit.
 fn convergence_unit_doc(
