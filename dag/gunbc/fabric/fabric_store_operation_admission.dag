@@ -30,6 +30,12 @@ import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAut
 // the writer presented, the presenting principal's grants, the receipt key and the instant -- so the
 // door (gunbc.fabric_storage_serve's advance arm) performs the reads and this decides.
 //
+// A DECLARED FRONTIER (DESIGN §3c): admit_store_operation's consumer is gunbc.fabric_storage_serve's
+// advance arm, which reads the advanced-to object, the presented credential, the presenting
+// principal's grants (a per-principal roster over jolly-owl-158's door principal, gunbc#12482) and
+// the receipt keyring, and calls this before fabric_storage_file_advance (d0_store_operation_wall
+// PR 4b). TRIGGER: that change lands; if the door decides some other way, this module goes with it.
+//
 // THE OPERATION IS READ FROM THE OBJECT, NEVER FROM THE WRITER. An advance names a head and the
 // object it moves to; the object is already stored, so the door decodes it and the operation is what
 // the object IS. A writer cannot claim a cheaper operation than the one it writes.
