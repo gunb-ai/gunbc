@@ -4889,8 +4889,10 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
-// THE VALUE READER'S ATOM: the node is its atom only if, through optional elements and production
-// shells, it IS one atom; anything with more structure is Absent, so the caller refuses. The primary,
+// THE VALUE READER'S ATOM: the node is its atom only if, through optional elements, production
+// shells and empty-tail sequences (an operator-free tower level, the peel
+// body_lower_find_control_form_optional also makes), it IS one atom; anything with more structure is
+// Absent, so the caller refuses. The primary,
 // postfix and operand fall-backs used the pattern reader's child search here, and answered a map
 // literal `{ "k": v }` with its `{` token and a qualified constructor `a.b.T { f: v }` with `a`
 // (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
@@ -4901,7 +4903,16 @@ fn body_lower_value_sole_atom_optional(node: Node) -> Optional<Node> {
     Absent =>
       match parse_production_captured_child_optional(node: stripped) {
         Present { value: captured } => body_lower_value_sole_atom_optional(node: captured)
-        Absent => optional_absent()
+        Absent =>
+          match sugar_sequence_pair_optional(node: stripped) {
+            Present { value: pair } =>
+              if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+                body_lower_value_sole_atom_optional(node: pair.left)
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
       }
   }
 }
