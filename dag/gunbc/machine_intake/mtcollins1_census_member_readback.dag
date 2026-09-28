@@ -216,7 +216,13 @@ fn census_member_readback_from_readings(
 fn census_member_readback_holds(readback: CensusMemberReadback) -> Bool {
   match readback {
     BootChainIdenticalToStock { stock_iso: _, census_iso: _, kernel: _, initrd: _ } => true
-    _ => false
+    BootChainFirstDifference { stock_iso: _, census_iso: _, member: _, stock: _, census: _ } => false
+    BootChainControlDidNotDiscriminate { grub_digest: _ } => false
+    BootChainIsoNotPinned { side: _, expected: _, observed: _ } => false
+    BootChainUnread { member: _, side: _, reason: _ } => false
+    BootChainMediumNotCensus => false
+    BootChainHostUnreached { reason: _ } => false
+    BootChainWorkspaceUnavailable { reason: _ } => false
   }
 }
 
