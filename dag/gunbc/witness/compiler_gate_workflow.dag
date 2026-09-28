@@ -214,10 +214,28 @@ data compiler_gate_clippy_step_name: String = "Lint every target"
 data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
 data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
-// Sized with margin over the complete wall of the clippy job in witnesses run 36355834138 (the
-// timing is that run's job record, re-read there rather than copied here). It is re-derived when the step turns required or the live-tree tests are reshaped.
+// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT. continue_on_error covers a
+// step FAILURE, not a JOB timeout: with the step uncapped, a slow unit run consumed the whole job cap,
+// GitHub cancelled the clippy job inside the non-required step, and the required witnesses aggregate
+// failed on it (merge_group run 36431733521). A step-level timeout expires as a step failure, which
+// continue_on_error does cover, so the job's conclusion no longer depends on the unit step's wall.
+// The job cap is the sum of the step cap and a reserve for everything before it, so the step ends
+// inside the job by construction rather than by two literals agreeing. Both are sized from the
+// clippy job records of witnesses runs 36424259908 and 36434277095 (completed unit walls) and
+// 36431733521 (a unit wall past the job cap), re-read there rather than copied here; they are
+// re-derived when the step turns required or the live-tree tests are reshaped.
+fn compiler_gate_unit_test_timeout() -> Minute {
+  minute(count: 50)
+}
+
+// Checkout, toolchain install and the lint run before the unit step; their measured sum is a small
+// fraction of this reserve.
+fn compiler_gate_clippy_pre_unit_reserve() -> Minute {
+  minute(count: 10)
+}
+
 fn compiler_gate_clippy_timeout() -> Minute {
-  minute(count: 60)
+  minute(count: minute_count(compiler_gate_unit_test_timeout()) + minute_count(compiler_gate_clippy_pre_unit_reserve()))
 }
 
 fn compiler_gate_unit_test_command() -> String {
@@ -243,7 +261,7 @@ fn compiler_gate_unit_test_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: Present { value: true },
-    timeout_minutes: none
+    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_timeout()) }
   }
 }
 
