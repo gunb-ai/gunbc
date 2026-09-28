@@ -1,0 +1,6 @@
+module gunbc.namecheap.observation_artifact
+
+import std.types { String }
+
+// The observer writer, console display and workflow uploader consume this path.
+data namecheap_observation_receipt_path: String = "target/namecheap-observation.json"
