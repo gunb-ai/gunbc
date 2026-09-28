@@ -315,7 +315,7 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   ResolvedSharedTypeName {
     names: ["List"],
     resolution: ResolvedByDeletingV2 { reason: "one concept, two declarations of `= FreeMonoid`; `std.types` keeps it because `v2.std.collection` already imports `std.types`, so the reverse import would be a cycle. Its importers re-point to `std.types` and the name stays bare, since the container-arity authority is bare-keyed" },
-    change: 0
+    change: 12526
   },
   ResolvedSharedTypeName {
     names: ["TestClaim"],
