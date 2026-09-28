@@ -8277,9 +8277,10 @@ fn dispatch_modeled_operation(
         );
         modeled_refused(&key, format!("harness fault: {reason}"))
     };
-    if !is_shell_transport(transport.clone()) {
+    let shell_operation = is_shell_transport(transport.clone());
+    if !shell_operation && !is_file_transport(transport.clone(), ctx.si()) {
         return Err(harness_fault(
-            "a modeled realization supplies shell transport observations only; this operation's transport is not shell".to_string(),
+            "a modeled realization supplies shell and file transport observations only; this operation's transport is neither".to_string(),
         ));
     }
     let handler = record_field(ctx, &binding, "handler")
@@ -8357,7 +8358,20 @@ fn dispatch_modeled_operation(
                     return Err(error);
                 }
             };
-            let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
+            let projected = if shell_operation {
+                shell_result_of_observation(&observation, ctx)
+                    .map_err(&harness_fault)
+                    .map(|shell| shell_result_projection(shell, op_node, ctx))
+            } else {
+                let path = match param_env.lookup(ctx.sym("path")) {
+                    Some(Value::Str(p)) => p.to_string(),
+                    _ => String::new(),
+                };
+                file_result_of_observation(&observation, &path, ctx)
+                    .map_err(&harness_fault)
+                    .map(|file| map_file_outputs(&file, op_node, ctx))
+            };
+            let projected = projected?;
             log(
                 variant_value(
                     ctx,
@@ -8369,7 +8383,7 @@ fn dispatch_modeled_operation(
                 Some(advanced),
                 false,
             );
-            shell_result_projection(shell, op_node, ctx).map(Some)
+            projected.map(Some)
         }
         "OperationWorkerKilled" => {
             let committed = ctx
@@ -8401,6 +8415,71 @@ fn dispatch_modeled_operation(
             Err(harness_fault(reason))
         }
         other => Err(harness_fault(format!("unrecognized step {other}"))),
+    }
+}
+
+/// A modeled FileExchangeObservation as the file transport result the real dispatcher produces.
+/// The failure kind is named by its closed .dag authority (`filesystem_failure_kind_name`), the same
+/// channel a host `io::Error` is projected onto, so a consumer's kind admission reads it unchanged.
+fn file_result_of_observation(
+    observation: &Value,
+    path: &str,
+    ctx: &InterpContext,
+) -> Result<FileResult, String> {
+    let (arm, fields) = variant_parts(ctx, observation).ok_or("the observation is malformed")?;
+    if arm != "FileObserved" {
+        return Err(format!(
+            "a file operation was answered with a {arm} observation; a file operation needs FileObserved"
+        ));
+    }
+    let file = ctx
+        .field(&fields, "observation")
+        .ok_or("FileObserved carries no observation")?;
+    let (file_arm, file_fields) =
+        variant_parts(ctx, file).ok_or("the file observation is malformed")?;
+    let text = |name: &str| match ctx.field(&file_fields, name) {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        _ => Err(format!("the file observation carries no {name}")),
+    };
+    match file_arm.as_str() {
+        "FileOperationSucceeded" => {
+            let byte_count = match ctx.field(&file_fields, "byte_count") {
+                Some(Value::Int(n)) => *n,
+                _ => return Err("the file observation carries no byte_count".to_string()),
+            };
+            Ok(FileResult {
+                success: true,
+                byte_count,
+                path: path.to_string(),
+                error: String::new(),
+                error_kind: String::new(),
+                content: text("content")?,
+            })
+        }
+        "FileOperationFailed" => {
+            let kind = ctx
+                .field(&file_fields, "kind")
+                .cloned()
+                .ok_or("the file observation carries no kind")?;
+            let kind_name = match run_in_context_with_args(
+                ctx,
+                "filesystem_failure_kind_name",
+                &[(Some("kind".to_string()), kind)],
+                false,
+            ) {
+                Ok(Value::Str(s)) => s.to_string(),
+                _ => return Err("the file observation's kind has no name".to_string()),
+            };
+            Ok(FileResult {
+                success: false,
+                byte_count: 0,
+                path: path.to_string(),
+                error: text("error")?,
+                error_kind: kind_name,
+                content: String::new(),
+            })
+        }
+        other => Err(format!("unrecognized file observation {other}")),
     }
 }
 

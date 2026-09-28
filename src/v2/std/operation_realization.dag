@@ -11,6 +11,7 @@ import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.transports.file { FileExchangeObservation }
 
 // A MODELED OPERATION REALIZATION: the dry arm of an operation's realization, bound per grant.
 //
@@ -43,6 +44,7 @@ import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 // and the dispatch log for the dynamic extent of one witness frame.
 type TransportObservation
   = ShellObserved { observation: ShellExchangeObservation }
+  | FileObserved { observation: FileExchangeObservation }
 
 // A step either answers with an observation, or reports that the worker died after the effect was
 // (or was not) committed and before any reply, or reports that the SCENARIO is malformed. The last
