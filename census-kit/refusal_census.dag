@@ -1,0 +1,68 @@
+module scratch.refusal_census
+
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import v2.compiler.compile { native_test_context_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.algebra { fold_list, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.compilers.lexing { symbol_lexeme }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.reference_conservation_census { reference_conservation_census_for_path }
+
+fn census_reads(paths_csv: String) -> SourceRootIngest {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: Empty,
+    cons: fn(acc, path) {
+      let read = Filesystem.Read(path: path)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: _ } => acc
+        FilesystemReadSucceeded { content: text } =>
+          list_snoc_item(xs: acc, item: DagSourceReadWitness {
+            source: Medium { carried: text, fidelity: Lossless },
+            artifact: Artifact { kind: SourceFile, id: ^scratch_census_read, file_path: path },
+            compilation_unit: ^scratch_census_cu,
+            source_root: DagTree
+          })
+      }
+    }
+  )
+}
+
+fn refusal_census_for_path(path: String) -> String {
+  match native_test_context_from_ingest(ingest: census_reads(paths_csv: path)) {
+    Rejected { diagnostics: _ } => "FRONTEND " + path + "\n"
+    Accepted { value: ctx, diagnostics: _ } =>
+      fold_list(
+        xs: ctx.file_refusals,
+        empty: "ROW " + path + "\n",
+        cons: fn(acc, r) {
+          acc + "REFUSAL " + path + " " + symbol_lexeme(sym: r.head_reason) + " " + symbol_lexeme(sym: r.fatal_reason) + "\n"
+        }
+      )
+  }
+}
+
+fn refusal_census_for_paths(paths_csv: String) -> String {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: "",
+    cons: fn(acc, path) { acc + refusal_census_for_path(path: path) + both_conservation_lines(path: path) }
+  )
+}
+
+// Only the module summary and the absent-atom rows: the per-atom conserved rows are not the subject.
+fn both_conservation_lines(path: String) -> String {
+  fold_list(
+    xs: split(s: reference_conservation_census_for_path(path: path), delimiter: "\n"),
+    empty: "",
+    cons: fn(acc, line) {
+      if starts_with(s: line, prefix: "module ") { acc + "CONS " + line + "\n" }
+      else if contains(s: line, needle: " absent ") { acc + "ABSENT " + line + "\n" }
+      else { acc }
+    }
+  )
+}
