@@ -53,7 +53,7 @@ import gunbc.auth.approval_keyring_pins {
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix,
-  mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env,
+  mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_sol_activation_suffix,
   mtcollins1_boot_sol_capture_path_env,
   mtcollins1_boot_sol_pid_path_env,
 }
@@ -2855,6 +2855,13 @@ fn bhold(script_var: String, label: String, record: Node) -> Node {
   bcmd(words: [bl(text: "bash"), bl(text: "-c"), bv(name: script_var), bl(text: label), record])
 }
 
+// THE COLLECTOR IS RELEASED ONLY WHEN THE ACTIVATION RECEIPT NAMES IT (the same ownership decision as
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_release_owned): a record the receipt does
+// not name is kept and nothing is signalled; ours is released by identity and its record and receipt
+// are removed only once the owned check CONFIRMS it ended (exit 1), never on an unobservable identity
+// (exit 2). The watcher is waited on only once it is no longer a running job of this shell, so `wait`
+// returns at once; a running watcher whose identity cannot be confirmed is reported unresolved and is
+// not signalled.
 // THE TRAP KEEPS FOUR RESULTS APART and reports every one before the step's final exit: the boot
 // command's status (rc), the watcher's (obs), whether a still-running watcher had to be stopped and
 // whether that stop resolved (wclean), and whether the collector release and the credential cleanup
@@ -2872,29 +2879,65 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_WORKFLOW")]), then_stmts: [
       bor_true(stmt: bappend(line: bcat(parts: [bl(text: concat(mtcollins1_sol_workflow_event_prefix, "collector release requested by the step exit trap at=")), bash_build_word_cmdsubst(body: bcmdl(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]), path: bv(name: "SOL_WORKFLOW"))),
     ]),
-    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bv(name: "SOL_PID_FILE")), then_stmts: [bset(name: "col", value: "ok")], else_stmts: [bset(name: "col", value: "survived-KILL")]),
+    bset(name: "col", value: "absent"),
+    bash_build_if_from_stmts(cond: btest(words: [bl(text: "-e"), bv(name: "SOL_PID_FILE")]), then_stmts: [
+      bif_else(
+        cond: bash_build_and_then(
+          left: bash_build_and_then(
+            left: bash_build_assign(name: "crec", value: bash_build_word_cmdsubst(body: bquiet(stmt: bcmd(words: [bl(text: "cat"), bv(name: "SOL_PID_FILE")])))),
+            right: bash_build_assign(name: "crcpt", value: bash_build_word_cmdsubst(body: bquiet(stmt: bcmd(words: [bl(text: "cut"), bl(text: "-d"), bl(text: " "), bl(text: "-f1,2"), bcat(parts: [bv(name: "SOL_PID_FILE"), bl(text: mtcollins1_sol_activation_suffix)])])))),
+          ),
+          right: bash_build_and_then(
+            left: btest(words: [bl(text: "-n"), bv(name: "crec")]),
+            right: btest(words: [bv(name: "crcpt"), bl(text: "="), bv(name: "crec")]),
+          ),
+        ),
+        then_stmts: [
+          bor_true(stmt: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: bv(name: "SOL_PID_FILE"))),
+          bif_else(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: bv(name: "SOL_PID_FILE")), then_stmts: [bset(name: "co", value: "0")], else_stmts: [bash_build_assign(name: "co", value: bv(name: "?"))]),
+          bif_else(
+            cond: btest(words: [bv(name: "co"), bl(text: "="), bl(text: "1")]),
+            then_stmts: [
+              bif_else(
+                cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "SOL_PID_FILE"), bcat(parts: [bv(name: "SOL_PID_FILE"), bl(text: mtcollins1_sol_activation_suffix)])]),
+                then_stmts: [bset(name: "col", value: "released")],
+                else_stmts: [bset(name: "col", value: "ended-but-record-not-retired")],
+              ),
+            ],
+            else_stmts: [bash_build_assign(name: "col", value: bcat(parts: [bl(text: "unresolved-owned-check-"), bv(name: "co")]))],
+          ),
+        ],
+        else_stmts: [bset(name: "col", value: "foreign-record-kept")],
+      ),
+    ]),
     bset(name: "obs", value: "unstarted"),
     bset(name: "wclean", value: "none"),
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [
       bor_true(stmt: btruncate(path: bsol(suffix: mtcollins1_sol_notice_stop_suffix))),
       bor_true(stmt: bcmd(words: [bl(text: "timeout"), bl(text: to_string(second_count(s: mtcollins1_sol_notice_final_allowance))), bl(text: "tail"), bcat(parts: [bl(text: "--pid="), bv(name: "SOL_NOTICE_WATCH")]), bl(text: "-f"), bl(text: "/dev/null")])),
+      bif_else(cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record), then_stmts: [bset(name: "wo", value: "0")], else_stmts: [bash_build_assign(name: "wo", value: bv(name: "?"))]),
       bif_else(
-        cond: bhold(script_var: "SOL_OWNED", label: "sol-owned", record: watcher_record),
+        cond: bash_build_pipe(left: bcmdl(lits: ["jobs", "-rp"]), right: bcmd(words: [bl(text: "grep"), bl(text: "-qx"), bv(name: "SOL_NOTICE_WATCH")])),
         then_stmts: [
           bset(name: "obs", value: "unfinished"),
-          bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bset(name: "wclean", value: "stopped")], else_stmts: [bset(name: "wclean", value: "unresolved-survived-KILL")]),
+          bif_else(
+            cond: btest(words: [bv(name: "wo"), bl(text: "="), bl(text: "0")]),
+            then_stmts: [bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "sol-release", record: watcher_record), then_stmts: [bset(name: "wclean", value: "stopped")], else_stmts: [bset(name: "wclean", value: "unresolved-survived-KILL")])],
+            else_stmts: [bash_build_assign(name: "wclean", value: bcat(parts: [bl(text: "unresolved-identity-not-confirmed-"), bv(name: "wo")]))],
+          ),
         ],
         else_stmts: [
           bif_else(cond: bcmd(words: [bl(text: "wait"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [bset(name: "obs", value: "0")], else_stmts: [bash_build_assign(name: "obs", value: bv(name: "?"))]),
         ],
       ),
     ]),
-    bif_else(cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "SOL_PID_FILE")]), then_stmts: [bset(name: "clean", value: "ok")], else_stmts: [bset(name: "clean", value: "failed")]),
+    bif_else(cond: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]), then_stmts: [bset(name: "clean", value: "ok")], else_stmts: [bset(name: "clean", value: "failed")]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "0")]), right: btest(words: [bv(name: "obs"), bl(text: "!="), bl(text: "unstarted")])),
       then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher did not succeed ")].concat(failed)), bset(name: "fail", value: "1")],
     ),
-    bash_build_if_from_stmts(cond: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector survived KILL at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "absent")]), right: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "released")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector not released at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "none")]), right: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "stopped")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher cleanup unresolved ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(cond: btest(words: [bv(name: "clean"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), right: btest(words: [bv(name: "fail"), bl(text: "="), bl(text: "1")])),

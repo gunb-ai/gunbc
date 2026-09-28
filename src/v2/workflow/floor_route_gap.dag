@@ -1781,7 +1781,11 @@ fn floor_route_gap_expectation_chunk_26() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.the_release_signals_only_the_recorded_instance", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_publication_failure_stops_even_a_term_ignoring_child", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.an_unreadable_record_is_unobservable_not_ended", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 // The twenty-six test.claim.long.fleet_release_bins_key_witness identities (review 5332304117's retained
