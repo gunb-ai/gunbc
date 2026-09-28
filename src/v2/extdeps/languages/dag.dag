@@ -94,6 +94,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member,
 }
 import v2.std.node {
+  symbol_lexeme,
   Arrow,
   Atom,
   Bind,
@@ -3681,6 +3682,23 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 
 fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
+}
+
+// THE KERNEL TYPE SPELLINGS AND THEIR CANONICAL BINDINGS, declared at the language authority. The
+// table is keyed by spelling, so it answers only for a name no declaration in the referencing
+// module binds: v2.compiler.resolve resolve_kernel_type_atom_optional consults it after the module
+// scope, so a module that declares its own `Int` or `Bool` shadows it rather than being captured
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
+  if sym == dag_int_type_binding() {
+    optional_present(value: sym)
+  } else if symbol_lexeme(sym: sym) == "Int" {
+    optional_present(value: dag_int_type_binding())
+  } else if symbol_lexeme(sym: sym) == "Bool" {
+    optional_present(value: ^bool_node_symbol)
+  } else {
+    optional_absent()
+  }
 }
 
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the

@@ -13,6 +13,7 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
+  dag_kernel_type_binding_optional,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
@@ -60,6 +61,7 @@ import v2.std.diagnostic {
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node,
+  qualified_name_init,
   qualified_name_last_segment,
   qualified_name_snoc,
   declaration_reference_node
@@ -906,6 +908,56 @@ fn resolve_atom_bound(
   }
 }
 
+// A KERNEL TYPE SPELLING NAMES ITS CANONICAL BINDING ONLY WHERE THE MODULE DOES NOT DECLARE IT.
+// v2.extdeps.languages.dag dag_kernel_type_binding_optional is keyed by spelling, so resolve_atom
+// asks it only after the scope walk and the symbol index have answered: a symbol-index hit declared
+// in the referencing module itself (its path's owner is ctx.namespace.module_qn) binds that
+// declaration, so a module's own `type Int` shadows the kernel Int. A root binding with no imported
+// origin is likewise the module's own. An imported, foreign, ambiguous or unbound kernel spelling
+// keeps its canonical binding, as before. This used to run in body lowering, before any scope
+// existed, where it captured a module's own `type Int` as the kernel Int
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node> {
+  match dag_kernel_type_binding_optional(sym: identity) {
+    Present { value: canonical } =>
+      optional_present(value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id))
+    Absent => optional_absent()
+  }
+}
+
+fn resolve_kernel_type_atom_at_root_optional(ctx: ResolveContext, n: Node, identity: Symbol) -> Optional<Node> {
+  match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
+    Present { value: _ } => resolve_kernel_type_atom_optional(n: n, identity: identity)
+    Absent => optional_absent()
+  }
+}
+
+fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  if namespace_has_canonical_symbol(
+    namespace: ctx.namespace,
+    name: identity
+  ) {
+    Accepted {
+      value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
+      diagnostics: pending
+    }
+  } else if identity == pattern_wildcard_name() {
+    Rejected {
+      diagnostics: rejected_with_pending(
+        pending: pending,
+        rejected: diagnostics_singleton(d: anonymous_parameter_referenced_diagnostic(n: n))
+      )
+    }
+  } else {
+    Rejected {
+      diagnostics: rejected_with_pending(
+        pending: pending,
+        rejected: unbound_symbol_diagnostics(ctx: ctx, n: n, name: identity)
+      )
+    }
+  }
+}
+
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
     Accepted { value: n, diagnostics: None }
@@ -922,46 +974,42 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
             diagnostics: pending
           }
         BoundAtRoot { canonical: _ } =>
-          resolve_atom_bound(
-            ctx: ctx,
-            n: n,
-            path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
-            pending: pending
-          )
+          match resolve_kernel_type_atom_at_root_optional(ctx: ctx, n: n, identity: identity) {
+            Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+            Absent =>
+              resolve_atom_bound(
+                ctx: ctx,
+                n: n,
+                path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
+                pending: pending
+              )
+          }
         ScopeUnbound =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
             SymbolIndexAtomHit { path: path } =>
-              resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
+              if qualified_name_init(qn: path) == ctx.namespace.module_qn {
+                resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
+              } else {
+                match resolve_kernel_type_atom_optional(n: n, identity: identity) {
+                  Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+                  Absent => resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
+                }
+              }
             SymbolIndexAtomAmbiguous { class: class } =>
-              Rejected {
-                diagnostics: rejected_with_pending(
-                  pending: pending,
-                  rejected: ambiguous_symbol_diagnostics(n: n, class: class)
-                )
+              match resolve_kernel_type_atom_optional(n: n, identity: identity) {
+                Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+                Absent =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: pending,
+                      rejected: ambiguous_symbol_diagnostics(n: n, class: class)
+                    )
+                  }
               }
             SymbolIndexAtomUnbound =>
-              if namespace_has_canonical_symbol(
-                namespace: ctx.namespace,
-                name: identity
-              ) {
-                Accepted {
-                  value: canonical_atom(identity: identity, occurrence_id: n.occurrence_id),
-                  diagnostics: pending
-                }
-              } else if identity == pattern_wildcard_name() {
-                Rejected {
-                  diagnostics: rejected_with_pending(
-                    pending: pending,
-                    rejected: diagnostics_singleton(d: anonymous_parameter_referenced_diagnostic(n: n))
-                  )
-                }
-              } else {
-                Rejected {
-                  diagnostics: rejected_with_pending(
-                    pending: pending,
-                    rejected: unbound_symbol_diagnostics(ctx: ctx, n: n, name: identity)
-                  )
-                }
+              match resolve_kernel_type_atom_optional(n: n, identity: identity) {
+                Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+                Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
               }
           }
       }

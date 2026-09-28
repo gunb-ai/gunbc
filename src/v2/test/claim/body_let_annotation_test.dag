@@ -252,6 +252,53 @@ test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
     }
 }
 
+// (5c) A MODULE'S OWN DECLARATION OF A KERNEL SPELLING SHADOWS IT. `type Int = | Mine` in the module
+// and `let y: Int = 1`: the annotation binds the module's Int, which `1` does not inhabit, so the let
+// refuses at the annotation. The same for Bool with `true`. RED BEFORE: body lowering rewrote the
+// spelling to the kernel binding before any scope existed, so the annotation was the kernel Int and
+// the let was judged MATCHED (gunbc.recurring_failure_mode
+// kernel_type_spelling_captured_a_module_declaration). Each row asserts the ROUTE -- the annotation
+// is not the kernel binding -- as well as the verdict. The controls are (5b) plus the route row
+// below: an undeclared `Int` still resolves to the kernel binding.
+fn bla_declared_int_literal() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+fn bla_declared_bool_literal() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n")
+}
+
+fn bla_refuses_at_the_annotation(o: Outcome<Node>) -> Bool {
+  tpb_accepts(o: o)
+    && match bla_infers(o: o) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation
+    }
+}
+
+fn bla_annotation_is(o: Outcome<Node>, id: Symbol) -> Bool {
+  match bla_annotation_identity(o: o) {
+    Present { value: s } => s == id
+    Absent => false
+  }
+}
+
+test fn bla_module_declared_int_shadows_the_kernel_int() -> Bool {
+  !bla_annotation_is(o: bla_declared_int_literal(), id: ^dag_binding_type_int)
+    && bla_refuses_at_the_annotation(o: bla_declared_int_literal())
+}
+
+test fn bla_module_declared_bool_shadows_the_kernel_bool() -> Bool {
+  !bla_annotation_is(o: bla_declared_bool_literal(), id: ^bool_node_symbol)
+    && bla_refuses_at_the_annotation(o: bla_declared_bool_literal())
+}
+
+test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
+    && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
+}
+
 // TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and
 // the <type-annotation> edge.
 fn bla_bind(annotated: Bool) -> Node {

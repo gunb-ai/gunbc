@@ -32,7 +32,6 @@ import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   dag_grammar_binary_expr_expr,
   dag_grammar_unary_expr_expr,
-  dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
   dag_lex_keyword_symbol,
@@ -486,25 +485,6 @@ fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
-fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
-  if sym == dag_int_type_binding() {
-    optional_present(value: sym)
-  } else if symbol_lexeme(sym: sym) == "Int" {
-    optional_present(value: dag_int_type_binding())
-  } else if symbol_lexeme(sym: sym) == "Bool" {
-    optional_present(value: ^bool_node_symbol)
-  } else {
-    optional_absent()
-  }
-}
-
-fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
-  match body_lower_canonical_type_binding_optional(sym: sym) {
-    Present { value: canonical } => canonical
-    Absent => sym
-  }
-}
-
 // THE SOURCE IS THE AUTHORED TYPE NAME, and it is a parameter rather than an omission. This atom is
 // the lowered form of a type the author wrote -- `Bool` in `fn f() -> Bool` -- so it stands at that
 // text's position and keeps that text's occurrence. Built synthetic, it was a node an
@@ -514,7 +494,7 @@ fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
 // be the plausible guess DESIGN section 5 forbids.
 fn body_lower_type_atom_node(sym: Symbol, source: Node) -> Node {
   node_lowered_from(
-    kind: TypeNode { connective: Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
+    kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     source: source
   )

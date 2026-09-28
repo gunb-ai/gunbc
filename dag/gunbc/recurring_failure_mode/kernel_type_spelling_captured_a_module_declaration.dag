@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.kernel_type_spelling_captured_a_module_declaration
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data kernel_type_spelling_captured_a_module_declaration: RecurringFailureMode = RecurringFailureMode {
+  identity: "kernel_type_spelling_captured_a_module_declaration" as NonEmptyStr,
+
+  receipts: [
+    "a kernel type spelling captured a module's own declaration: v2 body lowering rewrote every type atom spelled `Int` or `Bool` to the kernel binding (dag_binding_type_int, bool_node_symbol) before any scope existed. A module that declared its own `type Int = | Mine` and wrote `let y: Int = 1` therefore had its annotation replaced by the kernel Int, and infer judged the let MATCHED. Nothing refused. The value did not inhabit the type the author named, and the verdict said it did (DESIGN section 5, silent wrongness).",
+
+    "FOUND 2026-09-28 while modeling the canonical Symbol type binding (node adhoc-3b197e76-012). The ruling (neat-boar-16) was that adding a Symbol row to a spelling-keyed table was deferrable only if the table could not be silently wrong. The shadow control showed that it could be, so the re-key landed first. Probe: source through v2.test.claim.type_param_binder_frame tpb_assemble and infer. On main 9ce039421d0 the module-declared Int and Bool lets were admitted, with the annotation atom equal to the kernel binding. A non-kernel name (`type Myint`) resolved to the module's declaration and refused, which isolated the capture to the spelling table.",
+
+    "THE EARLIEST UNJUSTIFIED BOUNDARY was lowering: it answered a name-binding question with no scope to answer it from. The repair moves the table to its language authority (v2.extdeps.languages.dag dag_kernel_type_binding_optional). v2.compiler.resolve resolve_atom consults it only after the scope walk and the symbol index: a hit declared in the referencing module binds that declaration (shadowing), and any other hit, an ambiguous name, or an unbound name keeps the kernel binding, exactly as before. No guard was added in infer.",
+
+    "RESIDUAL, stated at its grain: the table is still keyed by spelling, so it is still wrong wherever a kernel spelling reaches resolve from outside the referencing module. That covers an IMPORTED user-declared `Int` and a symbol-index hit on another module's `Int`: both still bind the kernel type. Which declarations ARE the kernel's (v2.std.integer Int, v2.std.logic Bool, dag std.types Bool) is the open seed-kernel-name question in docs/plans/dag-v2-defork-audit.md, which this row does not pre-empt. NEXT-RUNG TRIGGER, at capability grain: the kernel type bindings are keyed by the DECLARATION identity resolve selects, for every door (root, import, symbol index), so no spelling reaches the table. It fires once the seed-kernel-name ruling names the kernel declarations. Its RED is an imported user `type Int` whose let is judged against the user's type.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_kernel_type_binding_optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_atom", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_module_declared_int_shadows_the_kernel_int", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_module_declared_bool_shadows_the_kernel_bool", field: WholeDeclaration },
+  ],
+}
