@@ -205,15 +205,21 @@ fn verify_store_receipt(receipt: ApprovalCapability, key: MacKey, observed_at: T
   match capability_tag_hex(capability: receipt) {
     Absent => StoreReceiptTagUnreadable
     Present { value: tag } =>
-      match verify_capability(
-        capability: receipt,
-        expectation: approval_store_receipt_expectation,
+      verify_store_receipt_over(
+        receipt: receipt,
         mac_result: mac_verify(key: key, message: approval_capability_signing_input(c: receipt.claims), tag_hex: tag),
         observed_at: observed_at,
-      ) {
-        CapabilityRefused { cause: c } => StoreReceiptNotAuthentic { cause: c }
-        CapabilityAuthentic { claims: cl } => StoreReceiptAuthentic { claims: cl }
-      }
+      )
+  }
+}
+
+// The claims against the store's expectation and the instant, given the MAC's verdict: the part of
+// the check that is the store's own, separable from computing the MAC (the same seam
+// verify_capability takes), so its refusals are witnessed over a supplied verdict.
+fn verify_store_receipt_over(receipt: ApprovalCapability, mac_result: MacVerification, observed_at: Timestamp) -> StoreReceiptVerification {
+  match verify_capability(capability: receipt, expectation: approval_store_receipt_expectation, mac_result: mac_result, observed_at: observed_at) {
+    CapabilityRefused { cause: c } => StoreReceiptNotAuthentic { cause: c }
+    CapabilityAuthentic { claims: cl } => StoreReceiptAuthentic { claims: cl }
   }
 }
 
