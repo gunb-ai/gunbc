@@ -9679,14 +9679,16 @@ pub fn reference_derived_candidate_disposition(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     in_type_position: bool,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
-    if (crate::v1_compiler_infer_emit_info::is_known_variant(type_summaries.clone(), name.clone())
-        && !in_type_position.clone())
     {
-        match v1_rt::map_get(&variant_to_enum, name.clone()) {
+        let variant_parent = if in_type_position.clone() {
+            std::option::Option::None
+        } else {
+            v1_rt::map_get(&variant_to_enum, name.clone())
+        };
+        match variant_parent.clone() {
             Some(parent) => {
                 if (parent.clone() == "".to_string()) {
                     Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved)
@@ -9699,40 +9701,38 @@ pub fn reference_derived_candidate_disposition(
                 }
             }
             std::option::Option::None => {
-                Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved)
-            }
-        }
-    } else {
-        match (*lookup_item_by_leaf(name.clone(), registry.clone(), emit_info.clone())).clone() {
-            ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
-                Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous)
-            }
-            ItemLookup::ItemFound { info: info, .. } => {
-                if (info.module_name.clone() == this_module_name.clone()) {
-                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
-                } else {
-                    if provider_proven_exports_symbol(
-                        name.clone(),
-                        info.module_name.clone(),
-                        export_sets.clone(),
-                        typed_modules.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    ) {
-                        Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
-                            provider_module: info.module_name.clone(),
-                        })
-                    } else {
-                        Rc::new(
-                            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-                                provider_module: info.module_name.clone(),
-                            },
-                        )
+                match (*lookup_item_by_leaf(name.clone(), registry.clone(), emit_info.clone()))
+                    .clone()
+                {
+                    ItemLookup::ItemLeafAmbiguous { leaf: _, .. } => {
+                        Rc::new(ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous)
+                    }
+                    ItemLookup::ItemFound { info: info, .. } => {
+                        if (info.module_name.clone() == this_module_name.clone()) {
+                            Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
+                        } else {
+                            if provider_proven_exports_symbol(
+                                name.clone(),
+                                info.module_name.clone(),
+                                export_sets.clone(),
+                                typed_modules.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ) {
+                                Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                                    provider_module: info.module_name.clone(),
+                                })
+                            } else {
+                                Rc::new(ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+    provider_module: info.module_name.clone(),
+})
+                            }
+                        }
+                    }
+                    ItemLookup::ItemNotFound => {
+                        Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent)
                     }
                 }
-            }
-            ItemLookup::ItemNotFound => {
-                Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent)
             }
         }
     }
@@ -10261,7 +10261,6 @@ pub fn reference_derived_use_line_plan(
                                 typed_modules.clone(),
                                 source_indices.clone(),
                                 module_index.clone(),
-                                emit_info.type_summaries.clone(),
                                 emit_info.variant_to_enum.clone(),
                                 crate::v1_compiler_infer_types::emit_map_has(
                                     type_position_set.clone(),
@@ -10338,7 +10337,7 @@ let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_m
 };
 let block_lines = emit_specific_import_use_lines(provider.clone(), crate::gunbc_rust_emitted_edge::module_to_filename(provider.clone()), names.clone(), applied_type_argument_names.clone(), emit_info.clone(), registry.clone(), local_type_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone(), plan_module_env.clone());
 let emitted_here = Rc::new({ let mut __result = Vec::new(); for l in block_lines.iter().cloned() { __result.extend((*imported_names_in_use_line(l.text.clone())).iter().cloned()); } __result });
-let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().cloned() { __result.extend((*if ({ let mut __found = false; for e in emitted_here.iter().cloned() { if (e.clone() == nm.clone()) { __found = true; break; } } __found } || (crate::v1_compiler_infer_emit_info::is_known_variant(emit_info.type_summaries.clone(), nm.clone()) && !crate::v1_compiler_infer_types::emit_map_has(type_position_set.clone(), nm.clone()))) {
+let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().cloned() { __result.extend((*if ({ let mut __found = false; for e in emitted_here.iter().cloned() { if (e.clone() == nm.clone()) { __found = true; break; } } __found } || (crate::v1_compiler_infer_emit_info::is_known_variant(emit_info.variant_to_enum.clone(), nm.clone()) && !crate::v1_compiler_infer_types::emit_map_has(type_position_set.clone(), nm.clone()))) {
                 Rc::new(vec![])
             } else {
                 if provider_proven_exports_symbol(nm.clone(), provider.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
@@ -11425,6 +11424,7 @@ pub fn is_import_graph_type_name(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -11465,7 +11465,7 @@ pub fn is_import_graph_type_name(
                 false
             } else {
                 if crate::v1_compiler_infer_emit_info::is_known_variant(
-                    type_summaries.clone(),
+                    variant_to_enum.clone(),
                     name.clone(),
                 ) {
                     false
@@ -12104,6 +12104,7 @@ pub fn import_module_enum_scope(
     import_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12125,7 +12126,7 @@ pub fn import_module_enum_scope(
                         let mut __result = Vec::new();
                         for n in Rc::new(v1_rt::sorted_map_keys(&exported)).iter().cloned() {
                             if (crate::v1_compiler_infer_emit_info::is_known_variant(
-                                type_summaries.clone(),
+                                variant_to_enum.clone(),
                                 n.clone(),
                             ) && (crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
                                 type_summaries.clone(),
@@ -13536,6 +13537,7 @@ pub fn import_variant_parent_for_name(
     import_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13550,6 +13552,7 @@ pub fn import_variant_parent_for_name(
         registry.clone(),
         export_sets.clone(),
         type_summaries.clone(),
+        variant_to_enum.clone(),
         source_indices.clone(),
         module_index.clone(),
     ) {
@@ -13883,6 +13886,7 @@ pub fn emit_specific_import_use_lines(
 ) -> Rc<Vec<Rc<RustUseLine>>> {
     {
         let type_summaries = emit_info.type_summaries.clone();
+        let variant_to_enum = emit_info.variant_to_enum.clone();
         let deduped_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
             for n in Rc::new({
@@ -13962,6 +13966,7 @@ pub fn emit_specific_import_use_lines(
                     import_module.clone(),
                     registry.clone(),
                     type_summaries.clone(),
+                    variant_to_enum.clone(),
                     export_sets.clone(),
                     typed_modules.clone(),
                     source_indices.clone(),
@@ -13977,13 +13982,14 @@ pub fn emit_specific_import_use_lines(
                             registry.clone(),
                             export_sets.clone(),
                             type_summaries.clone(),
+                            variant_to_enum.clone(),
                             source_indices.clone(),
                             module_index.clone(),
                         ) {
                             true
                         } else {
                             if crate::v1_compiler_infer_emit_info::is_known_variant(
-                                type_summaries.clone(),
+                                variant_to_enum.clone(),
                                 n.clone(),
                             ) {
                                 {
@@ -14049,6 +14055,7 @@ pub fn emit_specific_import_use_lines(
                                 import_module.clone(),
                                 registry.clone(),
                                 type_summaries.clone(),
+                                variant_to_enum.clone(),
                                 typed_modules.clone(),
                                 export_sets.clone(),
                                 source_indices.clone(),
@@ -14078,6 +14085,7 @@ pub fn emit_specific_import_use_lines(
                             import_module.clone(),
                             registry.clone(),
                             type_summaries.clone(),
+                            variant_to_enum.clone(),
                             typed_modules.clone(),
                             export_sets.clone(),
                             source_indices.clone(),
@@ -14089,7 +14097,7 @@ pub fn emit_specific_import_use_lines(
                             false
                         } else {
                             if (crate::v1_compiler_infer_emit_info::is_known_variant(
-                                type_summaries.clone(),
+                                variant_to_enum.clone(),
                                 n.clone(),
                             ) && (authored_import_binds_provider_declaration(
                                 n.clone(),
@@ -14235,6 +14243,7 @@ pub fn emit_specific_import_use_lines(
                             registry.clone(),
                             export_sets.clone(),
                             type_summaries.clone(),
+                            variant_to_enum.clone(),
                             source_indices.clone(),
                             module_index.clone(),
                         ) {
@@ -14253,6 +14262,7 @@ pub fn emit_specific_import_use_lines(
                             registry.clone(),
                             export_sets.clone(),
                             type_summaries.clone(),
+                            variant_to_enum.clone(),
                             source_indices.clone(),
                             module_index.clone(),
                         ) == false)
@@ -14496,7 +14506,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                         let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
-                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
+                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), variant_to_enum.clone(), source_indices.clone(), module_index.clone()) {
                                 false
                             } else {
                                 if { let mut __found = false; for e in import_module_enums.iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
@@ -24966,7 +24976,7 @@ pub fn discriminant_zero_field_variant_tag(
                         let last = crate::v1_std_core::qualified_last_segment(tn.clone());
                         if ((last.clone() != "".to_string())
                             && crate::v1_compiler_infer_emit_info::is_known_variant(
-                                emit_info.type_summaries.clone(),
+                                emit_info.variant_to_enum.clone(),
                                 last.clone(),
                             ))
                         {
