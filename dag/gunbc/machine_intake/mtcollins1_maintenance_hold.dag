@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_maintenance_hold
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
 import v2.std.optional { Present, Absent }
@@ -99,14 +99,21 @@ fn unit_hold_process_text(p: ProcessIdentity) -> String {
   join([unit_hold_process_marker, p.boot_id as String, ",pid=", to_string(p.pid), ",start=", p.start_time as String], "")
 }
 
+fn text_at(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
 fn unit_hold_process_decode(text: String) -> ProcessIdentity? {
   let parts = split(s: text, delimiter: ",")
   if count(parts) != 3 {
     none
   } else {
-    let b = parts[0]
-    let pid_text = parts[1]
-    let start_text = parts[2]
+    let b = text_at(xs: parts, i: 0)
+    let pid_text = text_at(xs: parts, i: 1)
+    let start_text = text_at(xs: parts, i: 2)
     if !starts_with(s: b, prefix: "boot=") || !starts_with(s: pid_text, prefix: "pid=") || !starts_with(s: start_text, prefix: "start=") {
       none
     } else {
@@ -159,7 +166,7 @@ fn unit_hold_owner_detail_after(raw: String, tag: String) -> NonEmptyStr? {
 fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
   let raw = owner as String
   let op = unit_hold_owner_tag(o: OperatorMaintenance { reason: "x" as NonEmptyStr })
-  let boot = unit_hold_owner_tag(o: BootRun { run_id: "x" as NonEmptyStr })
+  let boot = unit_hold_owner_tag(o: BootRun { run_id: "x" as NonEmptyStr, process: ProcessIdentity { boot_id: "x" as NonEmptyStr, pid: 1, start_time: "x" as NonEmptyStr } })
   let reset = unit_hold_owner_tag(o: HostResetReturn { attempt: "x" as NonEmptyStr })
   if starts_with(s: raw, prefix: op) {
     match unit_hold_owner_detail_after(raw: raw, tag: op) { Present { value: d } => UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
@@ -168,11 +175,11 @@ fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
       Absent => UnitHoldOwnerUnrecognized { raw: raw }
       Present { value: d } => {
         let halves = split(s: d as String, delimiter: unit_hold_process_marker)
-        if count(halves) != 2 || halves[0] == "" {
+        if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
           UnitHoldOwnerUnrecognized { raw: raw }
         } else {
-          match unit_hold_process_decode(text: concat("boot=", halves[1])) {
-            Present { value: p } => UnitHoldOwnerDecoded { owner: BootRun { run_id: halves[0] as NonEmptyStr, process: p } }
+          match unit_hold_process_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
+            Present { value: p } => UnitHoldOwnerDecoded { owner: BootRun { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: p } }
             Absent => UnitHoldOwnerUnrecognized { raw: raw }
           }
         }

@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
+import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -12,7 +13,7 @@ import v2.std.witness_evaluation {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.bmc_model { BmcWorld, BmcPowerOff, bmc_world, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
-import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock }
@@ -20,7 +21,7 @@ import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage
 import gunbc.machine_intake_mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
   mtcollins1_boot_dry_realization, with_media, with_bmc, with_fs,
-  worker_process_started, worker_process_killed, proc_stat_path,
+  worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
@@ -275,9 +276,12 @@ test fn pinned_a_healthy_census_is_refused_at_the_sol_teardown() -> Bool {
 // refused at the hold with the controller untouched: no controller write of any kind appears in its
 // route, and it never starts a SOL collector.
 test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool {
+  // The other run is still running: its process is in procfs, so it is a live holder, not a dead one.
+  let base = world_with_console(lines: [])
+  let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(pid: 2900, start_ticks: 100)))
   let prior = evaluate_in_witness_frame(
-    frame: matrix_frame(world: world_with_console(lines: [])),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr)) }
+    frame: matrix_frame(world: other_running),
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr })) }
   )
   match prior {
     WitnessReturned { state } => match state {
