@@ -212,17 +212,23 @@ fn uptime_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<
 // boot whose offset has passed is printed; it reaches each live collector's capture only if the SOL
 // session is open. A new boot restarts the console from its first line.
 fn console_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
+  if count(w.console.lines) == 0 { w } else { console_advance_booted(w: w, now: now) }
+}
+
+fn console_advance_booted(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
   match w.bmc.host_booted_at {
     Absent => w
     Present { value: booted } => {
       let fresh = match w.console.boot { Present { value: b } => second_count(s: b) != second_count(s: booted) Absent => true }
       let console = if fresh { ModeledHostConsole { lines: w.console.lines, emitted: 0, boot: Present { value: booted } } } else { w.console }
+      if !fresh && console.emitted >= count(console.lines) { w } else {
       let elapsed = (second_count(s: now) as Int) - (second_count(s: booted) as Int)
       let due = filter(console.lines.skip(n: console.emitted), l => (second_count(s: l.after) as Int) <= elapsed)
       let printed = concat_text(lines: due)
       let listening = w.bmc.sol_session_open && bmc_power_is_on(world: w.bmc)
       let fs = if listening { fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) { appended(fs: acc, path: p.capture_path, text: printed) }) } else { w.fs }
       with_console(w: with_fs(w: w, fs: fs), console: ModeledHostConsole { lines: console.lines, emitted: console.emitted + count(due), boot: console.boot })
+      }
     }
   }
 }
@@ -235,7 +241,7 @@ fn concat_text(lines: List<TimedConsoleLine>) -> String {
 // or by a deactivate -- the `ipmitool sol activate` client loses its session and exits, so its /proc
 // entry disappears; its pid file stays, since nothing in the realization removes it.
 fn collectors_follow_session(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
-  if w.bmc.sol_session_open { w } else {
+  if w.bmc.sol_session_open || count(live_collectors(w: w)) == 0 { w } else {
     let fs = fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) {
       ModeledFilesystem { directories: acc.directories, files: filter(acc.files, f => f.path != proc_cmdline_path(pid: p.pid)) }
     })
@@ -243,8 +249,17 @@ fn collectors_follow_session(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
   }
 }
 
+// Time only changes the world when something is scheduled -- a BMC event, a connecting or withdrawing
+// presentation -- or when the console has lines left to print; otherwise the world is returned as it
+// is, rather than rebuilt on every dispatch.
+fn boot_world_idle(w: MtCollins1BootWorld) -> Bool {
+  count(w.bmc.pending) == 0
+    && (match w.media.cd.ready_at { Absent => true Present { value: _ } => false })
+    && (match w.media.withdraw_at { Absent => true Present { value: _ } => false })
+}
+
 fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
-  let stepped = with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now))
+  let stepped = if boot_world_idle(w: w) { w } else { with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now)) }
   console_advance(w: collectors_follow_session(w: stepped), now: now)
 }
 

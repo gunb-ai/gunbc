@@ -7861,6 +7861,12 @@ struct ModeledRealizationSlot {
     /// The realization's bindings by operation identity (`operation_realization_index`), built
     /// once at admission so no dispatch rescans the binding list.
     index: Value,
+    /// Handler selections already decided in this frame, keyed by the COMPLETE input of
+    /// `operation_handler_selection` that varies: the operation's declaring file, service,
+    /// operation and whether it is readonly. The envelope, the realization and its index are fixed
+    /// for the frame's extent and the selection reads nothing else of the invocation, so a hit is
+    /// the same fact recomputed, never a different one.
+    selections: HashMap<String, Value>,
     identity: String,
     state: Value,
     /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
@@ -8097,6 +8103,7 @@ fn admit_modeled_realization(
         envelope,
         realization,
         index,
+        selections: HashMap::new(),
         identity,
         state,
         now,
@@ -8248,21 +8255,41 @@ fn dispatch_modeled_operation(
             });
             record
         };
-    let selection = run_in_context_with_args(
-        ctx,
-        "operation_handler_selection",
-        &[
-            (Some("env".to_string()), envelope),
-            (Some("realization".to_string()), realization.clone()),
-            (Some("index".to_string()), index),
-            (Some("invocation".to_string()), invocation.clone()),
-            (
-                Some("readonly".to_string()),
-                Value::Bool(op_declared_readonly(op_node, ctx)),
-            ),
-        ],
-        false,
-    )?;
+    let readonly = op_declared_readonly(op_node, ctx);
+    let selection_key = format!(
+        "{}#{}.{}#{}",
+        op_node.span.file, service_name, op_name, readonly
+    );
+    let remembered = MODELED_REALIZATION_SLOTS.with(|slots| {
+        slots.borrow().last().and_then(|slot| {
+            slot.as_ref()
+                .and_then(|s| s.selections.get(&selection_key).cloned())
+        })
+    });
+    let selection = match remembered {
+        Some(v) => v,
+        None => {
+            let decided = run_in_context_with_args(
+                ctx,
+                "operation_handler_selection",
+                &[
+                    (Some("env".to_string()), envelope),
+                    (Some("realization".to_string()), realization.clone()),
+                    (Some("index".to_string()), index),
+                    (Some("invocation".to_string()), invocation.clone()),
+                    (Some("readonly".to_string()), Value::Bool(readonly)),
+                ],
+                false,
+            )?;
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.selections
+                        .insert(selection_key.clone(), decided.clone());
+                }
+            });
+            decided
+        }
+    };
     let (arm, fields) = variant_parts(ctx, &selection)
         .ok_or_else(|| modeled_refused(&key, "handler selection returned a malformed value"))?;
     let binding = match arm.as_str() {

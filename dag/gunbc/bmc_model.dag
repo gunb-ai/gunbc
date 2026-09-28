@@ -167,8 +167,13 @@ fn bmc_apply_event(world: BmcWorld, event: BmcEvent, at: Second) -> BmcWorld {
   }
 }
 
-// Every event due at or before `now` fires, in schedule order, and moves from pending to fired.
+// Every event due at or before `now` fires, in schedule order, and moves from pending to fired. With
+// nothing pending there is nothing to fire, and the world is returned as it is rather than rebuilt.
 fn bmc_advance(world: BmcWorld, now: Second) -> BmcWorld {
+  if count(world.pending) == 0 { world } else { bmc_advance_pending(world: world, now: now) }
+}
+
+fn bmc_advance_pending(world: BmcWorld, now: Second) -> BmcWorld {
   fold(world.pending, init: bmc_with_pending(world: world, pending: [], fired: world.fired), f: fn(acc, e) {
     if second_count(s: e.at) <= second_count(s: now) {
       let applied = bmc_apply_event(world: acc, event: e.event, at: e.at)
