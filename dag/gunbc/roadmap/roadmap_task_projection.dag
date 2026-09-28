@@ -5,12 +5,12 @@ import std.graph { CallGraph, GraphEdge, graph_cycle_members }
 
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
-import gunbc.roadmap_status { node_title, item_description }
+import gunbc.roadmap_status { node_title, item_description, line_ticket }
 import extdeps.google.issue_tracker { IssueStatusNew }
 import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial, roadmap_task_binding_equal }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal,
-  TaskCreated, TaskRevised, roadmap_event_heads, roadmap_event_missing_parents, roadmap_event_chain,
+  TaskCreated, TaskRevised, PlanningApplied, roadmap_event_heads, roadmap_event_missing_parents, roadmap_event_chain,
 }
 
 // This is a projection of the same node event chain used by assignments and comments.
@@ -24,12 +24,14 @@ fn roadmap_task_step(acc: RoadmapTaskProjection, env: RoadmapEventEnvelope) -> R
   match acc {
     RoadmapTaskUnreadable { reason: _ } => acc
     RoadmapTaskAbsent => match env.event.kind {
+      PlanningApplied { candidate: _, task: _ } => RoadmapTaskUnreadable { reason: "planning apply precedes task creation" }
       TaskCreated { task: created } => RoadmapTaskCurrent { task: created, revision: env.id }
       TaskRevised { task: _ } => RoadmapTaskUnreadable { reason: "task edit precedes its creation" }
       _ => acc
     }
     RoadmapTaskCurrent { task: prior, revision: _ } => match env.event.kind {
       TaskCreated { task: _ } => RoadmapTaskUnreadable { reason: "node has more than one editorial creation" }
+      PlanningApplied { candidate: _, task: edited } => if roadmap_task_binding_equal(left: prior, right: edited) { RoadmapTaskCurrent { task: edited, revision: env.id } } else { RoadmapTaskUnreadable { reason: "planning cannot replace contract identity" } }
       TaskRevised { task: edited } => if roadmap_task_binding_equal(left: prior, right: edited) {
         RoadmapTaskCurrent { task: edited, revision: env.id }
       } else { RoadmapTaskUnreadable { reason: "editorial change cannot replace node identity or code-contract binding" } }
@@ -60,6 +62,10 @@ fn roadmap_task_binding_available(node: RoadmapNodeId, task: RoadmapTaskEditoria
 
 fn roadmap_task_append_admits(event: RoadmapEvent, events: List<RoadmapEventEnvelope>) -> Bool {
   match event.kind {
+    PlanningApplied { candidate: _, task: proposed } => match roadmap_task_projection(node: event.node, events: events) {
+      RoadmapTaskCurrent { task: prior, revision: _ } => roadmap_task_binding_equal(left: prior, right: proposed)
+      _ => false
+    }
     TaskCreated { task: proposed } => match roadmap_task_projection(node: event.node, events: events) {
       RoadmapTaskAbsent => roadmap_task_binding_available(node: event.node, task: proposed, events: events)
         && !any(proposed.prerequisites, dependency => dependency == event.node)
@@ -83,11 +89,11 @@ fn roadmap_task_authored_seed(node: RoadmapNode, edges: List<RoadmapEdge>, autho
     node: node.node,
     author: author,
     parent: parent,
-    kind: TaskCreated { task: RoadmapTaskEditorial {
+    kind: TaskCreated { task: RoadmapTaskEditorial { ticket: line_ticket(item: node.line), parent: none,
       identity: node.identity,
       code_contract: Present { value: node.identity },
       title: seed_title as NonEmptyStr,
-      body: item_description(item: node.line),
+      body: match line_ticket(item: node.line) { Present { value: t } => t.brief Absent => item_description(item: node.line) },
       prerequisites: map(filter(edges, edge => edge.child == node.node), edge => edge.parent),
       state: IssueStatusNew,
     } },
@@ -119,7 +125,16 @@ fn roadmap_task_graph_refusal(events: List<RoadmapEventEnvelope>, allow_unresolv
         Present { value: "prerequisite references an unknown editorial node identity" }
       } else if graph_cycle_members(names: map(current, row => row.node as String), graph: CallGraph { edges: edges }).count() != 0 {
         Present { value: "prerequisite relations contain a dependency cycle" }
-      } else { none }
+      } else {
+        let parents = fold(current, init: [], f: (acc, row) => match row.task.parent {
+          Absent => acc Present { value: parent } => acc + [GraphEdge { caller: row.node as String, callee: parent as String }]
+        })
+        if any(parents, edge => !any(current, row => (row.node as String) == edge.callee)) {
+          Present { value: "parent references an unknown editorial node" }
+        } else if graph_cycle_members(names: map(current, row => row.node as String), graph: CallGraph { edges: parents }).count() != 0 {
+          Present { value: "nesting relations contain a cycle" }
+        } else { none }
+      }
     }
   }
 }

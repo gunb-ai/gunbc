@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "checks": [
+    "real HTML/JS",
+    "typed edit",
+    "draft child",
+    "safe text rendering",
+    "acceptance",
+    "stored readback",
+    "CSRF refusal",
+    "original-result retry"
+  ],
+  "acceptance": "Accepted revision e6d0e05f9be54a79. The issue and worker inputs now use the accepted revision.",
+  "browser_errors": [],
+  "scope": "fixture authentication; production route helpers and Fabric file store"
+}

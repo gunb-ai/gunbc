@@ -1,0 +1,114 @@
+module test.claim.roadmap.roadmap_planning_apply_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.shell
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity }
+import gunbc.roadmap_status { TicketBrief, TicketFirstSlice }
+import extdeps.google.issue_tracker { IssueStatusNew }
+import gunbc.roadmap.roadmap_task_editorial { RoadmapTaskEditorial }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, EventPrincipalAuthenticated, TaskCreated, Claimed, Progress, roadmap_event_envelope }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout, roadmap_event_append, roadmap_event_snapshot_read, RoadmapEventSnapshotObserved, roadmap_event_store_head }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, CandidateFieldChange, CandidateDraftChild, CandidateSetParent, planning_issue_revision }
+import gunbc.roadmap_planning_candidate_wire { planning_candidate_json, planning_candidate_decode }
+import gunbc.roadmap_planning_candidate_storage { planning_candidate_publish, CandidatePublished }
+import gunbc.roadmap_planning_apply { planning_snapshot_from_events, PlanningSnapshotReady, planning_apply_stored, PlanningAppliedResult, PlanningApplyRefused, PlanningApplyConflict }
+import test.claim.roadmap.roadmap_planning_candidate_witness_test { human, snapshot }
+import extdeps.languages.json.emit { serialize_json }
+
+fn fixture_store() -> RoadmapEventCarrierLayout {
+  fixture_store_at(path: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_planning_apply.XXXXXX").path as String)
+}
+
+fn fixture_store_at(path: String) -> RoadmapEventCarrierLayout {
+  let root = fabric_storage_file_root(root: path as NonEmptyStr)
+  let ensure = fabric_storage_file_root_ensure(root: root)
+  let layout = roadmap_event_carrier_layout(store: FabricStorageLocalFiles { root: root })
+  let ticket = snapshot(brief: "Old brief", event_revision: "").ticket
+  let created = RoadmapEvent { node: "issue-one" as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: human(subject: "owner") }, parent: none, recorded_at: "2026-09-28T00:00:00Z",
+    kind: TaskCreated { task: RoadmapTaskEditorial { identity: "minted-one" as RoadmapNodeIdentity, code_contract: none,
+      title: ticket.headline as NonEmptyStr, body: ticket.brief, ticket: Present { value: ticket }, parent: none, prerequisites: [], state: IssueStatusNew } } }
+  let put = roadmap_event_append(layout: layout, event: created)
+  let claim = roadmap_event_append(layout: layout, event: RoadmapEvent { node: created.node, parent: Present { value: roadmap_event_envelope(e: created).id },
+    author: created.author, recorded_at: "2026-09-28T00:00:01Z", kind: Claimed { assignee: created.author, return_to: created.author } })
+  layout
+}
+
+fn stored_candidate(layout: RoadmapEventCarrierLayout, identity: NonEmptyStr, child: Bool) -> IssueRevisionCandidate? {
+  match roadmap_event_snapshot_read(layout: layout) {
+    RoadmapEventSnapshotObserved { snapshot: stored } => match planning_snapshot_from_events(node: "issue-one" as RoadmapNodeId, events: map(stored.events, e => e.envelope)) {
+      PlanningSnapshotReady { snapshot: current, task: _ } => Present { value: IssueRevisionCandidate {
+        identity: identity, issue: current.issue, base_issue_revision: planning_issue_revision(snapshot: current),
+        author: human(subject: "owner"), work_request: "human-operation-1" as NonEmptyStr,
+        proposed_field_changes: [CandidateFieldChange { field: TicketBrief, value: "Accepted brief" }, CandidateFieldChange { field: TicketFirstSlice, value: "Accepted plan" }], proposed_relation_changes: [],
+        proposed_draft_children: if child { [CandidateDraftChild { identity: "child-one" as NonEmptyStr, ticket: current.ticket }] } else { [] },
+      } }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+test fn stored_candidate_apply_child_readback_and_retry_after_intervening_event() -> Bool {
+  let layout = fixture_store()
+  match stored_candidate(layout: layout, identity: "candidate-one" as NonEmptyStr, child: true) {
+    Absent => false
+    Present { value: c } => {
+      let codec = match planning_candidate_decode(wire: serialize_json(v: planning_candidate_json(candidate: c))) { Present { value: decoded } => decoded == c Absent => false }
+      let published = match planning_candidate_publish(store: layout.store, candidate: c) { CandidatePublished { object: _ } => true _ => false }
+      match planning_apply_stored(layout: layout, identity: c.identity, node: c.issue, acceptor: human(subject: "owner"), observed_at: "2026-09-28T00:00:02Z") {
+        PlanningAppliedResult { revision, replayed } => {
+          let applied = match roadmap_event_snapshot_read(layout: layout) {
+            RoadmapEventSnapshotObserved { snapshot: stored } => {
+              let history = map(stored.events, e => e.envelope)
+              (match planning_snapshot_from_events(node: c.issue, events: history) { PlanningSnapshotReady { snapshot: current, task: _ } => current.ticket.brief == "Accepted brief" _ => false })
+                && (match planning_snapshot_from_events(node: "child-one" as RoadmapNodeId, events: history) { PlanningSnapshotReady { snapshot: child, task: _ } => child.parent == Present { value: c.issue } _ => false })
+            }
+            _ => false
+          }
+          let progress = roadmap_event_append(layout: layout, event: RoadmapEvent { node: c.issue, parent: Present { value: revision }, author: EventPrincipalAuthenticated { ref: human(subject: "owner") }, recorded_at: "2026-09-28T00:00:03Z", kind: Progress { note: "later activity" as NonEmptyStr } })
+          let retry = match planning_apply_stored(layout: layout, identity: c.identity, node: c.issue, acceptor: human(subject: "owner"), observed_at: "2026-09-28T00:00:04Z") {
+            PlanningAppliedResult { revision: original, replayed: again } => original == revision && again
+            _ => false
+          }
+          codec && published && !replayed && applied && retry
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+test fn wrong_acceptor_and_stale_candidate_cannot_publish() -> Bool {
+  let layout = fixture_store()
+  match stored_candidate(layout: layout, identity: "candidate-two" as NonEmptyStr, child: false) {
+    Absent => false
+    Present { value: c } => {
+      let published = planning_candidate_publish(store: layout.store, candidate: c)
+      let wrong = match planning_apply_stored(layout: layout, identity: c.identity, node: c.issue, acceptor: human(subject: "intruder"), observed_at: "2026-09-28T00:00:02Z") { PlanningApplyRefused { reason: _ } => true _ => false }
+      let changed = roadmap_event_append(layout: layout, event: RoadmapEvent { node: c.issue, parent: Present { value: c.base_issue_revision.snapshot.event_revision as NonEmptyStr }, author: EventPrincipalAuthenticated { ref: human(subject: "owner") }, recorded_at: "2026-09-28T00:00:03Z", kind: Progress { note: "changed" as NonEmptyStr } })
+      let stale = match planning_apply_stored(layout: layout, identity: c.identity, node: c.issue, acceptor: human(subject: "owner"), observed_at: "2026-09-28T00:00:04Z") { PlanningApplyConflict { reason: _ } => true _ => false }
+      wrong && stale
+    }
+  }
+}
+
+test fn invalid_relation_publishes_neither_parent_revision_nor_draft_child() -> Bool {
+  let layout = fixture_store()
+  match stored_candidate(layout: layout, identity: "invalid-parent", child: true) {
+    Absent => false
+    Present { value: c } => {
+      let invalid = IssueRevisionCandidate { identity: c.identity, issue: c.issue, base_issue_revision: c.base_issue_revision,
+        author: c.author, work_request: c.work_request, proposed_field_changes: c.proposed_field_changes,
+        proposed_relation_changes: [CandidateSetParent { parent: Present { value: "missing-parent" as RoadmapNodeId } }], proposed_draft_children: c.proposed_draft_children }
+      let published = planning_candidate_publish(store: layout.store, candidate: invalid)
+      let refused = match planning_apply_stored(layout: layout, identity: invalid.identity, node: c.issue, acceptor: human(subject: "owner"), observed_at: "2026-09-28T00:00:05Z") { PlanningApplyRefused { reason: _ } => true _ => false }
+      refused && match roadmap_event_snapshot_read(layout: layout) {
+        RoadmapEventSnapshotObserved { snapshot: stored } => count(stored.events) == 2
+          && (match planning_snapshot_from_events(node: c.issue, events: map(stored.events, e => e.envelope)) { PlanningSnapshotReady { snapshot: current, task: _ } => current.ticket.brief == "Old brief" _ => false })
+        _ => false
+      }
+    }
+  }
+}

@@ -77,7 +77,7 @@ fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Roadma
 }
 
 fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
-  RoadmapDocument {
+  RoadmapDocument { memberships: [],
     preamble: [],
     lead_lanes: [],
     sections: [fixture_section(nodes: nodes, edges: edges)],

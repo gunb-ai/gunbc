@@ -1,0 +1,65 @@
+module test.manual.planning_editor_fixture
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.http.server { ServeWireResponse, serve_wire_response, ServeHttpRequest, RequestSecurityContext, GET, POST }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout, roadmap_event_snapshot_read, RoadmapEventSnapshotObserved }
+import gunbc.roadmap_planning_candidate_storage { planning_candidate_publish, CandidatePublished }
+import gunbc.roadmap_planning_apply { planning_apply_stored, planning_snapshot_from_events, PlanningSnapshotReady, PlanningAppliedResult, PlanningApplyConflict }
+import gunbc.roadmap_planning_routes { planning_get, planning_post }
+import gunbc.roadmap_planning_page { planning_editor_script }
+import test.claim.roadmap.roadmap_planning_apply_witness_test { fixture_store_at, stored_candidate }
+import test.claim.roadmap.roadmap_planning_candidate_witness_test { human }
+import test.claim.roadmap.roadmap_planning_http_witness_test { planning_test_request }
+
+// Test-only entry: fixed fixture authentication, local temp storage, loopback server. It must
+// never be configured as a deployed handler. Real authentication is tested by the write-law controls.
+fn planning_fixture_handle(method: String, path: String, body: String, tailscale_identity: String = "", cookie_header: String = "", release_revision: String = "") -> ServeWireResponse {
+  let root = match shell.Env.Get(name: "GUNBC_PLANNING_TEST_ROOT").value { Present { value } => value Absent => "" }
+  if !starts_with(s: root, prefix: "/tmp/gunbc-planning-browser-") { ServeWireResponse { status: 503, headers: [], content_type_label: "text/plain", body: "fixture root required" } }
+  else if path == "/planning-client.js" { ServeWireResponse { status: 200, headers: [], content_type_label: "text/javascript", body: planning_editor_script() } }
+  else {
+    let layout = roadmap_event_carrier_layout(store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: root as NonEmptyStr) })
+    let r = planning_test_request(body: body, signed_in: true)
+    let request = ServeHttpRequest { method: if method == "POST" { POST } else { GET }, path: path, body: body, security: r.security }
+    let clean_path = match (split(path, separator: "?")).first() { Present { value } => value Absent => path }
+    if method == "POST" { serve_wire_response(r: planning_post(request: request, layout: layout, node: "issue-one", accept: ends_with(s: clean_path, suffix: "/accept"), observed_at: "2026-09-28T00:00:05Z")) }
+    else { serve_wire_response(r: planning_get(request: request, layout: layout, node: "issue-one",
+      kind: if ends_with(s: clean_path, suffix: "/context") { "context" } else if string_contains(s: clean_path, pattern: "/candidate/") { "candidate" } else { "page" },
+      identity: match (split(clean_path, separator: "/candidate/") |> skip(n: 1)).first() { Present { value } => value Absent => "" }, observed_at: "2026-09-28T00:00:05Z")) }
+  }
+}
+
+fn planning_fixture_run(root: String, mode: String, identity: String = "race-one") -> ProcessExit {
+  if !starts_with(s: root, prefix: "/tmp/gunbc-planning-") { exit_failure(reason: "fixture root must be under /tmp/gunbc-planning-") }
+  else {
+    let layout = if mode == "seed" { fixture_store_at(path: root) } else { roadmap_event_carrier_layout(store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: root as NonEmptyStr) }) }
+    if mode == "seed" {
+      match stored_candidate(layout: layout, identity: "race-one", child: true) {
+        Absent => exit_failure(reason: "seed unreadable")
+        Present { value: one } => match stored_candidate(layout: layout, identity: "race-two", child: true) {
+          Absent => exit_failure(reason: "seed unreadable")
+          Present { value: two } => {
+            let a = planning_candidate_publish(store: layout.store, candidate: one)
+            let b = planning_candidate_publish(store: layout.store, candidate: two)
+            if (match a { CandidatePublished { object: _ } => true _ => false }) && (match b { CandidatePublished { object: _ } => true _ => false }) { ExitSuccess } else { exit_failure(reason: "candidate publication failed") }
+          }
+        }
+      }
+    } else if mode == "accept" {
+      match planning_apply_stored(layout: layout, identity: identity as NonEmptyStr, node: "issue-one", acceptor: human(subject: "owner"), observed_at: "2026-09-28T00:00:05Z") {
+        PlanningAppliedResult { revision: _, replayed: _ } => ExitSuccess
+        PlanningApplyConflict { reason } => exit_failure(reason: concat("CONFLICT: ", reason))
+        _ => exit_failure(reason: "REFUSED")
+      }
+    } else {
+      match roadmap_event_snapshot_read(layout: layout) {
+        RoadmapEventSnapshotObserved { snapshot } => if count(snapshot.events) == 5 { ExitSuccess } else { exit_failure(reason: concat("unexpected event count ", to_string(count(snapshot.events)))) }
+        _ => exit_failure(reason: "readback failed")
+      }
+    }
+  }
+}

@@ -13,7 +13,7 @@ import gunbc.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   intricacy_label, volume_label,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts, node_title }
+import gunbc.roadmap_status { LiveTicketLine, RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts, node_title }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority {
   roadmap_acceptance_event_history_load,
@@ -44,37 +44,12 @@ import extdeps.languages.json.emit {
   json_str_list,
 }
 
-fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
-  match e {
-    Prose { prose: _ } => []
-    Group { group } => group.nodes
-  }
-}
-
-fn element_edges(e: SectionElement) -> List<RoadmapEdge> {
-  match e {
-    Prose { prose: _ } => []
-    Group { group } => group.edges
-  }
-}
-
-fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> {
-  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_nodes(e: e)))
-}
-
-fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> {
-  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_edges(e: e)))
-}
-
-fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
-  let lane_nodes = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_nodes(s: s)))
-  fold(doc.sections, init: lane_nodes, f: (acc, s) => concat(acc, section_nodes(s: s)))
-}
-
-fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
-  let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
-  fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
-}
+fn element_nodes(e: SectionElement) -> List<RoadmapNode> { gunbc.roadmap_document.element_nodes(e: e) }
+fn element_edges(e: SectionElement) -> List<RoadmapEdge> { gunbc.roadmap_document.element_edges(e: e) }
+fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> { gunbc.roadmap_document.section_nodes(s: s) }
+fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> { gunbc.roadmap_document.section_edges(s: s) }
+fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> { gunbc.roadmap_document.doc_all_nodes(doc: doc) }
+fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> { gunbc.roadmap_document.doc_all_edges(doc: doc) }
 
 // RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE,
 // never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker.
@@ -109,7 +84,7 @@ fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
 
 fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
   let base = roadmap_authority_for(focus: NoFocus)
-  RoadmapDocument {
+  RoadmapDocument { memberships: [],
     preamble: base.preamble,
     lead_lanes: base.lead_lanes,
     sections: concat(base.sections, [RoadmapSection {
@@ -243,6 +218,7 @@ fn json_str(s: String) -> String {
 fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
   match a {
     PrsMerged => match line {
+      LiveTicketLine { source, ticket: _ } => acceptance_json_value(a: a, line: source)
       DerivableLine { prs, title: _, description: _ } =>
         json_object(members: [
           json_kv(key: "kind", value: json_string(s: "prs_merged")),
@@ -441,5 +417,5 @@ fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection
 }
 
 fn roadmap_dispatch_file_content() -> String {
-  roadmap_dispatch_file_content_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+  roadmap_dispatch_file_content_for_projection(proj: gunbc.roadmap_live_projection.roadmap_live_authority_projection())
 }

@@ -1,5 +1,7 @@
 module gunbc.roadmap_planning_candidate_storage
 
+import gunbc.roadmap_planning_candidate_wire { planning_candidate_json }
+
 import std.types { String, NonEmptyStr }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
 import gunbc.principal_projection { principal_ref_label }
@@ -20,67 +22,6 @@ fn planning_candidate_head(identity: NonEmptyStr) -> NonEmptyStr {
   concat("planning-candidate-v1-", identity as String) as NonEmptyStr
 }
 
-fn candidate_field_wire(field: TicketField) -> String {
-  match field {
-    TicketBrief => "brief"
-    TicketDisplacedCost => "displaced_cost"
-    TicketCurrentState => "current_state"
-    TicketFirstSlice => "first_slice"
-    TicketRedControl => "red_control"
-    TicketOutOfScope => "out_of_scope"
-    TicketHandback => "handback"
-    TicketVerified => "last_verified_on"
-  }
-}
-
-fn candidate_ticket_json(ticket: TicketFields) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "headline", value: json_string(s: ticket.headline)),
-    json_kv(key: "brief", value: json_string(s: ticket.brief)),
-    json_kv(key: "displaced_cost", value: json_string(s: ticket.displaced_cost)),
-    json_kv(key: "current_state", value: json_string(s: ticket.current_state)),
-    json_kv(key: "first_slice", value: json_string(s: ticket.first_slice)),
-    json_kv(key: "red_control", value: json_string(s: ticket.red_control)),
-    json_kv(key: "out_of_scope", value: json_string(s: ticket.out_of_scope)),
-    json_kv(key: "handback", value: json_string(s: ticket.handback)),
-    json_kv(key: "authored_on", value: json_string(s: ticket.authored_on)),
-    json_kv(key: "last_verified_on", value: json_string(s: ticket.last_verified_on)),
-    json_kv(key: "updates", value: json_array(elements: map(ticket.updates, u => json_object(members: [
-      json_kv(key: "on", value: json_string(s: u.on)), json_kv(key: "note", value: json_string(s: u.note))])))),
-  ])
-}
-
-fn candidate_snapshot_json(snapshot: PlanningIssueSnapshot) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "issue", value: json_string(s: snapshot.issue as String)),
-    json_kv(key: "ticket", value: candidate_ticket_json(ticket: snapshot.ticket)),
-    json_kv(key: "parent", value: json_string(s: match snapshot.parent { Absent => "" Present { value: p } => p as String })),
-    json_kv(key: "blockers", value: json_array(elements: map(snapshot.blockers, b => json_string(s: b as String)))),
-    json_kv(key: "event_revision", value: json_string(s: snapshot.event_revision)),
-    json_kv(key: "accountable_human", value: json_string(s: match snapshot.accountable_human { Absent => "" Present { value: p } => principal_ref_label(p: p) })),
-  ])
-}
-
-fn planning_candidate_json(candidate: IssueRevisionCandidate) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "planning-candidate/v1")),
-    json_kv(key: "identity", value: json_string(s: candidate.identity as String)),
-    json_kv(key: "issue", value: json_string(s: candidate.issue as String)),
-    json_kv(key: "base_issue_revision", value: candidate_snapshot_json(snapshot: candidate.base_issue_revision.snapshot)),
-    json_kv(key: "author", value: json_string(s: principal_ref_label(p: candidate.author))),
-    json_kv(key: "work_request", value: json_string(s: candidate.work_request as String)),
-    json_kv(key: "proposed_field_changes", value: json_array(elements: map(candidate.proposed_field_changes, c => json_object(members: [
-      json_kv(key: "field", value: json_string(s: candidate_field_wire(field: c.field))), json_kv(key: "value", value: json_string(s: c.value))])))),
-    json_kv(key: "proposed_relation_changes", value: json_array(elements: map(candidate.proposed_relation_changes, c => match c {
-      CandidateSetParent { parent } => json_object(members: [json_kv(key: "kind", value: json_string(s: "set_parent")),
-        json_kv(key: "parent", value: json_string(s: match parent { Absent => "" Present { value: p } => p as String }))])
-      CandidateSetBlockers { blockers } => json_object(members: [json_kv(key: "kind", value: json_string(s: "set_blockers")),
-        json_kv(key: "blockers", value: json_array(elements: map(blockers, b => json_string(s: b as String))))])
-    }))),
-    json_kv(key: "proposed_draft_children", value: json_array(elements: map(candidate.proposed_draft_children, c => json_object(members: [
-      json_kv(key: "identity", value: json_string(s: c.identity as String)), json_kv(key: "ticket", value: candidate_ticket_json(ticket: c.ticket))])))),
-  ])
-}
 
 fn planning_candidate_object(candidate: IssueRevisionCandidate) -> FabricObject {
   FabricObject { links: [], body: serialize_json(v: planning_candidate_json(candidate: candidate)) as NonEmptyStr }

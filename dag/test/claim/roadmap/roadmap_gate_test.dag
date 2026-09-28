@@ -3,7 +3,7 @@ module test.claim.roadmap_gate
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
-  RoadmapDocument {
+  RoadmapDocument { memberships: [],
     preamble: [],
     lead_lanes: [],
     sections: [RoadmapSection {

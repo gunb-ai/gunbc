@@ -1,0 +1,138 @@
+module gunbc.roadmap_planning_routes
+
+import std.types { String, NonEmptyStr, Timestamp, Bool }
+import std.access { Permit, Deny, access_refusal_reason }
+import std.algebra { trim }
+import std.encoding { base64_decode, Standard }
+import extdeps.entropy { Urandom }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, ServeResponseHeaderNoStore, text_html_utf8 }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, GoogleOidcSession, DeploymentAccessPolicy, ServeActionReviseIssue, human_write_admission, human_authentication_decision, tracker_write_authorization_policy }
+import gunbc.principal_projection { principal_ref_label, principal_ref_eq }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_task_routes { task_http_json, task_http_refused }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_snapshot_read, RoadmapEventSnapshotObserved, RoadmapEventSnapshotRefused }
+import gunbc.roadmap_planning_candidate { IssueRevisionCandidate, planning_candidate_review, planning_candidate_acceptance, CandidateReviewReady, CandidateRevisionConflict, CandidateReviewRefused, CandidateAcceptanceAdmitted }
+import gunbc.roadmap_planning_candidate_wire { planning_wire_member, planning_wire_string, planning_candidate_decode, planning_candidate_json, candidate_snapshot_json }
+import gunbc.roadmap_planning_candidate_storage { planning_candidate_object, planning_candidate_publish, planning_candidate_read, CandidatePublished, CandidatePublicationReplayed, CandidateIdentityConflict, CandidatePublicationRefused, CandidateStored, CandidateStoredAbsent, CandidateStoreReadRefused }
+import gunbc.roadmap_planning_apply { planning_snapshot_from_events, PlanningSnapshotReady, PlanningSnapshotRefused, planning_apply_stored, PlanningAppliedResult, PlanningApplyConflict, PlanningApplyRefused }
+import gunbc.roadmap_planning_page { planning_editor_html }
+
+fn planning_nonce() -> NonEmptyStr? {
+  let wire = trim(Urandom.ReadBytes(count: 32).octets_b64)
+  match base64_decode(s: wire, variant: Standard) {
+    Present { value: bytes } => if count(bytes) == 32 { Present { value: replace(replace(replace(wire, "+", "-"), "/", "_"), "=", "") as NonEmptyStr } } else { none }
+    Absent => none
+  }
+}
+
+fn planning_get(request: ServeHttpRequest<RequestAuthenticationEvidence>, layout: RoadmapEventCarrierLayout, node: RoadmapNodeId, kind: String, identity: String, observed_at: Timestamp) -> ServeHttpResponse {
+  match human_authentication_decision(route_path: "/issue/planning", action: ServeActionReviseIssue, security: request.security, observed_at: observed_at) {
+    Deny { refusal } => task_http_refused(status: 401, reason: access_refusal_reason(refusal: refusal))
+    Permit => match request.security.authentication {
+      GoogleOidcSession { session } =>
+        if kind == "page" { ServeHttpResponse { status: 200, content_type: text_html_utf8, body: planning_editor_html(), headers: [ServeResponseHeaderNoStore] } }
+        else { match roadmap_event_snapshot_read(layout: layout) {
+          RoadmapEventSnapshotRefused { step: _, reason } => task_http_refused(status: 503, reason: reason)
+          RoadmapEventSnapshotObserved { snapshot: stored } => match planning_snapshot_from_events(node: node, events: map(stored.events, e => e.envelope)) {
+            PlanningSnapshotRefused { reason } => task_http_refused(status: 409, reason: reason)
+            PlanningSnapshotReady { snapshot, task: _ } => if kind == "context" {
+              match planning_nonce() {
+                Absent => task_http_refused(status: 503, reason: "Could not mint a proposal identity")
+                Present { value: nonce } => task_http_json(status: 200, document: json_object(members: [
+                  json_kv(key: "identity", value: json_string(s: nonce as String)),
+                  json_kv(key: "work_request", value: json_string(s: concat("human-editor:", nonce as String))),
+                  json_kv(key: "author", value: json_string(s: principal_ref_label(p: session.principal))),
+                  json_kv(key: "csrf_token", value: json_string(s: session.csrf.token as String)),
+                  json_kv(key: "authored_on", value: json_string(s: observed_at as String)),
+                  json_kv(key: "snapshot", value: candidate_snapshot_json(snapshot: snapshot)),
+                ]))
+              }
+            } else { match planning_candidate_read(store: layout.store, identity: identity as NonEmptyStr) {
+              CandidateStoredAbsent => task_http_refused(status: 404, reason: "Candidate not found")
+              CandidateStoreReadRefused { reason } => task_http_refused(status: 503, reason: reason)
+              CandidateStored { object: _, body } => match planning_candidate_decode(wire: body as String) {
+                Absent => task_http_refused(status: 503, reason: "Candidate cannot be decoded")
+                Present { value: candidate } => if candidate.issue != node || (candidate.identity as String) != identity { task_http_refused(status: 409, reason: "Candidate belongs to another issue") }
+                  else { let allowed = match planning_candidate_acceptance(candidate: candidate, current: snapshot, acceptor: session.principal) { CandidateAcceptanceAdmitted { review: _ } => true _ => false }
+                    task_http_json(status: 200, document: json_object(members: [
+                      json_kv(key: "candidate", value: planning_candidate_json(candidate: candidate)),
+                      json_kv(key: "can_accept", value: json_bool(b: allowed)),
+                      json_kv(key: "reason", value: json_string(s: if allowed { "" } else { "This candidate is stale, invalid, or you are not the accountable human. It cannot be accepted." })),
+                    ])) }
+              }
+            } }
+          }
+        } }
+      _ => task_http_refused(status: 401, reason: "Sign in to plan changes")
+    }
+  }
+}
+
+fn planning_post(request: ServeHttpRequest<RequestAuthenticationEvidence>, layout: RoadmapEventCarrierLayout, node: RoadmapNodeId, accept: Bool, observed_at: Timestamp) -> ServeHttpResponse {
+  match parse_json_document(s: request.body) {
+    JsonDocumentParsed { value: doc } => match planning_wire_string(doc: doc, key: "csrf_token") {
+      Absent => task_http_refused(status: 400, reason: "csrf_token is required")
+      Present { value: csrf } => match human_write_admission(route_path: "/issue/planning", action: ServeActionReviseIssue,
+        security: request.security, authorization_policy: tracker_write_authorization_policy,
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: true }, csrf_presented: csrf, observed_at: observed_at) {
+        Deny { refusal } => task_http_refused(status: 403, reason: access_refusal_reason(refusal: refusal))
+        Permit => match request.security.authentication {
+          GoogleOidcSession { session } => if accept {
+            match planning_wire_string(doc: doc, key: "identity") {
+              Present { value: identity } => if identity == "" { task_http_refused(status: 400, reason: "Candidate identity is required") }
+                else { match planning_apply_stored(layout: layout, identity: identity as NonEmptyStr, node: node, acceptor: session.principal, observed_at: observed_at as String) {
+                  PlanningAppliedResult { revision, replayed } => task_http_json(status: 200, document: json_object(members: [json_kv(key: "revision", value: json_string(s: revision as String)), json_kv(key: "replayed", value: json_bool(b: replayed))])),
+                  PlanningApplyConflict { reason } => task_http_refused(status: 409, reason: reason)
+                  PlanningApplyRefused { reason } => task_http_refused(status: 403, reason: reason)
+                } }
+              Absent => task_http_refused(status: 400, reason: "Candidate identity is required")
+            }
+          } else { match planning_wire_member(doc: doc, key: "candidate") {
+            Absent => task_http_refused(status: 400, reason: "Candidate is required")
+            Present { value: wire } => match planning_candidate_decode(wire: serialize_json(v: wire)) {
+              Absent => task_http_refused(status: 400, reason: "Invalid typed candidate")
+              Present { value: candidate } => if candidate.issue != node || !principal_ref_eq(a: candidate.author, b: session.principal)
+                || (candidate.work_request as String) != concat("human-editor:", candidate.identity as String) {
+                task_http_refused(status: 403, reason: "Candidate author, issue or human editor operation does not match this request")
+              } else { planning_propose_admitted(layout: layout, candidate: candidate) }
+            }
+          } }
+          _ => task_http_refused(status: 401, reason: "Sign in to plan changes")
+        }
+      }
+    }
+    _ => task_http_refused(status: 400, reason: "Expected a JSON request")
+  }
+}
+
+fn planning_published_response(identity: NonEmptyStr) -> ServeHttpResponse {
+  task_http_json(status: 200, document: json_object(members: [json_kv(key: "identity", value: json_string(s: identity as String))]))
+}
+
+fn planning_propose_admitted(layout: RoadmapEventCarrierLayout, candidate: IssueRevisionCandidate) -> ServeHttpResponse {
+  let node = candidate.issue
+  match planning_candidate_read(store: layout.store, identity: candidate.identity) {
+    CandidateStoreReadRefused { reason } => task_http_refused(status: 503, reason: reason)
+    CandidateStored { object: _, body } => if body == planning_candidate_object(candidate: candidate).body {
+      planning_published_response(identity: candidate.identity)
+    } else { task_http_refused(status: 409, reason: "This proposal identity already names different content") }
+    CandidateStoredAbsent => match roadmap_event_snapshot_read(layout: layout) {
+                RoadmapEventSnapshotRefused { step: _, reason } => task_http_refused(status: 503, reason: reason)
+                RoadmapEventSnapshotObserved { snapshot: stored } => match planning_snapshot_from_events(node: node, events: map(stored.events, e => e.envelope)) {
+                  PlanningSnapshotRefused { reason } => task_http_refused(status: 409, reason: reason)
+                  PlanningSnapshotReady { snapshot, task: _ } => match planning_candidate_review(candidate: candidate, current: snapshot) {
+                    CandidateRevisionConflict { current_revision: _ } => task_http_refused(status: 409, reason: "Issue changed; start a new proposal from its current revision")
+                    CandidateReviewRefused { cause } => task_http_refused(status: 400, reason: cause)
+                    CandidateReviewReady { review: _ } => match planning_candidate_publish(store: layout.store, candidate: candidate) {
+                      CandidatePublished { object: _ } => planning_published_response(identity: candidate.identity)
+                      CandidatePublicationReplayed { object: _ } => planning_published_response(identity: candidate.identity)
+                      CandidateIdentityConflict => task_http_refused(status: 409, reason: "This proposal identity already names different content")
+                      CandidatePublicationRefused { reason } => task_http_refused(status: 503, reason: reason)
+                    }
+                  }
+                }
+              }
+  }
+}

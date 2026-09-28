@@ -1,5 +1,6 @@
 module gunbc.roadmap_presentation
 
+import gunbc.roadmap_model { RoadmapMembership }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding,
   NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
@@ -15,7 +16,7 @@ import gunbc.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   intricacy_label, volume_label,
 }
-import gunbc.roadmap_status {
+import gunbc.roadmap_status { LiveTicketLine,
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
   item_superseded_by, item_is_done, signoff_accepts,
   line_ticket, TicketFields, TicketUpdate,
@@ -519,6 +520,7 @@ fn legacy_lead(full: String) -> String {
 fn row_headline(line: RoadmapItem) -> String {
   match line {
     TicketLine { done: _, ticket } => ticket.headline
+    LiveTicketLine { source: _, ticket } => ticket.headline
     DerivableLine { prs: _, title, description: _ } => legacy_lead(full: title)
     AuthoredLine { done: _, content } => legacy_lead(full: content)
     PlainLine { content } => legacy_lead(full: content)
@@ -570,6 +572,7 @@ fn row_disclosure(line: RoadmapItem) -> DisclosureView {
         PlainLine { content } => content
         SupersededLine { by: _, content } => content
         TicketLine { done: _, ticket } => ""
+        LiveTicketLine { source: _, ticket: _ } => ""
       }
       if full == row_headline(line: line) {
         NoDisclosure
@@ -2021,7 +2024,7 @@ fn workspace_flat_table(
 }
 
 // THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies).
-// Blocking lists the node's children — the dependents this issue structurally blocks; Blocked-by
+// Blocking lists the dependents this issue structurally blocks; Blocked-by
 // lists only the UNMET parents — an edge whose parent has closed is satisfied, not an obstruction,
 // and naming it as one would contradict the bar's "blocked on" signal, which derives from this
 // same scheduling_blockers seam. A link carries node id + headline only: the panel is a pointer
@@ -2031,15 +2034,10 @@ type IssueLinkView {
   headline: String
 }
 
-// PARENT AND BLOCKING STAY SEPARATE (owner ruling 2026-09-24): the panel carries DECOMPOSITION
-// (parent — where the issue nests) and DEPENDENCY (blocking / blocked-by — what it obstructs and
-// what obstructs it) as distinct fields, never one merged list. THE NAMED GAP, not papered over:
-// the roadmap graph carries ONLY dependency edges today (the chain-ambiguity finding), so the
-// decomposition side rides the tree derivation's primary-parent rule — the first edge target read
-// as the display parent — which is a presentation approximation, not a modeled decomposition
-// relation. When decomposition edges land, the parent field rebinds to them and the blocking
-// fields stay exactly as they are.
+// Membership supplies parent and children; dependency edges supply blocking and blocked-by.
+// These independent relations share their authority with the accepted worker projection.
 type IssueLinkPanel {
+  children: List<IssueLinkView>
   parent: IssueLinkView?
   blocking: List<IssueLinkView>
   blocked_by: List<IssueLinkView>
@@ -2056,13 +2054,13 @@ fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Ro
     any(roadmap_parent_ids(edges: edges, node: n.node), p => p == parent))
 }
 
-fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> IssueLinkPanel {
+fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = []) -> IssueLinkPanel {
   IssueLinkPanel {
-    parent: match roadmap_primary_parent(edges: edges, node: rn.node) {
-      TopLevel => none
-      UnderParent { parent: pid } => match find_node(nodes: nodes, node_id: pid as String) {
-        Present { value: p } => Present { value: issue_link_view_of(rn: p) }
-        Absent => none
+    children: map(filter(nodes, n => any(memberships, m => m.project == rn.node && m.member == n.node)), issue_link_view_of),
+    parent: match (filter(memberships, m => m.member == rn.node)).first() {
+      Absent => none
+      Present { value: relation } => match find_node(nodes: nodes, node_id: relation.project as String) {
+        Absent => none Present { value: parent } => Present { value: issue_link_view_of(rn: parent) }
       }
     },
     blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),

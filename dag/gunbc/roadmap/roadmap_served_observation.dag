@@ -1,5 +1,6 @@
 module gunbc.roadmap_served_observation
 
+import gunbc.roadmap_live_projection { roadmap_live_authority_projection }
 import gunbc.roadmap.roadmap_event_carrier_instance { roadmap_event_carrier_layout_for_instance }
 
 import gunbc.site.markup { page_render_refusal_body }
@@ -417,7 +418,7 @@ fn served_observation_observe_and_write_over(instance: HostDashboardInstance, pl
 fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     observed_at: observed_at,
   )
 }

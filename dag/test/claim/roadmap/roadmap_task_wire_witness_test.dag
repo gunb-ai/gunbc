@@ -11,7 +11,7 @@ test fn witness_editorial_edit_preserves_identity_and_contract() -> Bool {
   match roadmap_task_revision_submission(body: task_edit_fixture) {
     Absent => false
     Present { value: submission } => {
-      let prior = RoadmapTaskEditorial { identity: "minted-node", code_contract: Present { value: "minted-contract" }, title: "Old", body: "Old body", prerequisites: [], state: IssueStatusNew }
+      let prior = RoadmapTaskEditorial { ticket: none, parent: none, identity: "minted-node", code_contract: Present { value: "minted-contract" }, title: "Old", body: "Old body", prerequisites: [], state: IssueStatusNew }
       let edited = roadmap_task_revision_value(prior: prior, submission: submission)
       edited.identity == prior.identity && edited.code_contract == prior.code_contract
         && edited.title == "Changed title" && edited.body == "Changed body"

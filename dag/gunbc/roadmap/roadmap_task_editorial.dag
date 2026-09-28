@@ -1,10 +1,13 @@
 module gunbc.roadmap.roadmap_task_editorial
 
+import gunbc.roadmap_status { TicketFields }
+import gunbc.roadmap_planning_candidate_wire { candidate_ticket_json, candidate_ticket_decode }
+
 import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
 import extdeps.google.issue_tracker { IssueStatus, issue_status_wire, issue_status_parse }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString, json_object, json_kv, json_string, json_array }
-import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
 
 // Editorial state never changes an executable contract or discharges its receipt obligations.
 // Identity is minted independently of title, dependencies and display slug. Every node has
@@ -16,6 +19,8 @@ type RoadmapTaskEditorial {
   body: String
   prerequisites: List<RoadmapNodeId>
   state: IssueStatus
+  ticket: TicketFields?
+  parent: RoadmapNodeId?
 }
 
 fn roadmap_task_editorial_json(task: RoadmapTaskEditorial) -> JsonValue {
@@ -26,7 +31,8 @@ fn roadmap_task_editorial_json(task: RoadmapTaskEditorial) -> JsonValue {
     json_kv(key: "body", value: json_string(s: task.body)),
     json_kv(key: "prerequisites", value: json_array(elements: map(task.prerequisites, dependency => json_string(s: dependency as String)))),
     json_kv(key: "state", value: json_string(s: issue_status_wire(status: task.state))),
-  ])
+  ] + (match task.ticket { Absent => [] Present { value: ticket } => [json_kv(key: "ticket", value: candidate_ticket_json(ticket: ticket))] })
+    + (match task.parent { Absent => [] Present { value: parent } => [json_kv(key: "parent", value: json_string(s: parent as String))] }))
 }
 
 fn roadmap_task_string(doc: JsonValue, key: String) -> String? {
@@ -47,7 +53,7 @@ fn roadmap_task_dependencies(values: List<JsonValue>) -> List<RoadmapNodeId>? {
   })
 }
 
-fn roadmap_task_editorial_decode(doc: JsonValue) -> RoadmapTaskEditorial? {
+fn roadmap_task_editorial_decode_legacy(doc: JsonValue) -> RoadmapTaskEditorial? {
   match roadmap_task_string(doc: doc, key: "identity") {
     Absent => none
     Present { value: wire_identity } => if wire_identity == "" { none } else {
@@ -71,7 +77,7 @@ fn roadmap_task_editorial_decode(doc: JsonValue) -> RoadmapTaskEditorial? {
                         title: wire_title as NonEmptyStr,
                         body: wire_body,
                         prerequisites: selected_dependencies,
-                        state: selected_state,
+                        state: selected_state, ticket: none, parent: none,
                       } }
                     }
                     _ => none
@@ -90,5 +96,48 @@ fn roadmap_task_binding_equal(left: RoadmapTaskEditorial, right: RoadmapTaskEdit
   left.identity == right.identity && match left.code_contract {
     Absent => match right.code_contract { Absent => true  Present { value: _ } => false }
     Present { value: bound } => match right.code_contract { Absent => false  Present { value: other } => bound == other }
+  }
+}
+
+// Optional extensions are omitted on historical values, preserving canonical event bytes.
+// Present malformed extensions refuse; they never degrade into the historical empty state.
+fn roadmap_task_editorial_decode(doc: JsonValue) -> RoadmapTaskEditorial? {
+  match roadmap_task_editorial_decode_legacy(doc: doc) {
+    Absent => none
+    Present { value: prior } => match json_object_unique_member(v: doc, key: "ticket") {
+      JsonMemberAbsent => roadmap_task_decode_parent(doc: doc, prior: prior)
+      JsonMemberFound { value: wire } => match candidate_ticket_decode(doc: wire) {
+        Absent => none
+        Present { value: ticket } => if ticket.headline != (prior.title as String) || ticket.brief != prior.body { none }
+          else { roadmap_task_decode_parent(doc: doc, prior: RoadmapTaskEditorial {
+            identity: prior.identity, code_contract: prior.code_contract, title: prior.title, body: prior.body,
+            prerequisites: prior.prerequisites, state: prior.state, ticket: Present { value: ticket }, parent: none,
+          }) }
+      }
+      _ => none
+    }
+  }
+}
+fn roadmap_task_decode_parent(doc: JsonValue, prior: RoadmapTaskEditorial) -> RoadmapTaskEditorial? {
+  match json_object_unique_member(v: doc, key: "parent") {
+    JsonMemberAbsent => Present { value: prior }
+    JsonMemberFound { value: JsonString { value: parent } } => if parent == "" { none } else {
+      Present { value: RoadmapTaskEditorial { identity: prior.identity, code_contract: prior.code_contract,
+        title: prior.title, body: prior.body, prerequisites: prior.prerequisites, state: prior.state,
+        ticket: prior.ticket, parent: Present { value: parent as RoadmapNodeId } } }
+    }
+    _ => none
+  }
+}
+
+// Legacy stored title/body become an editable ticket without consulting a source checkout.
+// Unrecorded planning fields and evidence stay empty; accepting a candidate records the typed
+// form through the ordinary CAS event. Historical objects themselves are never rewritten.
+fn roadmap_task_ticket(task: RoadmapTaskEditorial) -> TicketFields {
+  match task.ticket {
+    Present { value: ticket } => ticket
+    Absent => TicketFields { headline: task.title as String, brief: task.body,
+      displaced_cost: "", current_state: "", first_slice: "", red_control: "", out_of_scope: "", handback: "",
+      updates: [], authored_on: "", last_verified_on: "" }
   }
 }

@@ -1,0 +1,77 @@
+module gunbc.roadmap_dispatch_fields
+
+import std.types { String, List }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, Pointer }
+import gunbc.roadmap_status { node_title, line_ticket }
+
+type DispatchBriefFields {
+  brief: String
+  node_id: String
+  displaced_cost: String
+  current_state: String
+  first_slice: String
+  red_control: String
+  out_of_scope: String
+  handback: String
+  paths: String
+  commands_to_run: String
+  expected_artifact: String
+}
+
+fn carrier_paths_label(carriers: List<Pointer>, repo: String) -> String {
+  if count(carriers) == 0 {
+    concat("dag/gunbc/roadmap/roadmap_dispatch_actuator.dag (repo=", concat(repo, ")"))
+  } else {
+    join(map(carriers, p => p.path), " · ")
+  }
+}
+
+fn dispatch_slot_fields(node: RoadmapNode, repo: String) -> DispatchBriefFields {
+  let title = node_title(item: node.line)
+  match line_ticket(item: node.line) {
+    Present { value: t } =>
+      DispatchBriefFields {
+        brief: t.brief,
+        node_id: node.node,
+        displaced_cost: t.displaced_cost,
+        current_state: t.current_state,
+        first_slice: t.first_slice,
+        red_control: t.red_control,
+        out_of_scope: t.out_of_scope,
+        handback: t.handback,
+        paths: carrier_paths_label(carriers: node.carriers, repo: repo),
+        commands_to_run: "",
+        expected_artifact: "",
+      }
+    Absent =>
+      DispatchBriefFields {
+        brief: title,
+        node_id: node.node,
+        displaced_cost: title,
+        current_state: title,
+        first_slice: title,
+        red_control: "drop modeled argv row and witness goes red",
+        out_of_scope: "see parent roadmap dispatch plan",
+        handback: "node not ready, foreign lease, or unsupported repo",
+        paths: carrier_paths_label(carriers: node.carriers, repo: repo),
+        commands_to_run: "",
+        expected_artifact: "",
+      }
+  }
+}
+
+
+fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String {
+  join(["Issue brief\n", fields.brief, "\n\n", template
+    .replace(from: "<node_id>", to: fields.node_id)
+    .replace(from: "<displaced cost / what it unblocks>", to: fields.displaced_cost)
+    .replace(from: "<explicitly out of scope>", to: fields.out_of_scope)
+    .replace(from: "<prove current state / reproduce the gap>", to: fields.current_state)
+    .replace(from: "<first implementation slice>", to: fields.first_slice)
+    .replace(from: "<perturbation that goes red>", to: fields.red_control)
+    .replace(from: "<execution on the real path>", to: fields.commands_to_run)
+    .replace(from: "<named hand-back conditions>", to: fields.handback)
+    .replace(from: "<paths>", to: fields.paths)
+    .replace(from: "<repro/verify commands>", to: fields.commands_to_run)
+    .replace(from: "<what comes back even if the fix does not land>", to: fields.expected_artifact)], "")
+}

@@ -115,6 +115,8 @@ type RoadmapItem
 
   | TicketLine { done: Bool, ticket: TicketFields }
 
+  | LiveTicketLine { source: RoadmapItem, ticket: TicketFields }
+
 // Acceptance was three hand-set Bools, so a row could be accepted by asserting
 // works/scope_equivalent while its declared red_control never executed and its declared handback
 // was never delivered — the DESIGN.md §5 shape where a check is satisfied by editing the
@@ -213,6 +215,7 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
     PlainLine { content: _ } => false
     SupersededLine { by: _, content: _ } => true
     TicketLine { done, ticket: _ } => done
+    LiveTicketLine { source, ticket: _ } => item_is_done(item: source, merged: merged)
   }
 }
 
@@ -223,6 +226,7 @@ fn item_superseded_by(item: RoadmapItem) -> String {
     PlainLine { content: _ } => ""
     SupersededLine { by, content: _ } => by
     TicketLine { done: _, ticket: _ } => ""
+    LiveTicketLine { source, ticket: _ } => item_superseded_by(item: source)
   }
 }
 
@@ -244,6 +248,7 @@ fn node_title(item: RoadmapItem) -> String {
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => ticket.headline
+    LiveTicketLine { source: _, ticket } => ticket.headline
   }
 }
 
@@ -254,6 +259,7 @@ fn item_description(item: RoadmapItem) -> String {
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => ticket.brief
+    LiveTicketLine { source: _, ticket } => ticket.brief
   }
 }
 
@@ -265,6 +271,8 @@ fn item_exit_criterion(item: RoadmapItem) -> String? {
     SupersededLine { by: _, content: _ } => none
     TicketLine { done: _, ticket } =>
       if ticket.handback == "" { none } else { Present { value: ticket.handback } }
+    LiveTicketLine { source: _, ticket } =>
+      if ticket.handback == "" { none } else { Present { value: ticket.handback } }
   }
 }
 
@@ -275,6 +283,7 @@ fn line_ticket(item: RoadmapItem) -> TicketFields? {
     PlainLine { content: _ } => Absent
     SupersededLine { by: _, content: _ } => Absent
     TicketLine { done: _, ticket } => Present { value: ticket }
+    LiveTicketLine { source: _, ticket } => Present { value: ticket }
   }
 }
 
@@ -290,6 +299,7 @@ fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Dr
     PlainLine { content: _ } => Underivable
     SupersededLine { by: _, content: _ } => Underivable
     TicketLine { done: _, ticket: _ } => Underivable
+    LiveTicketLine { source, ticket: _ } => status_drift(item: source, committed_box: committed_box, merged: merged)
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean

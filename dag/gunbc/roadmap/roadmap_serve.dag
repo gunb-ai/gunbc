@@ -1,5 +1,9 @@
 module gunbc.roadmap_serve
 
+import gunbc.roadmap_planning_refresh { planning_accept_and_refresh }
+import gunbc.roadmap_planning_routes { planning_get, planning_post }
+import gunbc.roadmap_planning_page { planning_editor_script }
+import gunbc.roadmap_live_projection { roadmap_live_authority_projection }
 import gunbc.roadmap.roadmap_task_routes { task_http_get_over, task_http_revise_over, task_http_refused }
 import gunbc.roadmap.roadmap_event_carrier_instance { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap_model { RoadmapNodeId }
@@ -201,6 +205,12 @@ type RoadmapServeHandler
   | AuthGoogleCallbackHandler
   | AuthLogoutHandler
   | AuthSessionHandler
+  | PlanningPageHandler
+  | PlanningContextHandler
+  | PlanningCandidateHandler
+  | PlanningProposeHandler
+  | PlanningAcceptHandler
+  | PlanningClientHandler
   | IssueEditorialGetHandler
   | IssueEditorialReviseHandler
   | IssueDetailHandler
@@ -283,6 +293,12 @@ type ServedDailyBodyAuthority
 
 fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   [
+    ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/planning", handler: PlanningPageHandler },
+    ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/planning/context", handler: PlanningContextHandler },
+    ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/planning/candidate/\{candidate_id\}", handler: PlanningCandidateHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/planning/propose", handler: PlanningProposeHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/planning/accept", handler: PlanningAcceptHandler },
+    ServedRouteSpec { method: GET, raw: "/planning-client.js", handler: PlanningClientHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/editorial", handler: IssueEditorialGetHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/editorial", handler: IssueEditorialReviseHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailHandler },
@@ -461,7 +477,7 @@ fn serve_dispatch_handler_response_for_instance(
 ) -> ServeHttpResponse {
   serve_dispatch_handler_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     params: params,
   )
 }
@@ -702,6 +718,32 @@ fn roadmap_serve_invoke_over(
   cookie_header: String = "",
 ) -> ServeHttpResponse {
   match handler {
+    PlanningClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: planning_editor_script())
+    PlanningPageHandler => match clock_now_probed_at() {
+      Absent => task_http_refused(status: 503, reason: "Workspace clock unavailable")
+      Present { value: observed } => planning_get(request: request, layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+        node: path_param_value(params: params, name: "node_id") as RoadmapNodeId, kind: "page", identity: path_param_value(params: params, name: "candidate_id"), observed_at: observed)
+    }
+    PlanningContextHandler => match clock_now_probed_at() {
+      Absent => task_http_refused(status: 503, reason: "Workspace clock unavailable")
+      Present { value: observed } => planning_get(request: request, layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+        node: path_param_value(params: params, name: "node_id") as RoadmapNodeId, kind: "context", identity: path_param_value(params: params, name: "candidate_id"), observed_at: observed)
+    }
+    PlanningCandidateHandler => match clock_now_probed_at() {
+      Absent => task_http_refused(status: 503, reason: "Workspace clock unavailable")
+      Present { value: observed } => planning_get(request: request, layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+        node: path_param_value(params: params, name: "node_id") as RoadmapNodeId, kind: "candidate", identity: path_param_value(params: params, name: "candidate_id"), observed_at: observed)
+    }
+    PlanningProposeHandler => match clock_now_probed_at() {
+      Absent => task_http_refused(status: 503, reason: "Workspace clock unavailable")
+      Present { value: observed } => planning_post(request: request, layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+        node: path_param_value(params: params, name: "node_id") as RoadmapNodeId, accept: false, observed_at: observed)
+    }
+    PlanningAcceptHandler => match clock_now_probed_at() {
+      Absent => task_http_refused(status: 503, reason: "Workspace clock unavailable")
+      Present { value: observed } => planning_accept_and_refresh(request: request, instance: instance,
+        node: path_param_value(params: params, name: "node_id") as RoadmapNodeId, observed_at: observed)
+    }
     IssueEditorialGetHandler => match clock_now_probed_at() {
       Absent => task_http_refused(status: 503, reason: "Workspace clock unavailable")
       Present { value: observed } => task_http_get_over(request: request, layout: roadmap_event_carrier_layout_for_instance(instance: instance),
@@ -799,7 +841,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -988,7 +1030,7 @@ fn roadmap_serve_selection_response_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -1070,7 +1112,7 @@ fn roadmap_serve_respond_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
@@ -1164,7 +1206,7 @@ fn roadmap_serve_handle(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1192,7 +1234,7 @@ fn roadmap_serve_handle_macbook_local(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1213,7 +1255,7 @@ fn roadmap_serve_handle_srv1_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1234,7 +1276,7 @@ fn roadmap_serve_handle_srv2_preview(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1258,7 +1300,7 @@ fn roadmap_serve_handle_srv2_deploy(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1279,7 +1321,7 @@ fn roadmap_serve_handle_srv2_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_live_authority_projection(),
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,

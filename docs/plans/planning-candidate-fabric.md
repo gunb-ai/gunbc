@@ -1,71 +1,55 @@
 # Planning candidates on Fabric storage
 
-Owner decisions, 2026-09-28: accepting a candidate updates live issue state; both dashboard and
-workers read that accepted revision. Use Fabric storage. Repository changes are not the apply
-route for these editorial updates.
+Owner decisions: acceptance updates live issue state immediately; dashboard and workers read
+accepted state. Fabric storage owns persistence. Repository merge is not the editorial apply path.
 
-## Implemented
+## Implemented flow
 
-The candidate review model and ten controls from `d327f501b55` are preserved here. Typed field
-identities and preview helpers are carried from Cut 2's status authority; there is no field-name
-lookup based on presentation labels.
+The issue detail links to a typed planning editor. An authenticated human can propose ticket
+field changes, independently edit parent and blockers, and add draft children. Saving publishes
+an immutable candidate containing its base snapshot, author and work-request identity. Reviewing
+is read-only; acceptance is an explicit CSRF-protected POST by the current accountable Google
+principal. Legacy email-only identity does not confer acceptance authority.
 
-`gunbc.roadmap_planning_candidate_storage` publishes immutable candidate objects through the
-existing `FabricStorageBinding` client and its create-only head CAS. The canonical object body
-includes the full base snapshot, author, work request, field/relation proposals and draft children.
-A proposal has a separate head from issue state, so publishing it cannot stale its own issue base.
-Same-identity/same-body retries recover the committed object; different content under an existing
-identity refuses. Conflict comparison uses exact body bytes, not only the structural digest.
-An absent/unreachable/corrupt store never becomes an empty successful read or a local fallback.
+Candidate publication uses a separate create-only Fabric head, so saving does not stale its own
+issue base. Same-identity/same-body retries recover the existing proposal; changed content refuses.
+Acceptance validates the current base, full resulting relation graph and draft identities, then
+publishes children, their accountable assignments, the parent edit and acceptance receipt with one
+issue-head CAS. Concurrent different candidates cannot both win. A committed candidate retry
+returns its original result even after later issue events; a lost CAS never silently rebases.
 
-The adapter is a persistence boundary, not authorization: authenticated proposal admission must
-precede it. It currently returns stored canonical bytes; a typed read decoder and HTTP integration
-remain to be implemented. No production route calls it yet.
+Stored editorial state retains typed ticket fields and an independent nesting relation. Historical
+records without these optional extensions retain their canonical bytes; their existing title/body
+normalize into headline/brief with unrecorded fields empty. Executable bindings and verification
+metadata cannot be edited through this interface. Draft children remain non-dispatchable until an
+execution contract is separately bound.
 
-## Dependency and integration
+Dashboard observations and worker dispatch consume the same live document projection. Accepted
+brief and plan reach worker prompts. Children derive from membership; blocking derives from
+dependency edges. Missing/corrupt/unreadable state refuses instead of reverting to source text.
+Acceptance refreshes the current instance's pre-rendered dashboard. A refresh failure reports that
+accepted state is durable and refresh is pending; retrying acceptance retries refresh. Other
+instances observe through their normal belt refresh cadence.
 
-This isolated branch is based on the protected-state sibling at
-`ada7daefc28696ce4ba242437cd26daf61bd0bab` (#12465). Its HOLD is unchanged. No sibling checkout,
-auth handler, credential, live storage, server or deployment was changed.
+## Scope and dependency
 
-Reuse these existing authorities:
+This branch is stacked on protected-state PR #12465 at
+`ada7daefc28696ce4ba242437cd26daf61bd0bab`. Its HOLD remains in force. Runtime binding uses
+`fabric_state_storage_binding`, without a literal host or fallback store. No credentials, real
+protected storage, live dashboard, DNS, deployment or merge were changed.
 
-- `fabric_state_storage_binding` for the commissioned protected-state endpoint; no literal host.
-- `roadmap_event_snapshot_read` for one consistent issue-history snapshot.
-- `roadmap_event_append_snapshot` for publication against the observed Fabric head.
-- `roadmap_task_projection` for mutable editorial state after its one-time seed.
+This implements the human editor vertical. It does not implement a new Ask Fabric planning-worker
+dispatch workflow. The preserved broader work contract remains in `planning-work-contract.md`.
+Production commissioning and source-to-store migration belong to the protected-state dependency.
 
-The current stored editorial task has title/body/state/prerequisites, but lacks the full typed
-ticket fields and separate nesting relation required by candidates. Its current read consumers
-include the issue page and editorial HTTP route; workers still need the shared accepted-state
-projection. Do not claim a dashboard-only override completes the owner's directive.
+## Validation and remaining gates
 
-Remaining implementation:
+See `docs/receipts/planning-candidate-fabric/editor-validation.md` for evidence and exact limits.
+Targeted controls cover review, canonical storage, actual acceptance, authenticated HTTP admission,
+legacy event identity, task projection and the shared worker consumer. Browser and independent
+process race controls use real temporary Fabric file storage with fixture authentication.
 
-1. Extend stored editorial state with typed ticket fields and nesting, preserving historical
-   event byte identity and keeping executable contract bindings immutable.
-2. Decode stored candidates; admit authenticated proposals and bind their identity and author
-   to the generic planning work request. Validate complete graph targets/cycles and draft IDs.
-3. Atomically apply the accepted candidate plus its operation receipt through the event carrier.
-   Return the original result on retry before stale checks, including after later changes.
-4. Read one accepted-state projection in dashboard and worker contract/alignment inputs.
-5. Add the editor/review UI and authenticated, CSRF-protected POST routes. GET never applies.
-6. Execute concurrent acceptance, browser, worker-consumer and served-storage controls. Coordinate
-   protected-state commissioning and source-to-store migration before any deployment.
-
-## Validation
-
-Ten review controls and two storage controls passed using binary SHA-256
-`e6d8571156538304137139853153e1d30f77f99ba71d8c76ccd3a943b8875e5b`.
-The storage inhabitance control executes real file-backed Fabric put, head CAS and closure read
-in a temporary directory: absent, publication, readback, retry, changed-payload refusal and unchanged
-original readback. The other control verifies unplaced-store refusal.
-
-The earlier shared-branch binary cannot parse this dependency's existing `MachineWidth` declaration;
-that run is not counted as validation. The compatible binary passed after correcting one new
-refinement cast (`1 as Nat` to the nonnegative literal `1`). No production source was altered to
-accommodate the compiler. Byte-identical source closure and its manifest are local under
-`target/planning-validation`; retained outputs are in `docs/receipts/planning-candidate-fabric/`.
-
-These results do not establish a running editor, a protected served round trip, accepted issue
-application, concurrency qualification, dashboard/worker integration or deployment.
+The full production serve compile and broad imported integration run exceeded the existing 6 GiB
+validation cap (exit 137). They are unresolved integration gates, not passing checks. A protected
+production cookie/session round trip, commissioned storage, and deployment have not been tested.
+The change should remain draft until integrated qualification and dependency landing are complete.

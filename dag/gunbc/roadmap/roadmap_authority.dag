@@ -4653,7 +4653,7 @@ fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> R
       RoadmapAuthorityProjectionRefused { detail: detail }
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
       RoadmapAuthorityProjected {
-        doc: RoadmapDocument {
+        doc: RoadmapDocument { memberships: [],
           preamble: preamble(),
           lead_lanes: [],
           sections: [active_section_for_acceptance(
@@ -4681,7 +4681,7 @@ fn active_section() -> RoadmapSection {
 // view.
 
 fn roadmap_authority_for(focus: RoadmapFocus) -> RoadmapDocument {
-  RoadmapDocument {
+  RoadmapDocument { memberships: [],
     preamble: preamble(),
     lead_lanes: [],
     sections: [active_section_for(focus: focus)],
@@ -5348,7 +5348,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
 // returns an explicit unavailable document rather than a silent empty active graph.
 
 fn roadmap_authority_refusal_document(detail: String) -> RoadmapDocument {
-  RoadmapDocument {
+  RoadmapDocument { memberships: [],
     preamble: [
       HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap (unavailable)" }] },
       ParagraphBlock {

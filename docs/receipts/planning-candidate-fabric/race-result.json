@@ -1,0 +1,11 @@
+{
+  "result": "PASS",
+  "writers": {
+    "race-one": 0,
+    "race-two": 1
+  },
+  "committed_events": 5,
+  "winner_retry": "original result",
+  "store": "/tmp/gunbc-planning-race-t8yl_dd9",
+  "scope": "independent CLI processes, real Fabric file-store head CAS"
+}

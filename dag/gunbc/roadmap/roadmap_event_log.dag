@@ -117,6 +117,7 @@ type RoadmapEventKind
   | PublicationObserved { pr: NonEmptyStr, head: NonEmptyStr }
   | TaskCreated { task: RoadmapTaskEditorial }
   | TaskRevised { task: RoadmapTaskEditorial }
+  | PlanningApplied { candidate: NonEmptyStr, task: RoadmapTaskEditorial }
 
 // THE EVENT'S AUTHOR IS A PRINCIPAL, never an email and never a transport identity (owner ruling
 // 2026-09-25): v3 writes carry an authenticated PrincipalRef (a Google OIDC sub for humans,
@@ -149,6 +150,7 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     PublicationObserved { pr: _, head: _ } => "publication_observed"
     TaskCreated { task: _ } => "task_created"
     TaskRevised { task: _ } => "task_revised"
+    PlanningApplied { candidate: _, task: _ } => "planning_applied"
   }
 }
 
@@ -200,6 +202,7 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
       ] }
     TaskCreated { task } => [json_kv(key: "task", value: roadmap_task_editorial_json(task: task))]
     TaskRevised { task } => [json_kv(key: "task", value: roadmap_task_editorial_json(task: task))]
+    PlanningApplied { candidate, task } => [json_kv(key: "candidate", value: json_string(s: candidate as String)), json_kv(key: "task", value: roadmap_task_editorial_json(task: task))]
     PublicationObserved { pr, head } => [
       json_kv(key: "pr", value: json_string(s: pr as String)),
       json_kv(key: "head", value: json_string(s: head as String)),
@@ -282,7 +285,16 @@ fn event_member_nonempty(doc: JsonValue, key: String) -> NonEmptyStr? {
 // decodes as a self-claim (both = the author principal), the only assignment v1 could state, and
 // its id still verifies against its v1 canonical bytes by the caller.
 fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, author: EventPrincipal) -> RoadmapEventKind? {
-  if (word == "task_created" || word == "task_revised") && schema == roadmap_event_schema {
+  if word == "planning_applied" && schema == roadmap_event_schema {
+    match event_member_nonempty(doc: doc, key: "candidate") { Absent => none Present { value: candidate } =>
+      match json_object_unique_member(v: doc, key: "task") {
+        JsonMemberFound { value: wire_task } => match roadmap_task_editorial_decode(doc: wire_task) {
+          Absent => none Present { value: task } => Present { value: PlanningApplied { candidate: candidate, task: task } }
+        }
+        _ => none
+      }
+    }
+  } else if (word == "task_created" || word == "task_revised") && schema == roadmap_event_schema {
     match json_object_unique_member(v: doc, key: "task") {
       JsonMemberFound { value: wire_task } => match roadmap_task_editorial_decode(doc: wire_task) {
         Absent => none
@@ -528,6 +540,7 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope)
       }
     TaskCreated { task: _ } => acc
     TaskRevised { task: _ } => acc
+    PlanningApplied { candidate: _, task: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
@@ -623,6 +636,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     CommentDeleted { comment: _ } => false
     TaskCreated { task: _ } => false
     TaskRevised { task: _ } => false
+    PlanningApplied { candidate: _, task: _ } => false
     PublicationObserved { pr: _, head: _ } => false
   })
   roadmap_event_principal_dedup(map(roadmap_events_newest_first(envs: claimed), e => match e.event.kind {
@@ -637,6 +651,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     CommentDeleted { comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     TaskCreated { task: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     TaskRevised { task: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    PlanningApplied { candidate: _, task: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     PublicationObserved { pr: _, head: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
   }))
 }
@@ -692,6 +707,7 @@ fn roadmap_assignment_step(acc: IssueAssignmentProjection, env: RoadmapEventEnve
     HandedBack { reason: _ } => acc
     TaskCreated { task: _ } => acc
     TaskRevised { task: _ } => acc
+    PlanningApplied { candidate: _, task: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
@@ -777,6 +793,7 @@ fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<Is
     HandedBack { reason: _ } => acc
     TaskCreated { task: _ } => acc
     TaskRevised { task: _ } => acc
+    PlanningApplied { candidate: _, task: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
     PublicationObserved { pr: _, head: _ } => acc
   })
@@ -814,6 +831,7 @@ fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, comment
     CommentDeleted { comment: _ } => false
     TaskCreated { task: _ } => false
     TaskRevised { task: _ } => false
+    PlanningApplied { candidate: _, task: _ } => false
     PublicationObserved { pr: _, head: _ } => false
     Claimed { assignee: _, return_to: _ } => false
     Released => false
@@ -840,6 +858,7 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
     CommentDeleted { comment: _ } => false
     TaskCreated { task: _ } => false
     TaskRevised { task: _ } => false
+    PlanningApplied { candidate: _, task: _ } => false
     PublicationObserved { pr: _, head: _ } => false
     Claimed { assignee: _, return_to: _ } => false
     Released => false
