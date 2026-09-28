@@ -9,7 +9,7 @@ Climb on record: `gunbc.recurring_failure_mode` `behavior_named_edge_label_valid
 
 | reader | module | reads |
 |---|---|---|
-| `dag_surface_module_header_metadata_edge` | `v2.extdeps.languages.dag` | `Symbol ==` two header symbols; 13 callers bind `Named { name }` first |
+| `dag_surface_module_header_metadata_edge` | `v2.extdeps.languages.dag` | `Symbol ==` two header symbols; its callers bind `Named { name }` first |
 | `dag_node_is_module_root_conj` (fallback arm) | `v2.extdeps.languages.dag` | `sym == ^dag_surface_module_header` |
 | `d1_edge_names_where_clause` | `v2.test.claim.parse.d1_declaration_grammar_parse_test` | `n == ^dag_surface_where_refinement_clause` |
 | `site_is_import_syntax_mention` | `v2.lens.module_graph` | `contains(site.position, ^dag_surface_import_*)`; the path is a Symbol list that already mixes production names with authored names (`v2.compiler.reference_site_collector` `reference_sites_in_edge`) |
@@ -31,7 +31,7 @@ type EdgeLabel
 Candidate structural labels come from two layers:
 
 1. **Core substrate markers**, owned by `v2.std.node` and `v2.std.type_binder`: arrow body and signature order, loop bound and carrier, match arm pattern and body, cast target, type annotation, type params, type body, type alias, the `v2.std.node_query` projection markers, and `declaration_reference_marker`. This set is language-independent and closed today, so it can be a closed coproduct in `v2.std.node`: `CoreEdgeLabel = ArrowBody | ArrowSignatureOrder | LoopBound | ...`.
-2. **Grammar production edges**, per language: `dag_surface_*`, `rust_*`, `ts_*`, `target_model_edge_*`, and the 29 `*_named_edge` helpers that build them. These belong to the language rows in `extdeps/languages/`. Enumerating them in `v2.std.node` would be a layer inversion (DESIGN §3: each upstream has its own authority, and a generic hub may not enumerate products). Adding a language would also widen a core enum.
+2. **Grammar production edges**, per language: `dag_surface_*`, `rust_*`, `ts_*`, `target_model_edge_*`, and the per-language `*_named_edge` helpers that build them. These belong to the language rows in `extdeps/languages/`. Enumerating them in `v2.std.node` would be a layer inversion (DESIGN §3: each upstream has its own authority, and a generic hub may not enumerate products). Adding a language would also widen a core enum.
 
 Recommended (A):
 ```
@@ -40,7 +40,7 @@ type StructuralEdgeLabel
   | Production { grammar: GrammarRef, edge: Symbol }    // minted only by the grammar fold from a declared row
 ```
 Here `Production` is closed per grammar by construction. Its only constructor is the grammar's own projection (`v2.std.grammar` / `v2.compiler.02_parse` `parse_tree_projection_edge`, already a closed roster of 4, is the precedent). Readers compare `Production` values minted from the same row, not `^text`.
-Alternative (B): one flat closed enum of all 111 in `v2.std.node`. Rejected for the layer inversion above.
+Alternative (B): one flat closed enum of every candidate in `v2.std.node`. Rejected for the layer inversion above.
 Needs a ruling: whether `Production.edge` can be a row reference rather than a Symbol. That depends on `v2.std.grammar` exposing a row identity type. If it cannot, `Production` is rung 3 per grammar (it is checked when the grammar is admitted), not rung 4.
 
 ### Other judgment calls flagged for review
