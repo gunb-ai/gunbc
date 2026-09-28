@@ -359,6 +359,7 @@ fn mtcollins1_sol_activate_held(
     password_file: password_file,
     capture_path: capture_path as NonEmptyStr,
     pid_path: pid_path as NonEmptyStr,
+    ipmitool: "ipmitool",
   )
   if !spawned.success {
     return exit_failure(reason: concat(dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), concat(" mtcollins1 boot: SOL activate held refused: ", spawned.stdout)))

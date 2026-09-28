@@ -10,6 +10,8 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
+import v2.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
+import v2.lens.application { AdvisoryLens }
 
 import v2.lens.complexity { ComplexityBound, Established, Incomplete, complexity_lens }
 
