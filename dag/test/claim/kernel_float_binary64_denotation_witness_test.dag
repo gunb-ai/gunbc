@@ -11,7 +11,8 @@ import extdeps.standards.ieee_754_2019 {
   QuietNaN, SignalingNaN, PositiveSubnormal, NegativeZero, PositiveNormal, PositiveInfinity
 }
 import std.kernel_type_denotation {
-  KernelTypeDenotationAdmission, KernelTypeDenotationAdmitted, NotAKernelTypeName,
+  KernelTypeDenotationAdmission, KernelTypeDenotationAdmitted, KernelTypeDenotationRefused,
+  KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name,
   KernelTypeDenotation, BinaryInterchangeFormatMeaning,
   kernel_type_denotation_row, kernel_type_denotation_rows, kernel_type_denotation_rows_admitted
 }
@@ -96,9 +97,21 @@ test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool {
 
 test fn w_non_kernel_name_key_is_refused() -> Bool {
   match kernel_type_denotation_row(kernel_name: "Real", meaning: BinaryInterchangeFormatMeaning { format: binary64 }) {
-    NotAKernelTypeName { name: n } => n == "Real"
-    KernelTypeDenotationAdmitted { denotation: _ } => false
+    KernelTypeDenotationRefused { refusal: NotAKernelTypeName { name: n } } => n == "Real"
+    _ => false
   }
+}
+
+test fn w_kernel_type_name_admits_only_rostered_names() -> Bool {
+  let float_admitted = match kernel_type_name(name: "Float") {
+    KernelTypeNameAdmitted { kernel_name: k } => k.name == "Float"
+    NotAKernelTypeName { name: _ } => false
+  }
+  let binary64_refused = match kernel_type_name(name: "Binary64") {
+    NotAKernelTypeName { name: n } => n == "Binary64"
+    KernelTypeNameAdmitted { kernel_name: _ } => false
+  }
+  float_admitted && binary64_refused
 }
 
 test fn w_table_with_a_non_kernel_key_is_not_admitted() -> Bool {

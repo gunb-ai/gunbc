@@ -20,24 +20,43 @@ import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
 type KernelTypeMeaning
   = BinaryInterchangeFormatMeaning { format: BinaryInterchangeFormat }
 
-// A key is a kernel name only by membership in std.types kernel_type_set, read through
-// is_kernel_type rather than restated. RUNG: mechanically preventable -- the record constructor of
-// KernelTypeDenotation stays public; every row below is built through kernel_type_denotation_row,
-// and kernel_type_denotation_rows_admitted is the executed check that none was refused.
+// A KERNEL TYPE NAME, admitted only through std.types is_kernel_type (kernel_type_set is read, not
+// restated). This is the ONE carrier for "a name the kernel rosters": every consumer that needs one
+// -- this module's denotation rows, std.target_representation's kernel-parent variants -- takes a
+// KernelTypeName rather than a String with its own membership check. RUNG: mechanically
+// preventable -- the record constructor stays public (the language has no module-private
+// constructor); kernel_type_name is the admitting route, and a String that is not a kernel name
+// yields NotAKernelTypeName, never a KernelTypeName.
+type KernelTypeName {
+  name: String
+}
+
+type KernelTypeNameAdmission
+  = KernelTypeNameAdmitted { kernel_name: KernelTypeName }
+  | NotAKernelTypeName { name: String }
+
+fn kernel_type_name(name: String) -> KernelTypeNameAdmission {
+  if is_kernel_type(name: name) {
+    KernelTypeNameAdmitted { kernel_name: KernelTypeName { name: name } }
+  } else {
+    NotAKernelTypeName { name: name }
+  }
+}
+
 type KernelTypeDenotation {
-  kernel_name: String
+  kernel_name: KernelTypeName
   meaning: KernelTypeMeaning
 }
 
 type KernelTypeDenotationAdmission
   = KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation }
-  | NotAKernelTypeName { name: String }
+  | KernelTypeDenotationRefused { refusal: KernelTypeNameAdmission }
 
 fn kernel_type_denotation_row(kernel_name: String, meaning: KernelTypeMeaning) -> KernelTypeDenotationAdmission {
-  if is_kernel_type(name: kernel_name) {
-    KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation { kernel_name: kernel_name, meaning: meaning } }
-  } else {
-    NotAKernelTypeName { name: kernel_name }
+  let admission = kernel_type_name(name: kernel_name)
+  match admission {
+    KernelTypeNameAdmitted { kernel_name: k } => KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation { kernel_name: k, meaning: meaning } }
+    NotAKernelTypeName { name: _ } => KernelTypeDenotationRefused { refusal: admission }
   }
 }
 
@@ -48,7 +67,7 @@ data kernel_type_denotation_rows: List<KernelTypeDenotationAdmission> = [
 fn kernel_type_denotation_rows_admitted(rows: List<KernelTypeDenotationAdmission>) -> Bool {
   rows |> all(r => match r {
     KernelTypeDenotationAdmitted { denotation: _ } => true
-    NotAKernelTypeName { name: _ } => false
+    KernelTypeDenotationRefused { refusal: _ } => false
   })
 }
 
@@ -62,8 +81,8 @@ fn kernel_type_denotation_for(name: String, rows: List<KernelTypeDenotationAdmis
   rows |> fold(init: KernelTypeUndenoted { name: name }, f: (acc, r) => match acc {
     KernelTypeDenoted { meaning: _ } => acc
     KernelTypeUndenoted { name: _ } => match r {
-      KernelTypeDenotationAdmitted { denotation: d } => if d.kernel_name == name { KernelTypeDenoted { meaning: d.meaning } } else { acc }
-      NotAKernelTypeName { name: _ } => acc
+      KernelTypeDenotationAdmitted { denotation: d } => if d.kernel_name.name == name { KernelTypeDenoted { meaning: d.meaning } } else { acc }
+      KernelTypeDenotationRefused { refusal: _ } => acc
     }
   })
 }
