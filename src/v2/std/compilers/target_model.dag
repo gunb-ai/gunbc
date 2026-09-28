@@ -1850,18 +1850,49 @@ fn target_model_canonical_operation_type_node() -> Node {
   target_model_type_atom_node(identity: ^canonical_operation_type_atom)
 }
 
-// A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
-// under it carries the variant field's declared type, Symbol (symbol_kernel_type_node). A predicate
-// atom encodes an OrderingPredicate or EqualityPredicate, and this authority names no type node for
-// either, so it answers Absent rather than fabricating one. Absent derives nothing here: infer
-// falls through to its remaining rules (the arrow-domain binding lookup), which end in the typed
-// GroundingNotDerived frontier unless the tree binds that very symbol.
+// THE DECLARED TYPES OF A COMPARISON'S PREDICATE ATOM. An OrderingComparison wire node's predicate
+// atom renders one OrderingPredicate value (ordering_predicate_wire_symbol) and an
+// EqualityComparison's one EqualityPredicate value (equality_predicate_wire_symbol), so each atom's
+// declared type is the type this authority declares for it, named by the same frame as
+// target_model_canonical_operation_type_node.
 
-fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Optional<Node> {
+fn target_model_ordering_predicate_type_node() -> Node {
+  target_model_type_atom_node(identity: ^ordering_predicate_type_atom)
+}
+
+fn target_model_equality_predicate_type_node() -> Node {
+  target_model_type_atom_node(identity: ^equality_predicate_type_atom)
+}
+
+// The predicate atom's type is read off the wire node that carries it: the comparison variant the
+// wire node renders names which predicate type its predicate field holds. A predicate field under
+// any other variant is not a declared field of that variant, so it answers Absent.
+
+fn target_model_canonical_operation_wire_predicate_type(wire: Node) -> Optional<Node> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: variant } } =>
+      if variant == discriminant(v: OrderingComparison {}) {
+        optional_present(value: target_model_ordering_predicate_type_node())
+      } else {
+        if variant == discriminant(v: EqualityComparison {}) {
+          optional_present(value: target_model_equality_predicate_type_node())
+        } else {
+          optional_absent()
+        }
+      }
+    _ => optional_absent()
+  }
+}
+
+// A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
+// under it carries the variant field's declared type, Symbol (symbol_kernel_type_node); a
+// predicate atom carries its comparison's predicate type (above).
+
+fn target_model_canonical_operation_wire_child_declared_type(wire: Node, edge: Edge) -> Optional<Node> {
   match edge.label {
     Named { name: field } =>
       if field == ^target_canonical_operation_field_predicate {
-        optional_absent()
+        target_model_canonical_operation_wire_predicate_type(wire: wire)
       } else {
         optional_present(value: symbol_kernel_type_node())
       }
@@ -1871,6 +1902,7 @@ fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Opti
 
 fn target_model_canonical_operation_wire_child_member_type(
   acc: Optional<Node>,
+  wire: Node,
   child_edge: Edge,
   n: Node
 ) -> Optional<Node> {
@@ -1878,7 +1910,7 @@ fn target_model_canonical_operation_wire_child_member_type(
     Present { value: _ } => acc
     Absent =>
       if child_edge.target == n {
-        target_model_canonical_operation_wire_child_declared_type(edge: child_edge)
+        target_model_canonical_operation_wire_child_declared_type(wire: wire, edge: child_edge)
       } else {
         acc
       }
@@ -1902,6 +1934,7 @@ fn target_model_canonical_operation_roster_member_type(
           cons: fn(inner, child_edge) {
             target_model_canonical_operation_wire_child_member_type(
               acc: inner,
+              wire: roster_edge.target,
               child_edge: child_edge,
               n: n
             )
