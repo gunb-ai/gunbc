@@ -20,7 +20,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   fabric_cell_slice_name,
 }
-import gunbc.runner_slot_allocation { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import std.measure { hardware_thread_count }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
 import gunbc.fabric_cell_effect {
