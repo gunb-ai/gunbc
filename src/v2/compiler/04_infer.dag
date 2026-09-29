@@ -3289,7 +3289,7 @@ fn infer_empty_product_entry(domain: Node) -> Outcome<InferredFactsEntry> {
 // edge decision returns, never inferred from the member's shape. The resolved-type field
 // is never given the enclosing literal as a record of where the node came from (a meaning fork the
 // first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
-// edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
+// edge infer_literal_edge_payload assigns a family reaches here, so a malformed literal keeps
 // every child on the frontier.
 fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) -> Optional<Node> {
   match family {

@@ -460,7 +460,7 @@ test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
 // - `let y: Symbol = ^s` is admitted, its annotation is the Symbol binding, and no
 //   grounding-not-derived advisory is located at the literal or its name payload: the literal's
 //   frontier count is 0.
-fn bla_symbol_literal_as_int() -> Outcome<Node> {
+fn bla_symbol_literal_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = ^bla_sym\n  x\n}\n")
 }
 
@@ -468,7 +468,7 @@ fn bla_symbol_literal_as_int_inferred() -> Outcome<Bool> {
   bla_infers(o: bla_symbol_literal_as_int())
 }
 
-fn bla_symbol_literal_as_symbol() -> Outcome<Node> {
+fn bla_symbol_literal_as_symbol() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Symbol = ^bla_sym\n  x\n}\n")
 }
 
@@ -497,7 +497,7 @@ fn bla_frontier_at_symbol_literal(xs: List<Diagnostic>) -> Bool {
 // payload fold assumed the integer shape and typed every payload atom as DecimalDigit (review
 // 5348050288 on #12549). These rows read the payload node's actual recorded resolved_type. The Int
 // row is the control that the integer family's payload is still a DecimalDigit.
-fn bla_inferred_tree(o: Outcome<Node>) -> Optional<InferredTree> {
+fn bla_inferred_tree(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
   match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: root, diagnostics: _ } =>
