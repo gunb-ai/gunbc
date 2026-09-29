@@ -7,7 +7,8 @@ import gunbc.live_deploy.emit { belt_tick_cadence }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
-import extdeps.units.iso8601 { iso8601_days_from_civil, iso8601_gregorian_days_in_month, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_seconds_per_minute }
+import extdeps.units.iso8601 { iso8601_seconds_per_minute }
+import extdeps.units.iso8601_calendar { iso8601_days_from_civil, iso8601_gregorian_days_in_month, iso8601_seconds_per_day, iso8601_seconds_per_hour }
 import extdeps.http.client
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json }
 import extdeps.languages.json.parse {
@@ -267,7 +268,7 @@ fn observe_workflow_document_routed(base_url: String) -> RoadmapWorkflowObservat
 // ---------------------------------------------------------------- instants
 // `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
 // Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
-// every date the format can spell; the calendar is extdeps.units.iso8601's, which also formats the
+// every date the format can spell; the calendar is extdeps.units.iso8601_calendar's, which also formats the
 // same instants. Anything that is not exactly that shape refuses.
 fn two_digits_at(s: String, i: Int) -> Int? {
   parse_int(s: substring(s: s, start: i, end: i + 2))

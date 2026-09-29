@@ -7,7 +7,7 @@ import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, ShellObserved,
 }
 import extdeps.transports.shell { ShellProcessExited }
-import extdeps.units.iso8601 { iso8601_utc_text }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
 
 // A MODELED WALL CLOCK: what the worker's `date` prints, as a function of the realization's virtual
 // clock. The virtual clock (v2.std.operation_realization, a Nat-counted Second) is monotonic by
@@ -18,7 +18,7 @@ import extdeps.units.iso8601 { iso8601_utc_text }
 // scheduled events keep moving forward.
 //
 // It answers extdeps.clock Clock.Now in `date -u +%Y-%m-%dT%H:%M:%SZ` form, and Clock.UnixSecs and
-// Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601's.
+// Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601_calendar's.
 type ModeledWallClock {
   unix_at_origin: EpochSecs
   step: SecondDisplacement
