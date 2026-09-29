@@ -591,12 +591,23 @@ fn produced_decl_type_tokens_at(
 // A function TYPE's domain is lowered two ways: a single parameter type stands as the domain itself
 // (`fn(Int) -> R` lowers to Arrow(Int, R)), and several stand as a Conj of their edges. The Conj's
 // edges are the parameters; a lone type is one parameter, carried as one positional edge.
+// A non-Conj arrow domain is ONE positional parameter edge: the single body every non-Conj
+// arm of produced_decl_function_type_domain_edges delegates to.
+fn produced_decl_single_domain_edge(domain: Node) -> List<Edge> {
+  [Edge { label: Positional, target: domain }]
+}
+
 fn produced_decl_function_type_domain_edges(arrow: Node, params: List<Edge>) -> List<Edge> {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
     Present { value: domain } =>
       match domain.kind {
         TypeNode { connective: Conj } => params
-        _ => [Edge { label: Positional, target: domain }]
+        TypeNode { connective: Atom { identity: _ } } => produced_decl_single_domain_edge(domain: domain)
+        TypeNode { connective: Disj } => produced_decl_single_domain_edge(domain: domain)
+        TypeNode { connective: Arrow } => produced_decl_single_domain_edge(domain: domain)
+        TypeNode { connective: Cardinality } => produced_decl_single_domain_edge(domain: domain)
+        TypeNode { connective: Instantiation } => produced_decl_single_domain_edge(domain: domain)
+        ComputationNode { behavior: _ } => produced_decl_single_domain_edge(domain: domain)
       }
     Absent => params
   }
@@ -15374,7 +15385,12 @@ fn arrow_domain_binder_names(arrow: Node) -> List<Symbol> {
       match domain.kind {
         TypeNode { connective: Conj } =>
           arrow_domain_edge_names(edges: domain.children)
-        _ => Empty
+        TypeNode { connective: Atom { identity: _ } } => Empty
+        TypeNode { connective: Disj } => Empty
+        TypeNode { connective: Arrow } => Empty
+        TypeNode { connective: Cardinality } => Empty
+        TypeNode { connective: Instantiation } => Empty
+        ComputationNode { behavior: _ } => Empty
       }
     Absent => Empty
   }
