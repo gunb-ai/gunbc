@@ -19,10 +19,8 @@ import v2.std.text { String }
 // absorbing fallback). The population is the scope of the declared drop gunbc.rung_drop
 // required_gate_bankruptcy, member "every witness outside the roster".
 //
-// MEASURED 2026-09-29 with claim_batch on main: all nine algebra_receiver probes FAIL (their
-// declared red). The file_hold probe returned no verdict -- claim_batch refused its entry with
-// UnimportedBareProvider RosterStale for `#filter`, a separate stale-roster defect -- so its red is
-// ADMITTED, not measured, and its row says so by standing beside that receipt.
+// MEASURED 2026-09-29 with claim_batch on main 785934a38b6: all nine probes rostered here FAIL
+// (their declared red).
 type QuarantineOutsideGateDecline {
   module: String
   function: String
@@ -74,10 +72,5 @@ data quarantine_outside_gate_declines: List<QuarantineOutsideGateDecline> = [
     module: "test.claim.algebra_receiver_alias_witness_test",
     function: "explicit_initializer_is_an_acceptance_fixture",
     trigger: "the module test.claim.algebra_receiver_alias_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
-  },
-  QuarantineOutsideGateDecline {
-    module: "test.claim.file_hold_plan_refusal_probe_witness_test",
-    function: "the_harness_runs_and_a_clean_source_over_the_hold_store_is_clean",
-    trigger: "the module test.claim.file_hold_plan_refusal_probe_witness_test is admitted by v2.workflow.required_floor required_gate_admits (a family prefix or an authored-module row priced by the floor's cost receipt), after which the floor executes this probe and it moves to v2.workflow.floor_expected_red; or a recorded operator decision to keep the module outside the gate, which this row then cites" as NonEmptyStr
   },
 ]
