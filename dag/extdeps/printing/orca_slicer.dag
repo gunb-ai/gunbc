@@ -1,5 +1,7 @@
 module extdeps.printing.orca_slicer
 
+import extdeps.exec.program { uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -129,7 +131,7 @@ fn orca_executable_program(e: OrcaExecutable) -> NonEmptyStr { e.program }
 // cheapest Orca-shaped command there is, it needs no display, and it exits zero only if the runtime
 // closure resolved -- which is exactly the fact a would-be slicer needs before a slice is planned.
 fn orca_version_probe_command(executable: OrcaExecutable) -> ArgvCommand {
-  argv_command(program: executable.program, arguments: ["--version"])
+  argv_command(program: uncataloged_program(invocation: executable.program), arguments: ["--version"])
 }
 
 // THE CLI, WHICH IS THE ONLY INTERFACE THIS REPOSITORY USES. The desktop application is the same
@@ -143,7 +145,7 @@ fn orca_slice_to_project_command(
   process_profile: String,
 ) -> ArgvCommand {
   argv_command(
-    program: executable.program,
+    program: uncataloged_program(invocation: executable.program),
     arguments: [
       "--slice", "0",
       "--load-settings", concat(concat(printer_profile, ";"), process_profile),

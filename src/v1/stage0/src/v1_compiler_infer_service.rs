@@ -855,6 +855,7 @@ pub fn check_service_method_call_node(
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
                                                 declaration_marker: DeclarationMarker::Unmarked,
+                                                declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -875,6 +876,7 @@ pub fn check_service_method_call_node(
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     declaration_marker: DeclarationMarker::Unmarked,
+                                    declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),

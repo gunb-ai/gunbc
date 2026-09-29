@@ -23,9 +23,10 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission, approval_write_refusal_reason,
 }
+import gunbc.auth.approval_store_receipt { store_receipt_answer }
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marked_body,
-  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved, StoreReceiptHandlerObserved,
   DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved,
   DeviceRequestHandlerObserved, DeviceEnrollmentReadbackHandlerObserved, DevicePushUpdateHandlerObserved,
   BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
@@ -35,6 +36,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_decide_path_template,
   approval_broker_submit_path,
   approval_broker_status_path_template,
+  approval_broker_store_receipt_path_template,
   approval_broker_confirm_path_prefix,
   approval_device_request_path_template,
   approval_device_enrollment_path_template,
@@ -110,6 +112,7 @@ type ApprovalBrokerHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
+  | ApprovalStoreReceiptHandler
   | DeviceEnrolHandler
   | DeviceRedeemHandler
   | DevicePendingHandler
@@ -134,6 +137,7 @@ fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>>
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_status_path_template as String, handler: ApprovalStatusHandler },
+    ServedRouteSpec { method: POST, raw: approval_broker_store_receipt_path_template as String, handler: ApprovalStoreReceiptHandler },
     ServedRouteSpec { method: POST, raw: approval_device_enrol_path as String, handler: DeviceEnrolHandler },
     ServedRouteSpec { method: POST, raw: approval_device_redeem_path as String, handler: DeviceRedeemHandler },
     ServedRouteSpec { method: POST, raw: approval_device_pending_path as String, handler: DevicePendingHandler },
@@ -427,6 +431,14 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
   broker_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body, marker: StatusHandlerObserved, process: process)
 }
 
+// THE STORE RECEIPT ROUTE (gunbc.auth.approval_store_receipt). It reads the store and mints, and
+// writes nothing, so like the status route it takes no writer admission; the asker's authentication
+// is the submission-key MAC the fold checks before it reads the escalation at all.
+fn approval_store_receipt_response(request: ServeHttpRequest, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
+  let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body)
+  broker_text_response(status: answer.status, content_type: text_plain_utf8, body: answer.body, marker: StoreReceiptHandlerObserved, process: process)
+}
+
 // ── The HTTP adapter ─────────────────────────────────────────────────────────────────────────
 // THE ADAPTER TAKES NO PLAN, NO INSTANCE AND NO RELEASE REVISION, and the absence of all three is
 // the extraction's evidence rather than an omission. The roadmap's adapter threads an instance (so
@@ -493,6 +505,7 @@ fn approval_broker_invoke(
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
     ApprovalStatusHandler => approval_status_response(params: params, process: process)
+    ApprovalStoreReceiptHandler => approval_store_receipt_response(request: request, params: params, process: process)
     DeviceEnrolHandler => device_route_response(marker: DeviceEnrolHandlerObserved, process: process, r: device_enrol_response(body: request.body, process: process))
     DeviceRedeemHandler => device_route_response(marker: DeviceRedeemHandlerObserved, process: process, r: device_redeem_response(body: request.body, process: process))
     DevicePendingHandler => device_route_response(marker: DevicePendingHandlerObserved, process: process, r: device_pending_response(body: request.body))
