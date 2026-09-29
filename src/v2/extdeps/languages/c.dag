@@ -452,7 +452,8 @@ fn c_type_atoms_by_value_in_node(node: Node) -> List<Symbol> {
               }
             })
         })
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 

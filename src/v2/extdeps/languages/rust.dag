@@ -2507,7 +2507,14 @@ fn rust_trait_derive_surface_binding_for_coproduct(coproduct: Node) -> Outcome<S
       } else {
         outcome_accepted(value: ^rust_decl_derive_enum_binding)
       }
-    _ =>
+    TypeNode { connective: _ } =>
+      outcome_rejected(
+        d: rust_trait_derive_coproduct_diagnostic(
+          reason: ^rust_trait_derive_coproduct_connective_unsupported,
+          node: coproduct
+        )
+      )
+    ComputationNode { behavior: _ } =>
       outcome_rejected(
         d: rust_trait_derive_coproduct_diagnostic(
           reason: ^rust_trait_derive_coproduct_connective_unsupported,
@@ -4694,7 +4701,8 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
         ),
         occurrence_id: OccurrenceSynthetic
 }
-    _ => rust_sg2_type_expr_target_model_bundle_core()
+    TypeNode { connective: _ } => rust_sg2_type_expr_target_model_bundle_core()
+    ComputationNode { behavior: _ } => rust_sg2_type_expr_target_model_bundle_core()
   }
 }
 
@@ -5070,7 +5078,7 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
     children: fold(base.children, init: Empty, f: fn(acc, e) {
       match e.label {
         Positional => acc
-        _ => list_snoc_item(xs: acc, item: e)
+        Named { name: _ } => list_snoc_item(xs: acc, item: e)
       }
     }),
     occurrence_id: OccurrenceSynthetic
