@@ -431,7 +431,11 @@ fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageInde
 fn images_array_elements(doc: JsonValue) -> List<JsonValue>? {
   match doc {
     JsonArray { elements: es } => Present { value: es }
-    _ => none
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
@@ -1203,7 +1207,9 @@ fn enumeration_decision(standing: RemoteMediaMountStanding, reading: ImagesListi
     MountEstablished { established_at: _, establishing_evidence: _ } =>
       match reading {
         ImagesListingOffers { image_index: idx } => EnumerationDecided { result: EnumeratedAfterRefresh { image_index: idx } }
-        _ => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingUnparseable { detail: _ } => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingEmpty => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingLacks => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
       }
     MountRequested { window: _ } =>
       if remaining > 1 { EnumerationLookAgain } else { EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } } }
@@ -1247,7 +1253,9 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
 fn images_listing_presence(reading: ImagesListingReading) -> RemoteMediaListing {
   match reading {
     ImagesListingOffers { image_index: _ } => MediaImageListed
-    _ => MediaImageAbsentFromListing
+    ImagesListingUnparseable { detail: _ } => MediaImageAbsentFromListing
+    ImagesListingEmpty => MediaImageAbsentFromListing
+    ImagesListingLacks => MediaImageAbsentFromListing
   }
 }
 
@@ -1472,7 +1480,7 @@ fn megarac_convergence_step(
     ConvergeStalePresented { row: r } =>
       match cd_before {
         CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "cd_error_code could not be read, and an unknown media state never licenses withdrawing a presentation") }
-        _ =>
+        CdErrorRead { code: _ } =>
           match detach {
             MegaRacDetachAdmitted => ConvergeStepDetachStale { row: r }
             MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: MegaRacStaleDetachNotAdmitted { stale_image: r.image_name, reason: why } }
