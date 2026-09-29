@@ -34,7 +34,7 @@ data fe_pipe_source: String = "module fold_encoding_pipe\n\nfn f(xs: List<Int>, 
 
 data fe_pipe_chain_source: String = "module fold_encoding_pipe_chain\n\nfn g(ys: List<Int>) -> List<Int> { ys }\n\nfn f(xs: List<Int>, seed: Int) -> Int {\n  xs |> g |> fold(seed, fn(acc, x) { acc })\n}\n"
 
-data fe_binders_source: String = "module fold_encoding_binders\n\nfn f(xs: List<Bool>) -> Bool {\n  fold(xs, false, fn(found, e) { found || e })\n}\n"
+data fe_binders_source: String = "module fold_encoding_binders\n\nfn f(xs: Bool) -> Bool {\n  fold(xs, false, fn(found, e) { found || e })\n}\n"
 
 data fe_canary_source: String = "module fold_encoding_canary\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
 
