@@ -3,7 +3,13 @@ module v2.test.claim.body_let_annotation
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty }
 import v2.std.coercion { NoTargetCandidate }
-import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
@@ -251,6 +257,192 @@ test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
         bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
           && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
     }
+}
+
+// (5c) A KERNEL SPELLING IS READ BY THE DECLARATION IT RESOLVES TO (gunbc.recurring_failure_mode
+// kernel_type_spelling_captured_a_module_declaration). RED BEFORE: body lowering rewrote the
+// spellings Int and Bool to the kernel binding before any scope existed, so every row below had the
+// kernel type as its annotation, and the let was judged MATCHED.
+// - A module's own `type Int` / `type Bool` shadows the kernel name, so `let y: Int = 1` refuses at
+//   the annotation (`1` does not inhabit `Mine`).
+// - Imported `Int` from two user modules refuses as ambiguous. From the two kernel declarations it
+//   binds the kernel type (control).
+// - An IMPORTED user `Int` refuses in resolve with a typed, located reason. It cannot bind the
+//   kernel, and until bindings are keyed by declaration it does not silently bind the user's type
+//   either.
+// Each row asserts the ROUTE (the annotation is not the kernel binding, or resolve refused for this
+// reason) as well as the verdict. The controls are (5b), and the route row below: an undeclared
+// `Int` still binds the kernel type.
+fn bla_declared_int_literal() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+fn bla_declared_bool_literal() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n")
+}
+
+fn bla_declared_int_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_declared_int_literal())
+}
+
+fn bla_declared_bool_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_declared_bool_literal())
+}
+
+data bla_q_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_q_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_q.dag"
+}
+
+data bla_r_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_r_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_r.dag"
+}
+
+fn bla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+// Subject module p over peer modules, admitted with no admission-level imports: p's own `import`
+// lines are what bind the peers' names.
+fn bla_assemble_with_peers(p_src: String, peers: List<DagSourceReadWitness>) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: bla_source(src: p_src, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu),
+      tail: peers
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// p imports q's own `type Int = | Mine`.
+fn bla_imported_int_literal() -> Outcome<Node> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    peers: [bla_source(src: "module q\n\ntype Int = | Mine\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
+  )
+}
+
+// p imports `Int` from two user modules: the name is ambiguous and neither is the kernel's.
+fn bla_ambiguous_imported_int_literal() -> Outcome<Node> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { Int }\nimport r { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    peers: [
+      bla_source(src: "module q\n\ntype Int = | Mine\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+      bla_source(src: "module r\n\ntype Int = | Yours\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    ]
+  )
+}
+
+// p imports `Int` from the two kernel declarations (v2.std.integer and std.integer, as
+// v2.extdeps.languages.dag dag_kernel_type_declaration_binding_optional lists them): ambiguous by
+// name, one kernel type by declaration.
+fn bla_ambiguous_kernel_int_literal() -> Outcome<Node> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport v2.std.integer { Int }\nimport std.integer { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    peers: [
+      bla_source(src: "module v2.std.integer\n\ntype Int = | Z\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+      bla_source(src: "module std.integer\n\ntype Int = | Z\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    ]
+  )
+}
+
+fn bla_refuses_at_the_annotation(o: Outcome<Node>, inferred: Outcome<Bool>) -> Bool {
+  tpb_accepts(o: o)
+    && match inferred {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation
+    }
+}
+
+fn bla_annotation_is(o: Outcome<Node>, id: Symbol) -> Bool {
+  match bla_annotation_identity(o: o) {
+    Present { value: s } => s == id
+    Absent => false
+  }
+}
+
+test fn bla_module_declared_int_shadows_the_kernel_int() -> Bool {
+  !bla_annotation_is(o: bla_declared_int_literal(), id: ^dag_binding_type_int)
+    && bla_refuses_at_the_annotation(o: bla_declared_int_literal(), inferred: bla_declared_int_literal_inferred())
+}
+
+test fn bla_module_declared_bool_shadows_the_kernel_bool() -> Bool {
+  !bla_annotation_is(o: bla_declared_bool_literal(), id: ^bool_node_symbol)
+    && bla_refuses_at_the_annotation(o: bla_declared_bool_literal(), inferred: bla_declared_bool_literal_inferred())
+}
+
+test fn bla_imported_user_int_refuses_rather_than_binding_the_kernel_int() -> Bool {
+  tpb_refuses_with(o: bla_imported_int_literal(), reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
+}
+
+test fn bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel() -> Bool {
+  tpb_refuses_with(o: bla_ambiguous_imported_int_literal(), reason: ^resolve_reason_ambiguous_symbol)
+}
+
+test fn bla_ambiguous_kernel_declarations_bind_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_ambiguous_kernel_int_literal(), id: ^dag_binding_type_int)
+}
+
+// THE SAME SHADOWING ON THE PLAIN SINGLE-TREE ROUTE: normalize, then v2.compiler.resolve resolve over
+// one tree. That namespace (build_program_namespace) leaves module_qn Empty and records its owner in
+// declared_in, so a same-module test keyed on module_qn refused the module's own `type Int` as a
+// foreign declaration there while the admitted route above bound it (review 5342739525). Each row
+// asserts the resolve verdict and the annotation's route: the local Int/Bool bind the module's
+// declaration, and an undeclared Int still binds the kernel.
+fn bla_single_tree_resolved(text: String) -> Outcome<Node> {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: t, diagnostics: _ } =>
+      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, record_declarations: t.record_declarations, diagnostics: None) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
+      }
+  }
+}
+
+fn bla_single_tree_admitted(text: String) -> Node {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+    Accepted { value: t, diagnostics: _ } => t.root
+  }
+}
+
+fn bla_single_tree_declared_int() -> Outcome<Node> {
+  bla_single_tree_resolved(text: "module m.t\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = x\n  x\n}\n")
+}
+
+fn bla_single_tree_declared_bool() -> Outcome<Node> {
+  bla_single_tree_resolved(text: "module m.t\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = x\n  x\n}\n")
+}
+
+fn bla_single_tree_undeclared_int() -> Outcome<Node> {
+  bla_single_tree_resolved(text: "module m.t\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  x\n}\n")
+}
+
+test fn bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration() -> Bool {
+  tpb_accepts(o: bla_single_tree_declared_int())
+    && tpb_accepts(o: bla_single_tree_declared_bool())
+    && !bla_annotation_is(o: bla_single_tree_declared_int(), id: ^dag_binding_type_int)
+    && !bla_annotation_is(o: bla_single_tree_declared_bool(), id: ^bool_node_symbol)
+}
+
+test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_single_tree_undeclared_int(), id: ^dag_binding_type_int)
+}
+
+test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
+    && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
 }
 
 // TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and

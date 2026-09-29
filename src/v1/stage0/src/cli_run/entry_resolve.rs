@@ -703,6 +703,168 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
+#[cfg(test)]
+type LivePoolJob = Box<dyn FnOnce() + Send>;
+
+/// The live-pool thread's inbox and handle, `None` while no thread is alive. Senders hold this lock
+/// while they send, and every path that ends the thread takes it first, so a claim is never sent to
+/// a thread that is already leaving.
+#[cfg(test)]
+static LIVE_POOL_THREAD: Mutex<
+    Option<(
+        std::sync::mpsc::Sender<LivePoolJob>,
+        std::thread::JoinHandle<()>,
+    )>,
+> = Mutex::new(None);
+
+/// Set while the live-pool thread runs a claim. A pool built by a thread the claim itself spawned
+/// is that claim's business and must not wait on the thread that is running it.
+#[cfg(test)]
+static LIVE_POOL_BUSY: AtomicBool = AtomicBool::new(false);
+
+/// A LEAK BACKSTOP, not the release. The pool is released by the demand that conflicts with it
+/// (`yield_live_pool_before_building_another`). This timer only bounds how long it can outlive its
+/// block when no later test builds a pool of its own, so it never decides what a claim answers and
+/// the bound does not depend on it for any test that builds one.
+#[cfg(test)]
+const LIVE_POOL_IDLE_BACKSTOP: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[cfg(test)]
+fn spawn_live_pool_thread() -> (
+    std::sync::mpsc::Sender<LivePoolJob>,
+    std::thread::JoinHandle<()>,
+) {
+    use std::sync::mpsc::RecvTimeoutError;
+    let (tx, rx) = std::sync::mpsc::channel::<LivePoolJob>();
+    let handle = std::thread::Builder::new()
+        .name("live-pool".to_string())
+        // The largest stack any live-pool claim spawned for itself before it ran here.
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            loop {
+                match rx.recv_timeout(LIVE_POOL_IDLE_BACKSTOP) {
+                    Ok(job) => {
+                        LIVE_POOL_BUSY.store(true, Ordering::SeqCst);
+                        job();
+                        LIVE_POOL_BUSY.store(false, Ordering::SeqCst);
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        let mut slot = LIVE_POOL_THREAD
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        if let Ok(job) = rx.try_recv() {
+                            drop(slot);
+                            LIVE_POOL_BUSY.store(true, Ordering::SeqCst);
+                            job();
+                            LIVE_POOL_BUSY.store(false, Ordering::SeqCst);
+                            continue;
+                        }
+                        // Detach: nobody joins a thread that leaves on its own.
+                        *slot = None;
+                        break;
+                    }
+                    // The inbox was taken by `yield_live_pool_before_building_another`, which joins.
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            }
+            // Drop the pool now and hand the freed heap back, rather than leave it for the
+            // thread-local destructors after the trim could run.
+            reset_process_shared_index_for_test();
+            trim_retained_heap();
+        })
+        .expect("the live-pool thread starts");
+    (tx, handle)
+}
+
+/// THE PROCESS HOLDS ONE LIVE WHOLE-POOL INDEX AT A TIME. Called by every whole-pool index build
+/// (`try_process_shared_index_for_pool`, `build_multi_entry_index`): before any other thread builds
+/// one, the live-pool thread's pool is released -- the thread exits, which drops its index and
+/// every thread-local cache built over it, and the freed heap is handed back. This is the release,
+/// tied to the demand that conflicts with the pool rather than to a clock (measured under the
+/// hosted runner's 12 GiB `memory.max`: the ~5.2 GiB pool held past its block, plus the next test's
+/// own index, was OOM-killed at the bound). A claim's own nested builds are exempt: the live-pool
+/// thread itself, and any thread a running claim spawned (`LIVE_POOL_BUSY`).
+#[cfg(test)]
+pub(crate) fn yield_live_pool_before_building_another() {
+    if std::thread::current().name() == Some("live-pool") || LIVE_POOL_BUSY.load(Ordering::SeqCst) {
+        return;
+    }
+    let taken = LIVE_POOL_THREAD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    let Some((sender, handle)) = taken else {
+        return;
+    };
+    drop(sender);
+    handle.join().expect("the live-pool thread leaves cleanly");
+    trim_retained_heap();
+}
+
+/// THE LIVE POOL'S ONE HOLDER UNDER TEST. `process_shared_index` is per-thread because the index
+/// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
+/// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
+/// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
+/// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
+/// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
+/// (`admit_pool_bare_references`), so no entry resolves without it.
+///
+/// So the fact moves to its ancestor: one thread holds the index in ITS thread-local slot for as
+/// long as claims keep arriving, and a live-pool claim runs its body there. Nothing about
+/// resolution changes -- the same `process_shared_index` builds the same pool on first demand --
+/// only how many times. `RUST_TEST_THREADS=1` (`.cargo/config.toml`) already serializes the suite,
+/// so the queue costs no parallelism. The pool is released when another thread builds one
+/// (`yield_live_pool_before_building_another`). A panic in the body is caught on the thread and re-raised on the
+/// calling test's thread with its original payload, so a failing claim reds exactly as before and
+/// the thread survives for the next one.
+#[cfg(test)]
+pub(crate) fn on_live_pool_thread<T: Send + 'static>(
+    body: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let job: LivePoolJob = Box::new(move || {
+        // Freed-but-retained heap from the tests that ran on their own threads before this claim
+        // is returned first: those threads' glibc arenas are not the one this long-lived thread
+        // allocates from, so without the trim the pool is built ON TOP of their residue (measured
+        // under the hosted runner's 12 GiB `memory.max`: 7.6 GiB retained before the first claim,
+        // OOM-killed at the bound as the pool was built; 1.4 GiB with the trim).
+        trim_retained_heap();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+        release_per_entry_graphs_on_live_pool_thread();
+        trim_retained_heap();
+        let _ = done_tx.send(outcome);
+    });
+    {
+        let mut slot = LIVE_POOL_THREAD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        slot.get_or_insert_with(spawn_live_pool_thread)
+            .0
+            .send(job)
+            .expect("the live-pool thread accepts work");
+    }
+    match done_rx.recv().expect("the live-pool thread answers") {
+        Ok(value) => value,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+/// What the live-pool thread keeps between claims, and what it drops. The shared FACT is the
+/// pool: its module index, graph facts, heads parse, censuses and the capped typed-module cache,
+/// which every claim's entry reuses. A claim's own resolved entry graphs are not shared -- no
+/// later claim asks for the same entry -- so holding them would only grow the thread's resident
+/// set claim by claim (measured: 39 live-pool claims peaked at 10.6 GiB with them held, against a
+/// 12 GiB `memory.max` on the hosted runner). They are dropped after every claim.
+#[cfg(test)]
+fn release_per_entry_graphs_on_live_pool_thread() {
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
+    PROCESS_RESOLVE_INDEX.with(|slots| {
+        for (_, index) in slots.borrow().iter().flatten() {
+            clear_resolved_graph_memo_for_test(index);
+        }
+    });
+}
+
 /// The strict-pool shared index for `source_roots` IF this thread already built it; never builds
 /// one. For readers that report on a resolve after the fact (`pre_entry_phase`), where building
 /// would repeat the discovery a refused resolve just failed.
@@ -767,6 +929,8 @@ pub fn try_process_shared_index_for_pool(
     if let Some(idx) = existing {
         return Ok(idx);
     }
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     let build_started = std::time::Instant::now();
     let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
@@ -912,7 +1076,7 @@ pub(crate) fn new_multi_entry_index_shell(
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
-        bare_reference_admission: RefCell::new(None),
+        bare_reference_admission: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -3036,4 +3200,94 @@ pub fn reference_resolution_facts(
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
+}
+
+#[cfg(test)]
+mod live_pool_thread_tests {
+    use super::*;
+
+    fn one_module_pool(tag: &str) -> (PathBuf, Vec<String>) {
+        // Under the workspace `target/` (gitignored): the module-graph facts normalize every pool
+        // path repo-relative and refuse one outside the workspace.
+        let root = process_workspace_root().join("target").join(format!(
+            "gunbc-live-pool-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("fx")).unwrap();
+        std::fs::write(
+            root.join("fx/one.dag"),
+            "module fx.one\nfn one() -> Int { 1 }\n",
+        )
+        .unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        (root, roots)
+    }
+
+    /// THE ROUTE, not only the answer: two separate claims reach ONE index. The discriminating red
+    /// is the per-test-thread shape this replaces -- the second call below, run on a fresh thread,
+    /// builds a new index with a new generation.
+    #[test]
+    fn two_claims_on_the_live_pool_thread_share_one_index() {
+        let (root, roots) = one_module_pool("route");
+        let first = {
+            let roots = roots.clone();
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let second = {
+            let roots = roots.clone();
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let elsewhere = std::thread::spawn(move || process_shared_index(&roots).generation)
+            .join()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(first, second, "the live-pool thread kept its index");
+        assert_ne!(first, elsewhere, "a fresh thread builds its own");
+    }
+
+    /// THE POOL DOES NOT OUTLIVE ITS BLOCK. When another thread builds a pool of its own, the
+    /// live-pool thread's pool is released first, so the next claim meets a rebuilt index. The red
+    /// this discriminates is a thread that holds its pool under every later test's own pool.
+    #[test]
+    fn another_threads_pool_build_releases_the_live_pool() {
+        let (root, roots) = one_module_pool("release");
+        let (other_root, other_roots) = one_module_pool("release-other");
+        let generation = |roots: Vec<String>| {
+            on_live_pool_thread(move || process_shared_index(&roots).generation)
+        };
+        let first = generation(roots.clone());
+        let held = generation(roots.clone());
+        std::thread::spawn(move || {
+            process_shared_index(&other_roots);
+        })
+        .join()
+        .unwrap();
+        let after_release = generation(roots);
+        let _ = std::fs::remove_dir_all(root);
+        let _ = std::fs::remove_dir_all(other_root);
+        assert_eq!(first, held, "back-to-back claims share the pool");
+        assert_ne!(
+            first, after_release,
+            "the pool outlived another thread's build"
+        );
+    }
+
+    /// A claim that fails on the live-pool thread reds its own test with its own message, and the
+    /// thread survives to serve the next claim.
+    #[test]
+    fn a_panic_on_the_live_pool_thread_reds_the_caller_and_the_thread_survives() {
+        let payload = std::panic::catch_unwind(|| {
+            on_live_pool_thread::<()>(|| panic!("planted live-pool failure"))
+        })
+        .expect_err("the planted panic reaches the caller");
+        assert_eq!(
+            payload.downcast_ref::<&str>().copied(),
+            Some("planted live-pool failure")
+        );
+        assert_eq!(on_live_pool_thread(|| 7), 7);
+    }
 }

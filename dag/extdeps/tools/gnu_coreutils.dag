@@ -359,3 +359,20 @@ fn df_available_bytes_argv(path: String) -> List<String> {
   [df_program as String, "-B1", "--output=avail", path]
 }
 
+
+// mv -T: rename SOURCE to exactly DESTINATION, treating the destination as a file name and never as
+// a directory to move into -- so publishing a staged tree over an absent path renames it, and a
+// destination that still exists as a non-empty directory is an error rather than a nested copy.
+// Within one file system the rename is atomic: a reader sees the old path absent or the new tree
+// whole, never a partial one.
+data mv_program: NonEmptyStr = "mv"
+
+fn mv_exact_destination_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: mv_program, arguments: ["-T", source, destination])
+}
+
+// sort -o FILE FILE sorts a file in place (sort reads all input before opening the output, so the
+// same path is safe). Byte order needs LC_ALL=C in the environment, which is the caller's binding.
+fn sort_in_place_command(path: String) -> ArgvCommand {
+  argv_command(program: sort_program, arguments: ["-o", path, path])
+}
