@@ -17,7 +17,7 @@ import extdeps.tools.gnu_coreutils { cat_command, printf_command }
 // literally.
 test fn shell_quote_plain_args_single_quoted() -> Bool {
   shell_command_render(command: nbd_client_disconnect_command(device: "/dev/nbd0"))
-    == join(["'", nbd_client_program as String, "' '-d' '/dev/nbd0'"], "")
+    == join(["'", nbd_client_program().invocation as String, "' '-d' '/dev/nbd0'"], "")
 }
 
 test fn shell_quote_escapes_embedded_apostrophe() -> Bool {
