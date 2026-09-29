@@ -116,7 +116,8 @@ fn store_receipt_claims(filed: StoredApprovalRequest, revision: NonEmptyStr, dec
 // THE MINT, OVER SUPPLIED READINGS: the escalation's slot, the slot's generation-1 record (the
 // filing the decision superseded -- the durable CAS store keeps every generation, so the request an
 // approval decided is still readable beneath it), the attempt the asker presents, and the keyring.
-// Pure, so every refusal arm is witnessed without a store; issue_store_receipt below takes the reads.
+// Pure, so every refusal arm is witnessed without a store; the route (store_receipt_answer) takes the
+// reads, after it has authenticated the asker.
 fn issue_store_receipt_over(slot: EscalationSlot, filing: CasGenerationRead, attempt: AttemptIdentity, keyring: ApprovalKeyringRead) -> StoreReceiptIssuance {
   match slot {
     EscalationNotFiled => StoreReceiptRefused { refusal: ReceiptEscalationNotFiled }
@@ -164,15 +165,6 @@ fn filed_request_of(filing: CasGenerationRead) -> FiledRequestReading {
         StoredRecordUnreadable { detail: d } => StoreReceiptRefusedAtFiling { refusal: ReceiptFilingUnreadable { detail: d } }
       }
   }
-}
-
-fn issue_store_receipt(escalation_id: NonEmptyStr, attempt: AttemptIdentity) -> StoreReceiptIssuance {
-  issue_store_receipt_over(
-    slot: observe_escalation(root: approval_decision_store_root, escalation_id: escalation_id),
-    filing: cas_read_generation(root: approval_decision_store_root, key: escalation_id, generation: cas_generation_first()),
-    attempt: attempt,
-    keyring: read_store_receipt_keyring(),
-  )
 }
 
 // ── THE STORE'S SIDE ──────────────────────────────────────────────────────────────────────────
