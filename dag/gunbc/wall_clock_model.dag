@@ -7,7 +7,7 @@ import v2.std.operation_realization {
   OperationBinding, OperationCall, OperationStep, OperationObserved, ShellObserved,
 }
 import extdeps.transports.shell { ShellProcessExited }
-import extdeps.units.iso8601 { iso8601_utc_text }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
 
 // A MODELED WALL CLOCK: what the worker's `date` prints, as a function of the realization's virtual
 // clock. The virtual clock (v2.std.operation_realization, a Nat-counted Second) is monotonic by
@@ -18,7 +18,7 @@ import extdeps.units.iso8601 { iso8601_utc_text }
 // scheduled events keep moving forward.
 //
 // It answers extdeps.clock Clock.Now in `date -u +%Y-%m-%dT%H:%M:%SZ` form, and Clock.UnixSecs and
-// Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601's.
+// Clock.UnixMillis in `date +%s` and `date +%s%3N` form; the calendar is extdeps.units.iso8601_calendar's.
 // A STEP IS A JUMP THE WALL CLOCK TAKES AT A VIRTUAL INSTANT: from `at` on, readings carry `by` in
 // addition to the standing offset. Steps accumulate, so a backward jump followed by a forward one is two
 // rows. Reading is a pure function of virtual time, so a jump needs no event to fire it.
@@ -44,7 +44,7 @@ fn clock_operation(operation: String) -> OperationRef {
   OperationRef { path: clock_operation_path, service: "Clock", operation: operation }
 }
 
-fn printed<S>(state: S, text: String) -> OperationStep<S> {
+fn wall_clock_printed<S>(state: S, text: String) -> OperationStep<S> {
   OperationObserved {
     observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(text, "\n"), stderr: "" } },
     state: state,
@@ -54,8 +54,8 @@ fn printed<S>(state: S, text: String) -> OperationStep<S> {
 
 fn wall_clock_bindings<S>(get: fn(S) -> ModeledWallClock) -> List<OperationBinding<S>> {
   [
-    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { printed(state: state, text: iso8601_utc_text(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
-    OperationBinding { at: clock_operation(operation: "UnixSecs"), handler: fn(state, call) { printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now))) } },
-    OperationBinding { at: clock_operation(operation: "UnixMillis"), handler: fn(state, call) { printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now) * 1000)) } },
+    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { wall_clock_printed(state: state, text: iso8601_utc_text(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "UnixSecs"), handler: fn(state, call) { wall_clock_printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "UnixMillis"), handler: fn(state, call) { wall_clock_printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now) * 1000)) } },
   ]
 }
