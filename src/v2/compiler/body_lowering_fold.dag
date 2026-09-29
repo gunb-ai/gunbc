@@ -1178,6 +1178,18 @@ fn body_lower_operand_ref_read_of(found: Optional<Node>) -> OperandRefRead {
 // THE PROJECTION FOR CALLERS THAT ASK ONLY WHETHER A NODE IS AN OPERAND and try another reader when it
 // is not. It forgets a refusal, so a caller whose fallback could stand a proper part in for the whole
 // reads the OperandRefRead instead.
+// A THREE-VALUED READ CARRIED INTO AN OUTCOME WITHOUT LOSS: lowered is present, not-an-operand is
+// absent, and a located refusal stays a refusal. It is the carrier for a position that returns
+// Outcome<Optional<Node>>; body_lower_operand_ref_read_optional below is the projection that
+// FORGETS the refusal, which is why no caller may use it.
+fn body_lower_operand_read_outcome(read: OperandRefRead, diagnostics: Diagnostics) -> Outcome<Optional<Node>> {
+  match read {
+    OperandRefLowered { lowered: lowered } => outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: diagnostics)
+    OperandRefAbsent => outcome_with_diagnostics(value: optional_absent(), diagnostics: diagnostics)
+    OperandRefRefused { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: r) }
+  }
+}
+
 fn body_lower_operand_ref_read_optional(read: OperandRefRead) -> Optional<Node> {
   match read {
     OperandRefLowered { lowered: lowered } => optional_present(value: lowered)
@@ -2440,7 +2452,7 @@ fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {
 }
 
 // THE FOLD'S ANSWER IS CARRIED, NOT RE-DEMANDED. The reducers leave a lowered node behind
-// pass-through shells (body_lower_lowered_behind_shells_optional), so testing only the ROOT for core
+// pass-through shells (body_lower_lowered_behind_shells_read), so testing only the ROOT for core
 // substrate discarded a fold that had already lowered the node; every later strategy in
 // body_lower_try_body_lowered then re-read the RAW node, and the call-argument reader
 // (body_lower_value_lowered) folded each argument a second time -- body_lower_fold demanded exactly
@@ -2451,7 +2463,7 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
   match body_lower_fold(node: node) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: fd } =>
-      outcome_with_diagnostics(value: body_lower_lowered_behind_shells_optional(node: folded), diagnostics: fd)
+      body_lower_operand_read_outcome(read: body_lower_lowered_behind_shells_read(node: folded), diagnostics: fd)
   }
 }
 
@@ -3787,19 +3799,21 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // value carry: nine files refusing call_argument_unread at base were Accepted this way. The walker is
 // still the reader for a value the fold ACCEPTS but leaves unpeelable.
 fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
-  match body_lower_lowered_behind_shells_optional(node: node) {
-    Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
-    Absent =>
+  match body_lower_lowered_behind_shells_read(node: node) {
+    OperandRefLowered { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
+    OperandRefAbsent =>
       let raw = body_lower_deep_unwrap_optional(node: node)
       match body_lower_fold(node: raw) {
         Accepted { value: folded, diagnostics: d } =>
-          match body_lower_lowered_behind_shells_optional(node: folded) {
-            Present { value: lowered } =>
+          match body_lower_lowered_behind_shells_read(node: folded) {
+            OperandRefLowered { lowered: lowered } =>
               outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
-            Absent => body_lower_body_subtree_lower(captured: raw)
+            OperandRefAbsent => body_lower_body_subtree_lower(captured: raw)
+            OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
+    OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -3809,27 +3823,27 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
 // lowered operand at its leftmost leaf (body_lower_reduce_passthrough strips the shells and keeps
 // the spine). Both are peeled to the lowered node first; a spine with a non-empty right
 // projection is an unlowered operator tail and is not peeled.
-fn body_lower_lowered_behind_shells_optional(node: Node) -> Optional<Node> {
+fn body_lower_lowered_behind_shells_read(node: Node) -> OperandRefRead {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   if body_lower_is_core_substrate(node: stripped) {
-    optional_present(value: stripped)
+    OperandRefLowered { lowered: stripped }
   } else if body_lower_node_is_lowered_atom(node: stripped) {
-    body_lower_operand_ref_optional(node: stripped)
+    body_lower_operand_ref_read(node: stripped)
   } else {
     match parse_production_emitted_identity_optional(node: stripped) {
       Present { value: _ } =>
         match parse_production_captured_child_optional(node: stripped) {
-          Absent => optional_absent()
-          Present { value: captured } => body_lower_lowered_behind_shells_optional(node: captured)
+          Absent => OperandRefAbsent
+          Present { value: captured } => body_lower_lowered_behind_shells_read(node: captured)
         }
       Absent =>
         match sugar_sequence_pair_optional(node: stripped) {
-          Absent => optional_absent()
+          Absent => OperandRefAbsent
           Present { value: pair } =>
             if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
-              body_lower_lowered_behind_shells_optional(node: pair.left)
+              body_lower_lowered_behind_shells_read(node: pair.left)
             } else {
-              optional_absent()
+              OperandRefAbsent
             }
         }
     }
@@ -3960,7 +3974,7 @@ fn body_lower_function_value_lowered_whole(o: Outcome<Node>) -> Outcome<Optional
   match o {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: d } =>
-      outcome_with_diagnostics(value: body_lower_lowered_behind_shells_optional(node: folded), diagnostics: d)
+      body_lower_operand_read_outcome(read: body_lower_lowered_behind_shells_read(node: folded), diagnostics: d)
   }
 }
 
@@ -7690,9 +7704,9 @@ fn body_lower_paren_group_inner_optional(node: Node) -> Optional<Node> {
 // The group's inner expression has already been through the bottom-up fold, so it is read as the
 // value it lowered to; one it did not lower refuses at the group.
 fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
-  match body_lower_lowered_behind_shells_optional(node: inner) {
-    Present { value: lowered } => outcome_accepted(value: lowered)
-    Absent =>
+  match body_lower_lowered_behind_shells_read(node: inner) {
+    OperandRefLowered { lowered: lowered } => outcome_accepted(value: lowered)
+    OperandRefAbsent =>
       match body_lower_operand_ref_read(node: inner) {
         OperandRefLowered { lowered: operand } => outcome_accepted(value: operand)
         OperandRefAbsent =>
@@ -7701,6 +7715,7 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
           )
         OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
       }
+    OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
