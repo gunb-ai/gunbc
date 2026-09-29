@@ -49,7 +49,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, declaration_ref_of_type_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
   lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -1243,9 +1243,10 @@ fn has_duplicate_type_param_name(names: List<String>) -> Bool {
 // declaration body. Identity and structure are two facts, so they have two slots
 // (neat-boar-16 ruling, 2026-09-29).
 // The identity is the resolver's own ident-keyed binding (lookup_type_for) in the item's scope, the
-// scope the reference was authored in, joined through the one derivation
-// (v1.compiler.infer_env declaration_ref_of_type_node). A kernel spelling names no corpus
-// declaration and is left as authored.
+// scope the reference was authored in, minted by v1.compiler.infer_env
+// declaration_ref_of_declaration_node from that DECLARATION node. It never goes through the
+// reference-side joins it is built to replace. A kernel spelling names no corpus declaration and is
+// left as authored.
 fn field_inferred_with_declaration(field: Node, env: TypeEnv) -> InferredNode? {
   match field.inferred {
     Present { value: Resolved { node: authored } } =>
@@ -1254,7 +1255,7 @@ fn field_inferred_with_declaration(field: Node, env: TypeEnv) -> InferredNode? {
       } else {
         match lookup_type_for(env: env, node: authored) {
           Present { value: bound } =>
-            match declaration_ref_of_type_node(rt: bound, source_indices: env.source_indices, env: env) {
+            match declaration_ref_of_declaration_node(decl: bound, source_indices: env.source_indices, env: env) {
               Present { value: d } => Present { value: Resolved { node: node_with_declaration(n: authored, declaration: d) } }
               Absent => field.inferred
             }

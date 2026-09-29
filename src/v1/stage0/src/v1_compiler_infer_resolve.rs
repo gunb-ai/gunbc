@@ -17,7 +17,7 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, bare_name_miss_diagnostic, declaration_ref_of_type_node,
+    authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
     lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
@@ -3773,7 +3773,7 @@ pub fn field_inferred_with_declaration(
             } else {
                 match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), authored.clone()) {
                     Some(bound) => {
-                        match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+                        match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
                             bound.clone(),
                             env.source_indices.clone(),
                             env.clone(),
