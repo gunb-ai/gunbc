@@ -6,14 +6,21 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.infer { FormalsInDeclaredOrder, FormalsOrderRefused, FormalsUnresolved, infer_application_formals }
-import v2.compiler.eval { eval_param_labels_in_declared_order }
 import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.arrow_signature {
+  ApplicationBindingRefused,
+  ApplicationBound,
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  application_binding_plan,
+  arrow_declared_parameter_order
+}
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -45,9 +52,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SUBJECT: the declared parameter order an Arrow carries on its ^arrow_signature_order_edge -- minted
 // with the domain by v2.std.anonymous_binder anonymous_binder_mint_parameter_list, built by
 // v2.std.arrow_signature signature_order_edge, walled by v2.std.node
-// arrow_signature_order_conforms, read by v2.std.compilers.body_lowering
+// arrow_signature_order_conforms, read by v2.std.arrow_signature
 // arrow_declared_parameter_order, and consumed by positional binding in v2.compiler.infer
-// infer_application_formals and v2.compiler.eval eval_param_labels_in_declared_order.
+// infer_application_formals and v2.std.arrow_signature application_binding_plan (which v2.compiler.eval binds through).
 //
 // ROUTE: every specimen is source text assembled through assemble_program_from_ingest, so the
 // lowering, the mint and resolve run for real; the claims then read one interface each over the
@@ -60,7 +67,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `<anonymous-parameter-10>` before `<anonymous-parameter-2>` in label order.
 //
 // MUTATION RECEIPT: infer_application_formals returning the domain's stored formals (the pre-change
-// fold) reds (3) and (4) through their canonical-domain arm; eval_param_labels_in_declared_order
+// fold) reds (3) and (4) through their canonical-domain arm; application_binding_plan (which eval binds through)
 // returning domain.children reds (6) the same way; resolve walking the order edge reds (7).
 
 data dpo_artifact: Artifact = Artifact {
@@ -315,24 +322,26 @@ test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
     })
 }
 
-fn dpo_domain(arrow: Node) -> Node {
-  match node_positional_child_targets(node: arrow) {
-    Cons { head: domain, tail: _ } => domain
-    Empty => arrow
+// The binding plan v2.compiler.eval binds through (and infer checks over): two positional actuals
+// against the Arrow; each slot's label with the index of the actual that fills it.
+fn dpo_plan_slots(arrow: Node) -> List<Symbol> {
+  match application_binding_plan(
+    arrow: arrow,
+    actuals: [Edge { label: Positional, target: arrow }, Edge { label: Positional, target: arrow }]
+  ) {
+    ApplicationBound { slots: slots } => fold(slots, init: [], f: fn(acc, sl) { concat(acc, [sl.label]) })
+    ApplicationBindingRefused { reason: _, at: _ } => []
   }
 }
 
 fn dpo_eval_param_labels(arrow: Node) -> List<Symbol> {
-  match eval_param_labels_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
-    Accepted { value: labels, diagnostics: _ } => labels
-    Rejected { diagnostics: _ } => []
-  }
+  dpo_plan_slots(arrow: arrow)
 }
 
 fn dpo_eval_refuses_with(arrow: Node, reason: Symbol) -> Bool {
-  match eval_param_labels_in_declared_order(arrow: arrow, domain: dpo_domain(arrow: arrow), node: arrow) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  match application_binding_plan(arrow: arrow, actuals: []) {
+    ApplicationBound { slots: _ } => false
+    ApplicationBindingRefused { reason: r, at: _ } => r == reason
   }
 }
 
