@@ -31,7 +31,8 @@ import v2.std.grammar {
   StampClass,
   StampLexeme,
   Terminal,
-  grammar_empty_sync_tokens
+  grammar_empty_sync_tokens,
+  node_atom_identity_optional
 }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -46,6 +47,7 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
+import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -211,10 +213,10 @@ fn ts_produced_decl_parse_identifier_count(root: ParseTree, identifier: Symbol) 
     xs: node_subtree_nodes(root: root),
     empty: 0,
     cons: fn(acc, node) {
-      match node.kind {
-        TypeNode { connective: Atom { identity: identity } } =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: identity } =>
           if identity == identifier { acc + 1 } else { acc }
-        _ => acc
+        Absent => acc
       }
     }
   )
