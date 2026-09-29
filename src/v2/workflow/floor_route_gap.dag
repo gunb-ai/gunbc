@@ -1710,10 +1710,6 @@ fn floor_route_gap_expectation_chunk_24() -> List<FloorRouteGapExpectation> {
 // expectations, their WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // LocalRepoWetLane rows for approval_device_enrolment_code_wet_witness_test.dag and
 // approval_ntfy_access_readback_wet_witness_test.dag.
-// The last two rows are the spark real-read route claims from #12478: each reads the runner's
-// hostname through shell.Exec.RunArgv, which has no published mock case. Floor run 36377059685
-// measured both gaps. They are enrolled on the same three terms: these rows, their WetScheduledClaim rows,
-// and the existing LocalRepoWetLane rows for their two files.
 fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_device_enrolment_code_wet_witness_test.the_code_slot_is_written_before_delivery_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1723,11 +1719,7 @@ fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_ntfy_access_readback_wet_witness_test.the_root_refuses_before_minting_on_this_host_by_real_execution", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_ntfy_access_readback_wet_witness_test.the_helper_output_decodes_as_an_outcome_by_real_execution", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.fabric_capacity_standing_wet_witness.the_live_entry_judges_exactly_what_the_runners_log_read_returned", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_pair_serving_apply_wet_witness.the_apply_seam_refuses_exactly_what_the_runners_log_read_could_not_answer", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
-    tail: Empty {} } } } } } }
+    tail: Empty {} } } } }
 }
 
 // The test.claim.machine_intake.sol_hold_stdin_wet_witness identities: the real
@@ -1806,8 +1798,43 @@ fn floor_route_gap_expectation_chunk_27() -> List<FloorRouteGapExpectation> {
     tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
+// THE RUNNER BROWSER TOOLCHAIN'S REAL-EXECUTION CONTROLS (gunbc#12500) run on the local-repo wet lane
+// (gunbc.ci_layer_roots LocalRepoWetLane row runner_browser_toolchain_real_execution_witness_test.dag;
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), where every one executed and held on
+// required-floor run 36401239618. The same run measured each identity's hermetic route gap: shell.Mktemp
+// Dir (and shell.Exec.RunArgv for the ldd route) declares no mock_response.
+fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution", operation: "shell.Exec.RunArgv", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.superseded_trees_are_reported_and_retained_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_contested_tree_is_refused_not_replaced_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.runner.runner_browser_toolchain_real_execution.a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } } } } } } }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

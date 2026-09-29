@@ -63,7 +63,7 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.compilers.body_lowering { declared_signature }
+import v2.std.arrow_signature { declared_signature }
 import v2.std.compilers.lexing {
   AnnotationRule,
   CharClassPattern,
@@ -94,6 +94,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member,
 }
 import v2.std.node {
+  symbol_lexeme,
   Arrow,
   Atom,
   Bind,
@@ -193,7 +194,7 @@ import v2.std.integer {
   NonZeroD2
 }
 import v2.std.text { String }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
@@ -896,8 +897,8 @@ fn dag_grammar_where_refinement_clause_expr() -> GrammarExpr {
 // An anonymous record is a type expression: `type AxisScan = { prefix: List<DeclarationRef>, causes:
 // List<NonEmptyStr> }` (std.pareto), the ShLBrace arm of v1.compiler.parse parse_type_expr, which
 // admits it in any type position. It is the same field_decl_block production a named record uses,
-// so every consumer that classifies a fielded declaration (namespace_graft_type_decl_is_fielded,
-// body_lower_is_structure_preserved_emitted) sees one production for both, and its fields are
+// so every consumer that classifies a fielded declaration (body_lower_is_structure_preserved_emitted)
+// sees one production for both, and its fields are
 // unlowered exactly as a named record's are (gunbc.rung_drop
 // variant_fields_unlowered_on_the_native_route).
 fn dag_grammar_type_expr() -> GrammarExpr {
@@ -1820,10 +1821,9 @@ fn dag_grammar_type_variant_expr() -> GrammarExpr {
 // positional `Name(T)`, which v1.compiler.parse parse_positional_variant_type_fields reads as
 // exactly one field named "0". Positional arity is ONE, as in v1: `Name(T, U)` still refuses
 // (tokens remain), so this row admits nothing the seed does not. It lives only in the
-// variant slot -- `type R(T)` is not a type_decl body in v1, and it is not one here. The two
-// consumers that treat a fielded variant as structure, namespace_graft_type_decl_named_edge
-// and body_lower_is_structure_preserved_emitted, name this production beside
-// dag_surface_field_decl_block.
+// variant slot -- `type R(T)` is not a type_decl body in v1, and it is not one here. The consumer
+// that treats a fielded variant as structure, body_lower_is_structure_preserved_emitted, names this
+// production beside dag_surface_field_decl_block.
 fn dag_grammar_positional_variant_payload_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lparen),
@@ -2935,20 +2935,8 @@ fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol>
   }
 }
 
-fn dag_surface_sugar_symbol_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
-  grammar_symbol_list_put(
-    m: m,
-    xs: [
-      ^dag_c3_surface_sugar_service,
-      ^dag_c3_surface_sugar_fn,
-      ^dag_c3_surface_sugar_type,
-      ^dag_c3_surface_sugar_operation
-    ]
-  )
-}
-
 fn dag_language_model_surface_prelude_map() -> Map<Symbol, Bool> {
-  dag_surface_sugar_symbol_map(m: lex_rule_set_token_class_map(rules: dag_lex_rules()))
+  lex_rule_set_token_class_map(rules: dag_lex_rules())
 }
 
 fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
@@ -2988,11 +2976,9 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 // PointwisePower closure at the consumer; that closure is not the stored value.
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
-    m: dag_surface_sugar_symbol_map(
-      m: lex_rule_set_insert_token_classes(
-        m: grammar_carried_symbol_map(grammar: dag_grammar()),
-        rules: dag_lex_rules()
-      )
+    m: lex_rule_set_insert_token_classes(
+      m: grammar_carried_symbol_map(grammar: dag_grammar()),
+      rules: dag_lex_rules()
     )
   )
 }
@@ -3180,10 +3166,6 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
       dag_named_edge(
         name: ^target_model_edge_translation_rules,
         target: dag_translation_rules_node()
-      ),
-      dag_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: dag_serialize_source_node()
       ),
       dag_named_edge(
         name: ^target_model_edge_fidelity_quotient,
@@ -3394,43 +3376,6 @@ fn dag_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn dag_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    dag_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: dag_inhabitant_atom(id: ^dag_source_literal)
-    ),
-    dag_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: dag_inhabitant_atom(id: ^dag_production_fn_add)
-    )
-  ]
-}
-
-fn dag_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: dag_serialize_source_prefix_edges(),
-    right: [
-      dag_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: dag_concrete_tokens(),
-          token_to_node: dag_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn dag_serialize_source_node() -> Node {
-  dag_family_serialize_source_node(
-    source_literal: ^dag_source_literal,
-    production_binding: ^dag_production_fn_add,
-    tokens: dag_concrete_tokens(),
-    authority_source_text: dag_source_text
-  )
-}
-
 fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
   match token {
     FixedToken { token_class: c } => grammar_formal_terminal(identity: c)
@@ -3639,10 +3584,6 @@ fn dag_target_model_bundle_core() -> Node {
         target: dag_translation_rules_node()
       ),
       dag_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: dag_serialize_source_node()
-      ),
-      dag_named_edge(
         name: ^target_model_edge_fidelity_quotient,
         target: dag_fidelity_quotient_node()
       )
@@ -3681,6 +3622,43 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 
 fn dag_int_type_binding() -> Symbol {
   ^dag_binding_type_int
+}
+
+// THE KERNEL TYPE SPELLINGS AND THEIR CANONICAL BINDINGS, declared at the language authority. The
+// table is keyed by spelling, so v2.compiler.resolve asks it only where no declaration answered the
+// name (unbound). It also gates the ambiguous case, whose candidates are read through
+// dag_kernel_type_declaration_binding_optional. Where a declaration answered, resolve reads
+// dag_kernel_type_declaration_binding_optional instead
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
+fn dag_kernel_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
+  if sym == dag_int_type_binding() {
+    optional_present(value: sym)
+  } else if symbol_lexeme(sym: sym) == "Int" {
+    optional_present(value: dag_int_type_binding())
+  } else if symbol_lexeme(sym: sym) == "Bool" {
+    optional_present(value: ^bool_node_symbol)
+  } else {
+    optional_absent()
+  }
+}
+
+// THE DECLARATIONS A KERNEL TYPE SPELLING DENOTES. A kernel spelling that resolves, through an
+// import or another module's declaration, to a declaration in this table takes its canonical
+// binding. Resolving to any other declaration is refused rather than captured
+// (v2.compiler.resolve resolve_kernel_type_reading). The table lists the declarations the corpus
+// carries today. Two Int and two Bool declarations stand until their de-fork lanes consolidate them
+// (docs/plans/dag-v2-defork-audit.md), and the table follows those lanes rather than choosing
+// between them.
+fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
+  if path == qualified_name_from_dotted_string(dotted: "v2.std.integer.Int")
+    || path == qualified_name_from_dotted_string(dotted: "std.integer.Int") {
+    optional_present(value: dag_int_type_binding())
+  } else if path == qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")
+    || path == qualified_name_from_dotted_string(dotted: "std.types.Bool") {
+    optional_present(value: ^bool_node_symbol)
+  } else {
+    optional_absent()
+  }
 }
 
 // THE BINDING→DENOTATION JOIN, declared once at the language authority. The resolver binds the
@@ -4798,40 +4776,6 @@ fn dag_grammar_relation_row_node(row: DagGrammarRelationRow) -> Node {
   )
 }
 
-fn dag_family_serialize_source_node(
-  source_literal: Symbol,
-  production_binding: Symbol,
-  tokens: List<ConcreteSyntaxToken>,
-  authority_source_text: String
-) -> Node {
-  let _authority = authority_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: [
-        dag_named_edge(
-          name: ^serialize_source_field_source_text,
-          target: dag_inhabitant_atom(id: source_literal)
-        ),
-        dag_named_edge(
-          name: ^serialize_source_field_source_grammar,
-          target: dag_inhabitant_atom(id: production_binding)
-        )
-      ],
-      right: [
-        dag_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: tokens,
-            token_to_node: dag_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn dag_bodied_fn_zip_fold_closure_edges(spec: DagBodiedFnFamilySpec) -> List<Edge> {
   [
     dag_named_edge(
@@ -4875,15 +4819,6 @@ fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> Node {
   }
 }
 
-fn dag_bodied_fn_serialize_source_node(spec: DagBodiedFnFamilySpec) -> Node {
-  dag_family_serialize_source_node(
-    source_literal: spec.source_literal,
-    production_binding: spec.production_binding,
-    tokens: spec.grammar_row.tokens,
-    authority_source_text: spec.authority_source_text
-  )
-}
-
 fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -4899,10 +4834,6 @@ fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
       dag_named_edge(
         name: ^target_model_edge_translation_rules,
         target: dag_bodied_fn_translation_rules_node(spec: spec)
-      ),
-      dag_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: dag_bodied_fn_serialize_source_node(spec: spec)
       ),
       dag_named_edge(
         name: ^target_model_edge_fidelity_quotient,
@@ -5006,10 +4937,6 @@ fn dag_pick_grammar_relation_row_node() -> Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_pick_family_spec())
 }
 
-fn dag_pick_serialize_source_node() -> Node {
-  dag_bodied_fn_serialize_source_node(spec: dag_pick_family_spec())
-}
-
 fn dag_pick_translation_rules_node() -> Node {
   dag_bodied_fn_translation_rules_node(spec: dag_pick_family_spec())
 }
@@ -5059,10 +4986,6 @@ fn dag_bind_family_spec() -> DagBodiedFnFamilySpec {
 
 fn dag_bind_grammar_relation_row_node() -> Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_bind_family_spec())
-}
-
-fn dag_bind_serialize_source_node() -> Node {
-  dag_bodied_fn_serialize_source_node(spec: dag_bind_family_spec())
 }
 
 fn dag_bind_translation_rules_node() -> Node {
@@ -5116,10 +5039,6 @@ fn dag_loop_grammar_relation_row_node() -> Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_loop_family_spec())
 }
 
-fn dag_loop_serialize_source_node() -> Node {
-  dag_bodied_fn_serialize_source_node(spec: dag_loop_family_spec())
-}
-
 fn dag_loop_translation_rules_node() -> Node {
   dag_bodied_fn_translation_rules_node(spec: dag_loop_family_spec())
 }
@@ -5154,10 +5073,6 @@ fn dag_match_family_spec() -> DagBodiedFnFamilySpec {
 
 fn dag_match_grammar_relation_row_node() -> Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_match_family_spec())
-}
-
-fn dag_match_serialize_source_node() -> Node {
-  dag_bodied_fn_serialize_source_node(spec: dag_match_family_spec())
 }
 
 fn dag_match_translation_rules_node() -> Node {
@@ -5209,10 +5124,6 @@ fn dag_rec_family_spec() -> DagBodiedFnFamilySpec {
 
 fn dag_rec_grammar_relation_row_node() -> Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_rec_family_spec())
-}
-
-fn dag_rec_serialize_source_node() -> Node {
-  dag_bodied_fn_serialize_source_node(spec: dag_rec_family_spec())
 }
 
 fn dag_rec_translation_rules_node() -> Node {
@@ -5272,10 +5183,6 @@ fn dag_field_access_family_spec() -> DagBodiedFnFamilySpec {
 
 fn dag_field_access_grammar_relation_row_node() -> Node {
   dag_bodied_fn_grammar_relation_row_node(spec: dag_field_access_family_spec())
-}
-
-fn dag_field_access_serialize_source_node() -> Node {
-  dag_bodied_fn_serialize_source_node(spec: dag_field_access_family_spec())
 }
 
 fn dag_field_access_translation_rules_node() -> Node {
@@ -5619,6 +5526,67 @@ fn dag_call_named_arg_value_under_children(node: Node, name: Symbol) -> Optional
       Present { value: _ } => acc
       Absent => dag_call_named_arg_value_optional(node: e.target, name: name)
     }
+  })
+}
+
+// The DIRECT argument at one declared POSITION of one call, under the same stopping rule as the
+// named lookup above: the walk counts each ^dag_surface_arg it reaches, in source order, and never
+// descends into one. A NAMED argument sitting at that position answers Absent -- its slot is
+// decided by its name, never by where it was written -- so a call reaches its step by exactly one
+// of the two readings.
+type DagPositionalArgScan {
+  seen: Int
+  decided: Bool
+  found: Optional<Node>
+}
+
+fn dag_call_positional_arg_value_optional(node: Node, position: Int) -> Optional<Node> {
+  let scan = dag_call_positional_arg_scan(
+    node: node,
+    position: position,
+    acc: DagPositionalArgScan { seen: 0, decided: false, found: dag_named_arg_value_absent() }
+  )
+  scan.found
+}
+
+fn dag_call_positional_arg_scan(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  if acc.decided {
+    acc
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } =>
+        if id == ^dag_surface_arg {
+          dag_call_positional_arg_visit(node: node, position: position, acc: acc)
+        } else {
+          dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
+        }
+      Absent => dag_call_positional_arg_scan_children(node: node, position: position, acc: acc)
+    }
+  }
+}
+
+fn dag_call_positional_arg_visit(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  if acc.seen == position {
+    DagPositionalArgScan { seen: acc.seen + 1, decided: true, found: dag_positional_arg_value(arg: node) }
+  } else {
+    DagPositionalArgScan { seen: acc.seen + 1, decided: false, found: acc.found }
+  }
+}
+
+fn dag_positional_arg_value(arg: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: arg) {
+    Absent => dag_named_arg_value_absent()
+    Present { value: arg_capture } =>
+      match dag_named_arg_value_optional(arg_capture: arg_capture) {
+        Present { value: _ } => dag_named_arg_value_absent()
+        Absent => dag_named_arg_value_present(node: arg_capture)
+      }
+  }
+}
+
+fn dag_call_positional_arg_scan_children(node: Node, position: Int, acc: DagPositionalArgScan) -> DagPositionalArgScan {
+  fold(node.children, init: acc, f: fn(inner, e) {
+    dag_call_positional_arg_scan(node: e.target, position: position, acc: inner)
   })
 }
 

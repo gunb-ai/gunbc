@@ -359,7 +359,7 @@ test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE SPLIT ITSELF. A well-formed fold still lowers,
 // so none of the above is green merely because the authority stopped lowering.
-test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+fn well_formed_fold_lowers_through_the_split() -> Bool {
   match lowering_of(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => false
     Present { value: l } =>
@@ -372,8 +372,57 @@ test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
   }
 }
 
-// A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm.
+test fn well_formed_fold_still_lowers_through_the_split() -> Bool {
+  flp_outcomes().well_formed_still_lowers
+}
+
+// A NON-FOLD CALL IS STILL NOT-A-FOLD, not swept into the new arm. Read off flp_outcomes below.
 test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
+  flp_outcomes().non_fold_is_not_a_fold
+}
+
+// THE POSITIONAL STEP (MQ-1). `fold(xs, 0, fn(acc, x) { acc })` -- the spelling
+// dag/extdeps/container/oci/linux.dag and dag/gunbc/instruments/rust_stage0_gates.dag
+// use -- names no `f:`, so a name-only reading classified it StepByName and it
+// never lowered, leaving `fold` an ordinary call that resolve refuses as
+// unbound. The step's position is read from std.algebra collection_fold_shape,
+// and the claim is SHAPE EQUALITY with the named form, not merely "a Loop came
+// out": both spellings must reach the same step through the one lowering path.
+// content_hash folds node kind and edge labels only, so the differing source
+// offsets of the two snippets do not enter the comparison.
+data positional_fold_snippet: String = "module positional_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, 0, fn(acc, x) { acc })\n}\n"
+
+data positional_named_step_fold_snippet: String = "module positional_named_step_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, 0, step)\n}\n"
+
+fn lowered_loop_of(source_text: String, file: Symbol) -> Optional<Node> {
+  match lowering_of(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: l } =>
+      match l {
+        FoldCallLowered { seam_loop: loop } => Present { value: loop }
+        FoldCallStepFormUnresolved { diagnostic: _ } => Absent
+        FoldCallStepShapeInvalid { diagnostic: _ } => Absent
+        FoldCallNotAFold { diagnostic: _ } => Absent
+      }
+  }
+}
+
+fn loop_shape(n: Node) -> v2.std.node.Hash {
+  v2.std.node.content_hash(n: n)
+}
+
+fn positional_loop_matches_named_loop() -> Bool {
+  match lowered_loop_of(source_text: positional_fold_snippet, file: ^positional_probe_file) {
+    Absent => false
+    Present { value: positional } =>
+      match lowered_fixture_loop() {
+        Absent => false
+        Present { value: named } => loop_shape(n: positional) == loop_shape(n: named)
+      }
+  }
+}
+
+fn non_fold_call_selects_not_a_fold() -> Bool {
   match lowering_of(source_text: non_fold_snippet, file: ^g_probe_file) {
     Absent => false
     Present { value: l } =>
@@ -384,4 +433,40 @@ test fn non_fold_call_is_not_a_fold_disposition() -> Bool {
         FoldCallStepShapeInvalid { diagnostic: _ } => false
       }
   }
+}
+
+// ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Each claim below
+// inspects one verdict of a front end over a supplied snippet, and the front end alone is more than
+// one claim's new-witness budget -- the ingest is the expense, not the assertion (DESIGN section 3,
+// a witness discriminates at one interface). The stored value is four Bools: no Node, no context,
+// no closure, so it is portable.
+type FlpOutcomes {
+  positional_matches_named: Bool
+  positional_named_step_unresolved: Bool
+  non_fold_is_not_a_fold: Bool
+  well_formed_still_lowers: Bool
+}
+
+fn flp_outcomes() -> FlpOutcomes {
+  FlpOutcomes {
+    positional_matches_named: positional_loop_matches_named_loop(),
+    positional_named_step_unresolved: is_step_form_unresolved(
+      source_text: positional_named_step_fold_snippet,
+      file: ^positional_named_step_probe_file
+    ),
+    non_fold_is_not_a_fold: non_fold_call_selects_not_a_fold(),
+    well_formed_still_lowers: well_formed_fold_lowers_through_the_split()
+  }
+}
+
+test fn positional_fold_step_lowers_to_the_named_forms_loop() -> Bool {
+  flp_outcomes().positional_matches_named
+}
+
+// THE RED CONTROL ON THE SAME POSITION: a step passed BY NAME at the declared
+// position is still a callee-resolution fact this stage does not have, so it
+// stays the counted unresolved state -- the positional reading must not widen
+// into accepting whatever sits in the slot.
+test fn positional_named_step_fold_is_step_form_unresolved() -> Bool {
+  flp_outcomes().positional_named_step_unresolved
 }

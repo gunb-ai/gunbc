@@ -369,7 +369,12 @@ fn realized_use_read(path: String, job_id: String, site: ActionUseSite, where_: 
       } else {
         RealizedUseFound { found: RealizedActionUse { workflow_path: path, job_id: job_id, site: site, uses_text: t } }
       }
-    _ => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlNull => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlBool { value: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlInt { lexeme: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlFloat { lexeme: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlSequence { elements: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    YamlMapping { entries: _ } => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
   }
 }
 
@@ -380,7 +385,12 @@ fn realized_step_reads(path: String, job_id: String, step: YamlValue) -> List<Re
         YamlKeyAbsent => []
         YamlKeyPresent { value: v } => [realized_use_read(path: path, job_id: job_id, site: StepActionUse, where_: "a step", v: v)]
       }
-    _ => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlNull => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlBool { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlInt { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlFloat { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlString { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+    YamlSequence { elements: _ } => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
   }
 }
 
@@ -401,7 +411,12 @@ fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<Real
           }
       }
     }
-    _ => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlNull => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlBool { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlInt { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlFloat { lexeme: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlString { value: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
+    YamlSequence { elements: _ } => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
   }
 }
 
