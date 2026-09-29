@@ -34,7 +34,7 @@ fn clock_operation(operation: String) -> OperationRef {
   OperationRef { path: clock_operation_path, service: "Clock", operation: operation }
 }
 
-fn printed<S>(state: S, text: String) -> OperationStep<S> {
+fn wall_clock_printed<S>(state: S, text: String) -> OperationStep<S> {
   OperationObserved {
     observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(text, "\n"), stderr: "" } },
     state: state,
@@ -44,8 +44,8 @@ fn printed<S>(state: S, text: String) -> OperationStep<S> {
 
 fn wall_clock_bindings<S>(get: fn(S) -> ModeledWallClock) -> List<OperationBinding<S>> {
   [
-    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { printed(state: state, text: iso8601_utc_text(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
-    OperationBinding { at: clock_operation(operation: "UnixSecs"), handler: fn(state, call) { printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now))) } },
-    OperationBinding { at: clock_operation(operation: "UnixMillis"), handler: fn(state, call) { printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now) * 1000)) } },
+    OperationBinding { at: clock_operation(operation: "Now"), handler: fn(state, call) { wall_clock_printed(state: state, text: iso8601_utc_text(unix: wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "UnixSecs"), handler: fn(state, call) { wall_clock_printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now))) } },
+    OperationBinding { at: clock_operation(operation: "UnixMillis"), handler: fn(state, call) { wall_clock_printed(state: state, text: to_string(wall_clock_unix(clock: get(state), now: call.now) * 1000)) } },
   ]
 }
