@@ -639,7 +639,7 @@ test fn ingested_classical_not_emit_accepts_holds() -> Bool {
 }
 
 test fn ingested_classical_not_real_infer_holds() -> Bool {
-  match ingested_arrow_from_source(source: ingested_classical_not_source) {
+  match ingested_classical_not_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match infer(tree: claim_resolved_tree_without_declarations(root: arrow)) {
         Accepted { value: _, diagnostics: _ } => true
