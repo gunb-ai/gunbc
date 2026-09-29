@@ -3145,6 +3145,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_HCHECKPOINT0PLANNER000A",
+      id: "harness-checkpoint-subject-planner",
+      owner: "harness",
+      path: "dag/gunbc/roadmap/roadmap_alignment.dag",
+      t: fields(
+        headline: "Freeze the checkpoint subject and derive the per-level probe obligations, purely",
+        boundary: "Given an AlignmentCheckpointIdentity and the resolved chain, derive the homogeneous probe population (principles, root project, each intermediate project, task), each obligation carrying its level contract, the edge contribution it judges against, the prior guidance outstanding at that level, and the PromptContextSnapshot identity it projects from. No model call, no workspace effect, no verdict: this is the pure plan the durable scheduler executes.",
+        displaced_cost: "If probe obligations are derived inside the execution loop, a crash mid-fan-out cannot say which probes existed, and reruns risk minting duplicate verdicts for one checkpoint.",
+        first_slice: "The obligation-derivation function and its witness: one checkpoint over the harness lineage derives exactly four obligations in root-to-leaf order, each keyed by the checkpoint identity.",
+        red_control: "The same checkpoint identity derives the identical obligation set (idempotent re-derivation after a crash); an obligation's level contract digest and contribution digest come from the chain, not re-authored; a checkpoint whose chain fingerprint moved refuses re-derivation.",
+        out_of_scope: "No probe execution, no roundup, no resume; those are the scheduler and adjudication folds. No PromptPlan rendering here either -- the probes' plans are assembled where they execute.",
+        handback: "The derivation, the obligation carrier, the idempotency witness, and the join key the scheduler consumes."
+      )
+    ),
+    active_small(
       identity: "rn_HCONVO0LOG0FORK0POINTS0A",
       id: "harness-conversation-log-forking",
       owner: "harness",
