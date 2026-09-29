@@ -24,6 +24,8 @@ import gunbc.live_deploy.release_locus {
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import std.measure { byte_size_count }
+import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high }
 import gunbc.fleet_converge_workflow {
   ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
 }
@@ -65,11 +67,18 @@ test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_neve
 // POSIX user under non-interactive sudo, and names the verb by its module and function. It also
 // hands the seed the release directory as its checkout root, inside the elevation and ahead of the
 // binary. Without that binding the seed walks up from the SSH login's home and refuses before minting
-// (fleet-converge run 36415852659), so removing it turns this claim red.
+// (fleet-converge run 36415852659), so removing it turns this claim red. The whole verb runs in a
+// system scope as the operator's account, bounded by the broker's slice rows. Without a memory bound
+// the seed refuses HostBudgetUnreadable (run 36556990543), so dropping the scope or its bounds also
+// turns this claim red.
 test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
   let argv = enrolment_code_issue_remote_argv(revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" })
   let joined = join(argv, " ")
-  string_contains(s: joined, pattern: "/usr/bin/sudo -n -u " + (fleet_posix_operator_user.name as String) + " /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567 /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
+  let op = fleet_posix_operator_user.name as String
+  string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --uid=" + op + " --gid=" + op
+    + " --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max))
+    + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high))
+    + " -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567 /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
     && string_contains(s: joined, pattern: "/releases/0123456789abcdef0123456789abcdef01234567/gunbc run ")
     && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_device_routes.dag --function issue_device_enrolment_code --arg revision=0123456789abcdef0123456789abcdef01234567")
 }
