@@ -16,14 +16,18 @@ fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
           Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
         }
       })
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => wave1_gate1_a1_find_arrow_in_module_children(root: root)
+    ComputationNode { behavior: _ } => wave1_gate1_a1_find_arrow_in_module_children(root: root)
   }
+}
+
+fn wave1_gate1_a1_find_arrow_in_module_children(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+    }
+  })
 }
 
 fn wave1_gate1_a1_parsed_add_module() -> Optional<Node> {
