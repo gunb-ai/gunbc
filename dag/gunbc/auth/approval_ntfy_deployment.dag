@@ -81,8 +81,18 @@ data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 // only WRITE the topic; the operator is the phone's sign-in and may only READ it. A server whose
 // users carry other names reads back as a deviation and enrolment-code issuance refuses -- loudly,
 // never by guessing which user is which.
-data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-approval-publisher"
-data approval_ntfy_operator_user: NonEmptyStr = "gunbc-approval-operator"
+//
+// THE NAMES ARE THE ONES srv1's SERVER CARRIES, AND THE PREVIOUS ONES WERE NEVER CREATED. They read
+// gunbc-approval-publisher and gunbc-approval-operator, names chosen here that no step on the host
+// used. The live `ntfy access` that proud-deer-538 read on srv1 on 2026-09-29, running
+// issue_device_enrolment_code by hand, lists publisher `gunbc-broker` (write-only on the topic) and
+// operator `briansrls` (read-only), with anonymous access denied. Those accounts already carry the
+// broker's publisher token and the operator's phone subscription, so the declaration follows them
+// rather than asking for both credentials to be minted again. These stay declarations: the readback
+// compares the live list against them and refuses any other shape. Nothing creates these users from
+// the model yet. The ntfy installation vertical owns that, and these rows become its contract.
+data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-broker"
+data approval_ntfy_operator_user: NonEmptyStr = "briansrls"
 // THE SERVER BINARY THE HOST ACTUALLY RUNS. Absolute because it runs under sudo as the server's
 // principal; an absent binary is a failed readback, which refuses. The readback compares the running
 // process's executable against THIS row, and that comparison is only a check because the row is not

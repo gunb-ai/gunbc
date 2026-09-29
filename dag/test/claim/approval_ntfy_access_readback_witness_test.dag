@@ -89,7 +89,7 @@ data fx_exact: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153310 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=83665\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -112,7 +112,7 @@ data fx_cmdoverride: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153316 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=83831\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -135,7 +135,7 @@ data fx_wildcard_cmd: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153322 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=83999\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -158,7 +158,7 @@ data fx_otherexe: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153328 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84166\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -181,7 +181,7 @@ data fx_envoverride: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153335 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84334\nEnvironment=NTFY_AUTH_DEFAULT_ACCESS=read-write\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -204,7 +204,7 @@ data fx_cache: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\nauth-access-cache: true\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153341 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84499\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -227,7 +227,7 @@ data fx_cfg_default_rw: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: read-write\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153347 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84664\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -250,7 +250,7 @@ data fx_wildcard_cfg: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: \":2586\"\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153353 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84832\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -273,7 +273,7 @@ data fx_metrics_extra: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\nmetrics-listen-http: \":9091\"\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153359 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84997\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -296,7 +296,7 @@ data fx_authfile_other: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/other.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153366 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85163\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -319,7 +319,7 @@ data fx_config_touched: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153376 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85333\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -342,7 +342,7 @@ data fx_binary_touched: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153378 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85498\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -365,7 +365,7 @@ data fx_authfile_replaced: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153384 1790140876 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153388 1790153388 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153388 1790153388 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85666\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -411,7 +411,7 @@ data fx_config_swapped: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: read-write\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153401 1790153401 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85998\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -434,7 +434,7 @@ data fx_auth_swapped: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153403 1790153401 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153407 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86165\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -457,14 +457,14 @@ data fx_ambient_auth_file: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153409 1790153401 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141486 1790153408 1790153407 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153408 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86373\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
   FxRead { read: "pid_stat_after", exit_code: 0, stdout: "86373 (ntfy) S 83658 86373 86373 0 -1 4194304 5490 68 0 0 9 2 0 0 20 0 40 0 245607676 4383285248 9984 18446744073709551615 4194304 74414103 281474759051744 0 0 0 0 0 2143420159 0 0 0 17 64 0 0 0 0 0 74488800 75479617 990441472 281474759054369 281474759054634 281474759054634 281474759069564 0\n", stderr: "" },
 ]
 
-data fx_access_without_env_i_under_ambient_auth_file: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data fx_access_without_env_i_under_ambient_auth_file: String = "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
 
 data fx_config_symlink: List<FxRead> = [
   FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=86583\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -482,7 +482,7 @@ data fx_config_symlink: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n# changed between the reads\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141484 1790153414 1790153414 symbolic link\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141486 1790153414 1790153407 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153414 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86583\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -505,7 +505,7 @@ data fx_auth_symlink: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153421 1790153401 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153420 1790153420 symbolic link\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153420 1790153420 symbolic link\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86757\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
@@ -528,22 +528,22 @@ data fx_restarted: List<FxRead> = [
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/auth.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
   FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153428 1790153401 regular file\n", stderr: "" },
   FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141486 1790153427 1790153407 regular file\n", stderr: "" },
-  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
   FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153427 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
   FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=87088\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
   FxRead { read: "pid_stat_after", exit_code: 0, stdout: "87088 (ntfy) S 83658 87088 87088 0 -1 4194304 5553 66 0 0 8 3 0 0 20 0 40 0 245609956 4317151232 10496 18446744073709551615 4194304 74414103 281474617439264 0 0 0 0 0 2143420159 0 0 0 17 57 0 0 0 0 0 74488800 75479617 355835904 281474617443361 281474617443626 281474617443626 281474617458556 0\n", stderr: "" },
 ]
 
-data listing_default_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
-data listing_anon_read: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n"
-data listing_pub_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data listing_op_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data listing_op_nogrant: String = "user gunbc-approval-operator (role: user, tier: none)\n- no topic-specific permissions\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data listing_op_missing: String = "user gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data listing_admin_extra: String = "user root (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data listing_wildcard_reader: String = "user eve (role: user, tier: none)\n- read-only access to topic gunbc-*\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data listing_pub_admin: String = "user gunbc-approval-publisher (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_default_rw: String = "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
+data listing_anon_read: String = "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n"
+data listing_pub_rw: String = "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_op_rw: String = "user briansrls (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_op_nogrant: String = "user briansrls (role: user, tier: none)\n- no topic-specific permissions\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_op_missing: String = "user gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_admin_extra: String = "user root (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_wildcard_reader: String = "user eve (role: user, tier: none)\n- read-only access to topic gunbc-*\nuser briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-broker (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_pub_admin: String = "user gunbc-broker (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
 
 fn run_of(fx: List<FxRead>, name: String) -> ProcessRunOutcome {
   match first(filter(fx, x => x.read == name)) {
@@ -1163,7 +1163,7 @@ test fn an_operator_without_the_grant_refuses() -> Bool {
 
 test fn a_missing_operator_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_op_missing))) {
-    Present { value: AclPrincipalMissing { user: u } } => u == "gunbc-approval-operator"
+    Present { value: AclPrincipalMissing { user: u } } => u == "briansrls"
     _ => false
   }
 }
@@ -1213,21 +1213,21 @@ test fn a_star_row_at_role_anonymous_is_the_accepted_control() -> Bool {
 // each is a listing that does not parse, naming the user, never a user holding both.
 test fn an_admin_line_after_topic_grants_refuses() -> Bool {
   match ntfy_access_read(stdout: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "- write-only access to topic gunbc-approvals\n", to: "- write-only access to topic gunbc-approvals\n- read-write access to all topics (admin role)\n")) {
-    NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "admin line after topic grants for user 'gunbc-approval-publisher'")
+    NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "admin line after topic grants for user 'gunbc-broker'")
     _ => false
   }
 }
 
 test fn a_topic_grant_after_the_admin_line_refuses() -> Bool {
   match ntfy_access_read(stdout: replace(s: listing_pub_admin, from: "- read-write access to all topics (admin role)\n", to: "- read-write access to all topics (admin role)\n- write-only access to topic gunbc-approvals\n")) {
-    NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "topic grant after the admin line for user 'gunbc-approval-publisher'")
+    NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "topic grant after the admin line for user 'gunbc-broker'")
     _ => false
   }
 }
 
 test fn a_duplicated_principal_refuses() -> Bool {
-  match refused_with(v: verdict_of(fx: with_listing(listing: stdout_of(fx: fx_exact, name: "access_list") + "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n"))) {
-    Present { value: AclPrincipalDuplicated { user: u } } => u == "gunbc-approval-operator"
+  match refused_with(v: verdict_of(fx: with_listing(listing: stdout_of(fx: fx_exact, name: "access_list") + "user briansrls (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n"))) {
+    Present { value: AclPrincipalDuplicated { user: u } } => u == "briansrls"
     _ => false
   }
 }
