@@ -692,7 +692,8 @@ mod nfr_typed_tests {
 /// roots compiled in ONE resolution (the `gunbc compile --source-root` primary-root route:
 /// `primary_root_subject_closure` per root, one `compile_to_resolved_with_options` over the union
 /// under the compile-clean admission), then the typed walk over every module of that graph. It is
-/// an operator run (whole-corpus resolution is ~1000s and ~32 GB), not a merge-path check -- the
+/// an operator run (measured on srv1 at 2a1dd41955f, 2026-09-29: 36.5 min wall, 39.9 GB peak RSS), not
+/// a merge-path check -- the
 /// merge path is the floor's diff-scoped verdict. Output: one line per unrostered site, stale row,
 /// undetermined scrutinee and blocked module, written to `GUNBC_NFR_CENSUS_OUT`.
 #[cfg(test)]
@@ -700,7 +701,7 @@ mod nfr_whole_corpus_census {
     use super::*;
 
     #[test]
-    #[ignore = "operator run: whole-corpus typed NFR census (~1000s, ~32 GB); see the fn doc"]
+    #[ignore = "operator run: whole-corpus typed NFR census (~40 GB peak RSS); see the fn doc"]
     fn nfr_whole_corpus_typed_census() {
         let out_path = std::env::var("GUNBC_NFR_CENSUS_OUT")
             .unwrap_or_else(|_| "target/nfr-typed-census.txt".to_string());
