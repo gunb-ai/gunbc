@@ -3008,7 +3008,16 @@ fn kernel_value_declared_type_mismatch_bounded(
   formal_name_override: String,
   depth: Int
 ) -> Bool {
-  let actual_base = peel_where_refinement_base(ty: actual, type_env: type_env)
+  // The produced side is peeled to its where-refinement base exactly as the declared side is, so a
+  // refinement of a kernel (`"x" as NonEmptyStr`) is judged as the kernel it is represented by, not
+  // admitted because its NAME is not kernel (gunbc#12695: host text reached v2.std.text string_split
+  // at a FreeSemigroup<Char> needle). The peel is withheld where the formal carries OPTIONALITY:
+  // there the produced node is the payload of a `Present` introduction standing for the Optional
+  // carrier -- the two-representation gap declared_type_kernel_inhabitance_mismatch excludes on the
+  // same ground -- and peeling it refused correct rows (gunbc.contributor_onboarding_path, measured).
+  let formal_carries_optional = formal.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: formal)) == "Optional"
+  let actual_base = if formal_carries_optional { actual } else { peel_where_refinement_base(ty: actual, type_env: type_env) }
   if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
     false
   } else {

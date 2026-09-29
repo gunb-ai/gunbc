@@ -55,3 +55,49 @@ test fn a_kernel_refinement_at_its_base_parameter_still_compiles() -> Bool {
     source: concat("module krs.base\n\n", krs_prelude(), "fn probe() -> String {\n  take_s(s: \"ab\" as KrsNonEmpty)\n}\n")
   ) == 0
 }
+
+// THE REAL CROSSING, NOT ONLY A LOCAL RECORD: the receipt's needle is v2.std.text string_replace's
+// GENERIC-APPLIED formal FreeSemigroup<Char>, and declared_type_inhabitance has an
+// UndecidableGenericFormal arm that could in principle short-circuit before the kernel arm this
+// change repairs. Measured on main cfb3e36: the cast needle below produced 0 blocking rows; at this
+// change's head, 1. Controls: the plain literal (refused before and after), a structural
+// FreeSemigroup needle (admitted), and the refinement at its own refinement formal (admitted).
+fn krs_text_prelude() -> String {
+  "import std.types { Int, NonEmptyStr }\nimport std.algebra { Empty, FreeSemigroup }\nimport v2.std.text { String, string_replace }\n\nfn take_ne(s: NonEmptyStr) -> Int {\n  1\n}\n\n"
+}
+
+test fn a_cast_nonempty_needle_at_string_replace_must_refuse() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.real_cast\n\n", krs_text_prelude(), "fn probe() -> String {\n  string_replace(source: Empty, needle: \"{ x }\" as NonEmptyStr, replacement: Empty)\n}\n")
+  ) >= 1
+}
+
+test fn a_plain_literal_needle_at_string_replace_still_refuses() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.real_plain\n\n", krs_text_prelude(), "fn probe() -> String {\n  string_replace(source: Empty, needle: \"{ x }\", replacement: Empty)\n}\n")
+  ) >= 1
+}
+
+test fn a_structural_needle_at_string_replace_still_compiles() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.real_structural\n\n", krs_text_prelude(), "fn probe() -> String {\n  string_replace(source: Empty, needle: FreeSemigroup { head: 1, tail: Empty }, replacement: Empty)\n}\n")
+  ) == 0
+}
+
+test fn a_kernel_refinement_at_its_own_refinement_parameter_still_compiles() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.ne_at_ne\n\n", krs_text_prelude(), "fn probe() -> Int {\n  take_ne(s: \"ab\" as NonEmptyStr)\n}\n")
+  ) == 0
+}
+
+// OVER-PEEL CONTROL, FROM A MEASURED FALSE REFUSAL: an earlier revision of this change moved the
+// produced side's has-children guard onto the peeled base, and the generated-artifact gate then
+// refused ten correct rows of gunbc.contributor_onboarding_path (`command: Present { value: x as
+// NonEmptyStr }` at an Optional<NonEmptyStr> field) with expected Coproduct(Optional), got
+// Product(NonEmptyStr). The peel decides the produced NAME only; the structure guard stays on the
+// produced node itself.
+test fn a_present_refinement_at_an_optional_refinement_field_still_compiles() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: "module krs.optional_field\n\nimport std.types { NonEmptyStr, String }\n\ntype KrsStep {\n  command: Optional<NonEmptyStr>\n}\n\ndata krs_cmd: String = \"git clone\"\n\ndata krs_step: KrsStep = KrsStep { command: Present { value: krs_cmd as NonEmptyStr } }\n"
+  ) == 0
+}
