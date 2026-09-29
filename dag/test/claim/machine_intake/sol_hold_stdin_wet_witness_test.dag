@@ -4,7 +4,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import std.measure { second }
+import std.measure { Second, second }
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.machine_intake_sol_hold
 
@@ -49,19 +49,22 @@ fn probe_launch(dir: String, pid_path: String) -> ProbeLaunch {
       pid_path: pid_path as NonEmptyStr,
       ipmitool: probe as NonEmptyStr,
     )
-    ProbeLaunch { launched: spawned.success, capture: capture_after(path: concat(dir, "/capture"), remaining: wait_seconds) }
+    ProbeLaunch { launched: spawned.success, capture: capture_after(path: concat(dir, "/capture"), remaining: poll_attempts) }
   }
 }
 
 // THE WAIT IS BOUNDED BY THE PROBE'S REPORT, NOT BY A FIXED WINDOW (gunbc.recurring_failure_mode
 // wet_witness_keyed_to_the_runner_not_its_subject). A fixed five seconds had to cover the launch plus
 // the probe's own three-second read; on a loaded runner the report could land after the window and
-// the positive claim went red for the runner's load, not the launch. The capture is re-read once a
-// second until it carries the probe's line or the bound runs out, so a fast runner returns as soon
+// the positive claim went red for the runner's load, not the launch. The capture is re-read every
+// poll_interval until it carries the probe's line or the attempts run out, so a fast runner returns as soon
 // as the probe reports and a slow one is given the time. The negative claim, whose child is stopped
 // before it reports, waits out the bound: its absence is only meaningful after the probe would have
 // reported on any runner the positive claim passes on.
-data wait_seconds: Int = 30
+// The bound is DERIVED: poll_attempts reads of the capture, poll_interval apart, so changing either
+// moves the total and neither literal restates it.
+data poll_attempts: Int = 30
+data poll_interval: Second = second(count: 1)
 
 fn capture_after(path: String, remaining: Int) -> String {
   let read = Filesystem.Read(path: path)
@@ -69,7 +72,7 @@ fn capture_after(path: String, remaining: Int) -> String {
   if string_contains(s: content, pattern: "stdin-probe") || remaining <= 0 {
     content
   } else {
-    let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    let _waited = sleep_delay_seconds_second_carrier_projection(duration: poll_interval)
     capture_after(path: path, remaining: remaining - 1)
   }
 }
