@@ -1476,12 +1476,13 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
           Accepted { value: Present { value: lowered }, diagnostics: d } =>
             outcome_with_diagnostics(value: lowered, diagnostics: d)
           Accepted { value: Absent, diagnostics: _ } =>
-            match body_lower_operand_ref_optional(node: operand) {
-              Present { value: lowered } => outcome_accepted(value: lowered)
-              Absent =>
+            match body_lower_operand_ref_read(node: operand) {
+              OperandRefLowered { lowered: lowered } => outcome_accepted(value: lowered)
+              OperandRefAbsent =>
                 outcome_rejected(
                   d: body_lower_diagnostic(reason: ^body_lowering_reason_operator_operand_unread, n: operand)
                 )
+              OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
             }
         }
       }
@@ -5065,19 +5066,20 @@ fn body_lower_postfix_chain_lowered_from_steps(
         source: node
       )
     Absent =>
-      match body_lower_operand_ref_optional(node: head_node) {
-        Absent =>
+      match body_lower_operand_ref_read(node: head_node) {
+        OperandRefAbsent =>
           if body_lower_postfix_steps_carry_cast(steps: steps) {
             body_lower_postfix_cast_chain_computed_head(head_node: head_node, steps: steps, source: node)
           } else {
             outcome_accepted(value: optional_absent())
           }
-        Present { value: head_value } =>
+        OperandRefLowered { lowered: head_value } =>
           body_lower_postfix_chain_fold_from(
             steps: steps,
             init: PostfixAccumValue { node: head_value },
             source: node
           )
+        OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
 }
@@ -6266,8 +6268,8 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
               Present { value: body_capture } =>
                 match body_lower_materialize_int_literal_operand_optional(node: value_capture) {
                   Present { value: value } =>
-                    match body_lower_operand_ref_optional(node: body_capture) {
-                      Present { value: body_ref } =>
+                    match body_lower_operand_ref_read(node: body_capture) {
+                      OperandRefLowered { lowered: body_ref } =>
                         outcome_accepted(
                           value: optional_present(
                             value: lower_bind(
@@ -6277,9 +6279,9 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                             )
                           )
                         )
-                      Absent =>
-                        match body_lower_arm_operand_resolved_optional(arm: body_capture) {
-                          Present { value: body_ref } =>
+                      OperandRefAbsent =>
+                        match body_lower_arm_operand_resolved_read(arm: body_capture) {
+                          OperandRefLowered { lowered: body_ref } =>
                             outcome_accepted(
                               value: optional_present(
                                 value: lower_bind(
@@ -6289,14 +6291,16 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                                 )
                               )
                             )
-                          Absent => body_lower_let_navigation_reject(captured: captured)
+                          OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
+                          OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                         }
+                      OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                     }
                   Absent =>
-                    match body_lower_arm_operand_resolved_optional(arm: value_capture) {
-                      Present { value: value } =>
-                        match body_lower_operand_ref_optional(node: body_capture) {
-                          Present { value: body_ref } =>
+                    match body_lower_arm_operand_resolved_read(arm: value_capture) {
+                      OperandRefLowered { lowered: value } =>
+                        match body_lower_operand_ref_read(node: body_capture) {
+                          OperandRefLowered { lowered: body_ref } =>
                             outcome_accepted(
                               value: optional_present(
                                 value: lower_bind(
@@ -6306,9 +6310,9 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                                 )
                               )
                             )
-                          Absent =>
-                            match body_lower_arm_operand_resolved_optional(arm: body_capture) {
-                              Present { value: body_ref } =>
+                          OperandRefAbsent =>
+                            match body_lower_arm_operand_resolved_read(arm: body_capture) {
+                              OperandRefLowered { lowered: body_ref } =>
                                 outcome_accepted(
                                   value: optional_present(
                                     value: lower_bind(
@@ -6318,10 +6322,13 @@ fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>
                                     )
                                   )
                                 )
-                              Absent => body_lower_let_navigation_reject(captured: captured)
+                              OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
+                              OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                             }
+                          OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                         }
-                      Absent => body_lower_let_navigation_reject(captured: captured)
+                      OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
+                      OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                     }
                 }
               Absent => body_lower_let_navigation_reject(captured: captured)
@@ -6771,14 +6778,15 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
                       )
                     )
                   Absent =>
-                    match body_lower_arm_operand_resolved_optional(arm: right) {
-                      Present { value: lit } =>
+                    match body_lower_arm_operand_resolved_read(arm: right) {
+                      OperandRefLowered { lowered: lit } =>
                         outcome_accepted(
                           value: optional_present(
                             value: lower_loop(value: lit, bound: dag_loop_measure_node())
                           )
                         )
-                      Absent => body_lower_loop_navigation_reject(captured: captured)
+                      OperandRefAbsent => body_lower_loop_navigation_reject(captured: captured)
+                      OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
                     }
                 }
               } else {
@@ -7647,12 +7655,13 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   match body_lower_lowered_behind_shells_optional(node: inner) {
     Present { value: lowered } => outcome_accepted(value: lowered)
     Absent =>
-      match body_lower_operand_ref_optional(node: inner) {
-        Present { value: operand } => outcome_accepted(value: operand)
-        Absent =>
+      match body_lower_operand_ref_read(node: inner) {
+        OperandRefLowered { lowered: operand } => outcome_accepted(value: operand)
+        OperandRefAbsent =>
           outcome_rejected(
             d: body_lower_diagnostic(reason: ^body_lowering_reason_paren_group_unread, n: group)
           )
+        OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
 }
