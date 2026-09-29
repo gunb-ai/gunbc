@@ -20,7 +20,7 @@ import extdeps.apple.app_attest {
   AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionRefusal,
 }
 import extdeps.apple.secure_enclave { EnclaveKeyAccessPolicy, BiometryCurrentSet }
-import extdeps.crypto.mac { MacKey, MacVerified, mac_verify }
+import extdeps.crypto.mac { MacKey, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed, mac_verify }
 import gunbc.auth.approval_capability {
   ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name,
   ApprovalCapability, ApprovalCapabilityClaims, CapabilityRefusal, CapabilityAuthentic, CapabilityRefused,

@@ -24,6 +24,7 @@ import gunbc.auth.github_apps {
   DeclaredGitHubApp, GitHubAppControlPlaneState, app_control_plane_state,
   SignerCustody, SignerCustodyObserved, SignerReadbackFailed, ObservedGitHubAppSigner,
   SignerKeyRejected, SignerReadbackNotReached,
+  SignerMaterialAvailabilityUnobserved, SignerMaterialAvailableForImport, SignerKeyGenerationRequired,
   ObservedAppRegistration, AppRegistrationReadback, AppRegistrationReadbackUnavailable,
   ObservedInstallation, InstallationReadback, InstallationReadbackUnavailable,
   InstallationReadbackNotAttempted, InstallationReadbackFailed,
@@ -152,6 +153,23 @@ fn control_plane_unreached(
   )
 }
 
+fn installation_not_attempted_state(
+  app: DeclaredGitHubApp,
+  custody: SignerCustody,
+  registration: ObservedAppRegistration,
+  required: List<GitHubAppPermission>,
+  reason: NonEmptyStr,
+) -> GitHubAppControlPlaneState {
+  app_control_plane_state(
+    app: app,
+    custody: custody,
+    registration: registration,
+    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+    required: required,
+    reason: reason,
+  )
+}
+
 fn observe_github_app_control_plane(
   app: DeclaredGitHubApp,
   key: JwsSigningKeyRef,
@@ -183,42 +201,10 @@ fn observe_github_app_control_plane(
                 reason: reason,
               )
             }
-            SignerMaterialAvailabilityUnobserved =>
-              app_control_plane_state(
-                app: app,
-                custody: custody,
-                registration: registration,
-                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
-                required: required,
-                reason: reason,
-              )
-            SignerMaterialAvailableForImport { source: _ } =>
-              app_control_plane_state(
-                app: app,
-                custody: custody,
-                registration: registration,
-                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
-                required: required,
-                reason: reason,
-              )
-            SignerKeyGenerationRequired =>
-              app_control_plane_state(
-                app: app,
-                custody: custody,
-                registration: registration,
-                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
-                required: required,
-                reason: reason,
-              )
-            SignerReadbackFailed { cause: _ } =>
-              app_control_plane_state(
-                app: app,
-                custody: custody,
-                registration: registration,
-                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
-                required: required,
-                reason: reason,
-              )
+            SignerMaterialAvailabilityUnobserved => installation_not_attempted_state(app: app, custody: custody, registration: registration, required: required, reason: reason)
+            SignerMaterialAvailableForImport { source: _ } => installation_not_attempted_state(app: app, custody: custody, registration: registration, required: required, reason: reason)
+            SignerKeyGenerationRequired => installation_not_attempted_state(app: app, custody: custody, registration: registration, required: required, reason: reason)
+            SignerReadbackFailed { cause: _ } => installation_not_attempted_state(app: app, custody: custody, registration: registration, required: required, reason: reason)
           }
         }
       }
