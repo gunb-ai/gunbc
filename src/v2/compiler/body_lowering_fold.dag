@@ -20,6 +20,7 @@ import v2.compiler.fold_lowering {
   fold_recurrence_encoding,
   fold_call_head_symbol,
   fold_call_lowering,
+  fold_call_lowering_piped,
   fold_family_realization
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
@@ -1501,6 +1502,116 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   }
 }
 
+// ONE OPERATOR APPLIED TO THE ACCUMULATED LEFT OPERAND. `xs |> fold(init, step)` is a fold whose
+// receiver the pipe supplies: the fold template is receiver-first, so the pipe's left operand IS the
+// collection, and it lowers to the fold encoding with that operand as its domain
+// (v2.compiler.fold_lowering fold_call_lowering_piped). A pipe into anything else, and a fold whose
+// step this stage cannot read (a step by name), stays the ordinary infix Transform it always was.
+fn body_lower_binary_apply(acc: Node, operator: Node, right: Node) -> Outcome<Node> {
+  match body_lower_piped_fold_optional(acc: acc, operator: operator, right: right) {
+    Present { value: lowered } => lowered
+    Absent =>
+      match body_lower_operator_operand(node: right) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: operand, diagnostics: d } =>
+          outcome_with_diagnostics(value: lower_binary_infix(left: acc, operator: operator, right: operand), diagnostics: d)
+      }
+  }
+}
+
+fn body_lower_operator_is_pipe(operator: Node) -> Bool {
+  match node_atom_identity_optional(node: operator) {
+    Present { value: id } => id == ^dag_token_pipe_gt
+    Absent => false
+  }
+}
+
+fn body_lower_piped_fold_optional(acc: Node, operator: Node, right: Node) -> Optional<Outcome<Node>> {
+  if body_lower_operator_is_pipe(operator: operator) {
+    match body_lower_fold_call_beneath(node: body_lower_strip_operator_free_levels(node: right)) {
+      Absent => optional_absent()
+      Present { value: call } =>
+        match fold_call_lowering_piped(fold_call: call, receiver: acc) {
+          FoldCallLowered { operands: operands } =>
+            optional_present(value: body_lower_fold_encoding_from(operands: operands, collection: outcome_accepted(value: acc)))
+          FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
+          FoldCallOperandAbsent { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
+          FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
+          FoldCallNotAFold { diagnostic: _ } => optional_absent()
+        }
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+// The fold-family call an operand is, reached down its captured-child chain exactly as
+// body_lower_fold_family_call_first reads a call: the captured child whose head is a fold-family
+// head. Absent for any other operand.
+fn body_lower_fold_call_beneath(node: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match fold_call_head_symbol(fold_call: captured) {
+        Present { value: head } =>
+          match fold_family_realization(head: head) {
+            Present { value: _ } => optional_present(value: captured)
+            Absent => body_lower_fold_call_beneath(node: captured)
+          }
+        Absent => body_lower_fold_call_beneath(node: captured)
+      }
+  }
+}
+
+// Whether a tower tail element is `|> <fold-family call>`: the element is sequence(operator, operand).
+fn body_lower_tail_element_pipes_into_fold(element: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: element) {
+    Absent => false
+    Present { value: e } =>
+      match body_lower_operator_token_optional(node: e.left, binary: true) {
+        Absent => false
+        Present { value: operator } =>
+          if body_lower_operator_is_pipe(operator: operator) {
+            match body_lower_fold_call_beneath(node: body_lower_strip_operator_free_levels(node: e.right)) {
+              Present { value: _ } => true
+              Absent => false
+            }
+          } else {
+            false
+          }
+      }
+  }
+}
+
+// Whether a tower tail -- empty, sequence(operator, operand), or a repeat spine
+// sequence(sequence(operator, operand), rest) -- pipes into a fold-family call anywhere along it.
+fn body_lower_tail_pipes_into_fold(tail: Node) -> Bool {
+  if is_empty_conj_root(n: tail) {
+    false
+  } else if body_lower_tail_element_pipes_into_fold(element: tail) {
+    true
+  } else {
+    match sugar_sequence_pair_optional(node: tail) {
+      Absent => false
+      Present { value: pair } =>
+        body_lower_tail_element_pipes_into_fold(element: pair.left) || body_lower_tail_pipes_into_fold(tail: pair.right)
+    }
+  }
+}
+
+// A TOWER THAT PIPES INTO A FOLD IS READ WHOLE, BEFORE ITS OPERANDS ARE FOLDED. The bottom-up fold
+// lowers an operator expression's children first, so the fold call on the right of `|>` would be
+// lowered on its own -- with no collection, since the pipe supplies it -- before the tower could hand
+// it the pipe's input. So such a tower is read by the raw tower reader, whose binary step
+// (body_lower_binary_apply) builds the fold encoding with the accumulated left operand as the
+// collection. Every other tower takes the ordinary bottom-up path unchanged.
+fn body_lower_tower_pipes_into_fold(node: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: body_lower_strip_operator_free_levels(node: node)) {
+    Absent => false
+    Present { value: pair } => body_lower_tail_pipes_into_fold(tail: pair.right)
+  }
+}
+
 fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRead {
   if is_empty_conj_root(n: tail) {
     OperatorExpressionRead { lowered: acc }
@@ -1510,10 +1621,9 @@ fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRea
       Present { value: pair } =>
         match body_lower_operator_token_optional(node: pair.left, binary: true) {
           Present { value: operator } =>
-            match body_lower_operator_operand(node: pair.right) {
+            match body_lower_binary_apply(acc: acc, operator: operator, right: pair.right) {
               Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
-              Accepted { value: right, diagnostics: _ } =>
-                OperatorExpressionRead { lowered: lower_binary_infix(left: acc, operator: operator, right: right) }
+              Accepted { value: applied, diagnostics: _ } => OperatorExpressionRead { lowered: applied }
             }
           Absent =>
             match sugar_sequence_pair_optional(node: pair.left) {
@@ -1522,13 +1632,10 @@ fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRea
                 match body_lower_operator_token_optional(node: element.left, binary: true) {
                   Absent => body_lower_operator_refusal(reason: ^body_lowering_reason_operator_tail_unread, at: tail)
                   Present { value: operator } =>
-                    match body_lower_operator_operand(node: element.right) {
+                    match body_lower_binary_apply(acc: acc, operator: operator, right: element.right) {
                       Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
-                      Accepted { value: right, diagnostics: _ } =>
-                        body_lower_fold_operator_tail(
-                          acc: lower_binary_infix(left: acc, operator: operator, right: right),
-                          tail: pair.right
-                        )
+                      Accepted { value: applied, diagnostics: _ } =>
+                        body_lower_fold_operator_tail(acc: applied, tail: pair.right)
                     }
                 }
             }
@@ -2690,9 +2797,17 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
         if (emitted == ^dag_surface_arrow_lambda) || (emitted == ^dag_surface_fn_literal) {
           body_lower_function_value_in_fold(node: node)
         } else {
-          match body_lower_fold_family_call_first(node: node) {
-            Present { value: lowered } => lowered
-            Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
+          if (emitted == ^dag_surface_binary_expr) && body_lower_tower_pipes_into_fold(node: node) {
+            match body_lower_read_operator_expression(node: node) {
+              OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
+              OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
+              OperatorExpressionAbsent => body_lower_fold_dispatch(node: node, emitted: emitted)
+            }
+          } else {
+            match body_lower_fold_family_call_first(node: node) {
+              Present { value: lowered } => lowered
+              Absent => body_lower_fold_dispatch(node: node, emitted: emitted)
+            }
           }
         }
       Absent => body_lower_fold_identity_absent(node: node)
@@ -2727,7 +2842,13 @@ fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
 // authored reference the call carried stands in the encoding at its own occurrence. The head stays
 // the authored atom; resolve checks it (v2.compiler.resolve resolve_realized_declaration).
 fn body_lower_fold_encoding(operands: FoldCallOperands) -> Outcome<Node> {
-  bind_outcome(o: body_lower_value_read(value: operands.collection), f: fn(collection) {
+  body_lower_fold_encoding_from(operands: operands, collection: body_lower_value_read(value: operands.collection))
+}
+
+// The same assembly with the collection already lowered: a piped fold's receiver is the pipe's left
+// operand, which the operator tower has lowered before it reaches the call.
+fn body_lower_fold_encoding_from(operands: FoldCallOperands, collection: Outcome<Node>) -> Outcome<Node> {
+  bind_outcome(o: collection, f: fn(collection) {
     bind_outcome(o: body_lower_value_read(value: operands.init), f: fn(init) {
       bind_outcome(o: body_lower_function_value_in_fold(node: operands.step), f: fn(step) {
         outcome_accepted(value: fold_recurrence_encoding(operands: FoldCallOperands {

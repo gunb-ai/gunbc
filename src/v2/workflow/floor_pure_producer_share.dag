@@ -616,7 +616,7 @@ import v2.std.collection { List }
 // THE FOLD-ENCODING ROW IS THE SAME GROUND AT SEVEN SPECIMENS: v2.test.claim.fold_encoding
 // fe_outcomes drives the front end over its inline modules (the exact-shape fixture, three planted
 // drops measured by reference conservation, the canary, a user-declared fold and fold_x) and stores
-// seven Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
+// nine Bool verdicts; MQ-5's floor run 36490720680 measured each claim that paid its own front end
 // over the new-witness budget. Portable for the same reason.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front

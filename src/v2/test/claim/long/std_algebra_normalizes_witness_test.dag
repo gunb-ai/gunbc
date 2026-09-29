@@ -1,0 +1,28 @@
+module v2.test.long.std_algebra_normalizes_witness
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ONE FILE REFUSAL IN STD DROPS A WHOLE INDEX, SILENTLY. The native route refuses a file whose body
+// lowering refuses anywhere in it, and a refused file contributes no declarations. When
+// dag/std/algebra.dag refused -- its pipe folds (`xs |> fold(..)`) lowered to
+// ^fold_lowering_operand_absent before the pipe could supply their collection -- std.algebra.FreeMonoid
+// left the index, so every `[]` in every module, which lowers to that head
+// (v2.std.list_introduction list_introduction_head_path), stopped resolving. Seven modules refused at
+// resolve as a result, far from the edit (gunbc#12550 native census, base 43a2cff957 vs head 52e51e61bd).
+// This canary normalizes the live file through the production normalize (the code the native route
+// compiles) and holds only while std.algebra is admitted whole.
+//
+// It lives in test/claim/long because a full std.algebra ingest is beyond one per-PR witness's
+// budget; the per-PR control for the same class is at snippet grain, in v2.test.claim.fold_encoding
+// piped_fold_takes_the_pipe_input_as_its_collection and piped_chain_takes_the_whole_prefix_as_its_collection.
+test fn std_algebra_normalizes_whole_holds() -> Bool {
+  let path = "dag/std/algebra.dag"
+  match conservation_subject_of_text(path: path, text: filesystem_read(path: path).content).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -762,9 +762,58 @@ fn fold_recurrence_loop(encoding: Node) -> Optional<Node> {
 // refusal. A call whose collection or init is not in a declared slot is refused as
 // ^fold_lowering_operand_absent: an encoding missing either is exactly the dropped-operand Loop this
 // stage used to build, and it never builds one.
+// WHERE THE COLLECTION COMES FROM. The fold template is receiver-first, and a call supplies its
+// receiver one of two ways: as an argument in the collection slot (`fold(xs, init, step)`), or as the
+// input of a pipe (`xs |> fold(init, step)`), where the receiver is the pipe's left operand and the
+// call's remaining positional arguments sit one place earlier. Both are the same recurrence; neither
+// reads its collection from side context, and a call that carries neither refuses as
+// ^fold_lowering_operand_absent.
+type FoldCollectionSource
+  = CollectionInCall
+  | CollectionPiped { receiver: Node }
+
+fn fold_call_collection(fold_call: Node, slots: FoldSlots, source: FoldCollectionSource) -> Optional<Node> {
+  match source {
+    CollectionInCall => fold_call_slot_value(fold_call: fold_call, slot: slots.collection)
+    CollectionPiped { receiver: r } => optional_present(value: r)
+  }
+}
+
+// A piped call's positional arguments start after the receiver, so every positional slot the row
+// places after the receiver moves one place earlier; a slot with no position, or a row with no
+// receiver position, is unchanged.
+fn fold_slot_after_piped_receiver(slot: FoldSlot, receiver_position: Optional<Int>) -> FoldSlot {
+  match receiver_position {
+    Absent => slot
+    Present { value: r } =>
+      match slot.position {
+        Absent => slot
+        Present { value: k } =>
+          if k > r {
+            FoldSlot { name: slot.name, position: optional_present(value: k - 1) }
+          } else {
+            slot
+          }
+      }
+  }
+}
+
+fn fold_slots_for_source(slots: FoldSlots, source: FoldCollectionSource) -> FoldSlots {
+  match source {
+    CollectionInCall => slots
+    CollectionPiped { receiver: _ } =>
+      FoldSlots {
+        collection: slots.collection,
+        init: fold_slot_after_piped_receiver(slot: slots.init, receiver_position: slots.collection.position),
+        step: fold_slot_after_piped_receiver(slot: slots.step, receiver_position: slots.collection.position)
+      }
+  }
+}
+
 fn fold_call_operands_from_step(
   fold_call: Node,
   slots: FoldSlots,
+  source: FoldCollectionSource,
   body: Optional<Node>,
   carrier: Optional<Symbol>
 ) -> FoldCallLowering {
@@ -780,7 +829,7 @@ fn fold_call_operands_from_step(
               match fold_call_slot_value(fold_call: fold_call, slot: slots.step) {
                 Absent => FoldCallStepShapeInvalid { diagnostic: fold_lowering_shape_invalid_diagnostic(n: fold_call) }
                 Present { value: step } =>
-                  match fold_call_slot_value(fold_call: fold_call, slot: slots.collection) {
+                  match fold_call_collection(fold_call: fold_call, slots: slots, source: source) {
                     Absent => FoldCallOperandAbsent { diagnostic: fold_lowering_operand_absent_diagnostic(n: fold_call) }
                     Present { value: collection } =>
                       match fold_call_slot_value(fold_call: fold_call, slot: slots.init) {
@@ -822,6 +871,15 @@ type FoldCallLowering
 // caller may treat as a counted frontier state rather than a refusal, and the sole caller doing so
 // is v2.compiler.body_lowering_fold body_lower_try_fold_loop.
 fn fold_call_lowering(fold_call: Node) -> FoldCallLowering {
+  fold_call_lowering_from(fold_call: fold_call, source: CollectionInCall)
+}
+
+// `receiver |> fold(..)`: the same lowering, with the collection supplied by the pipe.
+fn fold_call_lowering_piped(fold_call: Node, receiver: Node) -> FoldCallLowering {
+  fold_call_lowering_from(fold_call: fold_call, source: CollectionPiped { receiver: receiver })
+}
+
+fn fold_call_lowering_from(fold_call: Node, source: FoldCollectionSource) -> FoldCallLowering {
   match fold_call_head_symbol(fold_call: fold_call) {
     Absent =>
       FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
@@ -830,12 +888,16 @@ fn fold_call_lowering(fold_call: Node) -> FoldCallLowering {
         Absent =>
           FoldCallNotAFold { diagnostic: fold_lowering_not_a_fold_call_diagnostic(n: fold_call) }
         Present { value: realization } =>
-          fold_call_lowering_of(fold_call: fold_call, slots: fold_realization_slots(r: realization))
+          fold_call_lowering_of(
+            fold_call: fold_call,
+            slots: fold_slots_for_source(slots: fold_realization_slots(r: realization), source: source),
+            source: source
+          )
       }
   }
 }
 
-fn fold_call_lowering_of(fold_call: Node, slots: FoldSlots) -> FoldCallLowering {
+fn fold_call_lowering_of(fold_call: Node, slots: FoldSlots, source: FoldCollectionSource) -> FoldCallLowering {
   match fold_call_step_form(fold_call: fold_call, slots: slots) {
     StepByName =>
       FoldCallStepFormUnresolved {
@@ -845,6 +907,7 @@ fn fold_call_lowering_of(fold_call: Node, slots: FoldSlots) -> FoldCallLowering 
       fold_call_operands_from_step(
         fold_call: fold_call,
         slots: slots,
+        source: source,
         body: step_fn_iteration_body(fn_literal: fn_literal),
         carrier: step_fn_carrier_binder_symbol(fn_literal: fn_literal)
       )
@@ -852,6 +915,7 @@ fn fold_call_lowering_of(fold_call: Node, slots: FoldSlots) -> FoldCallLowering 
       fold_call_operands_from_step(
         fold_call: fold_call,
         slots: slots,
+        source: source,
         body: arrow_lambda_iteration_body(lambda: lambda),
         carrier: arrow_lambda_carrier_binder_symbol(lambda: lambda)
       )
@@ -859,9 +923,8 @@ fn fold_call_lowering_of(fold_call: Node, slots: FoldSlots) -> FoldCallLowering 
 }
 
 // THE ACCUMULATOR BINDER IS A FACT OF THE STEP ALONE: the step's first binder, wherever the
-// collection comes from. The accumulator-copy lens reads it here, so a piped fold (`xs |> fold(..)`),
-// whose collection is not in the call and which therefore does not lower (see
-// fold_lowering_operand_absent), keeps its carrier. It is Absent exactly where fold_call_lowering yields no
+// collection comes from. The accumulator-copy lens reads it on the raw call, where a piped fold's
+// collection is not in the call, so it asks the step alone. It is Absent exactly where fold_call_lowering yields no
 // step (not a fold, a step by name, a malformed step).
 fn fold_call_step_carrier(fold_call: Node) -> Optional<Symbol> {
   match fold_call_head_symbol(fold_call: fold_call) {
