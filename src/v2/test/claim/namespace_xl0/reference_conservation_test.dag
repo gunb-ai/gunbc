@@ -218,12 +218,16 @@ test fn the_infix_right_operand_is_conserved_holds() -> Bool {
   reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
 }
 
-// ---- a measured drop outside the brief: the named-argument label ------------------------------
+// ---- the named-argument label: conserved (was a declared drop) ----------------------------------
 
-// Found by this check, not assumed: a call lowers its arguments positionally, so the LABEL of a
-// named argument (`probe:` below) reaches no node and no edge of the normalized tree. The label
-// names the callee's parameter, so it is a reference the resolver can no longer check. Stated as
-// today's measurement; it reds when lowering carries the label.
+// The label of a named argument (`rc_label:` below) names the callee's parameter, so it is a
+// reference. It used to reach no node and no edge of the normalized tree -- a call lowered its
+// arguments positionally -- and was the declared drop KnownDropShape NamedArgumentLabel. MQ-1
+// (v2.compiler.body_lowering_fold body_lower_call_arg_edge) carries it as the application's Named
+// edge, the edge the Arrow domain already keys its binders by, so the drop is retired and this is
+// restated as a CONSERVED control (DESIGN section 4b(4)): the callee, the label and the value all
+// reach the lowered tree, and nothing is dropped. MUTATION RECEIPT: lowering the named actual as a
+// Positional edge reds it with rc_label dropped.
 data named_argument_label_source: String = "module v2.test.reference_conservation_label\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
 
 fn named_argument_label_subject() -> ReferenceConservationSubject {
@@ -234,9 +238,12 @@ fn named_argument_label_report() -> ReferenceConservationReport {
   conservation_report_of(subject: named_argument_label_subject())
 }
 
-test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
+test fn a_named_argument_label_is_conserved_holds() -> Bool {
   let r = named_argument_label_report()
-  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_label) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_label) == 0
+    && report_drop_count(report: r, wanted: ^rc_callee) == 0
+    && length(xs: r.dropped) == 0
 }
 
 // ---- a list-literal call argument: conserved (was a module-wide refusal) ---------------------
@@ -247,9 +254,8 @@ test fn a_named_argument_label_is_reported_dropped_holds() -> Bool {
 // literal as its free-monoid construction with every element whole, so this is restated as a
 // conserved control (DESIGN section 4b(4)): both elements, and the callee, reach the lowered tree.
 // A producer that kept only the first element drops `rc_list_second` and reds this. The argument
-// is POSITIONAL on purpose: a named argument's label is a separate, already-rostered drop
-// (a_named_argument_label_is_reported_dropped_holds below), and carrying it here would make this
-// control red for a reason that is not the list.
+// is POSITIONAL on purpose, so this control reds only for the list; the named-argument label has its
+// own conserved control (a_named_argument_label_is_conserved_holds).
 data list_literal_argument_source: String = "module v2.test.reference_conservation_list_arg\n\nfn rc_list_callee(xs: List<Int>) -> Int { 1 }\n\ndata rc_elsewhere: Int = 3\n\ndata rc_list_second: Int = 4\n\nfn rc_list_caller() -> Int { rc_list_callee([rc_elsewhere, rc_list_second]) }\n"
 
 fn list_literal_argument_subject() -> ReferenceConservationSubject {
@@ -270,19 +276,16 @@ test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
 
 // ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
 
-// `rc_rep` is spelled three times in the declaration `rc_repeat`: as its parameter binder (rebuilt
-// into an edge label, so LocusErased against the pool's one label), as the named argument's LABEL at
-// the call (dropped: a call lowers its arguments positionally -- the rostered NamedArgumentLabel
-// shape), and as the argument's VALUE (its occurrence survives). The pool is declaration-scoped and
-// holds one copy, which the binder consumes, so exactly ONE DroppedReference remains -- neither zero
-// (a pool that failed to consume) nor two (a pool that was never read). `rc_callee`'s own `rc_rep`
-// binder and body use sit in a different declaration and cannot feed this pool.
-// RE-PINNED after gunbc#12221: the previous fixture dropped its repeated copy as the second of two
-// block statements (`{ rc_rep \n rc_rep }`), and #12221 made a statement followed by another refuse
-// located, so it no longer dropped one copy (red on origin/main 53828ae4b2). The multiset property is
-// the subject, not the statement shape, so the fixture now drops through the one shape still
-// rostered as a known drop.
-data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_rep: Bool) -> Bool { rc_rep }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_callee(rc_rep: rc_rep) }\n"
+// `rc_rep` is spelled four times in the declaration `rc_repeat`: as its parameter binder (rebuilt
+// into an edge label, so LocusErased against the pool's one label), as the let's binder (dropped: the
+// rostered StatementLetBinder shape), and as the let's value and the body's use (both survive). The pool is declaration-scoped and holds one copy, which the binder consumes,
+// so exactly ONE DroppedReference remains -- neither zero (a pool that failed to consume) nor two (a
+// pool that was never read).
+// RE-PINNED twice. After gunbc#12221 the fixture's second block statement no longer dropped; it then
+// dropped through the named-argument label, and MQ-1 (gunbc#12382) CONSERVED that label, retiring
+// KnownDropShape NamedArgumentLabel. The multiset property is the subject, not the drop shape, so the
+// fixture drops through a shape still rostered as a known drop.
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nfn rc_repeat(rc_rep: Int) -> Int {\n  let rc_rep = rc_rep\n  rc_rep\n}\n"
 
 fn repeated_spelling_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)

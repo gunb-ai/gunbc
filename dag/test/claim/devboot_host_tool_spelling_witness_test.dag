@@ -112,6 +112,6 @@ test fn the_rustup_home_name_comes_from_rustups_own_authority() -> Bool {
 // caller picked the one for an unobserved host.
 test fn devboot_cites_the_path_resolved_form_of_both_tools() -> Bool {
   (mkdir_path_resolved_program as String) == "mkdir"
-    && (env_path_resolved_program as String) == "env"
+    && (env_path_resolved_program().invocation as String) == "env"
     && (mkdir_path_resolved_program as String) != (mkdir_binary_path as String)
 }
