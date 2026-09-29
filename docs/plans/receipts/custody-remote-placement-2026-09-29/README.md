@@ -17,3 +17,9 @@ Local witness execution over 1,842 unchanged closure modules was OOM-killed unde
 6 GiB/no swap before producing a verdict. This is not a pass. CI qualification and
 canonical workflow regeneration remain required. No ceiling was increased and
 this scheduling repair has not been deployed.
+
+The same run also exceeded 6 GiB with MALLOC_ARENA_MAX=2. Removing the unused
+ledger-row-coherence import from ci_spec reduced the copied witness closure from
+1,842 to 1,265 unchanged modules, but both that reduced witness and the canonical
+workflow emitter still exceeded 6 GiB. No local pass or emitted workflow is claimed.
+CI must qualify the source and generate its workflow; no ceiling was increased.
