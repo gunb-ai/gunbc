@@ -4642,7 +4642,8 @@ fn structured_application_site_type_mismatch(
 data kernel_container_carrier_module: String = "std.algebra"
 
 // The declaration a formal type denotes: a kernel container spelling's std.algebra carrier, or the
-// declaration its transparent alias chain ends at (bounded; no identity at the ceiling).
+// declaration its alias resolves to (application_type_name_declaration, the same peel the
+// application-site identity uses).
 fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope) -> DeclarationRef? {
   let source_indices = scope.type_env.source_indices
   let name = authored_name_at(source_indices: source_indices, node: formal_peeled)
@@ -4652,22 +4653,8 @@ fn structured_formal_carrier_declaration(formal_peeled: Node, scope: InferScope)
       Absent => none
     }
   } else {
-    structured_alias_chain_declaration(name: name, scope: scope, depth: 0)
-  }
-}
-
-fn structured_alias_chain_declaration(name: String, scope: InferScope, depth: Int) -> DeclarationRef? {
-  if depth >= 16 || name == "" { return none }
-  match lookup_type_by_name(env: scope.type_env, name: name) {
-    Present { value: decl } =>
-      let peeled = peel_nominal_alias_identity(n: decl, env: scope.type_env, module_name: scope.module_name)
-      let peeled_name = authored_name_at(source_indices: scope.type_env.source_indices, node: peeled)
-      if peeled_name == name || peeled_name == "" {
-        declaration_ref_of_type_node(rt: decl, source_indices: scope.type_env.source_indices, env: scope.type_env)
-      } else {
-        structured_alias_chain_declaration(name: peeled_name, scope: scope, depth: depth + 1)
-      }
-    Absent => none
+    application_type_name_declaration(
+      type_name: name, type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
   }
 }
 
