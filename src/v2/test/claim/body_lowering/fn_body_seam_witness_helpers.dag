@@ -96,7 +96,15 @@ fn fn_body_seam_add_fn_body_shell() -> Optional<Node> {
 fn fn_body_seam_tree_has_transform(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Transform } => true
-    _ =>
+    TypeNode { connective: _ } =>
+      fold(root.children, init: false, f: fn(found, e) {
+        if found {
+          true
+        } else {
+          fn_body_seam_tree_has_transform(root: e.target)
+        }
+      })
+    ComputationNode { behavior: _ } =>
       fold(root.children, init: false, f: fn(found, e) {
         if found {
           true
@@ -159,7 +167,8 @@ fn wave1_gate1_a1_fn_body_seam_normalize_still_yields_arrow_transform_holds() ->
             Accepted { value: body, diagnostics: _ } =>
               match body.kind {
                 ComputationNode { behavior: Transform } => true
-                _ => false
+                TypeNode { connective: _ } => false
+                ComputationNode { behavior: _ } => false
               }
             Rejected { diagnostics: _ } => false
           }

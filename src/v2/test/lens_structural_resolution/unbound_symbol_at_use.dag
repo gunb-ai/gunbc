@@ -91,7 +91,7 @@ fn unbound_symbol_at_use_claim_holds() -> Bool {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unbound_symbol_at_use_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

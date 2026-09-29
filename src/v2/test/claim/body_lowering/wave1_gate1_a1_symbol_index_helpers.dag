@@ -16,7 +16,14 @@ fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
           Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
         }
       })
-    _ =>
+    TypeNode { connective: _ } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+        }
+      })
+    ComputationNode { behavior: _ } =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
@@ -105,7 +112,7 @@ fn wave1_gate1_a1_symbol_index_frontend_parity_holds() -> Bool {
                   }
               }
           }
-        _ => false
+        ParseSubtreeAbsent => false
       }
   }
 }

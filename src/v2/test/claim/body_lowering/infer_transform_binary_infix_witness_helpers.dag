@@ -68,7 +68,8 @@ fn infer_transform_witness_add_body(arrow: Node) -> Optional<Node> {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Transform } => Present { value: body }
-        _ => Absent
+        TypeNode { connective: _ } => Absent
+        ComputationNode { behavior: _ } => Absent
       }
     Rejected { diagnostics: _ } => Absent
   }

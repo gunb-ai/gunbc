@@ -79,7 +79,7 @@ fn unresolved_infer_witness_claim_holds() -> Bool {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unresolved_infer_witness_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

@@ -79,7 +79,7 @@ fn facts_lookup_miss_claim_holds() -> Bool {
     Holds { value: actual } =>
       fact_eq(a: actual, b: facts_lookup_miss_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 
