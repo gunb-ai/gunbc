@@ -8,7 +8,7 @@ import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, mac_sign, MacVerification, mac_verification_from_implementation }
 import gunbc.durable_cas_file_store { CasGenerationRead, GenerationPresent, GenerationAbsent }
 import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied, ExecutionObligation }
-import gunbc.auth.approval_capability { ApprovalCapability, ApprovalCapabilityClaims, parse_approval_capability_signing_input, approval_capability_signing_input }
+import gunbc.auth.approval_capability { ApprovalCapability, ApprovalCapabilityClaims, parse_approval_capability_signing_input, approval_capability_signing_input, issue_capability, CapabilityIssued, CapabilityIssuanceRefused }
 import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided,
   ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, stored_request_json,
@@ -106,6 +106,16 @@ fn sr_receipt() -> ApprovalCapability {
 // through.
 fn sr_mac_ok(c: ApprovalCapabilityClaims) -> MacVerification {
   mac_verification_from_implementation(key_id: approval_store_receipt_mac_key_id, suite: HmacSha256, message: approval_capability_signing_input(c: c), implementation_verified: true)
+}
+
+// THE PINNED RECEIPT IS WHAT ISSUANCE PRODUCES: the envelope's own issuance over the same claims and
+// key yields exactly the pinned tag, so the verification claims below are about a receipt the mint
+// really emits -- the link between the two halves of one signing input.
+test fn issuance_over_the_receipt_claims_yields_the_pinned_tag() -> Bool {
+  match issue_capability(claims: sr_claims(), key: sr_receipt_key()) {
+    CapabilityIssued { capability: c } => (c.tag_b64url as String) == (sr_receipt().tag_b64url as String)
+    CapabilityIssuanceRefused { cause: _ } => false
+  }
 }
 
 // THE REAL PATH (the pairing obligation): the tag decoded from its one spelling and the MAC computed
