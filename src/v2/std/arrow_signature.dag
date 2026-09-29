@@ -1,0 +1,115 @@
+module v2.std.arrow_signature
+
+import std.algebra { Empty, list_snoc_item }
+import v2.std.anonymous_binder { anonymous_binder_mint_parameter_list }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.list_introduction { list_introduction_head_path, list_introduction_head_path_optional, lower_list_introduction }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  OrderAbsent,
+  OrderLabels,
+  OrderUnreadable,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_signature_edges_conform,
+  arrow_signature_order_label,
+  arrow_signature_order_read,
+  edge_label_of,
+  node_with_occurrence_id
+}
+import v2.std.node_query { node_positional_child_targets }
+
+// THE ONE BUILDER OF A DECLARED-ORDER EDGE: the ^arrow_signature_order_edge whose target is the
+// FreeMonoid introduction of `order`'s labels as childless Atoms. Its callers take `order` from
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list, the fold that mints the domain's edges
+// in the same pass, so the domain and its order come from one authority: the declared-signature
+// lowering (v2.compiler.body_lowering_fold body_lower_fn_decl_arrow) and the fixture constructor
+// (v2.extdeps.languages.dag dag_arrow_with_body_node).
+fn signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
+  Edge {
+    label: Named { name: ^arrow_signature_order_edge },
+    target: lower_list_introduction(
+      elements: fold(order, init: Empty, f: fn(acc, sym) {
+        list_snoc_item(xs: acc, item: node_with_occurrence_id(
+          kind: TypeNode { connective: Atom { identity: sym } },
+          children: [],
+          occurrence_id: source.occurrence_id
+        ))
+      }),
+      source: source
+    )
+  }
+}
+
+// A DECLARED SIGNATURE'S DOMAIN AND ORDER, FROM ONE MINT: the authored parameter edges go through
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list once, and both the domain Conj and the
+// ^arrow_signature_order_edge are built from that one result. The constructor for any Arrow built
+// outside the declared-signature lowering (fixtures, supplied callees), so a domain and its order
+// cannot disagree; an Arrow that deliberately carries a malformed order is built by hand and says so.
+type DeclaredSignatureEdges {
+  domain: Edge
+  order: Edge
+}
+
+fn declared_signature(params: List<Edge>, source: Node) -> DeclaredSignatureEdges {
+  let minted = anonymous_binder_mint_parameter_list(edges: params)
+  DeclaredSignatureEdges {
+    domain: Edge {
+      label: Positional,
+      target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: minted.edges, occurrence_id: source.occurrence_id)
+    },
+    order: signature_order_edge(order: minted.order, source: source)
+  }
+}
+
+// THE ONE READER OF DECLARED PARAMETER ORDER, and the only thing positional binding may read it from.
+// An Arrow built from a declared signature carries one ^arrow_signature_order_edge whose target is a
+// FreeMonoid introduction of its parameter labels (signature_order_edge). ArrowParameterOrderAbsent is not a fallback to label order: the
+// domain is a Conj sorted by label, so its stored sequence is not the declared one, and a binder
+// that finds no order edge refuses (v2.compiler.infer infer_application_formals,
+// v2.compiler.eval eval_bind_arrow_params).
+type ArrowParameterOrder
+  = ArrowParameterOrderDeclared { labels: List<Symbol> }
+  | ArrowParameterOrderAbsent
+  | ArrowParameterOrderMalformed
+
+fn arrow_declared_parameter_order(arrow: Node) -> ArrowParameterOrder {
+  if !arrow_signature_edges_conform(children: arrow.children) {
+    ArrowParameterOrderMalformed
+  } else {
+    match arrow_signature_order_read(children: arrow.children) {
+      OrderAbsent => ArrowParameterOrderAbsent
+      OrderUnreadable => ArrowParameterOrderMalformed
+      OrderLabels { labels: labels } =>
+        if arrow_signature_order_head_is_list_introduction(arrow: arrow) {
+          ArrowParameterOrderDeclared { labels: labels }
+        } else {
+          ArrowParameterOrderMalformed
+        }
+    }
+  }
+}
+
+// The one fact v2.std.node cannot check: the order list's head is the FreeMonoid introduction.
+fn arrow_signature_order_head_is_list_introduction(arrow: Node) -> Bool {
+  fold(arrow.children, init: false, f: fn(acc, e) {
+    if (edge_label_of(e: e) == arrow_signature_order_label) {
+      match list_at_optional(xs: node_positional_child_targets(node: e.target), index: 0) {
+        Present { value: head } =>
+          match list_introduction_head_path_optional(head: head) {
+            Present { value: path } => path == list_introduction_head_path()
+            Absent => false
+          }
+        Absent => false
+      }
+    } else {
+      acc
+    }
+  })
+}

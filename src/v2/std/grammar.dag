@@ -1897,6 +1897,24 @@ fn formal_production_for_lhs_exact(
   )
 }
 
+// SELECT AND DERIVE FROM ONE RESOLUTION. The row for `lhs` over `emitted` needs the node resolved
+// once: that resolution selects the production (resolution_production_for_lhs_exact) and carries the
+// slots derivation reads. Selecting with formal_production_for_lhs_exact and then deriving with
+// derive_grammar_relation_row_node resolved the same program twice -- one demand, two productions of
+// its answer (DESIGN §2). derive_grammar_relation_row_node stays for a production chosen by its
+// caller rather than selected here.
+fn derive_grammar_relation_row_for_lhs(
+  productions: List<FormalProduction>,
+  lhs: Symbol,
+  emitted: Node
+) -> Witness<Node> {
+  let resolution = resolve_emitted_productions_asked(productions: productions, asked: [lhs], emitted: emitted)
+  match resolution_production_for_lhs_exact(resolution: resolution, lhs: lhs) {
+    Holds { value: production } => derive_grammar_relation_row_node_resolved(production: production, resolution: resolution)
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
 type DeriveGrammarRelationTokensProgress {
   edges: List<Edge>
   conj_index: Int

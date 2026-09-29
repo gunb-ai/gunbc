@@ -56,10 +56,9 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.node_query { find_named_child }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
@@ -528,19 +527,7 @@ fn sql_fold_column_list_uses_recursive_list_production_witness(
 
 fn sql_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
   let productions = sql_fold_formal_productions()
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn sql_fold_translation_rules_node_for_emitted(
