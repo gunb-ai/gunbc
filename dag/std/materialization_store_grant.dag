@@ -47,18 +47,18 @@ import extdeps.freedesktop.xdg_base_directory { XdgCacheHome, xdg_cache_path }
 // this arm means what XDG means by the cache home -- "user-specific non-essential data" kept across
 // runs until the user removes it -- so the claim is scoped to that user's environment: the store
 // outlives the run and is not released by frame teardown, and the user (or a tmpfs) may remove it at
-// any time. Removal costs entries, never correctness: an open reads the store's identity marker
-// first (extdeps.realization.materialization_store_local), so a removed or replaced directory is
-// never served from as though it were this store. DurableHostVolumeRoot is unchanged and stays the
+// any time. Removal costs entries, never correctness, and what makes that true is OBJECT-LEVEL
+// PREIMAGE VERIFICATION, not the directory: an entry is served only when its object's stored
+// evaluation preimage equals the one the request derives (std.materialization_object
+// store_lookup_decide_present, through std.materialization_provider provider_serve_persisted, which
+// refuses a mismatch; executed by test.claim.materialization_store_witness
+// store_hit_requires_evaluation_preimage). So a removed store yields misses, and an object that names
+// a different evaluation is refused however it reached the directory. (Until U3-B no persistent hit
+// is served at all: operator ruling 2026-09-29 on spec gunbc#12581 Q2, option (ii).) The store's
+// identity marker is not that guarantee: extdeps.realization.materialization_store_local
+// store_marker_recognized accepts any instance label under a matching durability line, and this arm
+// and DurableHostVolumeRoot write the same line. DurableHostVolumeRoot is unchanged and stays the
 // fleet runner's root.
-//
-// DECLARED FRONTIER FOR UserCacheRoot (DESIGN section 3c): no production path constructs one yet.
-// Its consumers today are this module's projections (path, durability, envelope, admission), executed
-// by test.claim.materialization_store_grant_witness, and gunbc.materialization_store_capacity,
-// executed by test.claim.materialization_store_capacity_witness. The production constructor is M1.c's store
-// root (landing unit L8: the route root mints the XdgCacheHome from the process environment and
-// opens the per-user store), and the commit that sizes it arrives in landing unit L5b. TRIGGER: L8's
-// route root opens a UserCacheRoot.
 //
 // DECLARED FRONTIER, stated so the grant is not read as the whole boundary: this module grants the
 // guest-side PATH. Attaching the gunbc-owned host volume as a Firecracker drive and mounting it at
@@ -73,6 +73,25 @@ import extdeps.freedesktop.xdg_base_directory { XdgCacheHome, xdg_cache_path }
 // teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
 // retention and eviction the provider machinery owns (std.artifact_store accounting under the
 // provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade.
+//
+// DECLARED FRONTIER FOR UserCacheRoot (DESIGN section 3c): no production path constructs one yet.
+// Its consumers today are this module's projections (path, durability, envelope, admission), executed
+// by test.claim.materialization_store_grant_witness, and gunbc.materialization_store_capacity,
+// executed by test.claim.materialization_store_capacity_witness. The production constructor is M1.c's
+// store root (landing unit L8: the route root mints the XdgCacheHome from the process environment and
+// opens the per-user store), and the commit that sizes it arrives in landing unit L5b.
+// TRIGGER: L8's route root opens a UserCacheRoot.
+//
+// AN L5b OBLIGATION THIS ARM CREATES: ONE DIRECTORY CAN ANSWER AS TWO ROOTS. XDG_CACHE_HOME=/var/lib
+// makes a UserCacheRoot whose store path is exactly materialization_store_durable_root_path, the
+// fleet root -- one directory under two ceilings (2 GiB for this arm, StoreCeilingUndeclared for
+// DurableHostVolumeRoot in gunbc.materialization_store_capacity), and the marker cannot tell them
+// apart (above). The open and first-use initialization that must refuse it are L5b's
+// (extdeps.realization.materialization_store_local), and either fix closes it: carry the root ARM
+// (user cache or host volume) in the store marker, so an open of one arm refuses a store the other
+// initialized; or refuse a UserCacheRoot whose store path equals, contains or lies inside
+// materialization_store_durable_root_path. TRIGGER: L5b extends local_store_open with first-use
+// initialization (spec section 7.2).
 
 type MaterializationStoreRoot
   = DurableHostVolumeRoot

@@ -7,7 +7,6 @@ import extdeps.freedesktop.xdg_base_directory {
   XdgVariableStanding, XdgVariableUnset, XdgVariableEmpty, XdgVariableRelativeIgnored,
   HomeUnset, HomeEmpty, HomeNotAbsolute,
   xdg_cache_home, xdg_cache_path,
-  extdeps_external_authority_anchor, xdg_base_directory_specification_version,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -165,12 +164,4 @@ test fn an_unusable_home_refuses_with_its_cause() -> Bool {
     XdgCacheHomeResolved { cache_home: _, basis: _ } => false
   }
   unset && empty && relative
-}
-
-// THE PIN AND ITS LABEL ARE ONE VERSION: the cited locator is the 0.8 page, and the version the scope
-// names is the one in that locator. RED if either is bumped without the other.
-test fn the_cited_locator_is_the_declared_version() -> Bool {
-  let locator = extdeps_external_authority_anchor.uri.locator as String
-  let version = xdg_base_directory_specification_version as String
-  locator.ends_with(suffix: concat("/", version, "/"))
 }

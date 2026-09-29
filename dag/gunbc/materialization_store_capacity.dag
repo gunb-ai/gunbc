@@ -2,6 +2,7 @@ module gunbc.materialization_store_capacity
 
 import std.types { String }
 import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_store_grant {
   MaterializationStoreRoot,
   DurableHostVolumeRoot,
@@ -23,10 +24,13 @@ import std.materialization_store_grant {
 // spell the wrong name.
 //
 // THE VALUE PER ROOT, and the one root that has none.
-//   UserCacheRoot         2 GiB initially: about 170 compilers at the ~12.4 MB executable U0
-//                         measured. An operator policy value, adjusted from the census line each
-//                         commit prints (spec section 7.2) -- that line, not this comment, is the
-//                         instrument, so no measured occupancy is transcribed here.
+//   UserCacheRoot         2 GiB initially, the operator's policy value (spec section 9.1 Q11,
+//                         accepted 2026-09-29). What it holds in compilers is not restated here:
+//                         the per-compiler size it was chosen against is spec gunbc#12581's U0
+//                         measurement, and the instrument that re-derives it is the census line each
+//                         commit prints (spec section 7.2: entries, bytes, ceiling, evicted), which
+//                         lands with the commit in landing unit L5b. The value is adjusted from that
+//                         line.
 //   WitnessScratchRoot    the fixture's own ceiling field, so a witness can drive eviction under a
 //                         ceiling it chose without a second ceiling authority existing for tests.
 //   DurableHostVolumeRoot NO CEILING IS DECLARED, and the answer is StoreCeilingUndeclared rather
@@ -38,15 +42,12 @@ import std.materialization_store_grant {
 //                         `materialization_store_byte_ceiling(root) -> StoreCeiling`, which names
 //                         only the user-cache and witness roots.
 //
-// StoreCeiling is sole_constructor: no consumer can mint a ceiling this module did not answer.
-//
-// DECLARED FRONTIER (DESIGN section 3c). Today's consumer is test.claim.materialization_store_capacity_witness,
-// which executes every arm. The production consumers land in M1.c landing unit L5b -- the commit
-// (census, then std.artifact_store artifact_store_from_occupancy over this ceiling, then one
-// store_put) and the local store catalog's retention row, whose RuntimeDerivedLimit names this
-// function as its authority -- and in L8, whose store root is a UserCacheRoot. TRIGGER: L5b's
-// local_store_commit calls materialization_store_byte_ceiling.
-
+// StoreCeiling is sole_constructor: no consumer can mint a ceiling this module did not answer, and
+// std.artifact_store store_over_provider_resolved takes the ceiling ONLY as a StoreCeiling, so a store
+// built through it is sized by a number this module answered for some root. The one root whose
+// ceiling is a caller's choice is WitnessScratchRoot, by design, and its store is admitted only under
+// the /tmp/gunbc_* scratch grant (std.materialization_store_grant). Which root's ceiling sizes which
+// store is joined by the caller: the commit derives both from the one root value it opened.
 type StoreCeiling sole_constructor {
   apparent_file_bytes: ByteSize
 }
@@ -57,6 +58,30 @@ type StoreCeilingResolution
 
 data user_cache_root_byte_ceiling: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
 
+// THE AUTHORITY A PROVIDER NAMES WHEN ITS BYTE CEILING IS THIS MODULE'S: a retention row declaring
+// RuntimeDerivedLimit { authority: materialization_store_byte_ceiling_authority } says its number is
+// computed here, and std.artifact_store store_over_provider_resolved admits a StoreCeiling only for a
+// provider that names exactly this reference. One reference, so the catalog row and the store's
+// check cannot spell the authority two ways.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Consumers today: std.artifact_store store_from_limit's
+// resolved arm, executed by test.claim.artifact_store_witness. The production consumer is the local
+// store catalog's retention row (M1.c landing unit L5b). TRIGGER: L5b's catalog retention row names
+// materialization_store_byte_ceiling_authority.
+data materialization_store_byte_ceiling_authority: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.materialization_store_capacity",
+  decl_name: "materialization_store_byte_ceiling",
+  field: WholeDeclaration
+}
+
+// DECLARED FRONTIER (DESIGN section 3c). Today's consumers are
+// test.claim.materialization_store_capacity_witness, which executes every arm, and
+// test.claim.artifact_store_witness, which sizes a store through std.artifact_store
+// store_over_provider_resolved with the ceiling this answers. The production consumers land in M1.c
+// landing unit L5b -- the commit resolves the ceiling of the root it opened, builds the store through
+// store_over_provider_resolved over the local store catalog's provider row, seeds it with
+// artifact_store_with_occupancy and makes one store_put -- and in L8, whose store root is a
+// UserCacheRoot. TRIGGER: L5b's local_store_commit calls materialization_store_byte_ceiling.
 fn materialization_store_byte_ceiling(root: MaterializationStoreRoot) -> StoreCeilingResolution {
   match root {
     UserCacheRoot { cache_home: _ } =>
