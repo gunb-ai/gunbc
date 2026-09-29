@@ -4933,16 +4933,8 @@ mod compiler_tests {
     fn declaration_field_reference_names_its_declaration() {
         use crate::v1_compiler_compile::SourceFile;
         let sources = vec![
-            std::rc::Rc::new(SourceFile {
-                path: "fixtures/field_identity/a.dag".to_string(),
-                content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n".to_string(),
-            }),
-            std::rc::Rc::new(SourceFile {
-                path: "fixtures/field_identity/b.dag".to_string(),
-                content:
-                    "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n"
-                        .to_string(),
-            }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/a.dag".to_string(), content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n\ntype Tree {\n  kids: List<Tree>\n}\n\nfn tree_size(t: Tree) -> Int {\n  1\n}\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/field_identity/b.dag".to_string(), content: "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n".to_string() }),
         ];
         let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
             std::rc::Rc::new(sources.into()),
@@ -4951,15 +4943,17 @@ mod compiler_tests {
             !receipt.starts_with("REFUSED"),
             "the census must compile the fixture: {receipt}"
         );
-        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {
+        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {
             receipt
                 .lines()
                 .skip(1)
                 .map(|l| l.split('\t').collect::<Vec<_>>())
-                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == authored)
+                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)
                 .map(|c| c[8].to_string())
                 .collect()
         };
+        let decl_identity =
+            |enclosing: &str, authored: &str| identity_at(enclosing, "declaration_field", authored);
         // (1) THE RED: a field naming another module's record.
         assert_eq!(
             decl_identity("Holder", "Leaf"),
@@ -4970,6 +4964,13 @@ mod compiler_tests {
         assert_eq!(
             decl_identity("Leaf", "Int"),
             vec!["Kernel:Int".to_string()],
+            "{receipt}"
+        );
+        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place
+        // rather than expanding it (is_recursive_type_for), and now records its identity there.
+        assert_eq!(
+            identity_at("tree_size", "fn_signature_param", "Tree"),
+            vec!["Declaration:fid.a::Tree".to_string()],
             "{receipt}"
         );
     }

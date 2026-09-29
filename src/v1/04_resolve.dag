@@ -764,7 +764,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     let n_is_callable = n.params |> count > 0
     let n_target_is_coproduct_container = match n.inferred { Present { value: Resolved { node: target } } => target.connective == NoConnective && target.children |> count > 0 && is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == Disj  _ => false }
     if n_is_callable || is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
-      NodeResolveResult { resolved: n, diagnostics: [] }
+      NodeResolveResult { resolved: reference_with_declaration(n: n, env: env), diagnostics: [] }
     } else {
       match lookup_type_for(env: env, node: n) {
         Present { value: resolved } =>
@@ -1248,20 +1248,27 @@ fn has_duplicate_type_param_name(names: List<String>) -> Bool {
 // declaration and is left as authored.
 fn field_inferred_with_declaration(field: Node, env: TypeEnv) -> InferredNode? {
   match field.inferred {
-    Present { value: Resolved { node: authored } } =>
-      if authored.declaration != none || is_kernel_type(name: authored_name(env: env, node: authored)) {
-        field.inferred
-      } else {
-        match lookup_type_for(env: env, node: authored) {
-          Present { value: bound } =>
-            match declaration_ref_of_type_node(rt: bound, source_indices: env.source_indices, env: env) {
-              Present { value: d } => Present { value: Resolved { node: node_with_declaration(n: authored, declaration: d) } }
-              Absent => field.inferred
-            }
-          Absent => field.inferred
-        }
-      }
+    Present { value: Resolved { node: authored } } => Present { value: Resolved { node: reference_with_declaration(n: authored, env: env) } }
     _ => field.inferred
+  }
+}
+
+// THE ONE WRITER OF Node.declaration. Resolve's own ident-keyed binding (lookup_type_for) in the
+// scope the reference is resolved in, joined through v1.compiler.infer_env
+// declaration_ref_of_type_node. It changes nothing but the identity slot. A kernel spelling names
+// no corpus declaration and is returned as authored, and so is a reference with no binding.
+fn reference_with_declaration(n: Node, env: TypeEnv) -> Node {
+  if n.declaration != none || is_kernel_type(name: authored_name(env: env, node: n)) {
+    n
+  } else {
+    match lookup_type_for(env: env, node: n) {
+      Present { value: bound } =>
+        match declaration_ref_of_type_node(rt: bound, source_indices: env.source_indices, env: env) {
+          Present { value: d } => node_with_declaration(n: n, declaration: d)
+          Absent => n
+        }
+      Absent => n
+    }
   }
 }
 
