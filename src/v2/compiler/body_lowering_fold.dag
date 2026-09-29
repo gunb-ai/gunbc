@@ -6398,87 +6398,55 @@ fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
   }
 }
 
+// THE `in` FORM'S VALUE IS A VALUE, READ BY THE ONE VALUE READER. `let NAME = value in body` reads
+// `value` (positionally before `in`, body_lower_let_in_value_capture_optional) through
+// body_lower_value_read, as every other value position does since gunbc#12299, so a value the
+// reader refuses is refused at the value with its own cause (a caret symbol refuses
+// caret_symbol_not_lowered) and a value it lowers is lowered whole (a cast lowers to the typed cast
+// node). It was read by the operand readers -- an int-literal materialiser, then
+// body_lower_arm_operand_resolved_read, which opens with a deep search for the first postfix
+// expression -- so `let x = ^s in b` resolved with the symbol silently lost and `let x = i as Int in x`
+// refused as let_navigation_refused (both measured on main by sharp-carp-336).
 fn body_lower_try_let_in_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_let_in_body_capture_optional(captured: captured) {
     Absent => outcome_accepted(value: optional_absent())
-    Present { value: _ } =>
-    match body_lower_let_in_key_binding_optional(captured: captured) {
-      Present { value: key_binding } =>
-        match body_lower_let_in_value_capture_optional(captured: captured) {
-          Present { value: value_capture } =>
-            match body_lower_let_in_body_capture_optional(captured: captured) {
-              Present { value: body_capture } =>
-                match body_lower_materialize_int_literal_operand_optional(node: value_capture) {
-                  Present { value: value } =>
-                    match body_lower_operand_ref_read(node: body_capture) {
-                      OperandRefLowered { lowered: body_ref } =>
-                        outcome_accepted(
-                          value: optional_present(
-                            value: lower_bind(
-                              key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
-                              value: value,
-                              body_binding: body_ref
-                            )
+    Present { value: body_capture } =>
+      match body_lower_let_in_key_binding_optional(captured: captured) {
+        Absent => body_lower_let_navigation_reject(captured: captured)
+        Present { value: key_binding } =>
+          match body_lower_let_in_value_capture_optional(captured: captured) {
+            Absent => body_lower_let_navigation_reject(captured: captured)
+            Present { value: value_capture } =>
+              match body_lower_value_read(value: value_capture) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: value, diagnostics: d } =>
+                  match body_lower_let_in_body_read(body_capture: body_capture) {
+                    OperandRefLowered { lowered: body_ref } =>
+                      outcome_with_diagnostics(
+                        value: optional_present(
+                          value: lower_bind(
+                            key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
+                            value: value,
+                            body_binding: body_ref
                           )
-                        )
-                      OperandRefAbsent =>
-                        match body_lower_arm_operand_resolved_read(arm: body_capture) {
-                          OperandRefLowered { lowered: body_ref } =>
-                            outcome_accepted(
-                              value: optional_present(
-                                value: lower_bind(
-                                  key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
-                                  value: value,
-                                  body_binding: body_ref
-                                )
-                              )
-                            )
-                          OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
-                          OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
-                        }
-                      OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
-                    }
-                  Absent =>
-                    match body_lower_arm_operand_resolved_read(arm: value_capture) {
-                      OperandRefLowered { lowered: value } =>
-                        match body_lower_operand_ref_read(node: body_capture) {
-                          OperandRefLowered { lowered: body_ref } =>
-                            outcome_accepted(
-                              value: optional_present(
-                                value: lower_bind(
-                                  key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
-                                  value: value,
-                                  body_binding: body_ref
-                                )
-                              )
-                            )
-                          OperandRefAbsent =>
-                            match body_lower_arm_operand_resolved_read(arm: body_capture) {
-                              OperandRefLowered { lowered: body_ref } =>
-                                outcome_accepted(
-                                  value: optional_present(
-                                    value: lower_bind(
-                                      key_binding: body_lower_type_atom_node(sym: key_binding, source: captured),
-                                      value: value,
-                                      body_binding: body_ref
-                                    )
-                                  )
-                                )
-                              OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
-                              OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
-                            }
-                          OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
-                        }
-                      OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
-                      OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
-                    }
-                }
-              Absent => body_lower_let_navigation_reject(captured: captured)
-            }
-          Absent => body_lower_let_navigation_reject(captured: captured)
-        }
-      Absent => body_lower_let_navigation_reject(captured: captured)
-    }
+                        ),
+                        diagnostics: d
+                      )
+                    OperandRefAbsent => body_lower_let_navigation_reject(captured: captured)
+                    OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The body after `in`, read as before: the operand reader, then the arm-operand reader.
+fn body_lower_let_in_body_read(body_capture: Node) -> OperandRefRead {
+  match body_lower_operand_ref_read(node: body_capture) {
+    OperandRefLowered { lowered: body_ref } => OperandRefLowered { lowered: body_ref }
+    OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
+    OperandRefAbsent => body_lower_arm_operand_resolved_read(arm: body_capture)
   }
 }
 
