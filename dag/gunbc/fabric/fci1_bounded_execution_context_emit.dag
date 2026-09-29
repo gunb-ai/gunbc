@@ -21,9 +21,12 @@ type Fci1BoundedExecutionContextEmission
 // emit, which is the tell DESIGN section 6 names, admitted as an interim only because the trigger
 // below names the capability that actually replaces it.
 //
-// dissolve-on: this runner is built as v2.extdeps.languages.bash_build nodes and emitted by
-// v2.workflow.bash_emit bash_emit_stmts (a route available today; the migration is unauthored, not
-// blocked), or as typed host_effect_apply
+// dissolve-on: the bash target grammar gains the constructs the two shell files need ([[ ]] with
+// glob matching, function definitions with local and return, $(<file) reads, and an a && b || c list
+// rendered without a subshell), so this carrier and those files can be built as
+// v2.extdeps.languages.bash_build nodes and emitted by v2.workflow.bash_emit, or as typed
+// host_effect_apply. CORRECTED 2026-09-28: #12430 classed this (c), "route available today". It is
+// (b), a missing target-language capability.
 // -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
 // tools/fabric_ci_fci1_live_instrument.sh.
 //

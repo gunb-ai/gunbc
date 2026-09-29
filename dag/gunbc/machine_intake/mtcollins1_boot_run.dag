@@ -903,14 +903,16 @@ fn workload_byte_reading_text(r: WorkloadByteReading) -> String {
 fn workload_capacity_holds(declared: ByteSize, r: WorkloadByteReading) -> Bool {
   match r {
     WorkloadBytesReported { bytes: b } => byte_size_count(b: b) >= byte_size_count(b: declared)
-    _ => false
+    WorkloadBytesUnreported => false
+    WorkloadBytesUnparsed { spelling: _ } => false
   }
 }
 
 fn workload_reading_is(declared: ByteSize, r: WorkloadByteReading) -> Bool {
   match r {
     WorkloadBytesReported { bytes: b } => byte_size_count(b: b) == byte_size_count(b: declared)
-    _ => false
+    WorkloadBytesUnreported => false
+    WorkloadBytesUnparsed { spelling: _ } => false
   }
 }
 
