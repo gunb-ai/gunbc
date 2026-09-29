@@ -88,10 +88,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.grammar {
+  derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -743,51 +742,7 @@ fn bash_fold_translation_rules_budget_for_row(row: Node) -> Int {
 }
 
 fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
-  let productions = bash_fold_formal_production_catalog
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_fold_serialize_source_for_row(
-  row: Node,
-  source_literal: Symbol,
-  production_binding: Symbol
-) -> Witness<Node> {
-  match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-    Accepted { value: tokens_root, diagnostics: _ } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            bash_named_edge(
-              name: ^serialize_source_field_source_text,
-              target: bash_word_atom(id: source_literal)
-            ),
-            bash_named_edge(
-              name: ^serialize_source_field_source_grammar,
-              target: bash_word_atom(id: production_binding)
-            ),
-            bash_named_edge(
-              name: ^grammar_relation_field_tokens,
-              target: tokens_root
-            )
-          ],
-          occurrence_id: OccurrenceSynthetic
-        }
-      }
-    Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
-  }
+  derive_grammar_relation_row_for_lhs(productions: bash_fold_formal_production_catalog, lhs: lhs, emitted: emitted)
 }
 
 fn bash_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
@@ -899,26 +854,16 @@ fn bash_fold_target_model_for_row(
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Witness<TargetModel> {
-  match bash_fold_serialize_source_for_row(
-    row: row,
-    source_literal: source_literal,
-    production_binding: production_binding
-  ) {
-    Holds { value: serialize_source } =>
-      Holds {
-        value: target_model_make_with_emit_transforms(
-          bundle: bash_target_model_bundle(
-            rules: bash_fold_translation_rules_node_for_row(row: row, rule_name: rule_name),
-            serialize_source: serialize_source
-          ),
-          lex: bash_fold_lex_carried,
-          binding_spellings: bash_fold_binding_spellings_carried,
-          token_class_emit_transforms: bash_fold_emit_transforms_carried,
-          authority_source_text: source_text,
-          runtime_row: target_emit_host_runtime_row_unconfigured
-        )
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
+  Holds {
+    value: target_model_make_with_emit_transforms(
+      bundle: bash_target_model_bundle(
+        rules: bash_fold_translation_rules_node_for_row(row: row, rule_name: rule_name)),
+      lex: bash_fold_lex_carried,
+      binding_spellings: bash_fold_binding_spellings_carried,
+      token_class_emit_transforms: bash_fold_emit_transforms_carried,
+      authority_source_text: source_text,
+      runtime_row: target_emit_host_runtime_row_unconfigured
+    )
   }
 }
 
