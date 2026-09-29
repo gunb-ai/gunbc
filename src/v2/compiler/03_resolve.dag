@@ -123,7 +123,7 @@ import v2.std.node {
   node_with_occurrence_id,
   well_formed,
 }
-import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
@@ -2137,6 +2137,15 @@ fn resolve_walk_with_namespace_policy(
       n: tree.root
     )
   } else {
-    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)))
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(
+      n: if well_formed(n: tree.root) {
+        match type_binder_first_mislabelled(root: tree.root) {
+          Present { value: at } => at
+          Absent => tree.root
+        }
+      } else {
+        tree.root
+      }
+    )))
   }
 }

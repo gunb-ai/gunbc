@@ -13679,6 +13679,8 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     PositionalEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     ArrowBodyEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    PositionalPrefixThenLabeledEdges =>
+      target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional_prefix_then_labeled)
     PositionalPlusOneNamedEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
@@ -14285,6 +14287,12 @@ fn target_project_callable_arg_in_arrow_scope(
   }
 }
 
+// A NAMED ACTUAL HAS NO SLOT THIS PROJECTION CAN NAME. It binds by name against the callee's declared
+// parameters (v2.std.arrow_signature application_binding_plan), and this projection receives
+// the callee as a bare atom with no declaration context, so it cannot recover the declared order a
+// positional target needs; it refuses, located, rather than emitting authored order (a silent
+// mis-bind) or dropping the actual. Tracked, with its trigger, as gunbc.recurring_failure_mode
+// named_actual_order_unavailable_to_target_projection.
 fn target_project_transform_callable_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -14292,6 +14300,14 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
+  if !all_edges_positional(children: body.children) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_declared_parameter_order_unavailable_to_projection,
+        node: body
+      )
+    )
+  } else {
   bind_outcome(
     o: target_transform_surface_op_atom(node: body),
     f: fn(callee) {
@@ -14337,6 +14353,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
       }
     }
   )
+  }
 }
 
 fn target_value_expr_branch_bool_gate(
@@ -15401,7 +15418,7 @@ fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
 }
 
 // A RETURNED CLOSURE'S PARAMETERS, IN DECLARED ORDER. The emitted closure is applied positionally,
-// so its parameter list is the Arrow's declared order (v2.std.compilers.body_lowering
+// so its parameter list is the Arrow's declared order (v2.std.arrow_signature
 // arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
 // Conj's stored sequence, which canonicalization sorts by label and is not the signature (#12361). Scope
 // MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
