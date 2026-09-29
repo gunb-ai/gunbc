@@ -46,6 +46,8 @@ data caret_positional_argument_source: String = "module chunk\n\nfn g(s: Symbol)
 
 data caret_let_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_value\n  s\n}\n"
 
+data caret_let_in_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_in_value in s\n}\n"
+
 data caret_whole_body_source: String = "module chunk\n\nfn f() -> Symbol {\n  ^pos_whole_body\n}\n"
 
 data caret_data_initializer_source: String = "module chunk\n\ndata d: Symbol = ^pos_data_initializer\n"
@@ -100,7 +102,7 @@ fn caret_refusal_normalize_verdict(src: String) -> CaretRefusalVerdict {
   }
 }
 
-// ONE PRODUCER, EVERY VERDICT. Each fixture's normalize is a full front-end run, so the thirteen
+// ONE PRODUCER, EVERY VERDICT. Each fixture's normalize is a full front-end run, so the fourteen
 // verdicts are computed once here and each claim reads its own field; the producer is pure over
 // this module's data and is enrolled warm in v2.workflow.floor_pure_producer_share, as
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes is.
@@ -111,6 +113,7 @@ type CaretRefusalVerdicts {
   named_argument: CaretRefusalVerdict
   positional_argument: CaretRefusalVerdict
   let_value: CaretRefusalVerdict
+  let_in_value: CaretRefusalVerdict
   whole_body: CaretRefusalVerdict
   data_initializer: CaretRefusalVerdict
   field_initializer: CaretRefusalVerdict
@@ -128,6 +131,7 @@ fn csv_verdicts() -> CaretRefusalVerdicts {
     named_argument: caret_refusal_normalize_verdict(src: caret_named_argument_source),
     positional_argument: caret_refusal_normalize_verdict(src: caret_positional_argument_source),
     let_value: caret_refusal_normalize_verdict(src: caret_let_value_source),
+    let_in_value: caret_refusal_normalize_verdict(src: caret_let_in_value_source),
     whole_body: caret_refusal_normalize_verdict(src: caret_whole_body_source),
     data_initializer: caret_refusal_normalize_verdict(src: caret_data_initializer_source),
     field_initializer: caret_refusal_normalize_verdict(src: caret_field_initializer_source),
@@ -164,6 +168,12 @@ test fn a_caret_symbol_positional_argument_refuses_at_the_caret() -> Bool {
 
 test fn a_caret_symbol_let_value_refuses_at_the_caret() -> Bool {
   refuses_at_the_caret(v: csv_verdicts().let_value)
+}
+
+// The `in` form's value was read by operand readers whose Absent became the let's navigation
+// refusal, so on main this refused body_lowering_reason_let_navigation_refused at the whole let.
+test fn a_caret_symbol_let_in_value_refuses_at_the_caret() -> Bool {
+  refuses_at_the_caret(v: csv_verdicts().let_in_value)
 }
 
 test fn a_caret_symbol_whole_body_refuses_at_the_caret() -> Bool {
