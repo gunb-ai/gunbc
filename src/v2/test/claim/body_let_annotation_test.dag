@@ -1,5 +1,6 @@
 module v2.test.claim.body_let_annotation
 
+import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty }
 import v2.std.coercion { NoTargetCandidate }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
@@ -51,30 +52,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body_lowering_reason_type_annotation_not_carried at its annotation (gunbc.rung_drop
 // typed_statement_let_refuses_until_the_bind_annotation_carrier), so (1)-(5) were red.
 
-fn bla_concrete() -> Outcome<Node> {
+fn bla_concrete() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n")
 }
 
-fn bla_generic() -> Outcome<Node> {
+fn bla_generic() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = x\n  y\n}\n")
 }
 
-fn bla_type_param_as_value() -> Outcome<Node> {
+fn bla_type_param_as_value() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = T\n  y\n}\n")
 }
 
-fn bla_value_param_as_type() -> Outcome<Node> {
+fn bla_value_param_as_type() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  let y: Q = Q\n  y\n}\n")
 }
 
 // The bound value is an Int sum, whose grounding infer DERIVES, so the check is judged rather than
 // left on the frontier. The infer outcomes below are enrolled share points, so a claim reads the
 // result and pays for none of the sum's derivation.
-fn bla_int_sum_as_int() -> Outcome<Node> {
+fn bla_int_sum_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n")
 }
 
-fn bla_int_sum_as_bool() -> Outcome<Node> {
+fn bla_int_sum_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n")
 }
 
@@ -82,11 +83,11 @@ fn bla_int_sum_as_bool() -> Outcome<Node> {
 // (dag_token_int_literal with its magnitude payload) and infer derives it as Int, so the check is
 // judged at the literal as well. Until main 980761c this was believed to sit on the
 // GroundingNotDerived frontier (the #12322 handoff); rows (5b) pin that it does not.
-fn bla_int_literal_as_int() -> Outcome<Node> {
+fn bla_int_literal_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  x\n}\n")
 }
 
-fn bla_int_literal_as_bool() -> Outcome<Node> {
+fn bla_int_literal_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = 1\n  x\n}\n")
 }
 
@@ -108,11 +109,11 @@ fn bla_atom_identity(n: Node) -> Optional<Symbol> {
 
 // The one annotation a tree carries, as its atom identity; Absent when refused, when no Bind carries
 // one, or when more than one does.
-fn bla_annotation_identity(o: Outcome<Node>) -> Optional<Symbol> {
+fn bla_annotation_identity(o: Outcome<ResolvedTree>) -> Optional<Symbol> {
   match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: root, diagnostics: _ } =>
-      match bla_annotations(n: root) {
+      match bla_annotations(n: root.root) {
         Cons { head: t, tail: Empty } => bla_atom_identity(n: t)
         _ => Absent
       }
@@ -185,7 +186,7 @@ test fn bla_value_binder_does_not_answer_the_annotation() -> Bool {
   }
 }
 
-fn bla_infers(o: Outcome<Node>) -> Outcome<Bool> {
+fn bla_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
   match o {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: root, diagnostics: _ } =>

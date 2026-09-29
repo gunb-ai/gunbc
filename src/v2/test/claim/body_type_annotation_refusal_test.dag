@@ -1,5 +1,6 @@
 module v2.test.claim.body_type_annotation_refusal
 
+import v2.compiler.resolve { ResolvedTree }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
 import v2.std.diagnostic { Accepted, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -17,11 +18,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared nowhere. (2) is the unannotated control, green before and after, so the refusal is the
 // annotation's and not the let's.
 
-fn btar_let_annotated() -> Outcome<Node> {
+fn btar_let_annotated() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Q = x\n  y\n}\n")
 }
 
-fn btar_let_plain() -> Outcome<Node> {
+fn btar_let_plain() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x\n  y\n}\n")
 }
 
@@ -51,7 +52,7 @@ fn btar_refusal_at_authored(d: NonEmptyDiagnostics, id: Symbol) -> Bool {
     }
 }
 
-fn btar_refused_at_authored_q(o: Outcome<Node>) -> Bool {
+fn btar_refused_at_authored_q(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => btar_refusal_at_authored(d: d, id: ^Q)
@@ -77,15 +78,15 @@ test fn btar_let_annotation_refuses() -> Bool {
   }
 }
 
-fn btar_fn_literal_annotated() -> Outcome<Node> {
+fn btar_fn_literal_annotated() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) -> Q { y }\n  x\n}\n")
 }
 
-fn btar_fn_literal_plain() -> Outcome<Node> {
+fn btar_fn_literal_plain() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let g = fn(y) { y }\n  x\n}\n")
 }
 
-fn btar_if_arm_fn_literal() -> Outcome<Node> {
+fn btar_if_arm_fn_literal() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Bool) -> Int { if x { fn(y) { zz } } else { 1 } }\n")
 }
 

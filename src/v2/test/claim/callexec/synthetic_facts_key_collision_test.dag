@@ -1,0 +1,138 @@
+module v2.test.claim.callexec.synthetic_facts_key_collision
+
+import v2.test.claim.callexec.declaration_reference_eval {
+  cref_bool_pair_source,
+  cref_source
+}
+import v2.compiler.infer { infer_entries_for_tree, inferred_facts_grounding_derived }
+import v2.compiler.inferred_tree { InferredFactsEntry }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.runtime { runtime_value_conj_node }
+
+// ONE FACTS KEY, TWO SUBJECTS, DISAGREEING FACTS -- and which one a consumer receives depends on scan
+// order.
+//
+// v2.compiler.inferred_tree InferredTree keys its facts by Node and Node equality is STRUCTURAL, so
+// two nodes agreeing on kind, children and occurrence identity are ONE KEY. std.occurrence_identity
+// spells "no authored occurrence" as the NULLARY constructor OccurrenceSynthetic -- one VALUE, not one
+// value per synthetic node -- so every structurally identical synthetic node collapses together. The
+// lookup is a first-match scan over the entry list (v2.compiler.infer facts_map_from_entries), and its
+// constructor checks each entry's own subject correspondence without establishing any uniqueness or
+// conflict condition ACROSS entries that compare equal.
+//
+// The claims below enumerate infer's entries for one small program and measure the consequence: more
+// than one entry carries the empty synthetic Conj as its key, and those entries DISAGREE on whether
+// grounding was derived. So one key names at least two subjects whose facts differ, and a consumer
+// asking under that key receives whichever the scan reaches first.
+//
+// BOTH DIRECTIONS ARE REACHABLE, WHICH IS WHY THIS IS A SAFETY FINDING AND NOT ONLY AN ANOMALY. The
+// refusing direction is what this lane observed: a consumer receives an UNDERIVED entry and refuses
+// with eval_rejected_grounding_not_derived at a node that is not its subject, which converts a
+// fail-closed lookup miss into a grounding judgment no producer intended. The opposite direction is
+// not hypothetical here, and that is what the second claim establishes: a DERIVED entry exists under
+// the same key, so a subject whose grounding was never established can receive one that was. That is
+// a fabricated plausible output rather than a refusal (DESIGN section 5), and nothing in the current
+// relation makes it unreachable -- which of the two a given consumer gets is decided by entry order.
+//
+// WHAT THIS FILE DELIBERATELY DOES NOT CLAIM. It does not assert where the node a consumer queried
+// came from. Two earlier readings of this refusal each inferred provenance from `Node == Node` -- first
+// that the node lay inside the callee's encoded declaring path, then that it was built by the runtime
+// value constructor -- and BOTH are withdrawn, for the same reason: an empty synthetic Conj compares
+// equal to many unrelated nodes, so membership in any node set, and equality with any constructor's
+// result, are both uninformative about origin. Equality is exactly the relation under suspicion here,
+// so it cannot be the instrument that establishes provenance. These claims therefore assert only what
+// enumeration shows: that the key is shared and the facts under it conflict.
+//
+// The traversal path was measured separately, with a temporary diagnostic that gave each grounding
+// demand site in v2.compiler.eval its own reason symbol; that instrument is not retained, and its
+// result is recorded in this change's commit message rather than asserted here, because asserting it
+// would require keeping the instrumentation in the evaluator.
+fn sfk_entries(o: Outcome<ResolvedTree>) -> Optional<List<InferredFactsEntry>> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_entries_for_tree(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: entries, diagnostics: _ } => optional_present(value: entries)
+      }
+  }
+}
+
+fn sfk_key() -> Node {
+  runtime_value_conj_node(children: Empty)
+}
+
+fn sfk_count_under_key(o: Outcome<ResolvedTree>) -> Int {
+  match sfk_entries(o: o) {
+    Absent => 0
+    Present { value: entries } =>
+      fold_list(
+        xs: entries,
+        empty: 0,
+        cons: fn(rest, entry) { if entry.node == sfk_key() { rest + 1 } else { rest } }
+      )
+  }
+}
+
+fn sfk_count_derived_under_key(o: Outcome<ResolvedTree>) -> Int {
+  match sfk_entries(o: o) {
+    Absent => 0
+    Present { value: entries } =>
+      fold_list(
+        xs: entries,
+        empty: 0,
+        cons: fn(rest, entry) {
+          if entry.node == sfk_key() {
+            if inferred_facts_grounding_derived(facts: entry.facts) { rest + 1 } else { rest }
+          } else {
+            rest
+          }
+        }
+      )
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE INSTRUMENT: infer produces entries for this program at all, so a zero
+// count below is a shared key and not a failed inference.
+test fn sfk_infer_produces_entries_holds() -> Bool {
+  match sfk_entries(o: cref_source()) {
+    Absent => false
+    Present { value: entries } =>
+      match entries {
+        Cons { head: _, tail: _ } => true
+        Empty => false
+      }
+  }
+}
+
+// MORE THAN ONE ENTRY SHARES THE KEY. Enumerated, not inferred from a lookup answer: a lookup returning
+// something proves only that SOME entry matched, while counting the entries proves the key is shared.
+test fn sfk_more_than_one_entry_shares_one_key_holds() -> Bool {
+  sfk_count_under_key(o: cref_source()) > 1
+}
+
+// AND THEY DISAGREE. At least one derived and at least one not, under the same key -- so the relation
+// admits conflicting facts for one key, and the answer a consumer gets is decided by entry order
+// rather than by its subject. This is the claim the identity owner needs: it establishes a CONFLICT
+// rather than merely a coincidence of shape.
+test fn sfk_entries_under_one_key_disagree_on_grounding_holds() -> Bool {
+  let total = sfk_count_under_key(o: cref_source())
+  let derived = sfk_count_derived_under_key(o: cref_source())
+  (derived > 0) && (derived < total)
+}
+
+// THE SAME CONFLICT STANDS IN THE SECOND FIXTURE, so it is a property of the keying relation over
+// ordinary programs and not an artifact of one source text.
+test fn sfk_the_conflict_is_not_specific_to_one_fixture_holds() -> Bool {
+  let total = sfk_count_under_key(o: cref_bool_pair_source())
+  let derived = sfk_count_derived_under_key(o: cref_bool_pair_source())
+  (total > 1) && (derived > 0) && (derived < total)
+}
