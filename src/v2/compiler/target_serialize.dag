@@ -599,12 +599,28 @@ fn grammar_tokens_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<
   grammar_tokens_fold_list_targets_into(remaining: remaining, node: node, acc: Empty)
 }
 
+// The fold-list cell decision, lifted out of the tail-recursive walk so the walk matches one flat
+// step rather than nested NodeKind patterns (its loop lowering drops nested-pattern arms).
+type GrammarTokensFoldListShape = GrammarTokensFoldListCell | GrammarTokensFoldListNotCell
+
+fn grammar_tokens_fold_list_shape(node: Node) -> GrammarTokensFoldListShape {
+  match node.kind {
+    TypeNode { connective: Conj } => GrammarTokensFoldListCell
+    TypeNode { connective: Atom { identity: _ } } => GrammarTokensFoldListNotCell
+    TypeNode { connective: Disj } => GrammarTokensFoldListNotCell
+    TypeNode { connective: Arrow } => GrammarTokensFoldListNotCell
+    TypeNode { connective: Cardinality } => GrammarTokensFoldListNotCell
+    TypeNode { connective: Instantiation } => GrammarTokensFoldListNotCell
+    ComputationNode { behavior: _ } => GrammarTokensFoldListNotCell
+  }
+}
+
 fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   if remaining <= 0 {
     outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   } else {
-    match node.kind {
-      TypeNode { connective: Conj } =>
+    match grammar_tokens_fold_list_shape(node: node) {
+      GrammarTokensFoldListCell =>
         if is_empty(xs: node.children) {
           Accepted { value: acc, diagnostics: None }
         } else {
@@ -618,12 +634,7 @@ fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<N
               }
           }
         }
-      TypeNode { connective: Atom { identity: _ } } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Disj } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Arrow } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Cardinality } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      TypeNode { connective: Instantiation } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-      ComputationNode { behavior: _ } => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
+      GrammarTokensFoldListNotCell => outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
     }
   }
 }
