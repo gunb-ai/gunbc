@@ -1,0 +1,40 @@
+module gunbc.rung_drop.live_deploy_dark_install_render_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dark_install_render_rows }
+
+// DECLARED 4b(3) DROP, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538 on gunbc#12482). The
+// DECLARATION lives here; the POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_dark_install_render_rows`.
+//
+// THE COST IS INHERITED, NOT CAUSED. The identity string-inspects `test.claim.live_deploy.emit`
+// `witness_approval_broker_dark_script_text`, whose bytes are identical on main and on gunbc#12482.
+// gunbc#12482 only re-planned it as a changed witness because the script is built from
+// deployment_spec_srv1, which that change touches. The script render's fill is netted separately;
+// what the new-witness gate prices is the marginal the first reader is billed, and it moved to
+// whichever claim read the script first when the others were narrowed to their producers
+// (DESIGN §3 witness rule), so narrowing cannot discharge it. gunbc#12520 cut the fill without
+// moving the marginal. The measurement is named in the population row, not transcribed here.
+data live_deploy_dark_install_render_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_dark_install_render_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_dark_install_render_rows; measured by "), m.measured_by))
+
+data live_deploy_dark_install_render_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "live_deploy_dark_install_render_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one live_deploy emit identity that first reads the broker dark-install script: it still executes, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
+
+  declared: "2026-09-29",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the generic bash emit path's per-step overhead (bundle lookup, grounding, translate, fidelity decode and token fold, per jolly-bee-43's gunbc#12576 findings) reduced so a claim reading the rendered dark-install script is not billed that overhead",
+    },
+    population: live_deploy_dark_install_render_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: the generic bash emit path's per-step overhead is reduced SUFFICIENT FOR the first reader of test.claim.live_deploy.emit witness_approval_broker_dark_script_text to measure under the NewWitnessTier budget v2.workflow.required_floor claim_ceiling_eval_step_budget derives, on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Moving the bill to another claim (reordering, narrowing, or a different first reader) does not retire the row, nor does deleting the identity, replacing the rendered script with a fixture, or raising the budget.",
+  }
+}

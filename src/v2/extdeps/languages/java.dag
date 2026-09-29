@@ -547,47 +547,6 @@ fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn java_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: java_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: java_inhabitant_atom(id: ^java_source_literal)
-    ),
-    tail: Cons {
-      head: java_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: java_inhabitant_atom(id: ^java_production_method_add)
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn java_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: java_serialize_source_prefix_edges(),
-    right: [
-      java_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: java_concrete_tokens(),
-          token_to_node: java_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn java_serialize_source_node() -> Node {
-
-  let _authority = java_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: java_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
@@ -711,10 +670,6 @@ fn java_target_model_node() -> Node {
       java_named_edge(
         name: ^target_model_edge_translation_rules,
         target: java_translation_rules_node()
-      ),
-      java_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: java_serialize_source_node()
       )
     ],
     occurrence_id: OccurrenceSynthetic

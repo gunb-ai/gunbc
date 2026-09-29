@@ -219,3 +219,21 @@ fn scope_outsider_dropping_subject() -> ReferenceConservationSubject {
 fn scope_member_clean_subject() -> ReferenceConservationSubject {
   conservation_subject_of_text(path: "member_clean.dag", text: scope_member_clean_source)
 }
+
+// A FIELD PROJECTION ON A CALL RESULT IN AN OPERAND (gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, the call-then-field residue): `p + rc_g(p).rc_field`
+// keeps the operator, the call and the projected field, so every authored atom is accounted for.
+// Before the projection was lowered substrate the operand lowered to `p + rc_g(p)` and `rc_field`
+// was a dropped reference; a lowering that drops it again reds this.
+data call_projection_operand_source: String = "module v2.test.rc_call_projection\n\nimport v2.std.logic { Bool }\n\nfn rc_g(probe: Bool) -> Bool { probe }\n\nfn rc_proj(p: Bool) -> Bool { p + rc_g(p).rc_field }\n"
+
+fn call_projection_operand_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "rc_call_projection", text: call_projection_operand_source)
+}
+
+test fn a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds() -> Bool {
+  match conserved_normalize(subject: call_projection_operand_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
