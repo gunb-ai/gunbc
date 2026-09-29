@@ -857,6 +857,18 @@ fn target_serialize_relation_row_from_model_bounded(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetText> {
+  target_serialize_relation_row_with_lex_bounded(remaining, target, lex_literal_index(rules: target.lex), emitted)
+}
+
+// ONE ROW'S SERIALIZATION, GIVEN THE TARGET'S SPELLING INDEX. The index is a fact about the target, the
+// same for every row of one serialization, so it is built once at the entry and carried down: a
+// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (DESIGN §2).
+fn target_serialize_relation_row_with_lex_bounded(
+  remaining: Int,
+  target: TargetModel,
+  lex: LexLiteralIndex,
+  emitted: Node
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -876,7 +888,7 @@ fn target_serialize_relation_row_from_model_bounded(
                 bind_outcome(
                   o: grammar_tokens_node_targets(tokens_node: tokens_root),
                   f: fn(tokens) {
-                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex_literal_index(rules: target.lex), tokens: tokens)
+                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens)
                   }
                 )
               }
@@ -991,7 +1003,7 @@ fn token_item_to_source_bounded(
         TokenSequenceNestedBlock { unit: unit, tokens: inner } =>
           serialize_relation_row_nested_bounded(remaining - 1, target, lex, unit, inner)
         TokenSequenceNonterminal =>
-          target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
+          target_serialize_relation_row_with_lex_bounded(remaining - 1, target, lex, item)
       }
     }
   )
