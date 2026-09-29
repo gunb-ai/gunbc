@@ -33160,38 +33160,57 @@ pub fn dependency_resolution_facts(
     union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
 
-/// THE SAME UNION, KEYED BY IMPORTER. `v2.lens.module_graph` `dependency_closure_live_excluding`
-/// asks which modules ONE entry reaches, so it may demand only the edges of modules it has already
-/// reached. This answers "the edges whose importer is `importer_path`" from the population
-/// `dependency_resolution_facts` produces over the pool as its own importer roots -- the one
-/// reference-first dedup authority, computed once per (pool, exclusions) in this process and
-/// grouped by importer, never a second reader. Any row returned is the row the population read
-/// returns for that path, in the same order. An importer the pool does not carry, or one with no
-/// edges, answers the empty list, exactly as the population read carries no row for it.
+/// THE SAME UNION, KEYED BY IMPORTER, BUILT FROM THE SAME PER-FILE HALVES. `v2.lens.module_graph`
+/// `dependency_closure_live_excluding` asks which modules ONE entry reaches, so it may demand only
+/// the edges of modules it has reached. This answers the edges whose importer is `importer_path`
+/// by composing, for that one file, exactly what `dependency_resolution_facts` composes for every
+/// file: `import_facts_for_file` (the import half's per-file function) and
+/// `reference_edges_for_file_on_demand` (the reference half's), strict-filtered by
+/// `reference_edges_as_import_facts` and unioned by `union_dedup_import_facts_reference_first`.
+/// Any row returned is the row the population read carries for that path, in the same order.
+///
+/// WHAT IT DOES NOT DEMAND is the corpus. The declared-module set is the process-cached
+/// `build_module_path_index` the population read also consults; the reference half's pool name
+/// index is built only when the importer carries no `import` line, which is the one case whose
+/// edges depend on other files' names. An importer the population would not walk -- outside every
+/// pool root, or matched by an exclusion -- answers the empty list, as the population carries no
+/// row for it; so does an unreadable one, whose import half the population walk also skips.
 pub fn dependency_resolution_facts_at(
     pool_roots: &[String],
     importer_path: &str,
     exclude_substrings: &[String],
 ) -> Vec<ImportResolutionFactRaw> {
-    let key = format!(
-        "{}\u{1f}{}",
-        pool_roots_abs(pool_roots).join("\u{1e}"),
-        exclude_substrings.join("\u{1e}")
-    );
-    let by_importer = DEPENDENCY_FACTS_BY_IMPORTER.with(|c| c.borrow().get(&key).cloned());
-    let by_importer = match by_importer {
-        Some(index) => index,
-        None => {
-            let mut index: HashMap<String, Vec<ImportResolutionFactRaw>> = HashMap::new();
-            for fact in dependency_resolution_facts(pool_roots, pool_roots, exclude_substrings) {
-                index.entry(fact.path.clone()).or_default().push(fact);
-            }
-            let index = Rc::new(index);
-            DEPENDENCY_FACTS_BY_IMPORTER.with(|c| c.borrow_mut().insert(key, index.clone()));
-            index
-        }
+    if is_excluded_import_path(importer_path, exclude_substrings) {
+        return Vec::new();
+    }
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let file = process_workspace_root().join(importer_path);
+    if !abs_pool_roots
+        .iter()
+        .any(|root| file.starts_with(Path::new(root)))
+    {
+        return Vec::new();
+    }
+    let Ok(content) = std::fs::read_to_string(&file) else {
+        return Vec::new();
     };
-    by_importer.get(importer_path).cloned().unwrap_or_default()
+    let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let import_edges = entry_resolve::import_facts_for_file(importer_path, &content, &declared);
+    let reference_edges = match entry_resolve::reference_edges_for_file_on_demand(
+        importer_path,
+        Some(&content),
+        || entry_resolve::reference_pool_names(pool_roots),
+    ) {
+        entry_resolve::FileReferenceEdges::Edges(edges) => {
+            reference_edges_as_import_facts(&edges, /* strict */ true)
+        }
+        entry_resolve::FileReferenceEdges::ImportBearing
+        | entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
+    };
+    union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
 
 /// THE UNION, ONCE. Reference-first exact dedup over `{path, import_module, target_declared}`,
@@ -34018,10 +34037,6 @@ fn longest_declared_module_prefix(
 
 thread_local! {
     static REFERENCE_EDGE_CACHE: RefCell<HashMap<String, Vec<ReferenceEdgeRaw>>> =
-        RefCell::new(HashMap::new());
-    /// `dependency_resolution_facts_at`'s grouping of the one population union by importer path,
-    /// keyed by (pool, exclusions). Released with the other process caches at floor teardown.
-    static DEPENDENCY_FACTS_BY_IMPORTER: RefCell<HashMap<String, Rc<HashMap<String, Vec<ImportResolutionFactRaw>>>>> =
         RefCell::new(HashMap::new());
     /// Import-less files the reference producer could NOT account for. Keyed identically to
     /// `REFERENCE_EDGE_CACHE` and populated in the same pass.
@@ -41811,7 +41826,6 @@ pub fn release_process_caches_at_exit() {
     MODULE_PATH_INDEX_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
-    DEPENDENCY_FACTS_BY_IMPORTER.with(|c| forget(take(&mut *c.borrow_mut())));
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(

@@ -2557,14 +2557,7 @@ pub(crate) fn import_resolution_facts_with_observation(
                     continue;
                 }
             };
-            for import_module in extract_import_paths(&content) {
-                let target_declared = declared.contains(&import_module);
-                out.push(ImportResolutionFactRaw {
-                    path: rel.clone(),
-                    import_module,
-                    target_declared,
-                });
-            }
+            out.extend(import_facts_for_file(&rel, &content, &declared));
         }
     }
     ImportResolutionObservation {
@@ -2572,6 +2565,25 @@ pub(crate) fn import_resolution_facts_with_observation(
         observed_paths,
         read_refusals,
     }
+}
+
+/// THE PER-FILE HALF of `import_resolution_facts`: one importer's `import` lines, each marked
+/// declared or not against the pool's module index. One authority for both demands on it -- the
+/// population walk above maps it over every importer file, and
+/// `cli_run` `dependency_resolution_facts_at` asks it for one.
+pub(crate) fn import_facts_for_file(
+    rel: &str,
+    content: &str,
+    declared: &HashSet<String>,
+) -> Vec<ImportResolutionFactRaw> {
+    extract_import_paths(content)
+        .into_iter()
+        .map(|import_module| ImportResolutionFactRaw {
+            path: rel.to_string(),
+            target_declared: declared.contains(&import_module),
+            import_module,
+        })
+        .collect()
 }
 
 pub fn import_resolution_facts(
@@ -3122,12 +3134,28 @@ pub(crate) fn reference_edges_for_file(
     content: Option<&str>,
     names: &ReferencePoolNames,
 ) -> FileReferenceEdges {
+    reference_edges_for_file_on_demand(rel, content, || names)
+}
+
+/// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
+/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
+/// never builds the whole-pool heads index; only an import-less file, whose references must be
+/// resolved against pool names, forces it.
+pub(crate) fn reference_edges_for_file_on_demand<
+    R: std::ops::Deref<Target = ReferencePoolNames>,
+>(
+    rel: &str,
+    content: Option<&str>,
+    names: impl FnOnce() -> R,
+) -> FileReferenceEdges {
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
     if !extract_import_paths(content).is_empty() {
         return FileReferenceEdges::ImportBearing;
     }
+    let names = names();
+    let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
         return FileReferenceEdges::Unaccounted("no-module-line");
     };

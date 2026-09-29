@@ -1,5 +1,7 @@
 module extdeps.git
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
@@ -759,7 +761,7 @@ fn shape_git_add_argv() -> List<String> {
   ["git", "add"]
 }
 
-data git_binary_name: NonEmptyStr = "git"
+fn git_program() -> ProgramIdentity = uncataloged_program(invocation: "git")
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   ["git", "commit", "--no-verify", "--no-edit"]
@@ -782,11 +784,11 @@ fn git_config_local_set_args(key: String, value: String) -> List<String> {
 }
 
 fn shape_git_config_local_argv(key: String, value: String) -> List<String> {
-  append([git_binary_name as String], items: git_config_local_set_args(key: key, value: value))
+  append([git_program().invocation as String], items: git_config_local_set_args(key: key, value: value))
 }
 
 fn git_config_local_set_command(key: String, value: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_config_local_set_args(key: key, value: value))
+  argv_command(program: git_program(), arguments: git_config_local_set_args(key: key, value: value))
 }
 
 // ── MATERIALIZING A THIRD-PARTY TREE AT AN EXACT COMMIT ────────────────────────────────────────
@@ -806,7 +808,7 @@ fn git_clone_shallow_args(repository: String, destination: String) -> List<Strin
 }
 
 fn git_clone_shallow_command(repository: String, destination: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_clone_shallow_args(repository: repository, destination: destination))
+  argv_command(program: git_program(), arguments: git_clone_shallow_args(repository: repository, destination: destination))
 }
 
 // `-C <dir>` is git's own way to name the repository a command acts on, and it is what lets these
@@ -817,7 +819,7 @@ fn git_fetch_shallow_revision_args(repository_dir: String, remote: String, revis
 }
 
 fn git_fetch_shallow_revision_command(repository_dir: String, remote: String, revision: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_fetch_shallow_revision_args(repository_dir: repository_dir, remote: remote, revision: revision))
+  argv_command(program: git_program(), arguments: git_fetch_shallow_revision_args(repository_dir: repository_dir, remote: remote, revision: revision))
 }
 
 fn git_checkout_revision_args(repository_dir: String, revision: String) -> List<String> {
@@ -825,7 +827,7 @@ fn git_checkout_revision_args(repository_dir: String, revision: String) -> List<
 }
 
 fn git_checkout_revision_command(repository_dir: String, revision: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
+  argv_command(program: git_program(), arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
 }
 
 // THE READBACK. A checkout that reported success is not the same fact as a working tree whose HEAD
@@ -836,7 +838,7 @@ fn git_rev_parse_head_args(repository_dir: String) -> List<String> {
 }
 
 fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_rev_parse_head_args(repository_dir: repository_dir))
+  argv_command(program: git_program(), arguments: git_rev_parse_head_args(repository_dir: repository_dir))
 }
 
 // HEAD IS NOT THE TREE. `rev-parse HEAD` says which commit is checked out and nothing about whether
@@ -857,7 +859,7 @@ fn git_status_porcelain_args(repository_dir: String) -> List<String> {
 }
 
 fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_status_porcelain_args(repository_dir: repository_dir))
+  argv_command(program: git_program(), arguments: git_status_porcelain_args(repository_dir: repository_dir))
 }
 
 // APPLY IS AN UPSTREAM OPERATION, not a shell script. `git apply --check` / `--reverse --check`
@@ -870,7 +872,7 @@ fn git_apply_check_args(repository_dir: String, patch_path: String) -> List<Stri
 }
 
 fn git_apply_check_command(repository_dir: String, patch_path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_apply_check_args(repository_dir: repository_dir, patch_path: patch_path))
+  argv_command(program: git_program(), arguments: git_apply_check_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
 fn git_apply_reverse_check_args(repository_dir: String, patch_path: String) -> List<String> {
@@ -878,7 +880,7 @@ fn git_apply_reverse_check_args(repository_dir: String, patch_path: String) -> L
 }
 
 fn git_apply_reverse_check_command(repository_dir: String, patch_path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_apply_reverse_check_args(repository_dir: repository_dir, patch_path: patch_path))
+  argv_command(program: git_program(), arguments: git_apply_reverse_check_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
 fn git_apply_args(repository_dir: String, patch_path: String) -> List<String> {
@@ -886,7 +888,7 @@ fn git_apply_args(repository_dir: String, patch_path: String) -> List<String> {
 }
 
 fn git_apply_command(repository_dir: String, patch_path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
+  argv_command(program: git_program(), arguments: git_apply_args(repository_dir: repository_dir, patch_path: patch_path))
 }
 
 // git-reset(1) --hard <commit>: resets index AND working tree to <commit>; paths that were only in the
@@ -897,22 +899,22 @@ fn git_reset_hard_args(repository_dir: String, revision: String) -> List<String>
 }
 
 fn git_reset_hard_command(repository_dir: String, revision: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_reset_hard_args(repository_dir: repository_dir, revision: revision))
+  argv_command(program: git_program(), arguments: git_reset_hard_args(repository_dir: repository_dir, revision: revision))
 }
 
 // git-worktree(1): a second, disposable checkout of the same repository at <revision>, so a tree
 // can be derived without touching the primary working tree. remove --force discards it; prune
 // forgets an entry whose directory is already gone.
 fn git_worktree_add_detached_command(repository_dir: String, path: String, revision: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "add", "--detach", path, revision])
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "worktree", "add", "--detach", path, revision])
 }
 
 fn git_worktree_remove_force_command(repository_dir: String, path: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "remove", "--force", path])
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "worktree", "remove", "--force", path])
 }
 
 fn git_worktree_prune_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: ["-C", repository_dir, "worktree", "prune"])
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "worktree", "prune"])
 }
 
 fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
@@ -920,7 +922,7 @@ fn git_diff_binary_head_args(repository_dir: String) -> List<String> {
 }
 
 fn git_diff_binary_head_command(repository_dir: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_diff_binary_head_args(repository_dir: repository_dir))
+  argv_command(program: git_program(), arguments: git_diff_binary_head_args(repository_dir: repository_dir))
 }
 
 fn shape_git_config_get_argv(key: String) -> List<String> {
