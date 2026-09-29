@@ -23,7 +23,8 @@ import gunbc.host_command_binding {
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
 
@@ -408,9 +409,9 @@ fn census_member_readings_on(host: CommandHost, dir: NonEmptyStr, stock_path: No
 // lists them. Retained verbatim in the receipt: it is the reading that establishes which build user an
 // image's derivation baked in (gunbc.recurring_failure_mode
 // a_derivation_key_that_does_not_pin_bytes_across_build_hosts).
-data census_mapped_member_paths: List<NonEmptyStr> = ["/boot/grub/grub.cfg"]
+data census_mapped_member_paths: List<NonEmptyStr> = [install_media_remaster_grub_cfg_on_iso]
 
-data census_mapped_seed_path: NonEmptyStr = "/gunbc-census"
+data census_mapped_seed_path: NonEmptyStr = concat("/", mtcollins1_census_nocloud_dir as String) as NonEmptyStr
 
 fn census_mapped_attributes_on(host: CommandHost, iso_path: NonEmptyStr) -> String {
   let listed = answer_on(host: host, command: xorriso_list_long_command(iso_path: iso_path, first_path: census_mapped_seed_path, more_paths: census_mapped_member_paths))

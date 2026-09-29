@@ -117,9 +117,15 @@ fn install_media_remaster_seed_files(input: UbuntuSeededInstallMediaBuildInput) 
   concat([concat(seed_root, "/user-data") as NonEmptyStr, concat(seed_root, "/meta-data") as NonEmptyStr], map(input.seed_files, f => concat(seed_root, "/", f.name as String) as NonEmptyStr))
 }
 
+// Owner and group are pinned recursively from the TOPMOST directory the seed creates -- for a nested
+// seed dir ("nocloud/srv3") that is /nocloud, which -map creates implicitly and which would otherwise
+// carry the build user -- and mode on every level, so no member the build adds keeps a host attribute.
 fn install_media_remaster_attribute_pins(input: UbuntuSeededInstallMediaBuildInput) -> List<XorrisoPathListCommand> {
-  let seed_top = concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr
   let directories = install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: input.nocloud_dir_on_iso)
+  let seed_top = match first(directories) {
+    Absent => concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr
+    Present { value: d } => d
+  }
   concat(
     [
       XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: install_media_remaster_pinned_uid }, first_path: seed_top, more_paths: [install_media_remaster_grub_cfg_on_iso] },

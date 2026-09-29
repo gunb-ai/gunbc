@@ -9,6 +9,7 @@ import extdeps.tools.xorriso {
   xorriso_path_list_words, xorriso_replay_build_pinned_dates_command, xorriso_list_long_command,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_attribute_pins, install_media_remaster_seed_directory_levels }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,7 +77,23 @@ test fn the_census_pins_cover_every_mapped_member() -> Bool {
   }
 }
 
-// A NESTED seed dir (srv3's nocloud/<host>) gets a mode on every level it creates.
-test fn nested_seed_directories_get_every_level() -> Bool {
-  install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: "nocloud/srv3") == ["/nocloud", "/nocloud/srv3"]
+// A NESTED seed dir (srv3's nocloud/<host>): owner and group are pinned from the topmost level -map
+// creates (/nocloud, which would otherwise carry the build user), and every level gets a mode.
+test fn nested_seed_directories_pin_owner_from_the_top_and_mode_on_every_level() -> Bool {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: _ } => false
+    Mtcollins1CensusImageDerived { input: i } => {
+      let nested = UbuntuSeededInstallMediaBuildInput {
+        stock_artifact: i.stock_artifact, nocloud_dir_on_iso: "nocloud/srv3", user_data_body: i.user_data_body, seed_files: [],
+        grub_kernel_cmdline: i.grub_kernel_cmdline, volume_id: i.volume_id, pinned_dates: i.pinned_dates, image_stem: i.image_stem, builder_revision: i.builder_revision,
+      }
+      install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: "nocloud/srv3") == ["/nocloud", "/nocloud/srv3"]
+        && flat_map(install_media_remaster_attribute_pins(input: nested), p => xorriso_path_list_words(command: p)) == [
+          "-chown_r", "0", "/nocloud", "/boot/grub/grub.cfg", "--",
+          "-chgrp_r", "0", "/nocloud", "/boot/grub/grub.cfg", "--",
+          "-chmod", "0644", "/boot/grub/grub.cfg", "/nocloud/srv3/user-data", "/nocloud/srv3/meta-data", "--",
+          "-chmod", "0755", "/nocloud", "/nocloud/srv3", "--",
+        ]
+    }
+  }
 }
