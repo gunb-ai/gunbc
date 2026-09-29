@@ -208,6 +208,14 @@ fn read_names(reader: NameReader, captured: Node) -> NameRead {
   }
 }
 
+// `operation name { .. }`: body lowering reads the name with the kw-then-ident decoder
+// (body_lower_operation), and lowers it to a callable edge of the service.
+// `transport shell { .. }`: STILL NOT READ, AND NOT BECAUSE A READER IS MISSING. The name is not a
+// binder and not a module-scope reference: it selects one of the closed set of transport kinds
+// (v1 00_core TransportKind: rest, shell, file, local), and body lowering sets the member aside
+// as a realization member without reading it. No disposition above describes that honestly
+// (NamesAreMarkers claims a channel the census counts, and no OccurrenceCategory is a
+// closed-vocabulary selector), so the row stays loud until that category is decided.
 fn dag_name_production_rows() -> List<NameProductionRow> {
   [
     name_row(production: ^dag_production_fn_decl, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
@@ -230,17 +238,9 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_let_expr, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadLetBinder }),
     name_row(production: ^dag_production_fn_literal, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: FnLiteralValue } }),
     name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: ArrowLambdaValue } }),
-    // `operation name { .. }`: body lowering reads the name with the kw-then-ident decoder
-    // (body_lower_operation), and lowers it to a callable edge of the service.
     name_row(production: ^dag_production_operation, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_input_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
     name_row(production: ^dag_production_output_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
-    // `transport shell { .. }`: STILL NOT READ, AND NOT BECAUSE A READER IS MISSING. The name is not a
-    // binder and not a module-scope reference: it selects one of the closed set of transport kinds
-    // (v1 00_core TransportKind: rest, shell, file, local), and body lowering sets the member aside
-    // as a realization member without reading it. No disposition above describes that honestly
-    // (NamesAreMarkers claims a channel the census counts, and no OccurrenceCategory is a
-    // closed-vocabulary selector), so the row stays loud until that category is decided.
     name_row(production: ^dag_production_transport, disposition: NameRoleNotYetRead)
   ]
 }

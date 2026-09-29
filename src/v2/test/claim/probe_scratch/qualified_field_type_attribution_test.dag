@@ -1,0 +1,67 @@
+module v2.test.claim.probe_scratch.qualified_field_type_attribution
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.reference_site_collector { collect_reference_sites }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme }
+import v2.std.integer { Int }
+import v2.std.grammar { grammar_atom }
+import v2.std.qualified_name { qualified_name_from_node, qualified_name_to_dotted_string }
+import std.algebra { Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SCRATCH PROBE (deleted before the PR is handed off): where is a qualified field type lost?
+data probe_source: String = "module qft.consumer\n\ntype Wrapper { f: qa.qb.FieldQ }\n\nfn uses(x: qa.qb.ParamQ) -> Int { 0 }\n"
+
+fn spine_count(n: Node, spelling: String) -> Int {
+  let here = match qualified_name_from_node(root: n) {
+    Accepted { value: qn, diagnostics: _ } => if qualified_name_to_dotted_string(qn: qn) == spelling { 1 } else { 0 }
+    Rejected { diagnostics: _ } => 0
+  }
+  fold(n.children, init: here, f: fn(acc, e) { acc + spine_count(n: e.target, spelling: spelling) })
+}
+
+fn atom_count(n: Node, lexeme: String) -> Int {
+  let here = match n.kind {
+    TypeNode { connective: Atom { identity: s } } => if s == symbol_intern_lexeme(lexeme: lexeme) { 1 } else { 0 }
+    _ => 0
+  }
+  fold(n.children, init: here, f: fn(acc, e) { acc + atom_count(n: e.target, lexeme: lexeme) })
+}
+
+fn normalized_root() -> Node {
+  match conservation_subject_of_text(path: "qft_probe.dag", text: probe_source).normalized {
+    Accepted { value: t, diagnostics: _ } => t.root
+    Rejected { diagnostics: _ } => grammar_atom(identity: ^qft_probe_unnormalized)
+  }
+}
+
+fn parsed_root() -> Node {
+  match conservation_subject_of_text(path: "qft_probe.dag", text: probe_source).parsed {
+    Accepted { value: a, diagnostics: _ } => a.tree
+    Rejected { diagnostics: _ } => grammar_atom(identity: ^qft_probe_unparsed)
+  }
+}
+
+fn site_count(spelling: String) -> Int {
+  fold_list(xs: collect_reference_sites(roots: Cons { head: normalized_root(), tail: Empty }).sites, empty: 0, cons: fn(acc, s) {
+    if qualified_name_to_dotted_string(qn: s.spelling) == spelling { acc + 1 } else { acc }
+  })
+}
+
+test fn probe_normalized_normalizes_holds() -> Bool { atom_count(n: normalized_root(), lexeme: "qft_probe_unnormalized") == 0 }
+test fn probe_parses_holds() -> Bool { atom_count(n: parsed_root(), lexeme: "qft_probe_unparsed") == 0 }
+test fn probe_parse_holds_field_token_holds() -> Bool { atom_count(n: parsed_root(), lexeme: "FieldQ") >= 1 }
+test fn probe_normalized_param_spine_holds() -> Bool { spine_count(n: normalized_root(), spelling: "qa.qb.ParamQ") >= 1 }
+test fn probe_normalized_field_spine_holds() -> Bool { spine_count(n: normalized_root(), spelling: "qa.qb.FieldQ") >= 1 }
+test fn probe_normalized_field_atom_holds() -> Bool { atom_count(n: normalized_root(), lexeme: "FieldQ") >= 1 }
+test fn probe_normalized_field_head_atom_holds() -> Bool { atom_count(n: normalized_root(), lexeme: "qa") >= 2 }
+test fn probe_normalized_wrapper_edge_atom_absent_holds() -> Bool { atom_count(n: normalized_root(), lexeme: "Wrapper") == 0 }
+test fn probe_sites_param_holds() -> Bool { site_count(spelling: "qa.qb.ParamQ") == 1 }
+test fn probe_sites_field_holds() -> Bool { site_count(spelling: "qa.qb.FieldQ") == 1 }
+test fn probe_sites_field_bare_holds() -> Bool { site_count(spelling: "FieldQ") >= 1 }
+test fn probe_sites_field_head_bare_holds() -> Bool { site_count(spelling: "qa") >= 1 }
