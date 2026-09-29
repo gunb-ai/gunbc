@@ -286,7 +286,11 @@ fn decode_permission_access(v: JsonValue) -> GitHubAppPermissionAccess? {
       if value == "read" { Present { value: AppAccessRead } }
       else if value == "write" { Present { value: AppAccessWrite } }
       else { none }
-    _ => none
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
