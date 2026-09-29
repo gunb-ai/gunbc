@@ -2155,13 +2155,21 @@ fn read_pending_parent_reference(value: JsonValue) -> PendingParentRead {
     MemberValue { value: found } =>
       match found {
         JsonNull => PendingParentRead { reference: none }
-        _ => match repository_commit_ref_from_json(value: found) {
-          Present { value: reference } => PendingParentRead { reference: Present { value: reference } }
-          Absent => PendingParentRefused {
-            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
-          }
-        }
+        JsonBool { value: _ } => read_declared_parent_reference(found: found)
+        JsonNumber { lexeme: _ } => read_declared_parent_reference(found: found)
+        JsonString { value: _ } => read_declared_parent_reference(found: found)
+        JsonArray { elements: _ } => read_declared_parent_reference(found: found)
+        JsonObject { members: _ } => read_declared_parent_reference(found: found)
       }
+  }
+}
+
+fn read_declared_parent_reference(found: JsonValue) -> PendingParentRead {
+  match repository_commit_ref_from_json(value: found) {
+    Present { value: reference } => PendingParentRead { reference: Present { value: reference } }
+    Absent => PendingParentRefused {
+      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
+    }
   }
 }
 
@@ -2187,15 +2195,23 @@ fn read_pending_integration(
         MemberValue { value: found } =>
           match found {
             JsonNull => PendingIntegrationRead { integration: NoSquashIntegration }
-            _ => match repository_commit_ref_from_json(value: found) {
-              Present { value: reference } =>
-                PendingIntegrationRead { integration: SquashIntegrated { source: reference } }
-              Absent => PendingIntegrationRefused {
-                cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } }
-              }
-            }
+            JsonBool { value: _ } => read_declared_integration(found: found)
+            JsonNumber { lexeme: _ } => read_declared_integration(found: found)
+            JsonString { value: _ } => read_declared_integration(found: found)
+            JsonArray { elements: _ } => read_declared_integration(found: found)
+            JsonObject { members: _ } => read_declared_integration(found: found)
           }
       }
+  }
+}
+
+fn read_declared_integration(found: JsonValue) -> PendingIntegrationRead {
+  match repository_commit_ref_from_json(value: found) {
+    Present { value: reference } =>
+      PendingIntegrationRead { integration: SquashIntegrated { source: reference } }
+    Absent => PendingIntegrationRefused {
+      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } }
+    }
   }
 }
 
@@ -2630,18 +2646,29 @@ fn decode_repository_checkout(
     MemberValue { value: found } =>
       match found {
         JsonNull => CheckoutSelectionDecoded { selected: none }
-        _ => match repository_commit_ref_from_json(value: found) {
-          Absent => CheckoutSelectionRefused {
-            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
-          }
-          Present { value: reference } =>
-            match commit_at_reference(commits: commits, reference: reference) {
-              Absent =>
-                CheckoutSelectionRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
-              Present { value: _ } =>
-                CheckoutSelectionDecoded { selected: Present { value: reference } }
-            }
-        }
+        JsonBool { value: _ } => decode_declared_checkout(found: found, commits: commits)
+        JsonNumber { lexeme: _ } => decode_declared_checkout(found: found, commits: commits)
+        JsonString { value: _ } => decode_declared_checkout(found: found, commits: commits)
+        JsonArray { elements: _ } => decode_declared_checkout(found: found, commits: commits)
+        JsonObject { members: _ } => decode_declared_checkout(found: found, commits: commits)
+      }
+  }
+}
+
+fn decode_declared_checkout(
+  found: JsonValue,
+  commits: List<RepositoryCommit>,
+) -> CheckoutSelectionDecode {
+  match repository_commit_ref_from_json(value: found) {
+    Absent => CheckoutSelectionRefused {
+      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
+    }
+    Present { value: reference } =>
+      match commit_at_reference(commits: commits, reference: reference) {
+        Absent =>
+          CheckoutSelectionRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
+        Present { value: _ } =>
+          CheckoutSelectionDecoded { selected: Present { value: reference } }
       }
   }
 }
