@@ -547,6 +547,15 @@ fn print_eval_profile(function: &str) {
                 *ns as f64 / 1.0e6
             );
         }
+        let mut st = v1_compiler::v1_interpreter::dag_fn_self_steps_take();
+        st.sort_by(|a, b| b.1.cmp(&a.1));
+        for (n, selfs, _) in st.iter().take(80) {
+            eprintln!("[fn-steps] {function} {n} self_steps={selfs}");
+        }
+        st.sort_by(|a, b| b.2.cmp(&a.2));
+        for (n, _, incl) in st.iter().take(80) {
+            eprintln!("[fn-incl] {function} {n} incl_steps={incl}");
+        }
         let mut v2 = v.clone();
         v2.sort_by(|a, b| b.1.cmp(&a.1));
         for (n, c, ns) in v2.iter().take(40) {

@@ -6048,15 +6048,25 @@ fn call_function_dispatch(
         return call_function_inner(ctx, fn_node, args, env);
     }
     let started = std::time::Instant::now();
+    let steps_started = evaluator_steps();
     DAG_PROF_CHILD_STACK.with(|s| s.borrow_mut().push(0));
+    DAG_PROF_CHILD_STEPS.with(|s| s.borrow_mut().push(0));
     let result = call_function_inner(ctx, fn_node, args, env);
     let elapsed = started.elapsed().as_nanos() as u64;
+    let steps = evaluator_steps().wrapping_sub(steps_started);
     let child_nanos = DAG_PROF_CHILD_STACK.with(|s| s.borrow_mut().pop().unwrap_or(0));
+    let child_steps = DAG_PROF_CHILD_STEPS.with(|s| s.borrow_mut().pop().unwrap_or(0));
     DAG_PROF_CHILD_STACK.with(|s| {
         if let Some(parent) = s.borrow_mut().last_mut() {
             *parent += elapsed;
         }
     });
+    DAG_PROF_CHILD_STEPS.with(|s| {
+        if let Some(parent) = s.borrow_mut().last_mut() {
+            *parent += steps;
+        }
+    });
+    record_dag_fn_self_steps(&fn_node.name, steps.saturating_sub(child_steps), steps);
     record_dag_fn_self_time(&fn_node.name, elapsed.saturating_sub(child_nanos));
     result
 }
@@ -22863,6 +22873,32 @@ fn record_dag_fn_self_time(name: &str, self_nanos: u64) {
     } else {
         map.insert(name.to_string(), (1, self_nanos));
     }
+}
+
+thread_local! {
+    static DAG_PROF_CHILD_STEPS: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+static DAG_FN_SELF_STEPS: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u64)>>> =
+    std::sync::Mutex::new(None);
+
+fn record_dag_fn_self_steps(name: &str, self_steps: u64, incl_steps: u64) {
+    let mut guard = DAG_FN_SELF_STEPS.lock().unwrap();
+    let e = guard
+        .get_or_insert_with(std::collections::HashMap::new)
+        .entry(name.to_string())
+        .or_insert((0, 0));
+    e.0 += self_steps;
+    e.1 += incl_steps;
+}
+
+pub fn dag_fn_self_steps_take() -> Vec<(String, u64, u64)> {
+    let mut guard = DAG_FN_SELF_STEPS.lock().unwrap();
+    let v = guard
+        .as_ref()
+        .map(|m| m.iter().map(|(n, (a, b))| (n.clone(), *a, *b)).collect())
+        .unwrap_or_default();
+    *guard = None;
+    v
 }
 
 pub fn dag_fn_self_time_take() -> Vec<(String, u64, u64)> {
