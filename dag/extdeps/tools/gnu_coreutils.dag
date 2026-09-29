@@ -141,9 +141,12 @@ fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
 // with the same argv and the same -T rationale; its two consumers (gunbc.package_delivery
 // publish_codex_runtime_current_link and the event-log real-execution witness) were moved onto this
 // builder and the service deleted, so one upstream fact has one declaration (review 68813 on
-// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget configfs_op_line still
-// hand-spells `ln -sf` inside a script string; that is a declared frontier of its own
-// (configfs_op_render_dissolution_trigger) and folds onto this row when it dissolves.
+// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget
+// configfs_op_line WAS the last hand-spelled `ln -sf` inside a script string; that frontier has now
+// folded: the gadget's symlink op mints through ln_symbolic_force_into_directory_command (the
+// into-directory sibling below), because the -T form refuses precisely the into-directory case the
+// configfs procedure needs to succeed (configfs_op_render_dissolution_trigger records the
+// retirement).
 //
 // -T IS THE FAIL-CLOSED HALF AND -n IS NOT A SUBSTITUTE FOR IT (sunny-ant-606 review of #11760).
 // -n covers only a symlink-to-directory; against a REAL directory at LINK_NAME, `ln -sfn T D` exits
@@ -161,6 +164,48 @@ fn ln_symbolic_force_command(target: String, link_name: String) -> ArgvCommand {
     program: coreutils_ln_binary_name,
     arguments: [coreutils_ln_symbolic_force_exact_destination_flags as String, target, link_name],
   )
+}
+
+// THE INTO-DIRECTORY SIBLING, AND WHY IT IS NOT THE BUILDER ABOVE WITH FEWER FLAGS. configfs's
+// gadget procedure adds a function INSTANCE to a configuration DIRECTORY -- `ln -sf T D/` makes
+// basename(T) a symlink inside D, which is the operation the kernel's gadget_configfs procedure
+// spells. The -sfnT form above REFUSES exactly that case: D is a real directory, and -T makes
+// that a nonzero exit, so folding the gadget onto it would mint a setup that refuses on a live
+// host. Two spellings, two different success contracts -- two operations, two names, no flags
+// parameter (the same rule the -f/-rf split above records).
+//
+// THE DESTINATION ARRIVES DIRECTORY-SPELLED, AND THAT IS LOAD-BEARING, NOT SPELLING PREFERENCE.
+// With the trailing separator, a D that does not exist fails with ENOENT instead of minting a
+// LINK NAMED D -- the fail-closed half of "into the directory"; without it, `ln -sf T D` on a
+// missing D silently creates that stray link and reports success. The one live caller
+// (extdeps.linux.usb_gadget configfs_op_command) refuses a destination that is not
+// directory-spelled before any argv is minted, so the contract is enforced where the arguments
+// are, not hoped for here.
+//
+// PATH-RESOLVED program spelling, for the reason program_spelling_is_an_observation_claim
+// (extdeps.exec.command) records: the gadget setup runs on an OpenBMC image over ssh, whose
+// filesystem this repository has not observed, so an absolute path would fabricate a host fact.
+data coreutils_ln_symbolic_force_into_directory_flags: NonEmptyStr = "-sf"
+
+fn ln_symbolic_force_into_directory_command(target: String, directory: String) -> ArgvCommand {
+  argv_command(
+    program: coreutils_ln_binary_name,
+    arguments: [coreutils_ln_symbolic_force_into_directory_flags as String, target, directory],
+  )
+}
+
+// rmdir(1) -- GNU coreutils, "rmdir: remove directories if they are empty". configfs teardown
+// removes the directories it created, innermost first, and rmdir REFUSES a non-empty directory,
+// which is the fail-closed half: a teardown that would empty a directory holding something it did
+// not create stops instead of destroying it. Tolerance for an ALREADY-ABSENT directory is the
+// consumer's modeled outcome (nonzero mapped to already-gone), never re-appended as `|| true` --
+// the absorbing-fallback rule the shell-to-dag census names for exactly this spelling.
+//
+// PATH-RESOLVED spelling for the same unobserved-OpenBMC reason the ln sibling above carries.
+data coreutils_rmdir_binary_name: NonEmptyStr = "rmdir"
+
+fn rmdir_command(path: String) -> ArgvCommand {
+  argv_command(program: coreutils_rmdir_binary_name, arguments: [path])
 }
 
 // The format string is the first operand and the values follow it, exactly as printf(1) takes them.
