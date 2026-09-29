@@ -2198,10 +2198,9 @@ mod tests {
             ..public_root()
         };
         let refused = admit(Some(public_peak() * 4), &private_spelling);
-        // The projection's repositories, one per row (`gunbc.whole_corpus_compile_admission`
-        // `whole_corpus_compile_demand_repositories`), so the list grows with the committed
-        // projection's rows; the claim is that every one of them is this repository, as the
-        // model witness `refuses_as_another_repository` states it, not how many rows there are.
+        // One entry per projected row, as the model's `whole_corpus_compile_demand_repositories`
+        // yields, so the assertion is the witness twin `refuses_as_another_repository`: non-empty
+        // and every entry the public repository -- not a count of today's rows.
         assert!(
             matches!(
                 &refused,
