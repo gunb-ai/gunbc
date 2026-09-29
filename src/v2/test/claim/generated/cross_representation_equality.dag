@@ -3,6 +3,7 @@ module v2.test.generated.cross_representation_equality
 import v2.std.node { symbol_intern_lexeme }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_reflection { coproduct_arm_keys_at }
+import v2.std.verification { ManualClaimAnchor }
 
 // THE ROOTS THE REFLECTION READ CONSULTS, named so the population is re-derivable.
 data cross_representation_pool_roots: List<String> = ["dag", "src/v2"]

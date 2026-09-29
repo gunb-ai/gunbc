@@ -20,6 +20,7 @@ import v2.std.verification {
   GeneratedAnchorKey,
   GeneratedClaimAnchor,
   GeneratedCoproductExhaustiveness,
+  ManualClaimAnchor,
   TestClaim,
   test_claim_anchor,
   test_claim_input
