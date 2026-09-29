@@ -51,10 +51,9 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
@@ -611,19 +610,7 @@ fn gha_fold_formal_productions() -> List<FormalProduction> {
 
 fn gha_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
   let productions = gha_fold_formal_productions()
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn gha_fold_formal_production_for_job_witness(emitted: Node) -> Witness<FormalProduction> {
