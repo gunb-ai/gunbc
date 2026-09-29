@@ -438,7 +438,7 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
 // THE STORE RECEIPT ROUTE (gunbc.auth.approval_store_receipt). It reads the store and mints, and
 // writes nothing, so like the status route it takes no writer admission; the asker's authentication
 // is the submission-key MAC the fold checks before it reads the escalation at all.
-fn approval_store_receipt_response(request: ServeHttpRequest, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_store_receipt_response(request: ServeHttpRequest<TailnetIdentity>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body)
   broker_text_response(status: answer.status, content_type: text_plain_utf8, body: answer.body, marker: StoreReceiptHandlerObserved, process: process)
 }
