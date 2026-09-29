@@ -73,7 +73,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.node_query { find_named_child }
-import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 
@@ -2076,6 +2076,18 @@ fn semantic_decl_generic_member_not_rendered_diagnostic(member: Node) -> Diagnos
   }
 }
 
+// AN ALIAS OR BODYLESS DECLARATION IS NOT A MEMBER, whatever its binder count: it declares no field or
+// variant for a struct or enum surface to project. It is refused here under its own reason rather than
+// the generic-declaration one, which would be false for a zero-binder alias
+// (v2.std.type_binder TypeAlias / OpaqueTypeDecl are cardinality-neutral).
+fn semantic_decl_not_a_member_diagnostic(decl: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^semantic_decl_reason_alias_or_opaque_is_not_a_member,
+    at: node_locus(node: decl),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn target_semantic_enum_surface_from_coproduct(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
@@ -2085,10 +2097,10 @@ fn target_semantic_enum_surface_from_coproduct(
   match type_decl_view(target: coproduct) {
     GenericTypeDecl { binders: _, member: _ } =>
       outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
-    GenericTypeAlias { binders: _, aliased: _ } =>
-      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
-    GenericOpaqueTypeDecl { binders: _ } =>
-      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: coproduct))
+    TypeAlias { binders: _, aliased: _ } =>
+      outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: coproduct))
+    OpaqueTypeDecl { binders: _ } =>
+      outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: coproduct))
     PlainTypeDecl { member: m } =>
       target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m)
   }
@@ -2177,10 +2189,10 @@ fn target_semantic_struct_surface_from_record(
   match type_decl_view(target: record) {
     GenericTypeDecl { binders: _, member: _ } =>
       outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
-    GenericTypeAlias { binders: _, aliased: _ } =>
-      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
-    GenericOpaqueTypeDecl { binders: _ } =>
-      outcome_rejected(d: semantic_decl_generic_member_not_rendered_diagnostic(member: record))
+    TypeAlias { binders: _, aliased: _ } =>
+      outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
+    OpaqueTypeDecl { binders: _ } =>
+      outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
     PlainTypeDecl { member: m } =>
       target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m)
   }
