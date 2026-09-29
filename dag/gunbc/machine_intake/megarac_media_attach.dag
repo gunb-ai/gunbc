@@ -1165,38 +1165,60 @@ fn megarac_await_enumeration(
   let reading = if images.success { images_listing_reading(body: images.body, image_name: image_name) } else { ImagesListingLacks }
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail: d } => EnumerationClockUnreadable { detail: d }
-    ClockUnixMillisObserved { millis: now } =>
-      match reading {
-        ImagesListingUnparseable { detail: d } => EnumerationUnparseable { detail: d }
-        _ => {
-          let evidence = content_hash_of_value(value: concat("megarac-remote-images:", images.body) as NonEmptyStr)
-          let seen = observations.append(RemoteMediaListingObservation {
-            observed_at: now,
-            listing: images_listing_presence(reading: reading),
-            raw_response: evidence,
-          })
-          let standing = mount_standing_as_of(
+    ClockUnixMillisObserved { millis: now } => {
+      let step = match reading {
+        ImagesListingUnparseable { detail: d } => ListedEnumerationDone { result: EnumerationUnparseable { detail: d } }
+        ImagesListingEmpty => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+        ImagesListingLacks => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+        ImagesListingOffers { image_index: _ } => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+      }
+      match step {
+        ListedEnumerationDone { result: r } => r
+        ListedEnumerationLookAgain { observations: seen } => {
+          let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
+          megarac_await_enumeration(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_token: csrf_token,
+            image_name: image_name,
             window: window,
             observations: seen,
-            boundary: MountEvaluationBoundary { observed_through: now, clock_evidence: evidence },
+            remaining: remaining - 1,
           )
-          match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
-            EnumerationDecided { result: r } => r
-            EnumerationLookAgain => {
-              let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
-              megarac_await_enumeration(
-                bmc_host: bmc_host,
-                cookie_jar: cookie_jar,
-                csrf_token: csrf_token,
-                image_name: image_name,
-                window: window,
-                observations: seen,
-                remaining: remaining - 1,
-              )
-            }
-          }
         }
       }
+    }
+  }
+}
+
+// One look's conclusion for a listing that parsed: the loop's self tail-call stays in
+// megarac_await_enumeration, which matches this step exhaustively.
+type ListedEnumerationStep
+  = ListedEnumerationDone { result: EnumerationAfterRefresh }
+  | ListedEnumerationLookAgain { observations: List<RemoteMediaListingObservation> }
+
+fn megarac_listed_enumeration_step(
+  body: String,
+  reading: ImagesListingReading,
+  now: EpochMs,
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+  remaining: Int,
+) -> ListedEnumerationStep {
+  let evidence = content_hash_of_value(value: concat("megarac-remote-images:", body) as NonEmptyStr)
+  let seen = observations.append(RemoteMediaListingObservation {
+    observed_at: now,
+    listing: images_listing_presence(reading: reading),
+    raw_response: evidence,
+  })
+  let standing = mount_standing_as_of(
+    window: window,
+    observations: seen,
+    boundary: MountEvaluationBoundary { observed_through: now, clock_evidence: evidence },
+  )
+  return match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
+    EnumerationDecided { result: r } => ListedEnumerationDone { result: r }
+    EnumerationLookAgain => ListedEnumerationLookAgain { observations: seen }
   }
 }
 
