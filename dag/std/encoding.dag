@@ -498,27 +498,31 @@ fn base64_decode_step_optional(st: Base64DecodeState?, v: Int) -> Base64DecodeSt
   }
 }
 
+// CANONICAL DECODING (RFC 4648 §3.5): a final partial group carries pad bits -- the low 4 bits of the
+// second sextet when one octet remains, the low 2 bits of the third when two do -- which a conforming
+// encoder sets to zero. They are discarded, so a decoder that ignores them admits several spellings of
+// one octet string ("Zg==" and "Zh==" both read as "f"), and every consumer that needs one spelling
+// per value had to re-encode to find out which it was handed (gunbc.auth.approval_capability
+// capability_tag_hex did exactly that). Non-zero pad bits are therefore refused here, once, for every
+// consumer: the spelling is canonical by construction rather than by a second encoding.
 fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
   match st.buf {
     DecEmpty => Present { value: st.out }
     DecOne { v0: _ } => none
     DecTwo { v0: a, v1: b } =>
-      match base64_group_of_sextets(a: a, b: b, c: 0, v: 0) {
-        WordRefused { cause: _ } => none
-        WordReady { word: group } =>
-          match base64_group_octet_values(group: group) {
-            Absent => none
-            Present { value: octets } => Present { value: concat(st.out, octets.take(n: 1)) }
-          }
-      }
+      if b % 16 != 0 { none } else { base64_decode_final_octets(out: st.out, a: a, b: b, c: 0, keep: 1) }
     DecThree { v0: a, v1: b, v2: c } =>
-      match base64_group_of_sextets(a: a, b: b, c: c, v: 0) {
-        WordRefused { cause: _ } => none
-        WordReady { word: group } =>
-          match base64_group_octet_values(group: group) {
-            Absent => none
-            Present { value: octets } => Present { value: concat(st.out, octets.take(n: 2)) }
-          }
+      if c % 4 != 0 { none } else { base64_decode_final_octets(out: st.out, a: a, b: b, c: c, keep: 2) }
+  }
+}
+
+fn base64_decode_final_octets(out: List<Int>, a: Int, b: Int, c: Int, keep: Int) -> List<Int>? {
+  match base64_group_of_sextets(a: a, b: b, c: c, v: 0) {
+    WordRefused { cause: _ } => none
+    WordReady { word: group } =>
+      match base64_group_octet_values(group: group) {
+        Absent => none
+        Present { value: octets } => Present { value: concat(out, octets.take(n: keep)) }
       }
   }
 }
