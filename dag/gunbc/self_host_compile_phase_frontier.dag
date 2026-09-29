@@ -2162,9 +2162,8 @@ fn receipt_3_5ee4892b_receipt() -> CompilePhaseFrontierReceipt {
 // receipt 3's, so comparison_inputs_same holds, the epoch is unchanged, and the same-epoch arm
 // forbids a reclassified predecessor. None is carried.
 //
-// The census stays EMPTY across 22 days of main (5ee4892b -> e0d0e01e), over a closure that grew
-// from 171 to 216 emitted files: nothing was added, so newly_exposed is empty and no regression is
-// opened or closed. The working tree was clean at measurement (the gate's report records it, after
+// The census stays EMPTY across 22 days of main (5ee4892b -> e0d0e01e), over a closure that grew in
+// the meantime: nothing was added, so newly_exposed is empty and no regression is opened or closed. The working tree was clean at measurement (the gate's report records it, after
 // an explicit clean of the runner's checkout).
 data receipt_4_e0d0e01e_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
   producer: "rustfmt --emit stdout --edition 2021",
