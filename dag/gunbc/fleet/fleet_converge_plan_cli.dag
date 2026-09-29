@@ -157,7 +157,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   LaunchEnvironment,
-  fleet_converge_plan_artifact_of_request,
+  fleet_converge_bound_plan_artifact,
   ScopeDecoded,
   ScopeUndecodable,
   timer_retirement_observed_legacy_srv1,
@@ -194,7 +194,7 @@ import gunbc.actions_run_binding {
   fleet_converge_expected_host_env_name,
 }
 import gunbc.fleet_converge_receipt {
-  FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
+  FleetConvergePlanReceipt, FleetConvergeApplyReceipt, fleet_converge_plan_receipt_from_artifact,
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
   fleet_converge_plan_run_id_env_name,
   write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
@@ -835,10 +835,12 @@ fn fleet_converge_plan_scoped_bound_wet(
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
   {
-    let artifact = fleet_converge_plan_artifact_of_request(
+    match fleet_converge_bound_plan_artifact(
       request: request,
       prior_generation: prior_generation,
-    )
+    ) {
+      Absent => exit_failure(reason: "fleet_converge_plan: scoped artifact construction refused")
+      Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
@@ -888,21 +890,9 @@ fn fleet_converge_plan_scoped_bound_wet(
                 && w_prior.success
                 && w_member_fp.success
                 && w_scope.success {
-                let receipt = FleetConvergePlanReceipt {
-                  run: run,
-                  observed_host: host_short,
-                  scope_wire: fleet_converge_scope_wire(scope: artifact.subject.scope),
-                  member_set_fingerprint_hex: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-                  plan_artifact_hash: content_hash as String,
-                  observed_baseline_hex: artifact.observed_baseline_hex as String,
-                  prior_generation: prior_generation,
-                  planned_generation: planned_generation,
-                  lease_key: artifact.plan_lease.epoch.lease_key as String,
-                  lease_resource_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.resource_fingerprint) as String,
-                  lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
-                  lease_generation: artifact.plan_lease.epoch.generation,
-                  apply_terminal: artifact.apply_terminal,
-                }
+                let receipt = fleet_converge_plan_receipt_from_artifact(
+                  run: run, observed_host: host_short, artifact: artifact, content_hash: content_hash as String,
+                )
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
                     exit_failure(reason: join(["fleet_converge_plan: PlanReceiptWriteRefused at ", p, ": ", e], ""))
@@ -941,6 +931,7 @@ fn fleet_converge_plan_scoped_bound_wet(
   }
   }
   }
+}
 }
 
 // APPLY BINDS ITSELF TO THE PLAN RECEIPT IT WAS HANDED (RLM-2 ruling section 2): the plan run id

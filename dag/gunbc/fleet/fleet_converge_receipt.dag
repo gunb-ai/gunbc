@@ -2,14 +2,14 @@ module gunbc.fleet_converge_receipt
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, serialize_content_hash }
 import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_object, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_converge_plan {
-  FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied,
+  FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, FleetConvergePlanArtifact, fleet_converge_scope_wire,
   fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire,
 }
 import gunbc.actions_run_binding {
@@ -85,6 +85,27 @@ type FleetConvergeApplyReceipt {
   expected_revision_admitted: String
   terminal: FleetConvergeApplyTerminal
   locked_apply_exit_code: Int
+}
+
+// Both effectful and no-op plans publish the same run-bound artifact identity.
+fn fleet_converge_plan_receipt_from_artifact(
+  run: ActionsRunBinding, observed_host: String, artifact: FleetConvergePlanArtifact, content_hash: String,
+) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: run,
+    observed_host: observed_host,
+    scope_wire: fleet_converge_scope_wire(scope: artifact.subject.scope),
+    member_set_fingerprint_hex: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+    plan_artifact_hash: content_hash,
+    observed_baseline_hex: artifact.observed_baseline_hex as String,
+    prior_generation: artifact.prior_generation,
+    planned_generation: artifact.prior_generation + 1,
+    lease_key: artifact.plan_lease.epoch.lease_key as String,
+    lease_resource_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.resource_fingerprint) as String,
+    lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
+    lease_generation: artifact.plan_lease.epoch.generation,
+    apply_terminal: artifact.apply_terminal,
+  }
 }
 
 fn fleet_converge_plan_receipt_identity_text(r: FleetConvergePlanReceipt) -> String {
