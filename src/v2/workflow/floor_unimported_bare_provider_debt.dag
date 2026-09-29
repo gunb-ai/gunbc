@@ -125,16 +125,20 @@ fn unimported_bare_provider_row_standing(
     if r.file_deleted && exists {
       ["RetiredFileDeletedButPresent " + r.identity]
     } else {
-      if r.imports_fixed && !exists {
-        ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+      if r.relocated && exists {
+        ["RetiredRelocatedButPresent " + r.identity + " -- the file still sits under a source root; the relocation did not happen"]
       } else {
-        if r.active && is_checked && !is_carried {
-          ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
+        if r.imports_fixed && !exists {
+          ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
         } else {
-          if r.imports_fixed && is_checked && is_carried {
-            ["RetiredImportsFixedButCarried " + r.identity]
+          if r.active && is_checked && !is_carried {
+            ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
           } else {
-            []
+            if r.imports_fixed && is_checked && is_carried {
+              ["RetiredImportsFixedButCarried " + r.identity]
+            } else {
+              []
+            }
           }
         }
       }
