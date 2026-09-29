@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.infer { inferred_facts_grounding_derived, inferred_facts_witness_for_node }
 import v2.compiler.resolve { resolve }
@@ -55,7 +56,7 @@ fn infer_transform_witness_resolved_add_arrow() -> Optional<Node> {
         Accepted { value: normalized, diagnostics: _ } =>
           match resolve(tree: normalized, lm: dag_language_model()) {
             Accepted { value: resolved, diagnostics: _ } =>
-              wave1_gate1_find_arrow_in_module(root: resolved)
+              wave1_gate1_find_arrow_in_module(root: resolved.root)
             Rejected { diagnostics: _ } => Absent
           }
       }
@@ -80,7 +81,7 @@ fn infer_transform_add_vertical_discriminating_holds() -> Bool {
       match infer_transform_witness_add_body(arrow: arrow) {
         Absent => false
         Present { value: body } =>
-          match infer_and_discharge(tree: arrow) {
+          match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: arrow)) {
             Accepted { value: tree, diagnostics: _ } =>
               match inferred_facts_witness_for_node(tree: tree, node: body) {
                 Holds { value: body_facts } =>

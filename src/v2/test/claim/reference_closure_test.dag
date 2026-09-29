@@ -1,5 +1,6 @@
 module v2.test.claim.reference_closure
 
+import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve {
@@ -89,7 +90,7 @@ fn rc_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
   module_roots_from_source_root_ingest(ingest: rc_ingest, lm: dag_language_model())
 }
 
-fn rc_resolve_subject(subject: String) -> Outcome<Node> {
+fn rc_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match rc_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
@@ -106,19 +107,19 @@ fn rc_resolve_subject(subject: String) -> Outcome<Node> {
   }
 }
 
-fn rc_resolved_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_entry") }
+fn rc_resolved_entry() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_entry") }
 
-fn rc_resolved_imported() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_imported") }
+fn rc_resolved_imported() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_imported") }
 
-fn rc_resolved_dotted() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_dotted") }
+fn rc_resolved_dotted() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_dotted") }
 
-fn rc_resolved_transitive() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_transitive") }
+fn rc_resolved_transitive() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_transitive") }
 
-fn rc_resolved_logic() -> Outcome<Node> { rc_resolve_subject(subject: "v2.std.logic") }
+fn rc_resolved_logic() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.std.logic") }
 
-fn rc_resolved_broken_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_broken_entry") }
+fn rc_resolved_broken_entry() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_broken_entry") }
 
-fn rc_resolved_of(dotted: String) -> Outcome<Node> {
+fn rc_resolved_of(dotted: String) -> Outcome<ResolvedTree> {
   if dotted == "v2.test.rc_entry" { rc_resolved_entry() }
   else if dotted == "v2.test.rc_imported" { rc_resolved_imported() }
   else if dotted == "v2.test.rc_dotted" { rc_resolved_dotted() }
