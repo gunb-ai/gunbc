@@ -17,7 +17,7 @@ import gunbc.auth.approval_broker_marker {
 }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
   approval_broker_route_specs,
   approval_broker_route_table_build,
   approval_broker_respond,
@@ -75,6 +75,17 @@ test fn approval_broker_table_selects_the_four_routes() -> Bool {
     && broker_selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
+// THE STORE RECEIPT ROUTE IS A POST ON THE ESCALATION'S MEMBER PATH, and a GET there is 405 -- never
+// the status read, which would hand bearer authority to any poller.
+test fn approval_broker_table_selects_the_store_receipt_route_as_a_post() -> Bool {
+  broker_selects(method: POST, path: "/approvals/esc-1/store-receipt", want: ApprovalStoreReceiptHandler)
+    && broker_selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
+    && match serve_select_route(table: broker_table_or_empty(), method: GET, path: "/approvals/esc-1/store-receipt") {
+      MethodNotAllowed { allowed: ms } => count(ms) == 1
+      _ => false
+    }
+}
+
 // THE SIX DEVICE ROUTES ARE ANSWERED HERE AND ONLY AS POSTS (gunbc.auth.approval_device_wire:
 // every device operation is a POST whose body carries its authentication). The two suffixed
 // routes bind one segment; a GET on any of them is 405, not a read.
@@ -91,14 +102,16 @@ test fn approval_broker_table_selects_the_six_device_routes_as_posts() -> Bool {
     }
 }
 
-// THE TABLE IS EXACTLY THE TEN: the four approval routes and the six device routes. An eleventh
-// row is not a neutral addition: every route this process serves is one more thing whose demand
-// shares the broker's slice, and the split exists because co-tenancy is what made an approval
-// poll depend on a dashboard render.
+// THE TABLE IS EXACTLY THE ELEVEN: the four approval routes, the store receipt route and the six
+// device routes. A new row is not a neutral addition: every route this process serves is one more
+// thing whose demand shares the broker's slice, and the split exists because co-tenancy is what
+// made an approval poll depend on a dashboard render. The eleventh is the approval loop's own: a
+// receipt is minted from the broker's decision store and nowhere else, and it is a separate POST so
+// that bearer authority over store writes never rides the public status GET.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 10
+  count(approval_broker_route_specs()) == 11
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 10
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 11
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
 }

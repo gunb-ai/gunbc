@@ -196,8 +196,10 @@ fn same_capture(a: VllmKvLayoutReceipt, b: VllmKvLayoutReceipt) -> CaptureJoin {
             LaunchContradiction { invocation: _, field: _ } =>
               CaptureNotEstablished { cause: "the receipts contradict each other about one launch, so their captures are not one evidence" as NonEmptyStr }
           }
-        _ => CaptureNotEstablished { cause: "the other receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+        KvLayoutUnreadable { launch: _, cause: _ } => CaptureNotEstablished { cause: "the other receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+        KvLayoutInconsistent { launch: _, cause: _ } => CaptureNotEstablished { cause: "the other receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
       }
-    _ => CaptureNotEstablished { cause: "this receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+    KvLayoutUnreadable { launch: _, cause: _ } => CaptureNotEstablished { cause: "this receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
+    KvLayoutInconsistent { launch: _, cause: _ } => CaptureNotEstablished { cause: "this receipt is not an observed layout, so there is no capture to join" as NonEmptyStr }
   }
 }

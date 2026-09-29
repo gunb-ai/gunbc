@@ -731,12 +731,12 @@ fn projected_queue_drift(policy: MergeQueuePolicy, rules: List<RulesetRuleWire>)
       fold(matched, init: [], f: fn(_, rule) {
         match rule.parameters {
           Absent => [ProjectedQueueParametersIncomplete { missing: ["parameters"] }]
-          Present { value: params } =>
-            let missing = merge_queue_missing_fields(p: params)
+          Present { value: p } =>
+            let missing = merge_queue_missing_fields(p: p)
             if length(missing) > 0 {
               [ProjectedQueueParametersIncomplete { missing: missing }]
             } else {
-              projected_queue_field_drift(policy: policy, p: params)
+              projected_queue_field_drift(policy: policy, p: p)
             }
         }
       })

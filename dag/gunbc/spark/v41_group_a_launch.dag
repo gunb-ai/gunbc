@@ -617,7 +617,7 @@ fn v41_group_a_dry_run_report(plan: V41GroupALaunchPlan, admission: V41LaunchAdm
             join(zip_map(a: steps, b: zip_map(a: spark_native_preflight_plans(steps: steps), b: spark_native_apply_stage_plans(steps: steps), f: fn(pf, ap) { join(["--- engram staging\n", v41_engram_staging_wire(manifest_text: manifest), "\n--- preflight\n", pf.script, "\n--- apply\n", ap.script], "") }), f: fn(st, scripts) {
               join([
                 "=== host ", st.host as String, " rank ", to_string(st.launch.node.node_rank), " unit ", st.unit_name as String, "\n",
-                "--- create\n", join(concat([st.launch.create.program as String], st.launch.create.arguments), " "), "\n",
+                "--- create\n", join(concat([st.launch.create.program.invocation as String], st.launch.create.arguments), " "), "\n",
                 "--- unit\n", st.unit_text, "\n",
                 scripts, "\n",
               ], "")
