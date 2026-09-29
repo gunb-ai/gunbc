@@ -7,6 +7,7 @@ import gunbc.quarantine_probe_disposition {
   NeverRunDeclinedByHomePolicy,
   NeverRunDeclinedByLiveTreeRead,
   NeverRunPathExcluded,
+  NeverRunDeclinedOutsideGate,
   QuarantineProbeSubject,
   QuarantineProbeHoldingFacts,
   QuarantineProbeDisposition,
@@ -17,18 +18,23 @@ import gunbc.quarantine_probe_disposition {
   quarantine_probe_disposition_holds,
   quarantine_probe_dispositions_all_hold,
   quarantine_probe_admissions,
-  quarantine_probe_identity
+  quarantine_probe_identity,
+  quarantine_probe_verification_standing,
+  QuarantineProbeVerificationStanding,
+  WitnessNeverRuns
 }
 import gunbc.explicit_witness_admission { ExplicitWitnessAdmission, explicit_witness_admissions }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import v2.workflow.required_floor { long_home_prefixes }
+import v2.workflow.required_floor { long_home_prefixes, required_gate_admits }
+import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline, quarantine_outside_gate_declines }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { Cons, Empty, fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import std.types { NonEmptyStr }
 
 // THE LIVE JOIN plus its discriminating controls. The model is in
 // gunbc.quarantine_probe_disposition; this file supplies the three live populations from the
@@ -104,7 +110,9 @@ fn live_quarantine_probe_facts() -> QuarantineProbeHoldingFacts {
     route_gap_roster: floor_route_gap_roster(),
     home_prefixes: long_home_prefixes(),
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: quarantine_outside_gate_declines,
+    gate_admits: fn(m) { required_gate_admits(module_path: m) }
   }
 }
 
@@ -136,11 +144,29 @@ test fn every_supplied_population_is_load_bearing_on_the_live_claim() -> Bool {
   !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_expected_red())
     && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_route_gap())
     && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_home_prefixes())
+    && !quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_facts_without_outside_gate())
     && quarantine_probe_dispositions_all_hold(subjects: subjects, facts: live_quarantine_probe_facts())
 }
 
 fn probe_no_strings() -> List<String> {
   Empty {}
+}
+
+fn probe_no_declines() -> List<QuarantineOutsideGateDecline> {
+  Empty {}
+}
+
+fn live_facts_without_outside_gate() -> QuarantineProbeHoldingFacts {
+  let f = live_quarantine_probe_facts()
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: f.expected_red_roster,
+    route_gap_roster: f.route_gap_roster,
+    home_prefixes: f.home_prefixes,
+    live_tree_declined_entries: f.live_tree_declined_entries,
+    path_exclusion_substrings: f.path_exclusion_substrings,
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: f.gate_admits
+  }
 }
 
 fn live_facts_without_expected_red() -> QuarantineProbeHoldingFacts {
@@ -150,7 +176,9 @@ fn live_facts_without_expected_red() -> QuarantineProbeHoldingFacts {
     route_gap_roster: f.route_gap_roster,
     home_prefixes: f.home_prefixes,
     live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
+    path_exclusion_substrings: f.path_exclusion_substrings,
+    outside_gate_declines: f.outside_gate_declines,
+    gate_admits: f.gate_admits
   }
 }
 
@@ -161,7 +189,9 @@ fn live_facts_without_route_gap() -> QuarantineProbeHoldingFacts {
     route_gap_roster: probe_no_strings(),
     home_prefixes: f.home_prefixes,
     live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
+    path_exclusion_substrings: f.path_exclusion_substrings,
+    outside_gate_declines: f.outside_gate_declines,
+    gate_admits: f.gate_admits
   }
 }
 
@@ -172,7 +202,9 @@ fn live_facts_without_home_prefixes() -> QuarantineProbeHoldingFacts {
     route_gap_roster: f.route_gap_roster,
     home_prefixes: probe_no_strings(),
     live_tree_declined_entries: f.live_tree_declined_entries,
-    path_exclusion_substrings: f.path_exclusion_substrings
+    path_exclusion_substrings: f.path_exclusion_substrings,
+    outside_gate_declines: f.outside_gate_declines,
+    gate_admits: f.gate_admits
   }
 }
 
@@ -198,7 +230,9 @@ fn probe_fixture_no_facts() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -208,7 +242,9 @@ fn facts_with_expected_red() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -218,7 +254,9 @@ fn facts_with_route_gap() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -228,7 +266,9 @@ fn facts_with_home_prefix() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Cons { head: "test.claim.synthetic_", tail: Empty {} },
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -238,7 +278,9 @@ fn facts_with_live_tree_decline() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Cons { head: probe_fixture_entry, tail: Empty {} },
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -248,7 +290,9 @@ fn facts_with_path_exclusion() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Cons { head: "test/claim/synthetic_", tail: Empty {} }
+    path_exclusion_substrings: Cons { head: "test/claim/synthetic_", tail: Empty {} },
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -258,7 +302,9 @@ fn facts_with_two_holders() -> QuarantineProbeHoldingFacts {
     route_gap_roster: Cons { head: probe_fixture_identity(), tail: Empty {} },
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
 }
 
@@ -290,6 +336,10 @@ fn quarantine_probe_holder_eq(a: QuarantineProbeHolder, b: QuarantineProbeHolder
     }
     NeverRunPathExcluded { matched_substring: sa } => match b {
       NeverRunPathExcluded { matched_substring: sb } => sa == sb
+      _ => false
+    }
+    NeverRunDeclinedOutsideGate { module: ma, trigger: ta } => match b {
+      NeverRunDeclinedOutsideGate { module: mb, trigger: tb } => ma == mb && (ta as String) == (tb as String)
       _ => false
     }
   }
@@ -367,7 +417,9 @@ test fn a_roster_row_that_merely_contains_the_identity_does_not_hold_it() -> Boo
     route_gap_roster: Empty {},
     home_prefixes: Empty {},
     live_tree_declined_entries: Empty {},
-    path_exclusion_substrings: Empty {}
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_no_declines(),
+    gate_admits: fn(m) { false }
   }
   disposition_is_now_passing(disposition: fixture_disposition(facts: near_miss))
     && disposition_is_held_by(disposition: fixture_disposition(facts: facts_with_expected_red()), expected: FloorExpectedRedHeld {})
@@ -395,4 +447,43 @@ test fn the_former_live_tree_declined_row_is_now_expected_red() -> Bool {
 test fn the_live_tree_declaration_read_discriminates() -> Bool {
   entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag")
     && !entry_declares_reads_live_tree_for_selection(entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag")
+}
+
+// THE OUTSIDE-GATE ARM HOLDS ONLY OUTSIDE THE GATE, AND ONLY AS NEVER-RUN. A decline row for the
+// fixture probe holds it while the supplied gate refuses the module, and the holder's standing is
+// WitnessNeverRuns -- an unenforced red, never coverage. The SAME row under a gate that admits the
+// module derives no holder, so the probe reads NowPassing: a probe the floor would execute cannot
+// be parked here. The pair is the discriminating control for the join on module identity.
+fn probe_fixture_outside_gate_row() -> List<QuarantineOutsideGateDecline> {
+  [
+    QuarantineOutsideGateDecline {
+      module: probe_fixture_module,
+      function: probe_fixture_function,
+      trigger: "fixture: its module entering the required gate" as NonEmptyStr
+    },
+  ]
+}
+
+fn facts_with_outside_gate(gate_admits_fixture: Bool) -> QuarantineProbeHoldingFacts {
+  QuarantineProbeHoldingFacts {
+    expected_red_roster: Empty {},
+    route_gap_roster: Empty {},
+    home_prefixes: Empty {},
+    live_tree_declined_entries: Empty {},
+    path_exclusion_substrings: Empty {},
+    outside_gate_declines: probe_fixture_outside_gate_row(),
+    gate_admits: fn(m) { gate_admits_fixture && m == probe_fixture_module }
+  }
+}
+
+test fn an_outside_gate_row_holds_only_while_the_gate_refuses_the_module_and_only_as_never_run() -> Bool {
+  let outside = fixture_disposition(facts: facts_with_outside_gate(gate_admits_fixture: false))
+  let inside = fixture_disposition(facts: facts_with_outside_gate(gate_admits_fixture: true))
+  (match outside {
+    HeldByExactlyOne { identity: _, holder: h } =>
+      (match h { NeverRunDeclinedOutsideGate { module: m, trigger: _ } => m == probe_fixture_module  _ => false })
+        && (match quarantine_probe_verification_standing(holder: h) { WitnessNeverRuns => true  _ => false })
+    _ => false
+  })
+    && disposition_is_now_passing(disposition: inside)
 }
