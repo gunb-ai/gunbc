@@ -115,9 +115,13 @@ type LineWidthLimit
   = LineWidthMeasured { units: Int }
   | LineWidthUncalibrated
 
-// Measured on the Animal Crossing Deluxe build (Dolphin, 2026-09-26): two save-screen lines of digit
-// rulers, 240 and 245 units (thirty 8-unit digits, the second after a 5-unit space), both drew
-// whole inside the bubble with margin to spare; the bubble's edge was not reached. The base game's
-// own lines keep well inside this -- almost none exceed 186 units -- which is a house style, not
-// the limit.
-data message_window_line_width: LineWidthLimit = LineWidthMeasured { units: 245 }
+// Measured on the Animal Crossing Deluxe build in Dolphin, twice. 2026-09-26: two save-screen lines
+// of digit rulers, 240 and 245 units, both drew whole inside that screen's bubble -- which turned
+// out to be a wider window than a villager's talk bubble. 2026-09-29, in the talk bubble: a
+// 227-unit line ("Something's been eating at me. You've") ran past the bubble's edge and a 173-unit
+// line under it fit, so the talk bubble's limit lies in (173, 227). The base game's own text says
+// where: of the 80,819 plain lines it ships, 99% are at most 184 units and 95% at most 179, so 186
+// is what the game itself draws in the bubble and is the width held here; the exact edge between
+// 186 and 227 waits on a ruler drawn in the talk bubble, and a line above 186 is refused rather
+// than warned.
+data message_window_line_width: LineWidthLimit = LineWidthMeasured { units: 186 }
