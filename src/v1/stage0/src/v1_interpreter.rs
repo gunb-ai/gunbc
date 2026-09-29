@@ -15620,9 +15620,6 @@ pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 /// symbol, or the bidirectional roster check goes stale without reddening.
 pub const FILE_CENSUS_MARKER: &str = "[file]";
 
-/// Collapse argv into one readable line — runs of whitespace become a single space —
-/// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
-/// an anomaly expands fully). Ambient subjects are named intents, not argv.
 /// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
 ///
 /// The `[file]` family's seven emit sites all fire BEFORE their effect, so the subject is the
@@ -15668,10 +15665,17 @@ pub fn file_payload_clause(bytes: u64, mode: Option<u32>) -> String {
     }
 }
 
-/// The octal spelling of a mode. `extdeps.access.posix file_mode_octal` is the authority on the
-/// digit layout and this mirror agrees with it by construction: four digits, most significant
-/// first (setuid/setgid/sticky, then owner, group, other). `u32` cannot hold a value outside
-/// 0..=0o7777, which is the range the operation itself admits.
+/// The octal spelling of a mode, mirroring `extdeps.access.posix file_mode_octal` — four digits,
+/// most significant first (setuid/setgid/sticky, then owner, group, other).
+///
+/// THE CALLER ADMITS THE RANGE, AND `u32` IS NOT THE ADMISSION. `dispatch_file` refuses a mode
+/// outside 0..=0o7777 before dispatch ("needs an Int `mode` within 0..=0o7777"), so every value
+/// reaching here is already four octal digits wide; the mask makes that precondition explicit
+/// instead of relying on it. An earlier draft of this comment claimed the range was guaranteed by
+/// the TYPE, which is false — a u32 holds far more — and a fabricated claim beside a
+/// silently-masking body is the widening §5 forbids. The claim now names where the refusal lives,
+/// and `file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range` holds the two
+/// together by execution rather than by assertion.
 fn file_mode_octal(mode: u32) -> String {
     let special = (mode >> 9) & 0o7;
     let owner = (mode >> 6) & 0o7;
@@ -15680,6 +15684,9 @@ fn file_mode_octal(mode: u32) -> String {
     format!("{special}{owner}{group}{other}")
 }
 
+/// Collapse argv into one readable line — runs of whitespace become a single space —
+/// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
+/// an anomaly expands fully). Ambient subjects are named intents, not argv.
 fn shell_argv_collapsed(argv: &[String]) -> String {
     argv.join(" ")
         .split_whitespace()
@@ -24483,6 +24490,7 @@ mod dispatch_rest_decision_tests {
 
 #[cfg(test)]
 mod file_effect_trace_tests {
+    use super::file_mode_octal;
     use super::file_payload_clause;
     use super::render_file_effect_begin_line_mirror;
     use super::Value;
@@ -24674,6 +24682,74 @@ mod file_effect_trace_tests {
                 "the operand must survive in {line:?}"
             );
         }
+    }
+    /// The doc on `file_mode_octal` claims the range comes from the caller's admission, not from
+    /// the type. That claim is only worth making if it is checked, so this holds the mirror against
+    /// `extdeps.access.posix file_mode_octal` BY EXECUTION across the range that admission admits
+    /// (0..=0o7777) — including the special-bits digit, which is where a three-digit rendering and a
+    /// four-digit one disagree. It also pins the discriminating case the reviewer raised: a value
+    /// ABOVE the admitted range would be silently masked, which is why the admission arm exists
+    /// upstream rather than here.
+    #[test]
+    fn file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range() {
+        let ctx = oracle_context();
+        // The authority's own direction: text -> FileMode -> octal spelling. A mode admitted by
+        // dispatch_file is a four-digit octal spelling, so feeding one and reading it back
+        // exercises both halves of the posix module on the same value this mirror spells.
+        let authority_octal = |spelling: &str| -> String {
+            let mode = super::run_in_context_with_args(
+                &ctx,
+                "file_mode_of_octal_text",
+                &[(Some("text".to_string()), Value::Str(spelling.into()))],
+                false,
+            )
+            .expect("file_mode_of_octal_text resolves");
+            // The parse returns FileMode?, so unwrap through the same optional shape the authority
+            // publishes rather than assuming a bare record.
+            let peeled = match mode {
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(variant_name, "Present") => fields
+                    .iter()
+                    .find(|(name, _)| ctx.sym_eq(*name, "value"))
+                    .map(|(_, v)| v.clone())
+                    .expect("Present carries its value"),
+                other => panic!("file_mode_of_octal_text refused {spelling}: {other:?}"),
+            };
+            super::run_in_context_with_args(
+                &ctx,
+                "file_mode_octal",
+                &[(Some("mode".to_string()), peeled)],
+                false,
+            )
+            .and_then(|v| match v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(super::InterpError::NoSuchFunction {
+                    name: "file_mode_octal returned a non-string".to_string(),
+                }),
+            })
+            .expect("file_mode_octal resolves")
+        };
+        for spelling in [
+            "0000", "0600", "0644", "0755", "1777", "2755", "4755", "7777",
+        ] {
+            let value = u32::from_str_radix(spelling, 8).expect("octal literal");
+            assert!(
+                value <= 0o7777,
+                "{spelling} must be inside the range dispatch_file admits"
+            );
+            assert_eq!(
+                file_mode_octal(value),
+                authority_octal(spelling),
+                "mirror must agree with extdeps.access.posix on {spelling}"
+            );
+        }
+        // The narrowing the comment names: the mask is what makes a four-digit rendering total
+        // over the admitted range, and a value above it is the caller's to refuse (dispatch_file
+        // does, before dispatch). Asserted so the claim cannot drift back into "the type says so".
+        assert_eq!(file_mode_octal(0o100600), "0600");
     }
 }
 
