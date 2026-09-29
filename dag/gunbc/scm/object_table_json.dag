@@ -850,7 +850,8 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
       MemberString { value: lexeme } =>
         ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
       MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
-      _ => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+      MemberArray { elements: _ } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
+      MemberObject { value: _ } => ConnectiveDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
     }
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
@@ -921,18 +922,21 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
         match read_string_member(v: kind_value, key: "connective") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
           MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+          MemberArray { elements: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
+          MemberObject { value: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
           MemberFailed { cause: c } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
           MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+          MemberArray { elements: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
+          MemberObject { value: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
         KindDecodeFailed { cause: NodeEntryUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+    MemberArray { elements: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
+    MemberObject { value: _ } => KindDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
   }
 }
 
@@ -971,7 +975,8 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
         MemberFailed { cause: c } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
           LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+        MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
+        MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
       }
   }
 }
@@ -998,7 +1003,8 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
       } else {
         LabelDecodeFailed { cause: NodeEntryUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+    MemberArray { elements: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
+    MemberObject { value: _ } => LabelDecodeFailed { cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
   }
 }
 
@@ -1110,7 +1116,14 @@ fn decode_pending_edge(acc: PendingEdgeAcc, edge_value: JsonValue) -> PendingEdg
                     refusal: acc.refusal,
                   }
               }
-            _ =>
+            MemberString { value: _ } =>
+              PendingEdgeAcc {
+                edges: acc.edges,
+                refusal: Present {
+                  value: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "target" } }
+                },
+              }
+            MemberArray { elements: _ } =>
               PendingEdgeAcc {
                 edges: acc.edges,
                 refusal: Present {
@@ -1475,7 +1488,16 @@ fn decode_manifest_entry(
                       path: path as NonEmptyStr,
                       source_value: source_value,
                     )
-                  _ =>
+                  MemberString { value: _ } =>
+                    ManifestEntryAcc {
+                      entries: acc.entries,
+                      refusal: Present {
+                        value: ObjectTableMemberReadRefused {
+                          cause: MemberReadWrongShape { key: "source" }
+                        }
+                      },
+                    }
+                  MemberArray { elements: _ } =>
                     ManifestEntryAcc {
                       entries: acc.entries,
                       refusal: Present {
@@ -1486,7 +1508,14 @@ fn decode_manifest_entry(
                     }
                 }
               }
-            _ =>
+            MemberArray { elements: _ } =>
+              ManifestEntryAcc {
+                entries: acc.entries,
+                refusal: Present {
+                  value: ObjectTableMemberReadRefused { cause: MemberReadWrongShape { key: "path" } }
+                },
+              }
+            MemberObject { value: _ } =>
               ManifestEntryAcc {
                 entries: acc.entries,
                 refusal: Present {
@@ -1601,13 +1630,21 @@ fn decode_node_entry_shape(object_value: JsonValue) -> NodeEntryShape {
                       NodeEntryShapeDecoded { kind: kind, edges: reverse(reversed_edges) }
                   }
               }
-            _ =>
+            MemberString { value: _ } =>
+              NodeEntryShapeRefused {
+                cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+              }
+            MemberObject { value: _ } =>
               NodeEntryShapeRefused {
                 cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
               }
           }
       }
-    _ =>
+    MemberString { value: _ } =>
+      NodeEntryShapeRefused {
+        cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+      }
+    MemberArray { elements: _ } =>
       NodeEntryShapeRefused {
         cause: NodeEntryMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
       }

@@ -36,6 +36,7 @@ import extdeps.languages.json.emit {
   JsonString,
   JsonNumber,
   JsonNull,
+  JsonBool,
   json_kv,
   json_array,
   json_object,
@@ -86,6 +87,7 @@ import gunbc.scm.json_member {
   MemberLookupFailed,
   MemberString,
   MemberArray,
+  MemberObject,
   MemberFailed,
   read_member,
   read_member_value,
@@ -2269,11 +2271,15 @@ fn decode_commit_members_after_reference(
                           }
                       }
                   }
-                _ =>
+                MemberArray { elements: _ } =>
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
+                MemberObject { value: _ } =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
               }
           }
-        _ =>
+        MemberString { value: _ } =>
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } } }
+        MemberArray { elements: _ } =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } } }
       }
 }
@@ -2355,7 +2361,8 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
         RepositoryFormatV5 => decode_repository_v5(v: v)
         RepositoryFormatV4 => decode_repository_v4(v: v)
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
+    MemberArray { elements: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
+    MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
   }
 }
 
@@ -2443,7 +2450,8 @@ fn decode_repository_versioned(
           Absent => decode_repository_body(v: v, policy: policy, commit_policy: commit_policy)
         }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+    MemberArray { elements: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+    MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
   }
 }
 
@@ -2583,7 +2591,8 @@ fn decode_repository_body_with_allocator(
                           }
                       }
                   }
-                _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
+                MemberString { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
+                MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
               }
               }
               }
@@ -2591,7 +2600,8 @@ fn decode_repository_body_with_allocator(
               }
           }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    MemberString { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
 
@@ -2659,7 +2669,11 @@ fn decode_repository_stage(
         MemberValue { value: found } =>
           match found {
             JsonNull => StagedDecoded { staged: none }
-            _ => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonBool { value: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonNumber { lexeme: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonString { value: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonArray { elements: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonObject { members: _ } => decode_declared_stage(store: store, positions: positions, found: found)
           }
       }
   }
