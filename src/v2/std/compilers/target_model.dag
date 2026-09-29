@@ -369,15 +369,23 @@ fn produced_decl_render_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-// A type reference renders as one bound token in the target's identifier class. Any
-// other type shape REFUSES, typed and located -- never a fabricated spelling.
+// A type reference renders as one bound token in the target's identifier class, bound to what the
+// caller's type_binding resolves the atom to: the target's realization of a kernel carrier, an explicit
+// target spelling, or a program-declared type's own name (v2.compiler.emit_produced
+// produced_type_binding). The token is never bound to an atom nothing resolved, so the serializer's
+// interned-name fallback cannot fabricate a type spelling. Any other type shape REFUSES, typed and
+// located.
 fn produced_decl_type_ref_tokens(
   token_class: Symbol,
-  type_node: Node
+  type_node: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match type_node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      outcome_accepted(value: [BoundToken { token_class: token_class, binding: id }])
+    TypeNode { connective: Atom { identity: _ } } =>
+      bind_outcome(
+        o: type_binding(type_node),
+        f: fn(binding) { outcome_accepted(value: [BoundToken { token_class: token_class, binding: binding }]) }
+      )
     _ =>
       outcome_rejected(
         d: produced_decl_render_diagnostic(
@@ -391,7 +399,8 @@ fn produced_decl_type_ref_tokens(
 fn produced_decl_param_segment_tokens(
   rows: ProducedDeclRenderRows,
   edge: Edge,
-  segment: ProducedDeclParamSegment
+  segment: ProducedDeclParamSegment,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match segment {
     ProducedParamFixed { token_class: tc } =>
@@ -411,7 +420,8 @@ fn produced_decl_param_segment_tokens(
     ProducedParamType =>
       produced_decl_type_ref_tokens(
         token_class: rows.type_ref_token_class,
-        type_node: edge.target
+        type_node: edge.target,
+        type_binding: type_binding
       )
   }
 }
@@ -419,7 +429,8 @@ fn produced_decl_param_segment_tokens(
 fn produced_decl_param_layout_tokens(
   rows: ProducedDeclRenderRows,
   edge: Edge,
-  layout: List<ProducedDeclParamSegment>
+  layout: List<ProducedDeclParamSegment>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold_list(
     xs: layout,
@@ -429,7 +440,7 @@ fn produced_decl_param_layout_tokens(
         o: acc,
         f: fn(so_far) {
           bind_outcome(
-            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment),
+            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment, type_binding: type_binding),
             f: fn(toks) {
               outcome_accepted(value: list_append(left: so_far, right: toks))
             }
@@ -462,7 +473,8 @@ type ProducedDeclParamsFold {
 
 fn produced_decl_params_tokens(
   rows: ProducedDeclRenderRows,
-  params: List<Edge>
+  params: List<Edge>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: fold_list(
@@ -478,7 +490,8 @@ fn produced_decl_params_tokens(
               o: produced_decl_param_layout_tokens(
                 rows: rows,
                 edge: edge,
-                layout: rows.param_layout
+                layout: rows.param_layout,
+                type_binding: type_binding
               ),
               f: fn(toks) {
                 outcome_accepted(
@@ -512,7 +525,8 @@ fn produced_decl_params_tokens(
 fn produced_decl_signature_segment_tokens(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
-  segment: ProducedDeclSignatureSegment
+  segment: ProducedDeclSignatureSegment,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match segment {
     ProducedSignatureFixed { token_class: tc } =>
@@ -520,12 +534,13 @@ fn produced_decl_signature_segment_tokens(
     ProducedSignatureDeclName { token_class: tc } =>
       outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
     ProducedSignatureParams =>
-      produced_decl_params_tokens(rows: rows, params: subject.params)
+      produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding)
     ProducedSignatureReturnType =>
       produced_decl_type_tokens_at(
         rows: rows,
         position: FunctionTypeAtItemReturn,
-        type_node: subject.codomain
+        type_node: subject.codomain,
+        type_binding: type_binding
       )
   }
 }
@@ -537,7 +552,8 @@ fn produced_decl_signature_segment_tokens(
 fn produced_decl_type_tokens_at(
   rows: ProducedDeclRenderRows,
   position: FunctionTypePosition,
-  type_node: Node
+  type_node: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match type_node.kind {
     TypeNode { connective: Arrow } =>
@@ -557,14 +573,16 @@ fn produced_decl_type_tokens_at(
                 o: produced_decl_function_type_params_tokens(
                   rows: rows,
                   sugar: row.sugar,
-                  params: produced_decl_function_type_domain_edges(arrow: type_node, params: shape.params)
+                  params: produced_decl_function_type_domain_edges(arrow: type_node, params: shape.params),
+                  type_binding: type_binding
                 ),
                 f: fn(param_tokens) {
                   bind_outcome(
                     o: produced_decl_type_tokens_at(
                       rows: rows,
                       position: FunctionTypeAtFnBoundReturn,
-                      type_node: shape.codomain
+                      type_node: shape.codomain,
+                      type_binding: type_binding
                     ),
                     f: fn(return_tokens) {
                       outcome_accepted(
@@ -583,7 +601,7 @@ fn produced_decl_type_tokens_at(
             }
           )
       }
-    _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node)
+    _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node, type_binding: type_binding)
   }
 }
 
@@ -603,15 +621,17 @@ fn produced_decl_function_type_domain_edges(arrow: Node, params: List<Edge>) -> 
 
 fn produced_decl_function_type_param_tokens(
   rows: ProducedDeclRenderRows,
-  edge: Edge
+  edge: Edge,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target)
+  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target, type_binding: type_binding)
 }
 
 fn produced_decl_function_type_params_tokens(
   rows: ProducedDeclRenderRows,
   sugar: FunctionTypeSugarRows,
-  params: List<Edge>
+  params: List<Edge>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: fold_list(
@@ -622,7 +642,7 @@ fn produced_decl_function_type_params_tokens(
           o: acc,
           f: fn(so_far) {
             bind_outcome(
-              o: produced_decl_function_type_param_tokens(rows: rows, edge: edge),
+              o: produced_decl_function_type_param_tokens(rows: rows, edge: edge, type_binding: type_binding),
               f: fn(toks) {
                 outcome_accepted(
                   value: ProducedDeclParamsFold {
@@ -656,7 +676,8 @@ fn produced_decl_function_type_params_tokens(
 fn produced_decl_signature_segments_tokens(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
-  segments: List<ProducedDeclSignatureSegment>
+  segments: List<ProducedDeclSignatureSegment>,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   fold_list(
     xs: segments,
@@ -669,7 +690,8 @@ fn produced_decl_signature_segments_tokens(
             o: produced_decl_signature_segment_tokens(
               rows: rows,
               subject: subject,
-              segment: segment
+              segment: segment,
+              type_binding: type_binding
             ),
             f: fn(toks) {
               outcome_accepted(value: list_append(left: so_far, right: toks))
@@ -824,7 +846,8 @@ fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureS
 
 fn produced_decl_signature_with_open_from_rows(
   rows: ProducedDeclRenderRows,
-  decl: Node
+  decl: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: produced_decl_subject_from_decl(decl: decl),
@@ -832,7 +855,8 @@ fn produced_decl_signature_with_open_from_rows(
       produced_decl_signature_segments_tokens(
         rows: rows,
         subject: subject,
-        segments: rows.signature
+        segments: rows.signature,
+        type_binding: type_binding
       )
     }
   )
@@ -842,10 +866,11 @@ fn produced_decl_signature_with_open_from_rows(
 // is the structural inverse of the target's rows and holds no per-target knowledge.
 fn produced_decl_render_from_rows(
   rows: ProducedDeclRenderRows,
-  decl: Node
+  decl: Node,
+  type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<TargetBodiedArrowStatementScaffold> {
   bind_outcome(
-    o: produced_decl_signature_with_open_from_rows(rows: rows, decl: decl),
+    o: produced_decl_signature_with_open_from_rows(rows: rows, decl: decl, type_binding: type_binding),
     f: fn(signature_with_open) {
       outcome_accepted(
         derive_bodied_arrow_scaffold(

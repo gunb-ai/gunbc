@@ -8,10 +8,11 @@ import v2.std.compilers.target_model {
   TargetModel,
   produced_decl_render_from_rows,
   render_target_text,
+  target_atom_type_spelling,
   target_model_with_produced_scaffold
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.collection { Absent, List, Present, list_at_optional, map_get }
 import v2.std.algebra { contains, fold_list, FreeMonoid }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
 import v2.std.diagnostic {
@@ -30,6 +31,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Conj, Disj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.compiler.translate { translate_target_atom_realization_for_carrier }
 import v2.std.logic { Bool }
 import v2.std.node_query { find_arrow_body_child }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
@@ -150,10 +152,28 @@ fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
 type ModuleDeclarationKinds {
   records: FreeMonoid<Symbol>
   refinements: FreeMonoid<Symbol>
+  declared_types: FreeMonoid<Symbol>
 }
 
 fn no_module_declaration_kinds() -> ModuleDeclarationKinds {
-  ModuleDeclarationKinds { records: Empty, refinements: Empty }
+  ModuleDeclarationKinds { records: Empty, refinements: Empty, declared_types: Empty }
+}
+
+// The types the module itself declares: every named direct member of its bodies that is not a function.
+// A signature may spell one of these by its own name; any other unrealized type atom refuses.
+fn module_declared_type_names(root: Node) -> FreeMonoid<Symbol> {
+  fold(module_bodies_in_tree(node: root, acc: []), init: Empty, f: fn(acc, b) {
+    fold(module_body_member_edges(body: b), init: acc, f: fn(a, e) {
+      match e.label {
+        Named { name: n } =>
+          match e.target.kind {
+            TypeNode { connective: Arrow } => a
+            _ => list_snoc_item(xs: a, item: n)
+          }
+        Positional => a
+      }
+    })
+  })
 }
 
 // EVERY DIRECT MEMBER OF A MODULE BODY HAS EXACTLY ONE TARGET REALIZATION OR ONE TYPED REFUSAL.
@@ -233,7 +253,7 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
 
 fn emit_module_member(edge: Edge, target: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
-    ModuleMemberBodiedArrow => emit_produced_decl(decl: produced_decl_node_for_edge(edge: edge), target: target)
+    ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, declared_types: kinds.declared_types)
     ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target)
     ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target)
     ModuleMemberRefinement { name: _, refinement: _ } => emit_module_member_refused(reason: ^emit_module_member_refinement_not_realized, at: edge.target)
@@ -287,6 +307,11 @@ fn produced_module_bodies_declare_members(root: Node) -> Bool {
 // Every module body's members, in order, each through its one realization; the first refusal refuses
 // the module with nothing partial published.
 fn emit_module_body_members(root: Node, target: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
+  let declared = ModuleDeclarationKinds {
+    records: kinds.records,
+    refinements: kinds.refinements,
+    declared_types: list_append(left: kinds.declared_types, right: module_declared_type_names(root: root))
+  }
   let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
     concat(acc, module_body_member_edges(body: b))
   })
@@ -299,7 +324,7 @@ fn emit_module_body_members(root: Node, target: TargetModel, kinds: ModuleDeclar
           o: acc,
           f: fn(partial) {
             bind_outcome(
-              o: emit_module_member(edge: edge, target: target, kinds: kinds),
+              o: emit_module_member(edge: edge, target: target, kinds: declared),
               f: fn(medium) {
                 Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
               }
@@ -337,6 +362,41 @@ fn emit_produced_decl_with_target(
 // produced_decl_target_unwired:
 // never a widen, never a fabricated default (DESIGN section 5).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
+  emit_produced_decl_declaring(decl: decl, target: target, declared_types: Empty)
+}
+
+// HOW A SIGNATURE'S TYPE ATOM IS SPELLED, IN ONE ORDER, AND NEVER BY FABRICATION: the target's atom
+// realization of a kernel carrier binds that row's surface symbol (v2.std.compilers.target_model
+// target_atom_type_spelling; the target's binding_spellings then spell that symbol); failing that, an
+// explicit binding_spellings entry for the atom itself is used as written; failing that, a type the
+// program itself declares binds its own name; anything else refuses, located. Before this, every type
+// atom was bound as itself and an unmapped one printed its interned name -- `bool_node_symbol` for Bool.
+// STANDING, STATED: Int still reaches `i32` through its explicit binding_spellings entry, not through a
+// realization row -- the target has no Int atom realization (there is no integer value-template kind to
+// give one), so that route is not yet unified with Bool's.
+fn produced_type_binding(target: TargetModel, declared_types: FreeMonoid<Symbol>) -> fn(Node) -> Outcome<Symbol> {
+  fn(type_node) {
+    match type_node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        match translate_target_atom_realization_for_carrier(target: target, source_carrier: type_node) {
+          Accepted { value: row, diagnostics: _ } => outcome_accepted(value: target_atom_type_spelling(row: row))
+          Rejected { diagnostics: _ } =>
+            match map_get(target.binding_spellings, id) {
+              Accepted { value: Present { value: _ }, diagnostics: _ } => outcome_accepted(value: id)
+              _ =>
+                if contains(xs: declared_types, item: id, eq: fn(a, b) { a == b }) {
+                  outcome_accepted(value: id)
+                } else {
+                  outcome_rejected(d: emit_produced_decl_diagnostic(reason: ^produced_decl_type_ref_unrealized, node: type_node))
+                }
+            }
+        }
+      _ => outcome_rejected(d: emit_produced_decl_diagnostic(reason: ^produced_decl_type_ref_unrealized, node: type_node))
+    }
+  }
+}
+
+fn emit_produced_decl_declaring(decl: Node, target: TargetModel, declared_types: FreeMonoid<Symbol>) -> Outcome<Medium<String>> {
   match target.produced_decl_support {
     ProducedDeclUnwired =>
       outcome_rejected(
@@ -348,7 +408,7 @@ fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>
       scaffold_base_row: base_row
     } =>
       bind_outcome(
-        o: produced_decl_render_from_rows(rows: rows, decl: decl),
+        o: produced_decl_render_from_rows(rows: rows, decl: decl, type_binding: produced_type_binding(target: target, declared_types: declared_types)),
         f: fn(scaffold) {
           emit_produced_decl_with_target(
             decl: decl,
