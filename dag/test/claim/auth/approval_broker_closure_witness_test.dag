@@ -18,10 +18,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the compiler's directory.
 data broker_entry: String = "dag/gunbc/auth/approval_broker_serve.dag"
 
-// THE RED IS A REAL ENTRY, NOT A PLANTED PATH: gunbc.commit_workflow imports v2.compiler.source_authority,
-// so its closure must contain a compiler module. If this control stops finding one, the predicate or
-// the closure has gone blind, and the broker's green below would be vacuous.
-data compiler_reaching_entry: String = "dag/gunbc/commit_workflow.dag"
+// THE RED IS A REAL ENTRY, NOT A PLANTED PATH: gunbc.stage0_crate_layout_emit imports
+// v2.compiler.self_host.stage0_crate_layout, so its closure must contain a compiler module. It is the
+// production importer of a compiler module with the narrowest closure, chosen so the red pays for a
+// small walk rather than for most of the compiler. If this control stops finding a compiler module,
+// the predicate or the closure has gone blind, and the broker's green below would be vacuous.
+data compiler_reaching_entry: String = "dag/gunbc/stage0/stage0_crate_layout_emit.dag"
 
 data compiler_directory_prefix: String = "src/v2/compiler/"
 
