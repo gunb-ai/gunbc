@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules, symbol_lexeme }
+import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -34,7 +34,7 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }

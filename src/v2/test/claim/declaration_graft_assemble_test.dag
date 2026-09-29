@@ -17,9 +17,8 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_lexeme }
 import v2.std.text { String }
-import v2.std.compilers.lexing { symbol_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -8,7 +8,14 @@ import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io { Filesystem }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_refusal_cause,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusalReason
+}
 
 // THE OPAQUE-REALIZATION CENSUS.
 //
@@ -891,6 +898,21 @@ fn census_supplied_tree(src_dir: String) -> OpaqueRealizationCensus {
   )
 }
 
+// The census invokes the compiler it is measuring as a subprocess, so an unready gunbc is a refusal
+// and never a clean measurement; the cause says where the binary was looked for and why it refused.
+fn census_compiler_binary_unestablished(
+  provenance: EmittedTreeProvenance,
+  bin_name: String,
+  path: String,
+  reason: WitnessBinRefusalReason
+) -> OpaqueRealizationCensus {
+  OpaqueCensusUnestablished {
+    provenance: provenance,
+    stage: OpaqueCensusStageCompilerBinary,
+    cause: witness_bin_refusal_cause(bin_name: bin_name, path: path, reason: reason)
+  }
+}
+
 fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
   let provenance = EmittedByThisRun { entry: entry }
   let root = git.Inspect.Toplevel()
@@ -902,43 +924,40 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
       cause: "could not create a temporary directory for the emitted crate"
     }
   } else {
-    let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-    if !gunbc_built {
-      OpaqueCensusUnestablished {
-        provenance: provenance,
-        stage: OpaqueCensusStageCompilerBinary,
-        cause: "the gunbc release binary is not buildable — the census invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
-      }
-    } else {
-      let emit = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
-        args: [
-          "compile",
-          "--source-root", "dag",
-          "--source-root", "src/v2",
-          "--entry", entry,
-          "--output-dir", out_dir.path,
-          "--target", "rust",
-          "--dependency-pool-index", "primary-precedence"
-        ]
-      )
-      let emit_detail = concat("emitter exit_code=", concat(to_string(value: emit.exit_code), concat("; stderr: ", emit.stderr)))
-      if !emit.success {
-        OpaqueCensusUnestablished {
-          provenance: provenance,
-          stage: OpaqueCensusStageEmit,
-          cause: concat(
-            "the emitter exited unsuccessfully, so whatever .rs files reached the output directory are a PARTIAL emission and not a subject; a census taken over them would report a population from a run that did not finish. ",
-            emit_detail
+    match witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
+      WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+        census_compiler_binary_unestablished(provenance: provenance, bin_name: b, path: p, reason: r)
+      WitnessBinReady { path: gunbc_bin } => {
+        let emit = gunbc.WitnessBin.Run(
+          workdir: root.path,
+          bin_path: gunbc_bin,
+          args: [
+            "compile",
+            "--source-root", "dag",
+            "--source-root", "src/v2",
+            "--entry", entry,
+            "--output-dir", out_dir.path,
+            "--target", "rust",
+            "--dependency-pool-index", "primary-precedence"
+          ]
+        )
+        let emit_detail = concat("emitter exit_code=", concat(to_string(value: emit.exit_code), concat("; stderr: ", emit.stderr)))
+        if !emit.success {
+          OpaqueCensusUnestablished {
+            provenance: provenance,
+            stage: OpaqueCensusStageEmit,
+            cause: concat(
+              "the emitter exited unsuccessfully, so whatever .rs files reached the output directory are a PARTIAL emission and not a subject; a census taken over them would report a population from a run that did not finish. ",
+              emit_detail
+            )
+          }
+        } else {
+          census_emitted_tree(
+            provenance: provenance,
+            src_dir: concat(out_dir.path, "/src"),
+            emit_detail: emit_detail
           )
         }
-      } else {
-        census_emitted_tree(
-          provenance: provenance,
-          src_dir: concat(out_dir.path, "/src"),
-          emit_detail: emit_detail
-        )
       }
     }
   }

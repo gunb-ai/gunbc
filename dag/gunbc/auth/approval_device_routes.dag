@@ -393,7 +393,10 @@ fn redemption_status(o: DeviceRedemptionOutcome) -> HttpStatus {
 fn redemption_signature(slot: EnrolmentSlotStanding, r: SignedRedemption) -> SignatureVerification {
   match slot {
     EnrolmentCodeConsumed { enrollment: e } => verify_signature(key: e.decision_key, signature: r.signature, message: device_redemption_signing_input(i: r.signing_input))
-    _ => SignatureInvalid { suite: EcdsaP256Sha256 }
+    EnrolmentCodeUnspent { challenge: _ } => SignatureInvalid { suite: EcdsaP256Sha256 }
+    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => SignatureInvalid { suite: EcdsaP256Sha256 }
+    EnrolmentCodeUnknown => SignatureInvalid { suite: EcdsaP256Sha256 }
+    EnrolmentSlotUnreadable { detail: _ } => SignatureInvalid { suite: EcdsaP256Sha256 }
   }
 }
 
@@ -404,7 +407,10 @@ fn redemption_assertion(slot: EnrolmentSlotStanding, r: SignedRedemption, app_id
         AndroidDecisionKeyOnly => AssertionRefused { cause: AssertionUndecodable { cause: "no platform proof verifier for Android" } }
         IosAppAttestAssertion { assertion_b64: b } => assertion_for_enrollment(enrollment: e, assertion_b64: b, client_data: device_redemption_signing_input(i: r.signing_input), app_id: app_id, config: config)
       }
-    _ => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
+    EnrolmentCodeUnspent { challenge: _ } => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
+    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
+    EnrolmentCodeUnknown => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
+    EnrolmentSlotUnreadable { detail: _ } => AssertionRefused { cause: AssertionUndecodable { cause: "no active enrolment" } }
   }
 }
 

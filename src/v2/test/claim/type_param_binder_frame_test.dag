@@ -1,6 +1,6 @@
 module v2.test.claim.type_param_binder_frame
 
-import v2.std.compilers.body_lowering { declared_signature }
+import v2.std.arrow_signature { declared_signature }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -43,8 +43,8 @@ import v2.std.node {
 import v2.std.text { String }
 import v2.std.optional { Absent, Present }
 import v2.std.type_binder {
-  GenericOpaqueTypeDecl,
-  GenericTypeAlias,
+  OpaqueTypeDecl,
+  TypeAlias,
   GenericTypeDecl,
   PlainTypeDecl,
   type_alias_wrapper,
@@ -551,8 +551,8 @@ fn tpb_generic_member(o: Outcome<Node>) -> List<Node> {
             if (count(acc) == 0) && (count(type_param_names(n: m)) > 0) {
               match type_decl_view(target: m) {
                 GenericTypeDecl { binders: _, member: member } => [member]
-                GenericTypeAlias { binders: _, aliased: _ } => acc
-                GenericOpaqueTypeDecl { binders: _ } => acc
+                TypeAlias { binders: _, aliased: _ } => acc
+                OpaqueTypeDecl { binders: _ } => acc
                 PlainTypeDecl { member: _ } => acc
               }
             } else {
@@ -685,8 +685,8 @@ fn tpb_generic_view_tags(o: Outcome<Node>) -> List<Symbol> {
             if count(type_param_names(n: m)) > 0 {
               match type_decl_view(target: m) {
                 GenericTypeDecl { binders: _, member: _ } => concat(acc, [^view_generic_member])
-                GenericTypeAlias { binders: _, aliased: _ } => concat(acc, [^view_generic_alias])
-                GenericOpaqueTypeDecl { binders: _ } => concat(acc, [^view_generic_opaque])
+                TypeAlias { binders: _, aliased: _ } => concat(acc, [^view_generic_alias])
+                OpaqueTypeDecl { binders: _ } => concat(acc, [^view_generic_opaque])
                 PlainTypeDecl { member: _ } => acc
               }
             } else {
@@ -697,9 +697,10 @@ fn tpb_generic_view_tags(o: Outcome<Node>) -> List<Symbol> {
   }
 }
 
-// GENERIC ALIASES AND BODYLESS GENERICS (v2.compiler.body_lowering_fold body_lower_generic_eq_type_decl).
+// GENERIC ALIASES AND BODYLESS GENERICS (v2.compiler.body_lowering_fold body_lower_eq_type_decl).
 // RED BEFORE, MEASURED ON THE PRE-CHANGE TREE: (25) (25b) (25c) (27) refused
-// body_lowering_reason_generic_type_decl_member_uncarried -- the refusal nine corpus files took,
+// body_lowering_reason_generic_type_decl_member_uncarried (now body_lowering_reason_type_decl_member_uncarried,
+// since the arm serves plain declarations too) -- the refusal nine corpus files took,
 // v2.std.collection's `type List<T> = std.algebra.FreeMonoid<T>` among them. (26) refused with that same
 // reason, so it discriminates only beside (25). (28) is green before and after: the leading-`|` single
 // variant is a one-variant coproduct in v1, so carrying it as an alias would change its meaning.
