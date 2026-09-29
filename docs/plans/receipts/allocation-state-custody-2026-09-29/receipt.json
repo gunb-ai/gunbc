@@ -11,8 +11,26 @@
   "closure_controls_modules": 1746,
   "closure_emission_exit": 137,
   "closure_emission_modules": 2110,
-  "qualification": "not established; processes killed before results",
+  "qualification": "not established; local checks OOM-killed; pinned integrated CI outstanding",
   "workflow_emitted": false,
   "installed": false,
-  "ci_run": 36510800728
+  "ci_run": 36512302394,
+  "ci_revision": "7768a9597efb03bd6729cda76beb85b8e9485544",
+  "bounded_attempts": [
+    {
+      "subject": "custody controls",
+      "modules": 1746,
+      "typed_module_cache_max_entries": 1,
+      "malloc_arena_max": 2,
+      "systemd_result": "oom-kill"
+    },
+    {
+      "subject": "canonical fleet workflow projection",
+      "modules": 1822,
+      "additional_harness_modules": 1,
+      "typed_module_cache_max_entries": 1,
+      "malloc_arena_max": 2,
+      "systemd_result": "oom-kill"
+    }
+  ]
 }
