@@ -1981,7 +1981,7 @@ pub fn declared_type_conformance_diags(
                     scope.module_name.clone(),
                 )])
             } else {
-                if coproduct_payload_where_parent_required(
+                if nominal_coproduct_applied_argument_conflict(
                     declared.clone(),
                     produced.clone(),
                     scope.clone(),
@@ -1999,14 +1999,11 @@ pub fn declared_type_conformance_diags(
                         scope.module_name.clone(),
                     )])
                 } else {
-                    if ((type_node_is_arrow(declared.clone())
-                        && type_node_is_arrow(produced.clone()))
-                        && callable_signature_mismatch(
-                            declared.clone(),
-                            produced.clone(),
-                            si.clone(),
-                        ))
-                    {
+                    if coproduct_payload_where_parent_required(
+                        declared.clone(),
+                        produced.clone(),
+                        scope.clone(),
+                    ) {
                         Rc::new(vec![type_mismatch_error(
                             crate::v1_compiler_infer_types::node_type_shape(
                                 declared.clone(),
@@ -2020,11 +2017,14 @@ pub fn declared_type_conformance_diags(
                             scope.module_name.clone(),
                         )])
                     } else {
-                        if callable_element_signature_mismatch(
-                            declared.clone(),
-                            produced.clone(),
-                            si.clone(),
-                        ) {
+                        if ((type_node_is_arrow(declared.clone())
+                            && type_node_is_arrow(produced.clone()))
+                            && callable_signature_mismatch(
+                                declared.clone(),
+                                produced.clone(),
+                                si.clone(),
+                            ))
+                        {
                             Rc::new(vec![type_mismatch_error(
                                 crate::v1_compiler_infer_types::node_type_shape(
                                     declared.clone(),
@@ -2038,28 +2038,47 @@ pub fn declared_type_conformance_diags(
                                 scope.module_name.clone(),
                             )])
                         } else {
-                            if !both_ground.clone() {
-                                Rc::new(vec![])
+                            if callable_element_signature_mismatch(
+                                declared.clone(),
+                                produced.clone(),
+                                si.clone(),
+                            ) {
+                                Rc::new(vec![type_mismatch_error(
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        declared.clone(),
+                                        si.clone(),
+                                    ),
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        produced.clone(),
+                                        si.clone(),
+                                    ),
+                                    span.clone(),
+                                    scope.module_name.clone(),
+                                )])
                             } else {
-                                if crate::v1_compiler_infer_types::node_type_compatible(
-                                    declared.clone(),
-                                    produced.clone(),
-                                    si.clone(),
-                                ) {
+                                if !both_ground.clone() {
                                     Rc::new(vec![])
                                 } else {
-                                    Rc::new(vec![type_mismatch_error(
-                                        crate::v1_compiler_infer_types::node_type_shape(
-                                            declared.clone(),
-                                            si.clone(),
-                                        ),
-                                        crate::v1_compiler_infer_types::node_type_shape(
-                                            produced.clone(),
-                                            si.clone(),
-                                        ),
-                                        span.clone(),
-                                        scope.module_name.clone(),
-                                    )])
+                                    if crate::v1_compiler_infer_types::node_type_compatible(
+                                        declared.clone(),
+                                        produced.clone(),
+                                        si.clone(),
+                                    ) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new(vec![type_mismatch_error(
+                                            crate::v1_compiler_infer_types::node_type_shape(
+                                                declared.clone(),
+                                                si.clone(),
+                                            ),
+                                            crate::v1_compiler_infer_types::node_type_shape(
+                                                produced.clone(),
+                                                si.clone(),
+                                            ),
+                                            span.clone(),
+                                            scope.module_name.clone(),
+                                        )])
+                                    }
                                 }
                             }
                         }
@@ -5997,6 +6016,164 @@ pub fn nominal_product_head_name_if_declared_product(
                 }
             }
             std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn nominal_coproduct_applied_argument_conflict(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let declared_head =
+            nominal_coproduct_application_head_name(declared.clone(), scope.clone());
+        let produced_head =
+            nominal_coproduct_application_head_name(produced.clone(), scope.clone());
+        if ((declared_head.clone() == "".to_string()) || (produced_head.clone() == "".to_string()))
+        {
+            false
+        } else {
+            if (nominal_product_head_names_agree(
+                declared_head.clone(),
+                produced_head.clone(),
+                scope.clone(),
+            ) == false)
+            {
+                false
+            } else {
+                if (((declared.children.clone().len() as i64) == 0)
+                    || ((declared.children.clone().len() as i64)
+                        != (produced.children.clone().len() as i64)))
+                {
+                    false
+                } else {
+                    coproduct_applied_type_arguments_conflict_scan(
+                        declared.children.clone(),
+                        produced.children.clone(),
+                        scope.clone(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+pub fn coproduct_applied_type_arguments_conflict_scan(
+    mut __tco_loop_declared_args: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_produced_args: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_scope: Rc<InferScope>,
+) -> bool {
+    loop {
+        #[allow(unused_mut)]
+        let mut declared_args = __tco_loop_declared_args;
+        #[allow(unused_mut)]
+        let mut produced_args = __tco_loop_produced_args;
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope;
+        match declared_args.clone().first().cloned() {
+            Some(d) => match produced_args.clone().first().cloned() {
+                Some(p) => {
+                    let produced_name = crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        crate::v1_compiler_infer_types::child_type_node(p.clone()),
+                    );
+                    if ((produced_name.clone() != "Unit".to_string())
+                        && applied_type_argument_conflicts(d.clone(), p.clone(), scope.clone()))
+                    {
+                        break true;
+                    } else {
+                        {
+                            let __tco_0 = Rc::new(
+                                declared_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_1 = Rc::new(
+                                produced_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_2 = scope;
+                            __tco_loop_declared_args = __tco_0;
+                            __tco_loop_produced_args = __tco_1;
+                            __tco_loop_scope = __tco_2;
+                            continue;
+                        }
+                    }
+                }
+                std::option::Option::None => {
+                    break false;
+                }
+            },
+            std::option::Option::None => {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn nominal_coproduct_application_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if ((((((((name.clone() == "".to_string())
+            || (n.return_cardinality.clone() == Cardinality::CardOptional))
+            || type_node_is_callable(n.clone()))
+            || crate::std_types::is_kernel_type(name.clone()))
+            || (crate::v1_std_core::qualified_last_segment(name.clone())
+                == "Optional".to_string()))
+            || ((n.children.clone().len() as i64) == 0))
+            || crate::v1_compiler_infer_types::node_is_element_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+        {
+            "".to_string()
+        } else {
+            match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                {
+                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                        unreachable!()
+                    };
+                    {
+                        let representative = transparent_alias_representative(
+                            scope.type_env.clone().symbol_index.clone(),
+                            name.clone(),
+                        );
+                        match crate::v1_compiler_infer_env::lookup_type_by_name(
+                            scope.type_env.clone(),
+                            representative.clone(),
+                        ) {
+                            Some(decl) => {
+                                let peeled =
+                                    crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                                        decl.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    );
+                                if (peeled.connective.clone() == Connective::Disj) {
+                                    name.clone()
+                                } else {
+                                    "".to_string()
+                                }
+                            }
+                            std::option::Option::None => "".to_string(),
+                        }
+                    }
+                }
+                _ => "".to_string(),
+            }
         }
     }
 }
