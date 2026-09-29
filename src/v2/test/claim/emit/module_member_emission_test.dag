@@ -155,19 +155,26 @@ test fn a_where_refinement_is_not_emitted_as_a_record_holds() -> Bool {
 test fn a_record_beside_a_function_emits_as_a_struct_holds() -> Bool {
   match member_emission_record_verdict() {
     MemberEmitted { text: t } =>
-      string_contains(s: t, pattern: "struct Point") && string_contains(s: t, pattern: "fn f(x: i32) -> i32")
+      string_contains(s: t, pattern: "struct Point")
+        && string_contains(s: t, pattern: "a: i32")
+        && !string_contains(s: t, pattern: "dag_binding_type_int")
+        && string_contains(s: t, pattern: "fn f(x: i32) -> i32")
     MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
 }
 
-// THE CLASSIFICATION IS POSITIVE, NOT BINARY: a payload-bearing single variant lowers to the same plain
-// Conj shape as a record or a refinement, is named in neither fact, and so refuses as undecided -- it is
-// never rendered as a struct and never taken for a refinement.
-test fn a_payload_single_variant_is_undecided_not_a_record_or_refinement_holds() -> Bool {
+// A PAYLOAD-BEARING SINGLE VARIANT IS A ONE-ARM COPRODUCT, not a record and not an undecided Conj:
+// `type Wrapped = Only { a: Int }` lowers to a Disj, so it emits as an enum whose one variant carries its
+// field, spelled by the target.
+test fn a_payload_single_variant_emits_as_a_one_arm_enum_holds() -> Bool {
   match member_emission_payload_variant_verdict() {
-    MemberEmitted { text: _ } => false
-    MemberRefused { reason: r } => r == ^emit_module_member_record_or_refinement_undecided
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "enum Wrapped")
+        && string_contains(s: t, pattern: "Only")
+        && string_contains(s: t, pattern: "a: i32")
+        && !string_contains(s: t, pattern: "dag_binding_type_int")
+    MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
 }

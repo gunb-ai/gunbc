@@ -8273,8 +8273,11 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
 }
 
 // WHICH type_decl IS A WHERE-REFINEMENT, ASKED ONCE, BY THE SAME ARMS body_lower_type_decl_by_body TAKES:
-// not a record (body_lower_type_decl_record_block_optional), and a where host
-// (body_lower_find_where_host_conj). After lowering, a refinement and a record share the
+// not a record (body_lower_type_decl_record_block_optional), and a where clause. The by-body dispatch
+// finds that clause as a Named edge (body_lower_find_where_host_conj) because it runs on the child-folded
+// node; this predicate runs on the PARSE, where the clause is still its dag_surface_where_refinement_clause
+// production shell, so it asks for that shell -- the parse-level form of the same arm, as
+// body_lower_type_decl_record_block_optional asks for the field block. After lowering, a refinement and a record share the
 // Conj { Name: payload } shape, and so does a payload-bearing single variant, so the refinement fact is
 // read HERE and carried on v2.compiler.normalized_tree NormalizedTree refinement_declarations beside
 // record_declarations -- positive facts only: a Conj member named in neither is neither. It reads the
@@ -8286,7 +8289,7 @@ fn body_lower_type_decl_refinement_name_optional(shell: Node) -> Optional<Symbol
       match body_lower_type_decl_record_block_optional(captured: captured) {
         Present { value: _ } => Absent
         Absent =>
-          match body_lower_find_where_host_conj(root: captured) {
+          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_where_refinement_clause) {
             Absent => Absent
             Present { value: _ } => dag_surface_kw_then_ident_from_captured(captured: captured)
           }

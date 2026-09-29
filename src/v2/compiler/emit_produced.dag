@@ -251,9 +251,9 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
   outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
 }
 
-fn emit_module_member(edge: Edge, target: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
+fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
-    ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, declared_types: kinds.declared_types)
+    ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, declared_types: kinds.declared_types)
     ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target)
     ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target)
     ModuleMemberRefinement { name: _, refinement: _ } => emit_module_member_refused(reason: ^emit_module_member_refinement_not_realized, at: edge.target)
@@ -306,7 +306,7 @@ fn produced_module_bodies_declare_members(root: Node) -> Bool {
 
 // Every module body's members, in order, each through its one realization; the first refusal refuses
 // the module with nothing partial published.
-fn emit_module_body_members(root: Node, target: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
+fn emit_module_body_members(root: Node, target: TargetModel, realization_host: TargetModel, kinds: ModuleDeclarationKinds) -> Outcome<Medium<String>> {
   let declared = ModuleDeclarationKinds {
     records: kinds.records,
     refinements: kinds.refinements,
@@ -324,7 +324,7 @@ fn emit_module_body_members(root: Node, target: TargetModel, kinds: ModuleDeclar
           o: acc,
           f: fn(partial) {
             bind_outcome(
-              o: emit_module_member(edge: edge, target: target, kinds: declared),
+              o: emit_module_member(edge: edge, target: target, realization_host: realization_host, kinds: declared),
               f: fn(medium) {
                 Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
               }
@@ -362,7 +362,7 @@ fn emit_produced_decl_with_target(
 // produced_decl_target_unwired:
 // never a widen, never a fabricated default (DESIGN section 5).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
-  emit_produced_decl_declaring(decl: decl, target: target, declared_types: Empty)
+  emit_produced_decl_declaring(decl: decl, target: target, realization_host: target, declared_types: Empty)
 }
 
 // HOW A SIGNATURE'S TYPE ATOM IS SPELLED, IN ONE ORDER, AND NEVER BY FABRICATION: the target's atom
@@ -396,7 +396,7 @@ fn produced_type_binding(target: TargetModel, declared_types: FreeMonoid<Symbol>
   }
 }
 
-fn emit_produced_decl_declaring(decl: Node, target: TargetModel, declared_types: FreeMonoid<Symbol>) -> Outcome<Medium<String>> {
+fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_host: TargetModel, declared_types: FreeMonoid<Symbol>) -> Outcome<Medium<String>> {
   match target.produced_decl_support {
     ProducedDeclUnwired =>
       outcome_rejected(
@@ -408,7 +408,7 @@ fn emit_produced_decl_declaring(decl: Node, target: TargetModel, declared_types:
       scaffold_base_row: base_row
     } =>
       bind_outcome(
-        o: produced_decl_render_from_rows(rows: rows, decl: decl, type_binding: produced_type_binding(target: target, declared_types: declared_types)),
+        o: produced_decl_render_from_rows(rows: rows, decl: decl, type_binding: produced_type_binding(target: realization_host, declared_types: declared_types)),
         f: fn(scaffold) {
           emit_produced_decl_with_target(
             decl: decl,

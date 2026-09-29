@@ -192,7 +192,7 @@ fn generate_rust_module_emission_candidate(
 ) -> Outcome<RustEmissionCandidate> {
   if produced_module_bodies_declare_members(root: inferred.root) {
     bind_outcome(
-      o: emit_module_body_members(root: inferred.root, target: target, kinds: no_module_declaration_kinds()),
+      o: emit_module_body_members(root: inferred.root, target: target, realization_host: target, kinds: no_module_declaration_kinds()),
       f: fn(source) {
         outcome_accepted(
           value: RustEmissionCandidate {

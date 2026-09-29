@@ -610,6 +610,7 @@ fn emit_partition_arrow_body_behavior_source(
 fn emit_partition_with_target(
   partition: ProgramPartition,
   target: TargetModel,
+  realization_host: TargetModel,
   kinds: ModuleDeclarationKinds
 ) -> Outcome<Medium<String>> {
   if partition_segment_is_ambient_arrow_body_behavior(partition: partition) {
@@ -627,7 +628,7 @@ fn emit_partition_with_target(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
         if produced_module_bodies_declare_members(root: tree.root) {
-          emit_module_body_members(root: tree.root, target: target, kinds: kinds)
+          emit_module_body_members(root: tree.root, target: target, realization_host: realization_host, kinds: kinds)
         } else {
           emit(tree: tree, target: target)
         }
@@ -636,6 +637,12 @@ fn emit_partition_with_target(
   }
 }
 
+// THE AUGMENTED TARGET IS NOT THE ATOM REALIZATIONS' HOST. partition_derive_target_for_emit adds this
+// program's ownership rows and value-semantics carriers to the target's bundle, and every atom
+// realization row is bound to the base bundle it was authored against
+// (v2.std.compilers.target_model target_atom_realization_bundle_matches_host), so a realization looked up
+// against the augmented target matches no row. Emission runs against the augmented target; a signature
+// type's realization is resolved against the base one, passed through as realization_host.
 fn emit_partition(
   partition: ProgramPartition,
   target: TargetModel,
@@ -644,7 +651,7 @@ fn emit_partition(
   bind_outcome(
     o: partition_derive_target_for_emit(partition: partition, target: target),
     f: fn(derived_target) {
-      emit_partition_with_target(partition: partition, target: derived_target, kinds: kinds)
+      emit_partition_with_target(partition: partition, target: derived_target, realization_host: target, kinds: kinds)
     }
   )
 }
