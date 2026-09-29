@@ -1730,7 +1730,8 @@ fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
 
 // The test.claim.machine_intake.sol_hold_stdin_wet_witness identities: the real
 // gunbc.machine_intake.sol_hold ActivateHeld launch run against a probe collector written into a
-// throwaway directory. First effect is shell.Mktemp.DirWithTemplate with no mock_response; the probe
+// throwaway directory, and the real mtcollins1_boot_await_capture_terminal watch run over those live
+// collectors with no BMC credential bound. First effect is shell.Mktemp.DirWithTemplate with no mock_response; the probe
 // is a process started from that directory, and nothing leaves it (no network, no BMC, no
 // credential). Triple enrollment: these expectations, their WetScheduledClaim rows in
 // local_repo_wet_schedule, and the gunbc.ci_layer_roots LocalRepoWetLane row for
