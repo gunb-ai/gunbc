@@ -29,10 +29,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared-signature constructor lowering uses (v2.std.arrow_signature declared_signature), and a
 // second copy has only its domain canonicalized. Both denote the same function, so both must answer
 // [z, a] with z still typed Int; the stored-order read of the canonical domain answers [a, z]
-// (asserted below as the mutation this claim discriminates). The inhabitance claim -- the real front
-// end on a real module, reading the emitted Rust text -- is
-// v2.test.long.produced_item_parameter_order_real_module, in the long lane because it pays the
-// whole front end.
+// (asserted below as the mutation this claim discriminates). The real path -- a real module through
+// the production front end into this renderer, whose emitted text is compared to a golden -- is
+// already executed by v2.test.emit.rust_produced_decl_emit rust_produced_decl_name_discriminates and
+// v2.test.long.emit_host_produced_module_equals_eval produced_module_two_distinct_fns_assemble; with
+// this reader in place both reach it through the declared-order arm (their decls carry an order
+// edge), so they are this interface's inhabitance claims. A second real-module claim here would
+// re-pay the whole front end for no discrimination: lowering keeps the authored sequence, so no
+// real module can tell a stored-order read from a declared-order one.
 fn ipo_atom(id: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
