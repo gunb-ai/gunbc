@@ -1,0 +1,12 @@
+LoadState=not-found
+ActiveState=inactive
+SubState=dead
+FragmentPath=
+ExecStart={ path=/opt/gunbc/microvm-controller/releases/cfb9ff80652fe0a74093f08cade64f59d9695266/gunbc ; argv[]=/opt/gunbc/microvm-controller/releases/cfb9ff80652fe0a74093f08cade64f59d9695266/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/runner/runner_microvm_slot_controller.dag --function microvm_slot_controller_main ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+ActiveState=failed
+InvocationID=c0fceefc7d9643b0aaff0617907b1335
+srv1-01-f05a3825683d4169b6a0ffcb3ee1da60.txt 110 bytes
+srv1-13-c0fceefc7d9643b0aaff0617907b1335.txt 83 bytes
+srv1-13-e77fe41281f5463fb68d0cbc49d33dc0.txt 61 bytes
+stat: cannot statx '/var/lib/gunbc/fabric/allocation': No such file or directory
+stat: cannot statx '/var/lib/gunbc/microvm-cell-readiness': No such file or directory

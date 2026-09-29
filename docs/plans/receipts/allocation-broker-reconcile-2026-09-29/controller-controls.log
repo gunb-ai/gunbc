@@ -1,0 +1,27 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=21 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=5285 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1902 scale=tree
+[pre-entry] phase=closure_name_census_build ms=2152 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=35 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=42 scale=closure
+[pre-entry] phase=closure_load ms=2385 scale=closure
+[pre-entry] phase=closure_parse ms=7482 scale=closure
+[pre-entry] phase=closure_resolve ms=255 scale=closure
+[pre-entry] phase=closure_normalize ms=834 scale=closure
+[pre-entry] phase=closure_typecheck ms=70456 scale=closure
+[pre-entry] phase=closure_parent_envs ms=6 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=131 scale=closure
+[pre-entry] phase=closure_ownership ms=1029 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=109355 scale=closure
+[pre-entry] population pool_modules=801 closure_files=578
+[pre-entry] process_cpu user_ms=106987 sys_ms=2001 max_rss_kib=4000776
+PASS workspace_purpose_blocks_direct_ci_launch
+PASS missing_or_foreign_authority_cannot_launch
+PASS withdrawal_preserves_ci_cleanup_without_new_registration
+PASS workspace_recovery_cannot_bypass_owner_settlement
+PASS desired_workspace_transfer_withdraws_only_the_budgeted_demo_cell_from_ci

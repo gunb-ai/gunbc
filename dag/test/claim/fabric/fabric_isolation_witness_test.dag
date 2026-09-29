@@ -1,5 +1,6 @@
 module test.claim.fabric_isolation_witness_test
 
+import v2.std.algebra { any }
 import std.types { Bool, String, List }
 import product.fabric.isolation {
   IsolationProfile, IsolationGuarantee,
