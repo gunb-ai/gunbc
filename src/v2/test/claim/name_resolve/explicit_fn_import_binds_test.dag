@@ -105,7 +105,7 @@ fn efib_accepted(v: NativeModuleResolveVerdict) -> Bool {
   }
 }
 
-fn efib_attributed_to(v: NativeModuleResolveVerdict, path: Symbol, module: String) -> Bool {
+fn efib_attributed_to(v: NativeModuleResolveVerdict, path: Symbol, module: QualifiedName) -> Bool {
   match v {
     NativeModuleResolveImportTargetFileRefused { target: t, first: _, rest: _, observation: _ } =>
       t.path == path && (match t.module { Present { value: m } => m == module  Absent => false })
@@ -125,7 +125,7 @@ fn efib_plain_resolve_refusal(v: NativeModuleResolveVerdict) -> Bool {
 test fn an_import_of_a_refused_module_is_attributed_to_its_file_refusal() -> Bool {
   match efib_verdicts() {
     Absent => false
-    Present { value: vs } => efib_attributed_to(v: vs.refused_user, path: ^efib_broken, module: "v2.test.efib.broken")
+    Present { value: vs } => efib_attributed_to(v: vs.refused_user, path: ^efib_broken, module: [^v2, ^test, ^efib, ^broken])
   }
 }
 
