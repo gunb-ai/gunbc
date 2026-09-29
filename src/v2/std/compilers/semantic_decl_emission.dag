@@ -188,26 +188,26 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
                       outcome_accepted(value: concat(rest, c))
                     }
                   )
-                TypeNode { connective: Conj } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-                TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-                TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-                TypeNode { connective: Cardinality } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-                TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-                ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+                TypeNode { connective: Conj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+                TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+                TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+                TypeNode { connective: Cardinality } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+                TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+                ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
               }
             }
           )
         }
       )
-    TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-    TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-    TypeNode { connective: Cardinality } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-    TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
-    ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise_2(bundle: bundle)
+    TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+    TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+    TypeNode { connective: Cardinality } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+    TypeNode { connective: Instantiation } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+    ComputationNode { behavior: _ } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
   }
 }
 
-fn semantic_decl_string_from_bundle_node_otherwise_2(bundle: Node) -> Outcome<String> {
+fn semantic_decl_string_from_bundle_node_otherwise(bundle: Node) -> Outcome<String> {
   outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
   )
 }
