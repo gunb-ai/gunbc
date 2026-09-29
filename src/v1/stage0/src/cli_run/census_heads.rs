@@ -271,9 +271,41 @@ pub(crate) fn project_heads_reading(
 
 fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, String> {
     use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
-    use crate::v1_std_core::ExprData;
-    let occurrence_identity = match &*n.occurrence_identity {
-        NodeOccurrenceIdentity::OccurrenceSynthetic => n.occurrence_identity.clone(),
+    use crate::v1_std_core::{ExprData, InferredNode};
+    // EXHAUSTIVE BY CONSTRUCTION: every `Node` field, and every arm of every enum below that can
+    // hold a node or an id, is named with no `..` and no wildcard, so a field or variant added
+    // later fails to compile here rather than passing through with file-local ids.
+    let Node {
+        occurrence_identity,
+        name,
+        ident,
+        span,
+        ident_span,
+        children,
+        connective,
+        params,
+        inferred,
+        return_cardinality,
+        uses,
+        body,
+        transport,
+        properties,
+        type_annotation,
+        is_self_recursive,
+        has_non_tail_self_call,
+        match_pattern,
+        module_item_kind,
+        declaration_marker,
+        expr_data,
+    } = &**n;
+    let refuse = |what: &str| {
+        Err(format!(
+            "heads projection refused: node '{name}' carries {what}, which the heads parser does \
+             not produce"
+        ))
+    };
+    let occurrence_identity = match &**occurrence_identity {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => occurrence_identity.clone(),
         NodeOccurrenceIdentity::OccurrenceMinted { id } => {
             Rc::new(NodeOccurrenceIdentity::OccurrenceMinted {
                 id: OccurrenceId {
@@ -282,25 +314,34 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
             })
         }
         NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
-            return Err(format!(
-                "heads projection refused: node '{}' carries a projected occurrence, which the \
-                 parser does not mint",
-                n.name
-            ))
+            return refuse("a projected occurrence")
         }
     };
-    // The parser records a written type expression as `Resolved { node }`: one more nested node.
-    // The other arms carry no id.
-    let inferred = match n.inferred.as_deref() {
-        Some(crate::v1_std_core::InferredNode::Resolved { node }) => {
-            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
-                node: project_node(node, base, relabel)?,
-            }))
+    let payload_free = match &**expr_data {
+        ExprData::NoExprData
+        | ExprData::ExprLiteral { value: _ }
+        | ExprData::ExprError {
+            kind: _,
+            message: _,
         }
-        _ => n.inferred.clone(),
-    };
-    let payload_free = match &*n.expr_data {
-        ExprData::ExprElaboratedLiteral { .. } => false,
+        | ExprData::ExprMatch
+        | ExprData::ExprIf
+        | ExprData::ExprLet
+        | ExprData::ExprRecordLit { parent_enum: _ }
+        | ExprData::ExprListLit
+        | ExprData::ExprUnaryOp { op: _ }
+        | ExprData::ExprLambda
+        | ExprData::ExprStringInterp
+        | ExprData::ExprBlock
+        | ExprData::ExprCast
+        | ExprData::ExprForEach
+        | ExprData::ExprIndex
+        | ExprData::ExprSlice
+        | ExprData::ExprReturn => true,
+        ExprData::ExprElaboratedLiteral {
+            value: _,
+            elaboration: _,
+        } => false,
         ExprData::ExprVar { binding_kind } => binding_kind.is_none(),
         ExprData::ExprFieldAccess { summary } => summary.is_none(),
         ExprData::ExprCall {
@@ -309,23 +350,19 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         } => call_semantics.is_none() && descent_evidence.is_none(),
         ExprData::ExprMethodCall { method_semantics } => method_semantics.is_none(),
         ExprData::ExprBinOp {
+            op: _,
             algebra_field,
             operand,
-            ..
         } => algebra_field.is_none() && operand.is_none(),
-        _ => true,
     };
     if !payload_free {
-        return Err(format!(
-            "heads projection refused: node '{}' carries semantic expression data at parse",
-            n.name
-        ));
+        return refuse("semantic expression data");
     }
-    let ident = match n.ident {
-        Some(k) => Some(*relabel.get(k as usize).ok_or_else(|| {
+    let ident = match ident {
+        Some(k) => Some(*relabel.get(*k as usize).ok_or_else(|| {
             format!(
-                "heads projection refused: node '{}' ident {k} is outside the file's intern table",
-                n.name
+                "heads projection refused: node '{name}' ident {k} is outside the file's intern \
+                 table"
             )
         })?),
         None => None,
@@ -341,37 +378,59 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
             .map(|c| project_node(c, base, relabel))
             .transpose()
     };
-    let match_pattern = match &n.match_pattern {
+    // The parser records a written type expression as `Resolved { node }`: one more nested node.
+    let inferred = match inferred.as_deref() {
         None => None,
-        Some(p) => Some(Rc::new(match &**p {
-            MatchPattern::Bind { declaration } => MatchPattern::Bind {
-                declaration: project_node(declaration, base, relabel)?,
-            },
-            MatchPattern::VariantPattern {
-                name,
-                parent_enum,
-                field_bindings,
-            } => MatchPattern::VariantPattern {
-                name: name.clone(),
-                parent_enum: parent_enum.clone(),
-                field_bindings: list(field_bindings)?,
-            },
-            other => other.clone(),
+        Some(InferredNode::Resolved { node }) => Some(Rc::new(InferredNode::Resolved {
+            node: project_node(node, base, relabel)?,
         })),
+        Some(InferredNode::CompilerError {
+            message: _,
+            span: _,
+        })
+        | Some(InferredNode::TypeVariable { id: _ })
+        | Some(InferredNode::Divergent) => inferred.clone(),
+    };
+    let match_pattern = match match_pattern.as_deref() {
+        None => None,
+        Some(MatchPattern::Bind { declaration }) => Some(Rc::new(MatchPattern::Bind {
+            declaration: project_node(declaration, base, relabel)?,
+        })),
+        Some(MatchPattern::VariantPattern {
+            name,
+            parent_enum,
+            field_bindings,
+        }) => Some(Rc::new(MatchPattern::VariantPattern {
+            name: name.clone(),
+            parent_enum: parent_enum.clone(),
+            field_bindings: list(field_bindings)?,
+        })),
+        Some(MatchPattern::LitPattern { value: _ }) | Some(MatchPattern::Wildcard) => {
+            match_pattern.clone()
+        }
     };
     Ok(Rc::new(Node {
         occurrence_identity,
+        name: name.clone(),
         ident,
-        children: list(&n.children)?,
-        params: list(&n.params)?,
-        uses: list(&n.uses)?,
-        body: opt(&n.body)?,
-        transport: opt(&n.transport)?,
-        properties: list(&n.properties)?,
-        type_annotation: opt(&n.type_annotation)?,
-        match_pattern,
+        span: span.clone(),
+        ident_span: ident_span.clone(),
+        children: list(children)?,
+        connective: connective.clone(),
+        params: list(params)?,
         inferred,
-        ..(**n).clone()
+        return_cardinality: return_cardinality.clone(),
+        uses: list(uses)?,
+        body: opt(body)?,
+        transport: opt(transport)?,
+        properties: list(properties)?,
+        type_annotation: opt(type_annotation)?,
+        is_self_recursive: *is_self_recursive,
+        has_non_tail_self_call: *has_non_tail_self_call,
+        match_pattern,
+        module_item_kind: module_item_kind.clone(),
+        declaration_marker: declaration_marker.clone(),
+        expr_data: expr_data.clone(),
     }))
 }
 
