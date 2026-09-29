@@ -65,7 +65,7 @@ fn branch_infer_cond_not_bool_body_node() -> Outcome<Node> {
 }
 
 fn branch_infer_resolved_tree(root: Node) -> ResolvedTree {
-  root
+  claim_resolved_tree_without_declarations(root: root)
 }
 
 fn branch_infer_positional_target(body: Node, index: Int) -> Node {

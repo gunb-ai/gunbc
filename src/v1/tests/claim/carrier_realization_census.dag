@@ -7,8 +7,14 @@ import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision }
 import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
-import v1.compiler.infer_env { TypeEnv, lookup_type_for }
-import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
+import v1.compiler.infer_env {
+  TypeEnv, lookup_type_for, type_reference_declaration_reading,
+  TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  TypeNodeUnidentifiedCause, TypeNodeAuthoredNameEmpty, TypeNodeNameDeclaredNowhere, TypeNodeSpanDeclaresNothing, TypeNodeCarriesNoSpan, TypeNodeQualifierMatchesNoDeclarer
+}
+import v1.compiler.infer { declared_return_type_node }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import v1.std.core { ModuleItemTypeDeclaration, Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
 import std.coercion {
   TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent,
   TypeReferenceIdentity, ReferenceResolvedToDeclaration, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder, ReferenceIdentityUnavailable,
@@ -84,9 +90,11 @@ type TypedCarrierRow {
   identity: DeclarationIdentityObservation
   legacy: LegacyKeyObservation
   split: TypeReferenceIdentity
+  decl_identity: TypeReferenceDeclarationReading
   legacy_base: String
   authority_base: String
   outcome: CensusOutcome
+  recorded_declaration: DeclarationRef?
 }
 
 fn identity_observation(inferred: TypeDeclarationProvenance, environment: TypeDeclarationProvenance) -> DeclarationIdentityObservation {
@@ -183,6 +191,7 @@ fn typed_decision_row(
   enclosing: String,
   position_kind: String,
   n: Node,
+  decl_identity: TypeReferenceDeclarationReading,
   env: TypeEnv,
   si: Map<String, NewlineIndex>
 ) -> TypedCarrierRow {
@@ -202,8 +211,10 @@ fn typed_decision_row(
     identity: identity,
     legacy: legacy_observation(had_inference: provenance_reported_file(p: inferred) != "", key: legacy_key),
     split: type_reference_identity(n: n),
+    decl_identity: decl_identity,
     legacy_base: legacy_base_label(n: n, si: si),
     authority_base: authority_base_of(name: name, provenance: query_provenance),
+    recorded_declaration: n.declaration,
     outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
   }
 }
@@ -255,6 +266,12 @@ fn no_typed_rows() -> List<TypedCarrierRow> {
 // by `{` parses as a record construction, so the equality form makes the if-block's own brace read
 // as Arrow's constructor. v1.compiler.emit_rust rust_type_node_is_arrow is named for the same
 // reason, and v1.compiler.infer_resolve takes the same shape.
+//
+// TYPE ARGUMENTS ARE THE CHILDREN OF A REFERENCE, NOT OF A DECLARATION. A resolved return type is
+// often the declaration node itself (parser mark ModuleItemTypeDeclaration), whose children are its
+// fields or variants -- measured: Bool's True/False and record field names each reported as a type
+// reference. Only a node that is not a declaration has its children descended. A KERNEL MINT is the
+// same case: the kernel Bool node carries its variants as children, measured as True/False rows.
 fn typed_occurrence_rows(
   module_file: String, enclosing: String, position_kind: String, n: Node, env: TypeEnv, si: Map<String, NewlineIndex>
 ) -> List<TypedCarrierRow> {
@@ -271,8 +288,14 @@ fn typed_occurrence_rows(
     }
     concat(param_rows, return_rows)
   } else {
-    [typed_decision_row(
-      module_file: module_file, enclosing: enclosing, position_kind: position_kind, n: n, env: env, si: si)]
+    let is_declaration = match n.module_item_kind { ModuleItemTypeDeclaration => true  _ => false }
+    let decl_identity = type_reference_declaration_reading(n: n, source_indices: si, env: env)
+    let is_kernel_mint = match decl_identity { TypeReferenceIsKernelType { name: _ } => true  _ => false }
+    let arg_children = if is_declaration || is_kernel_mint { [] } else { n.children }
+    let arg_rows = arg_children |> fold(init: no_typed_rows(), f: (acc, a) => concat(acc, typed_occurrence_rows(
+      module_file: module_file, enclosing: enclosing, position_kind: concat(position_kind, "/type_arg"), n: a, env: env, si: si)))
+    concat([typed_decision_row(
+      module_file: module_file, enclosing: enclosing, position_kind: position_kind, n: n, decl_identity: decl_identity, env: env, si: si)], arg_rows)
   }
 }
 
@@ -301,7 +324,13 @@ fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, si: Map<String
       module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_param",
       n: param_node_type_expr(n: prm), env: env, si: si)))
   }
-  concat(decl_rows, param_rows_t)
+  let return_rows = if item.body == none || is_type_def_item(item: item) {
+    no_typed_rows()
+  } else {
+    typed_occurrence_rows(module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_return",
+      n: declared_return_type_node(item: item), env: env, si: si)
+  }
+  concat(concat(decl_rows, param_rows_t), return_rows)
 }
 
 fn typed_module_rows(m: TypedModule, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
@@ -361,6 +390,43 @@ fn split_label(i: TypeReferenceIdentity) -> String {
   }
 }
 
+// THE DECLARATION-IDENTITY COLUMN: v1's one type-identity derivation
+// (v1.compiler.infer_env type_reference_declaration_reading), per position. An `Unidentified:` row is
+// a member of the population gunbc.rung_drop text_boundary_identity_wall's trigger requires to be
+// empty; its two causes are the authored node's join and the resolved node's join, in that order.
+fn unidentified_cause_label(c: TypeNodeUnidentifiedCause) -> String {
+  match c {
+    TypeNodeAuthoredNameEmpty => "AuthoredNameEmpty"
+    TypeNodeNameDeclaredNowhere { name: _ } => "NameDeclaredNowhere"
+    TypeNodeSpanDeclaresNothing { name: _ } => "SpanDeclaresNothing"
+    TypeNodeCarriesNoSpan { name: _ } => "CarriesNoSpan"
+    TypeNodeQualifierMatchesNoDeclarer { qualified: _ } => "QualifierMatchesNoDeclarer"
+  }
+}
+
+fn decl_identity_label(r: TypeReferenceDeclarationReading) -> String {
+  match r {
+    TypeReferenceNamesDeclaration { declaration: d } => concat("Declaration:", declaration_ref_display_key(ref: d))
+    TypeReferenceIsKernelType { name: k } => concat("Kernel:", k)
+    TypeReferenceIsTypeVariable { id: v } => concat("TypeVariable:", v)
+    TypeReferenceUnidentified { authored: a, resolved: r2 } =>
+      match r2 {
+        Present { value: rc } => concat(concat(concat("Unidentified:", unidentified_cause_label(c: a)), "/resolved:"), unidentified_cause_label(c: rc))
+        Absent => concat(concat("Unidentified:", unidentified_cause_label(c: a)), "/resolved:none")
+      }
+  }
+}
+
+// THE SHADOW COLUMN: Node.declaration as resolve recorded it, read with no fallback. It is the
+// replacement for decl_identity's joins, measured apart from them. It is the only consumer of
+// Node.declaration until the transition (v1.compiler.infer_env declaration_reading_of_type_node).
+fn recorded_declaration_label(d: DeclarationRef?) -> String {
+  match d {
+    Present { value: r } => concat("Declaration:", declaration_ref_display_key(ref: r))
+    Absent => "none"
+  }
+}
+
 fn outcome_label(o: CensusOutcome) -> String {
   match o {
     Agrees => "Agrees"
@@ -374,7 +440,7 @@ fn tsv_escape(v: String) -> String {
 }
 
 fn typed_census_header() -> String {
-  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tlegacy_base\tauthority_base\toutcome"
+  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome\trecorded_declaration"
 }
 
 fn typed_row_tsv(r: TypedCarrierRow) -> String {
@@ -387,9 +453,11 @@ fn typed_row_tsv(r: TypedCarrierRow) -> String {
     tsv_escape(v: identity_file_label(o: r.identity)),
     tsv_escape(v: legacy_label(l: r.legacy)),
     tsv_escape(v: split_label(i: r.split)),
+    tsv_escape(v: decl_identity_label(r: r.decl_identity)),
     tsv_escape(v: r.legacy_base),
     tsv_escape(v: r.authority_base),
-    outcome_label(o: r.outcome)
+    outcome_label(o: r.outcome),
+    recorded_declaration_label(d: r.recorded_declaration)
   ] |> join(separator: "\t")
 }
 
