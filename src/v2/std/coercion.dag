@@ -369,13 +369,11 @@ fn coercion_fold_exact_structural(
 // source_declared_carrier, so this module stays tree-free. It is not a second widening algebra beside
 // v2.std.refinement_widening_predicate: that rule answers value-set containment between two domains;
 // this one judges nothing but structural equality, which find_witness already owns, so no
-// preservation rule is added. A REFINEMENT OF A REFINEMENT DOES NOT WIDEN: the declaration is
-// read from the index resolution consulted, which holds it as authored, so `type Pos2 = Pos where ..`
-// states its carrier as the unresolved atom `Pos`, and that is never structurally equal to a resolved
-// target -- `x as Pos` and `x as Int` from `x: Pos2` both refuse. NEXT-RUNG TRIGGER, NAMING THE
-// CAPABILITY: a refinement declaration's carrier carried RESOLVED on the index, after which one step
-// widens to Pos; a walk to a fixed point still owes its own termination argument over the
-// declaration graph.
+// preservation rule is added. ONE STEP: the carrier is read from the declaration as RESOLVED
+// (v2.compiler.resolve ResolvedTree resolved_declarations), so `type Pos2 = Pos where ..` states its
+// carrier as the declaration reference to Pos -- `x as Pos` from `x: Pos2` is Widened, and `x as Int`
+// from `x: Pos2` REFUSES: the carrier edge is not walked to a fixed point (a walk owes its own
+// termination argument over the declaration graph, and one step is all the declaration states).
 // A target that is not the declared carrier
 // refuses with the ORIGINAL mismatch located at the operand, so the widening arm never changes what a
 // refusal says. This is v2.compiler.infer's authority for `e as T`; the name-keyed std.coercion

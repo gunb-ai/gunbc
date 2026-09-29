@@ -11,11 +11,10 @@ import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
-import v2.std.compilers.lexing { symbol_lexeme }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
@@ -285,7 +284,7 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index }) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>

@@ -136,7 +136,7 @@ fn bcn_crossing_quality(o: Outcome<ResolvedTree>, reference_path: QualifiedName)
     Accepted { value: root, diagnostics: _ } =>
       match bcn_cast_targets(n: root.root) {
         Cons { head: target, tail: Empty } =>
-          match refinement_declaration(index: root.symbol_index, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
+          match refinement_declaration(index: root.resolved_declarations, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
             Absent => Absent
             Present { value: decl } =>
               match coercion_cast_crossing(
@@ -517,9 +517,6 @@ test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
 // x: Pos refusing on the production route.
 fn bcn_int_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_int) }
 fn bcn_bool_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_bool) }
-fn bcn_authored_atom(identity: Symbol) -> Node {
-  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
-}
 fn bcn_ref(leaf: Symbol) -> Node {
   declaration_reference_node(qn: Cons { head: ^p, tail: Cons { head: leaf, tail: Empty } }, occurrence_id: OccurrenceSynthetic)
 }
@@ -544,19 +541,33 @@ fn bcn_supplied_quality(o: Outcome<CoercionResult>) -> Optional<CoercionQuality>
   }
 }
 
-// (15b) A TARGET THAT IS NOT THE DECLARED CARRIER REFUSES, AND A REFINEMENT OF A REFINEMENT DOES
-// NOT WIDEN. `x as Bool` from x: Pos (carrier Int) refuses. `type Pos2 = Pos where ..`: the index
-// resolution consulted holds the declaration AS AUTHORED, so Pos2's carrier is the bare atom `Pos`,
-// not the resolved reference a cast target `Pos` is -- measured on the production route while this
-// row was written (v2.compiler.infer refinement_declaration over the assembled tree returned the atom
-// ^Pos). So `x as Pos` from x: Pos2 REFUSES, as does `x as Int`: the carrier edge is not walked and an
-// unresolved carrier is never equated with a resolved type. The Int carrier row (15) is the paired
-// inhabitance claim: there the index's carrier is the kernel Int atom and the crossing widens. RED if
-// the widening arm admitted a non-carrier target or equated an unresolved carrier with a resolved one.
+// (15b) ONE STEP, AND ONLY THE DECLARED CARRIER. `x as Bool` from x: Pos (carrier Int) refuses. For
+// `type Pos2 = Pos where ..` the carrier read from resolved_declarations is the RESOLVED declaration
+// reference to Pos (row 15c2 reads it on the production route), so `x as Pos` from x: Pos2 is Widened
+// and `x as Int` from x: Pos2 REFUSES: the carrier edge is not walked to a fixed point. Supplied values
+// at coercion's interface, in the shape the production route emits. RED if the widening arm admitted a
+// non-carrier target or walked the carrier chain.
 test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
   bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_bool_type()))
-    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_authored_atom(identity: ^Pos), target: bcn_ref(leaf: ^Pos)))
-    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_authored_atom(identity: ^Pos), target: bcn_int_type()))
+    && bcn_is_widened(q: bcn_supplied_quality(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_ref(leaf: ^Pos))))
+    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_int_type()))
+}
+
+// (15c2) A REFINEMENT OF A REFINEMENT WIDENS ONE STEP ON THE PRODUCTION ROUTE. `x as Pos` from
+// `x: Pos2` (`type Pos2 = Pos where positive`): infer admits it, and the crossing's quality is Widened,
+// read through resolved_declarations, where Pos2's carrier is the resolved reference to Pos. The
+// assembly is a producer rostered warm in v2.workflow.floor_pure_producer_share. RED BEFORE
+// gunbc#12629: the carrier was the unresolved atom Pos and the cast refused.
+fn bcn_refinement_of_refinement_as_its_carrier() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\nfn f(x: Pos2) -> Pos {\n  x as Pos\n}\n")
+}
+
+test fn bcn_refinement_of_a_refinement_widens_one_step() -> Bool {
+  match bcn_infers(o: bcn_refinement_of_refinement_as_its_carrier()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } =>
+      bcn_is_widened(q: bcn_crossing_quality(o: bcn_refinement_of_refinement_as_its_carrier(), reference_path: Cons { head: ^p, tail: Cons { head: ^Pos2, tail: Empty } }))
+  }
 }
 
 // (15d) A REFINEMENT LOOKUP MISS REFUSES. When v2.compiler.infer refinement_declaration finds no

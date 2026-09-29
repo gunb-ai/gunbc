@@ -21,13 +21,15 @@ import gunbc.secret_provision_actuator {
 }
 import gunbc.auth.access_token_source { OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.gcp_secret_access { secret_access_ensure_for }
-import gunbc.auth.fleet_secret_accessor_roster { FleetAccessorGrantRow, fleet_accessor_grant, approval_capability_mac_key_accessor_row, approval_submission_mac_key_accessor_row }
+import gunbc.auth.fleet_secret_accessor_roster { FleetAccessorGrantRow, fleet_accessor_grant, approval_capability_mac_key_accessor_row, approval_submission_mac_key_accessor_row, approval_store_receipt_mac_key_accessor_row }
+import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_secret_ref }
 import gunbc.auth.approval_decision_store { approval_mac_key_secret_ref, approval_mac_key_suite }
 import extdeps.crypto.mac { mac_suite_key_size }
 import std.measure { byte_size_count }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 
-// PROVISION THE TWO APPROVAL-LOOP MAC KEYS THROUGH THE MODELED ACTUATOR, IDEMPOTENTLY. The
+// PROVISION THE THREE APPROVAL-LOOP MAC KEYS THROUGH THE MODELED ACTUATOR, IDEMPOTENTLY (the store
+// receipt key, gunbc.auth.approval_store_receipt, is the third; the first two ran 2026-09-17). The
 // operator's objection to the first mint was right: it was three curl calls from a session, with
 // the receipt typed afterwards from memory. This entry is the same act as a run of the corpus --
 // gunbc.secret_provision_actuator observes the container, creates it only if absent, adds the
@@ -240,15 +242,16 @@ fn provision_approval_mac_keys() -> CliWireResponse
     SuppliedTokenReady { token: token } => {
       let capability = provision_one(ref: approval_mac_key_secret_ref, token: token)
       let submission = provision_one(ref: approval_submission_mac_key_secret_ref, token: token)
-      let keys_ok = standing_ok(s: capability) && standing_ok(s: submission)
+      let store_receipt = provision_one(ref: approval_store_receipt_mac_key_secret_ref, token: token)
+      let keys_ok = standing_ok(s: capability) && standing_ok(s: submission) && standing_ok(s: store_receipt)
       let grants: List<GrantStanding> = if keys_ok {
-        [ensure_grant(row: approval_capability_mac_key_accessor_row, token: token), ensure_grant(row: approval_submission_mac_key_accessor_row, token: token)]
+        [ensure_grant(row: approval_capability_mac_key_accessor_row, token: token), ensure_grant(row: approval_submission_mac_key_accessor_row, token: token), ensure_grant(row: approval_store_receipt_mac_key_accessor_row, token: token)]
       } else {
         []
       }
       let grants_ok = keys_ok && all(grants, g => grant_ok(g: g))
       let report = join([
-        standing_line(s: capability), "\n", standing_line(s: submission), "\n",
+        standing_line(s: capability), "\n", standing_line(s: submission), "\n", standing_line(s: store_receipt), "\n",
         if keys_ok { join(map(grants, g => grant_line(g: g)), "\n") } else { "grants: skipped, a key refused" }, "\n",
       ], "")
       if grants_ok {

@@ -1,7 +1,6 @@
 module v2.compiler.reference_conservation
 
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
-import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
   program_assembly_phase_normalize,
@@ -10,6 +9,7 @@ import v2.compiler.program_assembly {
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag {
+  dag_kernel_type_binding_optional,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_language_model,
@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules, symbol_lexeme }
+import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -34,7 +34,7 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }
@@ -778,11 +778,18 @@ fn item_pool(
   }
 }
 
-// A REBUILT TYPE ATOM IS SPELLED BY LOWERING'S OWN CANONICAL BINDING, and the pool is asked in
-// that spelling: v2.compiler.body_lowering_fold body_lower_resolved_type_binding is the single
-// authority that rewrites `Int` / `Bool` to their canonical bindings when it rebuilds a type atom,
-// so the fallback consults that function rather than restating its table. The authored spelling
+// A RESOLVED KERNEL TYPE ATOM IS SPELLED BY ITS CANONICAL BINDING, and the pool is asked in that
+// spelling: v2.extdeps.languages.dag dag_kernel_type_binding_optional is the single table
+// v2.compiler.resolve consults when it rewrites an unshadowed `Int` / `Bool`, so the fallback
+// consults that table rather than restating it. The authored spelling
 // is asked first; the canonical one only when the authored spelling has no copy left.
+fn kernel_type_spelling_of(sym: Symbol) -> Symbol {
+  match dag_kernel_type_binding_optional(sym: sym) {
+    Present { value: canonical } => canonical
+    Absent => sym
+  }
+}
+
 fn pool_spelling_of(pool: Map<Symbol, Int>, identity: Symbol) -> Symbol {
   match map_lookup(m: pool, key: identity) {
     Present { value: n } => if n > 0 { identity } else { pool_fallback_spelling_of(identity: identity) }
@@ -796,7 +803,7 @@ fn pool_fallback_spelling_of(identity: Symbol) -> Symbol {
   if identity == pattern_wildcard_name() {
     anonymous_slot_pool_key()
   } else {
-    body_lower_resolved_type_binding(sym: identity)
+    kernel_type_spelling_of(sym: identity)
   }
 }
 
@@ -834,13 +841,13 @@ fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
 }
 
 // THE SAME OCCURRENCE UNDER LOWERING'S CANONICAL SPELLING IS CONSERVED. Since #11985 a type atom
-// keeps its minted occurrence through lowering, and v2.compiler.body_lowering_fold
-// body_lower_resolved_type_binding rewrites its spelling (`Bool` -> `bool_node_symbol`, `Int` ->
+// keeps its minted occurrence through lowering, and v2.compiler.resolve rewrites an unshadowed
+// kernel spelling through v2.extdeps.languages.dag dag_kernel_type_binding_optional (`Bool` -> `bool_node_symbol`, `Int` ->
 // `dag_binding_type_int`) at that same occurrence. That is the single authority the spelling pool
 // below already consults, so it is asked here too: the locus is held and the spelling is the one
 // the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
 fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
-  found == identity || found == body_lower_resolved_type_binding(sym: identity)
+  found == identity || found == kernel_type_spelling_of(sym: identity)
 }
 
 // WHERE AN ERASED ATOM IS COUNTED. The module header first (its item is -1), then an atom whose

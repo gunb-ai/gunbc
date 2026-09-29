@@ -298,7 +298,13 @@ fn memory_standing_facts(obligation: MemoryOperatingObligation, standing: HostMe
       BootOutcomeUnobserved => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
       _ => conflict
     }
-    _ => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    MemoryPlacement => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    MemoryFirmwareScopeCoverage => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    MemoryCatalogBinding => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    MemorySocketCapacity => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    MemoryPackageMixture => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    MemoryTrainingFailureScreen => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    AdditionalMemoryRequirement { authority: _ } => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
   }
 }
 
@@ -360,7 +366,10 @@ fn evaluate_memory_obligation(configuration: MemoryConfiguration, evidence: Memo
     MemoryPackageMixture => memory_package_facts(configuration: configuration, read: mixture_read)
     MemoryTrainingFailureScreen => memory_training_screen_facts(configuration: configuration, evidence: evidence)
     AdditionalMemoryRequirement { authority: _ } => memory_unknown(fact: MemoryModelMissing { obligation: obligation })
-    _ => memory_qualification_facts(configuration: configuration, evidence: evidence, obligation: obligation)
+    MemoryClassSupport => memory_qualification_facts(configuration: configuration, evidence: evidence, obligation: obligation)
+    MemorySpecificPartQualification => memory_qualification_facts(configuration: configuration, evidence: evidence, obligation: obligation)
+    MemoryTraining => memory_qualification_facts(configuration: configuration, evidence: evidence, obligation: obligation)
+    MemoryBoot => memory_qualification_facts(configuration: configuration, evidence: evidence, obligation: obligation)
   })
 }
 

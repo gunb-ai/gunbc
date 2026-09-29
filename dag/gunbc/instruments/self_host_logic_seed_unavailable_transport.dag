@@ -10,7 +10,14 @@ import std.types { NonEmptyStr, list_length }
 import std.logic { Bool }
 import std.integer { Int }
 import v2.std.algebra { fold_list }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusal
+}
 
 // Seed-unavailable behavioral receipt for dag/std/logic.dag (Control (b), LocalRepoWetLane).
 // The emitted candidate STILL EXECUTES SUCCESSFULLY when no seed implementation is
@@ -148,13 +155,25 @@ fn slbu_cargo_toml(root: String) -> String {
 // Measured (probes let_is_eager_when_unused): let is eager; cleanups fire at the binding
 // regardless of verdict. Cleanup always runs. Residual: this depends on EAGER LET, which
 // no declared property of the substrate guarantees (gunbc#10647, pending).
-fn slbu_seed_unavailable_receipt() -> Bool {
+// The compiler binary is gated FIRST and typed: a gunbc that could not be made Ready is an
+// EvidenceInstrumentRefused carrying its WitnessBinRefusal, never a false that reads like the
+// emitted candidate depending on the seed.
+fn slbu_seed_unavailable_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   let root = git.Inspect.Toplevel()
-  let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
+  match witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: gunbc_bin } =>
+      EvidenceSubjectCompleted { outcome: slbu_seed_unavailable_run(root: root.path, gunbc_bin: gunbc_bin) }
+  }
+}
 
-  let stage_root = shell.Mkdir.Parents(path: concat(root.path, "/target/wet-stage-seed-unavail"))
+fn slbu_seed_unavailable_run(root: String, gunbc_bin: String) -> Bool {
+  let logic_read = Filesystem.Read(path: slbu_repo_path(root: root, rel: slbu_logic_source_rel))
+
+  let stage_root = shell.Mkdir.Parents(path: concat(root, "/target/wet-stage-seed-unavail"))
   let scratch_src = shell.Mktemp.DirWithTemplate(
-    template: concat(root.path, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
+    template: concat(root, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
   )
   let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
   let logic_written = Filesystem.Write(
@@ -163,13 +182,11 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   )
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
 
   let emitted_src_dir = concat(out_dir.path, "/src")
 
   let emit = gunbc.WitnessBin.Run(
-    workdir: root.path,
+    workdir: root,
     bin_path: gunbc_bin,
     args: [
       "compile",
@@ -183,7 +200,7 @@ fn slbu_seed_unavailable_receipt() -> Bool {
 
   let cargo_toml = Filesystem.Write(
     path: concat(out_dir.path, "/Cargo.toml"),
-    content: slbu_cargo_toml(root: root.path)
+    content: slbu_cargo_toml(root: root)
   )
 
   let main_rs = Filesystem.Write(
@@ -206,7 +223,7 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   let staged = logic_read.success
     && stage_root.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
-    && out_dir.success && gunbc_built && emit.success
+    && out_dir.success && emit.success
     && cargo_toml.success && main_rs.success
 
   let verdict = staged
@@ -220,8 +237,4 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
 
   verdict && cleanup_out && cleanup_src
-}
-
-fn slbu_seed_unavailable_receipt_holds() -> Bool {
-  slbu_seed_unavailable_receipt()
 }
