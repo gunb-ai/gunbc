@@ -15616,8 +15616,17 @@ pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 
 /// Census hygiene marker for the `[file]` emit family — the mirror of SHELL_CENSUS_MARKER,
 /// kept for the same reason: the `[file]` raw shape is gone from the seed and
-/// `gunbc.observation_emit_census`'s `file_trace_site` row must still find its producer
-/// symbol, or the bidirectional roster check goes stale without reddening.
+/// `gunbc.observation_emit_census`'s `[file]` row must still find its MARKER, or the
+/// bidirectional roster check goes stale without reddening.
+///
+/// IT IS NOT THE ROW'S `producer`, and an earlier draft of this comment said it was. The
+/// census keeps those as separate obligations with separate fields: `marker` feeds
+/// census_marker_present, while `producer` is the DeclarationRef of the declaration that
+/// actually EMITS the line and feeds w_every_named_producer_symbol_is_present_in_the_seed.
+/// This constant emits nothing — it is the retired spelling kept as a presence anchor — so
+/// naming it as the producer would let all seven call sites in `dispatch_file` be deleted
+/// while the census still reported the family migrated. `file_trace_site` names
+/// `dispatch_file`; this constant anchors the marker.
 pub const FILE_CENSUS_MARKER: &str = "[file]";
 
 /// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
