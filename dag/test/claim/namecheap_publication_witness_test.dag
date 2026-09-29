@@ -3,13 +3,13 @@ module test.claim.namecheap_publication_witness_test
 import std.types { String, Secret, Bool }
 import extdeps.namecheap.client { namecheap_read_hosts_for_publication }
 import extdeps.namecheap.read_hosts { NamecheapHostsRead, NamecheapHostsObserved, NamecheapHostsRefused }
-import test.claim.namecheap_hosts_witness_test { response }
+import test.claim.namecheap_hosts_witness_test { namecheap_api_response }
 
 data fixture_key: Secret = "fixture-only-not-a-key&value" as Secret
 data fixture_key_wire: String = "fixture-only-not-a-key%26value"
 
 fn publication(result: String) -> NamecheapHostsRead {
-  namecheap_read_hosts_for_publication(body: response(result: result), domain: "gunb.ai", credential: fixture_key, key_wire: fixture_key_wire)
+  namecheap_read_hosts_for_publication(body: namecheap_api_response(result: result), domain: "gunb.ai", credential: fixture_key, key_wire: fixture_key_wire)
 }
 fn echo_result(address: String, extra_host: String, extra_result: String) -> String {
   join(["<DomainDNSGetHostsResult Domain='gunb.ai' IsUsingOurDNS='true' ", extra_result,
