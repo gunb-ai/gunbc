@@ -1,6 +1,5 @@
 module v2.test.parse.choice_plan
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { List, empty_map, map_lookup }
@@ -19,7 +18,6 @@ import v2.std.grammar {
   TerminalStampMode,
   grammar_atom,
   grammar_empty_sync_tokens,
-  grammar_empty_expectations,
   grammar_expr_literal_terminal
 }
 import v2.compiler.parse {
@@ -73,8 +71,7 @@ fn pcp_choice_root(expr: GrammarExpr) -> GrammarRoot {
       },
       tail: std.algebra.Empty
     },
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
@@ -110,8 +107,7 @@ fn pcp_root() -> GrammarRoot {
       },
       tail: std.algebra.Empty
     },
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
@@ -278,8 +274,7 @@ test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle(
         emitted: grammar_atom(identity: ^pcp_right_nt)
       }
     ],
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   }
   let tokens_b = [pcp_token(token_class: ^pcp_b)]
   let observed = pcp_observe_root(root: root, expr: expr, tokens: tokens_b)

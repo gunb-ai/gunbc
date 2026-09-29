@@ -27,7 +27,7 @@ import v2.extdeps.languages.dag {
 // sum admission.
 
 fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
-  match lex_walk_artifact(source: chars(s: source), file: ^lambda_probe, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
@@ -119,8 +119,7 @@ fn pre_repair_grammar() -> ParseGrammar {
         root: GrammarRoot {
           start: r.start,
           productions: swap_expr_production(productions: r.productions),
-          sync_tokens: r.sync_tokens,
-          expectations: r.expectations
+          sync_tokens: r.sync_tokens
         }
       }
     VoidGrammar => VoidGrammar

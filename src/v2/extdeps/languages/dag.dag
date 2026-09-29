@@ -20,6 +20,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, FnExpressionBodyMissingAfterEq, ParseRefusalReason }
 import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
@@ -56,7 +57,6 @@ import v2.std.grammar {
   grammar_production_to_node,
   grammar_relation_tokens_node,
   grammar_empty_sync_tokens,
-  grammar_empty_expectations,
   grammar_expr_expect,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
@@ -727,7 +727,7 @@ fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
   Repeat { element: element }
 }
 
-fn dag_grammar_expect(element: GrammarExpr, reason: Symbol) -> GrammarExpr {
+fn dag_grammar_expect(element: GrammarExpr, reason: ParseRefusalReason) -> GrammarExpr {
   grammar_expr_expect(element: element, reason: reason)
 }
 
@@ -1924,7 +1924,10 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
           left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
           right: dag_grammar_sequence(
             left: dag_grammar_terminal(token_class: ^dag_token_eq),
-            right: dag_grammar_nonterminal(production: ^dag_production_expr)
+            right: dag_grammar_expect(
+              element: dag_grammar_nonterminal(production: ^dag_production_expr),
+              reason: DataValueMissingAfterEq
+            )
           )
         )
       )
@@ -2012,7 +2015,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
                   left: dag_grammar_terminal(token_class: ^dag_token_eq),
                   right: dag_grammar_expect(
                     element: dag_grammar_nonterminal(production: ^dag_production_expr),
-                    reason: ^parse_fn_expression_body_missing_after_eq
+                    reason: FnExpressionBodyMissingAfterEq
                   )
                 )
               )
@@ -2893,8 +2896,7 @@ fn dag_grammar_root() -> GrammarRoot {
       fn_literal,
       arrow_lambda
     ],
-    sync_tokens: dag_sync_tokens(),
-    expectations: dag_grammar_expectations()
+    sync_tokens: dag_sync_tokens()
   }
 }
 
@@ -3039,16 +3041,6 @@ fn dag_lex_keyword_symbol(sym: Symbol) -> Bool {
     rules: dag_lex_rules(),
     token_class: sym
   )
-}
-
-// THE DAG GRAMMAR'S EXPECTATION ROSTER (v2.std.grammar Expect). Each reason is the located refusal
-// for one grammar position whose element is required once the preceding token has matched:
-//   parse_fn_expression_body_missing_after_eq -- an expression-bodied `fn ... =` with no
-//   expression after the `=`, located at the `=` token.
-fn dag_grammar_expectations() -> List<Symbol> {
-  [
-    ^parse_fn_expression_body_missing_after_eq
-  ]
 }
 
 fn dag_sync_tokens() -> List<Symbol> {

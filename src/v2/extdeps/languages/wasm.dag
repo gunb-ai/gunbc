@@ -25,7 +25,6 @@ import v2.std.grammar {
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
-  grammar_empty_expectations,
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
@@ -1453,8 +1452,7 @@ fn wasm_grammar_root() -> GrammarRoot {
       numeric_const,
       numeric_binop
     ],
-    sync_tokens: grammar_empty_sync_tokens(),
-    expectations: grammar_empty_expectations()
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 

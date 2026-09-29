@@ -117,6 +117,7 @@ import v2.std.compilers.lexing {
   token_stream_remaining,
   token_stream_remaining_count,
 }
+import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import v2.std.grammar {
   Choice,
   Expect,
@@ -276,8 +277,8 @@ type ParseMemoStats {
 // label is deterministic, and a later plain failure at the same position never erases it.
 type ParseFurthestFailure
   = FurthestNone
-  | FurthestAtToken { token: Token, expectation: Optional<Symbol> }
-  | FurthestAtEnd { expectation: Optional<Symbol> }
+  | FurthestAtToken { token: Token, expectation: Optional<ParseRefusalReason> }
+  | FurthestAtEnd { expectation: Optional<ParseRefusalReason> }
 
 type ParseMemoEntry
   = ParseMemoAccepted {
@@ -420,12 +421,12 @@ fn parse_token_before_step(acc: Optional<Token>, tok: Token, start: Int) -> Opti
   }
 }
 
-// THE GRAMMAR-AUTHORED REFUSAL. `reason` is a member of the grammar's declared
-// `GrammarRoot.expectations` roster (preparation refuses any other), and the locus is the source
-// span of the token the expected element was to follow.
-fn parse_expectation_diagnostic(reason: Symbol, anchor: Token) -> Diagnostic {
+// THE GRAMMAR-AUTHORED REFUSAL. `reason` is a variant of the closed parse-stage vocabulary
+// (`v2.std.parse_refusal_reason`), refusing under its declared diagnostic identity, and the locus
+// is the source span of the token the expected element was to follow.
+fn parse_expectation_diagnostic(reason: ParseRefusalReason, anchor: Token) -> Diagnostic {
   Diagnostic {
-    reason: reason,
+    reason: parse_refusal_reason_symbol(reason: reason),
     at: source_port_locus(
       port: ^parse_stage_locus_port,
       file: anchor.file,
@@ -477,22 +478,6 @@ fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_duplicate_production,
     at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_duplicate_production),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn parse_grammar_undeclared_expectation_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: ^parse_grammar_undeclared_expectation,
-    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_undeclared_expectation),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn parse_grammar_unconsumed_expectation_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: ^parse_grammar_unconsumed_expectation,
-    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_unconsumed_expectation),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -726,7 +711,7 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
 // parse_table_memo_scope_and_key), so a table-only record would lose the deep rejection inside a
 // served subparse and the refusal's locus would depend on cache warmth. The miss path runs the
 // subparse from the unit, stores what that subparse alone reached, then joins it with the caller's.
-fn parse_expectation_first(left: Optional<Symbol>, right: Optional<Symbol>) -> Optional<Symbol> {
+fn parse_expectation_first(left: Optional<ParseRefusalReason>, right: Optional<ParseRefusalReason>) -> Optional<ParseRefusalReason> {
   match left {
     Present { value: _ } => left
     Absent => right
@@ -767,7 +752,7 @@ fn parse_furthest_at(tokens: List<Token>) -> ParseFurthestFailure {
   }
 }
 
-fn parse_furthest_expected_at(tokens: List<Token>, reason: Symbol) -> ParseFurthestFailure {
+fn parse_furthest_expected_at(tokens: List<Token>, reason: ParseRefusalReason) -> ParseFurthestFailure {
   match parse_token_first(tokens: tokens) {
     Present { value: tok } => FurthestAtToken { token: tok, expectation: Present { value: reason } }
     Absent => FurthestAtEnd { expectation: Present { value: reason } }
@@ -1994,7 +1979,7 @@ type PreparedGrammarExpr
   | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
-  | PreparedExpect { element: PreparedGrammarExpr, reason: Symbol }
+  | PreparedExpect { element: PreparedGrammarExpr, reason: ParseRefusalReason }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -3181,41 +3166,6 @@ fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
   }
 }
 
-// Every Expect reason an expression carries, in authored order.
-fn grammar_expr_expectation_reasons(expr: GrammarExpr) -> List<Symbol> {
-  fold_grammar_expr(
-    expr: expr,
-    algebra: GrammarExprFold {
-      terminal: fn(_, _) { [] },
-      literal_terminal: fn(_, _) { [] },
-      nonterminal: fn(_) { [] },
-      sequence: fn(left, right) { list_append(left: left, right: right) },
-      choice: fn(left, right) { list_append(left: left, right: right) },
-      optional: fn(xs) { xs },
-      repeat: fn(xs) { xs },
-      expect: fn(xs, reason) { list_snoc_item(xs: xs, item: reason) }
-    }
-  )
-}
-
-fn grammar_used_expectation_reasons(root: GrammarRoot) -> List<Symbol> {
-  fold_list(
-    xs: root.productions,
-    empty: std.algebra.Empty,
-    cons: fn(acc, p) { list_append(left: acc, right: grammar_expr_expectation_reasons(expr: p.expression)) }
-  )
-}
-
-// THE ROSTER IS THE AUTHORITY FOR A GRAMMAR'S EXPECTATION REASONS, in both directions: an Expect
-// may name only a declared reason, and a declared reason no Expect uses is dangling vocabulary.
-fn grammar_has_undeclared_expectation(root: GrammarRoot, used: List<Symbol>) -> Bool {
-  any(xs: used, predicate: fn(reason) { !symbol_list_contains(xs: root.expectations, item: reason) })
-}
-
-fn grammar_has_unconsumed_expectation(root: GrammarRoot, used: List<Symbol>) -> Bool {
-  any(xs: root.expectations, predicate: fn(reason) { !symbol_list_contains(xs: used, item: reason) })
-}
-
 fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
   match acc {
     None => Some { diagnostics: NonEmptyDiagnostics { head: d, tail: [] } }
@@ -3284,37 +3234,28 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
     if grammar_has_duplicate_productions(root: root) {
       Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
     } else {
-      let used_expectations = grammar_used_expectation_reasons(root: root)
-      if grammar_has_undeclared_expectation(root: root, used: used_expectations) {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undeclared_expectation_diagnostic(at: at)) }
+      let nullable_set = compute_nullable_set(root: root)
+      if grammar_has_left_recursion_given(root: root, nullable_set: nullable_set) {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        if grammar_has_unconsumed_expectation(root: root, used: used_expectations) {
-          Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_unconsumed_expectation_diagnostic(at: at)) }
+        let analysis = compute_grammar_first_analysis_given(root: root, nullable_set: nullable_set)
+        let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
+        let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
+        if !is_empty(xs: nullable_rows) {
+          Rejected {
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
+          }
         } else {
-          let nullable_set = compute_nullable_set(root: root)
-          if grammar_has_left_recursion_given(root: root, nullable_set: nullable_set) {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
-          } else {
-            let analysis = compute_grammar_first_analysis_given(root: root, nullable_set: nullable_set)
-            let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
-            let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
-            if !is_empty(xs: nullable_rows) {
-              Rejected {
-                diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
-              }
-            } else {
-              Accepted {
-                value: PreparedModeledGrammar {
-                  validated: ValidatedGrammarRoot { root: root },
-                  analysis: analysis,
-                  overlap_residue_stage: non_empty_parse_stage_diagnostics_from_overlap_roster(
-                    at: at,
-                    roster: ambiguity_roster
-                  )
-                },
-                diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
-              }
-            }
+          Accepted {
+            value: PreparedModeledGrammar {
+              validated: ValidatedGrammarRoot { root: root },
+              analysis: analysis,
+              overlap_residue_stage: non_empty_parse_stage_diagnostics_from_overlap_roster(
+                at: at,
+                roster: ambiguity_roster
+              )
+            },
+            diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
           }
         }
       }
@@ -3820,7 +3761,7 @@ fn parse_expr_repeat(
 // further (parse_furthest_join).
 fn parse_expr_expect(
   element: PreparedGrammarExpr,
-  reason: Symbol,
+  reason: ParseRefusalReason,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
