@@ -119,7 +119,6 @@ import gunbc.fleet_converge_plan_manifest {
 }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
-  fleet_converge_allocation_store_plan_artifact,
   fleet_converge_plan_body_path,
   fleet_converge_plan_baseline_hex_path,
   fleet_converge_plan_apply_shell_path,
@@ -609,29 +608,9 @@ fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -
   }
 }
 
-fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
-{
-  match observe_host_short_wet() {
-    Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
-    Present { value: host } =>
-      match observe_generation_store_wet(subject_host: host) {
-        GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
-        GenerationAdmitted { generation: prior_generation } =>
-          match observe_allocation_store_substrate_wet() {
-            AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
-              exit_failure(reason: join(["fleet_converge_allocation_store_plan: AllocationStoreSubstrateObservationRefused path=", p as String, " — ", why], ""))
-            AllocationStoreSubstrateObserved { prestate: observed } =>
-              match fleet_converge_allocation_store_plan_artifact(
-                host: host,
-                prior_generation: prior_generation,
-                observed_allocation_store: observed,
-              ) {
-                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
-                Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
-              }
-          }
-      }
-  }
+// Use the shared host/revision admission and run-bound plan receipt required by apply.
+fn fleet_converge_allocation_store_plan_wet() -> ProcessExit {
+  fleet_converge_scoped_plan_wet(scope: FabricAllocationStoreOnly)
 }
 
 fn observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {

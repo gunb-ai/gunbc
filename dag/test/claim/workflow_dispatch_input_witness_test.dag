@@ -28,6 +28,7 @@ import gunbc.fleet_converge_workflow {
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_credential_prelude_steps, fleet_converge_mutation_concurrency_group_expression, fleet_converge_spark_v41_checkpoint_materialize_step,
   fleet_converge_dispatch_inputs,
+  fleet_converge_allocation_store_plan_step, fleet_converge_plan_step,
 }
 import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
@@ -36,6 +37,7 @@ import gunbc.host_reset_return {
 }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci_spec { gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
+import gunbc.fleet_workflow_steps { gunbc_ci_fleet_converge_plan_step_timeout_minutes }
 import std.measure { minute_count, second_count }
 import gunbc.spark.pair_serving_d0_door { pair_serving_d0_step_timeout_minutes, d0_prelude_allowance, d0_approval_window, d0_transaction_allowance }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
@@ -843,3 +845,20 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+
+// Store plans must carry the same host/revision bindings and planning allowance as full plans.
+test fn allocation_store_plan_preserves_apply_receipt_bindings() -> Bool {
+  match fleet_converge_allocation_store_plan_step() {
+    RunStep { env: store_env, timeout_minutes: store_timeout } =>
+      match fleet_converge_plan_step() {
+        RunStep { env: plan_env } =>
+          match store_env {
+            Present { value: bindings } => store_env == plan_env
+              && store_timeout == Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
+            Absent => false
+          }
+        UsesStep { uses: _ } => false
+      }
+    UsesStep { uses: _ } => false
+  }
+}

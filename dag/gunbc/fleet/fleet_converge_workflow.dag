@@ -1343,11 +1343,16 @@ fn fleet_converge_allocation_store_plan_step() -> Step {
     id: Present { value: "allocation_store_plan" },
     run: gunbc_ci_fleet_converge_allocation_store_plan_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+      ]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_allocation_store_plan_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
 }
 
