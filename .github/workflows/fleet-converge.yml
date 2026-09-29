@@ -1102,7 +1102,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'microvm_runner_group_ensure'
-        timeout-minutes: 19
+        timeout-minutes: 36
       - name: Upload the microVM runner group ensure receipt
         id: microvm_runner_group_ensure_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
