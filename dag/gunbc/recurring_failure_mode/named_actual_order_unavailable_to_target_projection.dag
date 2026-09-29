@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.named_actual_order_unavailable_to_target_projection
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data named_actual_order_unavailable_to_target_projection: RecurringFailureMode = RecurringFailureMode {
+  identity: "named_actual_order_unavailable_to_target_projection" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a target realization that places an application's actuals by position (Rust, C and the other targets without named arguments) emits a named-actual application in AUTHORED order. HARM: a call written out of declared order, f(b: 2, a: 1) against fn f(a, b), binds each actual to the wrong parameter in the emitted program, silently. Before MQ-1 PR-B (gunbc#12382) this was the behaviour of v2.std.compilers.target_model target_project_transform_callable_apply_in_arrow_scope: named actuals had been lowered as positional, and projection read node_positional_child_targets in authored order.",
+    "RUNG FOUND AT: outside the ladder (silent wrong emission). RUNG NOW: mitigatable, located. With named actuals carried as Named edges (gunbc#12382), that projection refuses any application carrying a Named edge, target_value_expr_reason_declared_parameter_order_unavailable_to_projection, because it receives the callee as a bare atom with no declaration context and so cannot recover the callee's declared order. This is a CLIMB, not a declared drop: nothing that worked correctly stopped working; what stopped is an emission that was wrong. The capability NOT delivered is emitting such calls correctly.",
+    "CEILING: structurally guaranteed. The declared order is modeled (the Arrow's ^arrow_signature_order_edge, read by v2.std.arrow_signature arrow_declared_parameter_order), and binding is decided by the one plan (application_binding_plan), so emission in declared order is decidable. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the callee's declared parameter order is threaded into target projection, indexed by callee declaration path (v2.std.fn_index), so that target_project_transform_callable_apply_in_arrow_scope binds each application through application_binding_plan and emits its actuals in declared order for a target without named arguments, or labelled for a target that has them (a TargetModel NativeNamedArguments | ReorderToDeclared row, landing with its first consumer). The refusal and this row retire together. OWNER: the MQ-1 translate-reorder work item under gentle-koi-724 (merry-tern-680), stacked on gunbc#12382. Controls stated with it: a Rust-emitted f(b: 2, a: 1) against fn f(a, b) emits f(1, 2); a mutation emitting authored order reds it."
+  ],
+
+  evidence: [],
+}
