@@ -1145,20 +1145,26 @@ fn translate_arrow_signature_split(arrow: Node) -> Outcome<TypeExprArrowSplit> {
         Present { value: domain } =>
           match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
             Absent => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: arrow))
-            Present { value: output } =>
-              bind_outcome(
-                o: fold(labels, init: outcome_accepted(Empty), f: fn(acc, label) {
-                  bind_outcome(o: acc, f: fn(inputs) {
-                    bind_outcome(o: find_named_child(root: domain, name: label), f: fn(t) {
-                      outcome_accepted(list_snoc_item(xs: inputs, item: t))
-                    })
-                  })
-                }),
-                f: fn(inputs) { outcome_accepted(TypeExprArrowSplit { inputs: inputs, output: output }) }
-              )
+            Present { value: codomain } =>
+              translate_arrow_signature_split_from(labels: labels, domain: domain, codomain: codomain)
           }
       }
   }
+}
+
+// Each declared label selects its domain binder's type, in declared order; a label the domain does not
+// bind refuses (find_named_child), never skipped.
+fn translate_arrow_signature_split_from(labels: List<Symbol>, domain: Node, codomain: Node) -> Outcome<TypeExprArrowSplit> {
+  bind_outcome(
+    o: fold(labels, init: outcome_accepted(Empty), f: fn(acc, label) {
+      bind_outcome(o: acc, f: fn(so_far) {
+        bind_outcome(o: find_named_child(root: domain, name: label), f: fn(t) {
+          outcome_accepted(list_snoc_item(xs: so_far, item: t))
+        })
+      })
+    }),
+    f: fn(domain_types) { outcome_accepted(TypeExprArrowSplit { inputs: domain_types, output: codomain }) }
+  )
 }
 
 // THE FOLD READS A RESOLVED CORPUS-DECLARATION REFERENCE BEFORE IT READS THE CONNECTIVE. Resolution
