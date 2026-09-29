@@ -148,7 +148,8 @@ import v2.std.node_query {
   node_labeled_child_edges,
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  wildcard_pattern_identity
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -1116,6 +1117,8 @@ fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String
 // (v2.std.anonymous_binder anonymous_binder_mint_parameter_list). A target that admits only one `_` per
 // signature receives two and its own compiler refuses them; no target row carries a per-target
 // anonymous-parameter spelling yet.
+// The minted wildcard pattern (v2.std.node_query wildcard_pattern_identity) is spelled `_` the same way,
+// the inverse of its own mint in pattern lowering.
 fn bound_spelling_from_map(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
@@ -1124,7 +1127,7 @@ fn bound_spelling_from_map(
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
       Absent =>
-        if is_anonymous_param_label(sym: binding) {
+        if is_anonymous_param_label(sym: binding) || (binding == wildcard_pattern_identity()) {
           symbol_interned_spelling(binding: pattern_wildcard_name())
         } else {
           symbol_interned_spelling(binding: binding)

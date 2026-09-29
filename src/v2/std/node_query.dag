@@ -197,9 +197,31 @@ fn positional_payload_field_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "0")
 }
 
-// The wildcard pattern `_` binds nothing and names nothing (v1.compiler.parse parse_pattern).
+// THE AUTHORED SPELLING of the wildcard: the `_` a source writes in a pattern or as a parameter.
+// It binds nothing and names nothing (v1.compiler.parse parse_pattern). It is the SPELLING only:
+// lowering never leaves it in a pattern, it mints the wildcard pattern form below instead.
 fn pattern_wildcard_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "_")
+}
+
+// A WILDCARD PATTERN IS ITS OWN FORM, NOT AN ATOM SPELLED `_`. A pattern atom is otherwise a
+// constructor or a binder, both names, so a `_` atom was a name to every reader that did not
+// special-case its spelling -- resolve looked it up as a reference
+// (gunbc.recurring_failure_mode a_wildcard_match_arm_resolves_as_an_unbound_name). Lowering
+// (v2.compiler.body_lowering_fold body_lower_pattern_lowered) mints this identity for an authored `_`
+// pattern, and `<` is not an identifier character, so no authored name can spell it: the form names
+// nothing BY CONSTRUCTION, the anonymous-slot precedent (v2.std.anonymous_binder
+// anonymous_param_label). THE ONE MINT; is_wildcard_pattern is the one recogniser.
+fn wildcard_pattern_identity() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<wildcard-pattern>")
+}
+
+fn is_wildcard_pattern(pattern: Node) -> Bool {
+  match pattern.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      (id == wildcard_pattern_identity()) && (count(pattern.children) == 0)
+    _ => false
+  }
 }
 
 
