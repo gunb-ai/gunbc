@@ -1630,30 +1630,6 @@ fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn go_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: [
-      go_named_edge(name: ^serialize_source_field_source_text, target: go_inhabitant_atom(id: ^go_source_literal)),
-      go_named_edge(name: ^serialize_source_field_source_grammar, target: go_inhabitant_atom(id: ^go_production_fn_add))
-    ],
-    right: [
-      go_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: go_concrete_tokens(),
-          token_to_node: go_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn go_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: go_serialize_source_children(),
- occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
@@ -1831,8 +1807,7 @@ fn go_target_model_bundle_core() -> Node {
     children: [
       go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
       go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
-      go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
-      go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node())
+      go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1900,7 +1875,6 @@ fn go_target_model_node() -> Node {
       go_named_edge(name: ^target_model_edge_selection_policy, target: go_selection_policy_node()),
       go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
       go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
-      go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node()),
       go_named_edge(
         name: ^target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
@@ -1932,7 +1906,6 @@ fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
       go_named_edge(name: ^target_model_edge_selection_policy, target: selection),
       go_named_edge(name: ^target_model_edge_declared_inhabitants, target: go_add_declared_inhabitants_root()),
       go_named_edge(name: ^target_model_edge_translation_rules, target: go_translation_rules_node()),
-      go_named_edge(name: ^target_model_edge_serialize_source, target: go_serialize_source_node()),
       go_named_edge(
         name: ^target_model_edge_atom_realizations,
         target: target_atom_realization_catalog_node(
