@@ -505,7 +505,8 @@ fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
               }
               Absent => BrowseFilterConditionHasNoId { condition: c }
             }
-            _ => acc
+            BrowseFilterEmptyValueSet { field: _ } => acc
+            BrowseFilterConditionHasNoId { condition: _ } => acc
           }
         }
       ))
@@ -517,7 +518,8 @@ fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
 fn browse_wrap_condition_ids(r: BrowseFilterRender) -> BrowseFilterRender {
   match r {
     BrowseFilterRendered { param: ids } => BrowseFilterRendered { param: join(["conditionIds:{", ids, "}"], "") }
-    _ => r
+    BrowseFilterEmptyValueSet { field: _ } => r
+    BrowseFilterConditionHasNoId { condition: _ } => r
   }
 }
 
@@ -535,7 +537,8 @@ fn browse_render_filters(filters: List<BrowseSearchFilter>) -> BrowseFilterRende
           }
           refused => refused
         }
-        _ => acc
+        BrowseFilterEmptyValueSet { field: _ } => acc
+        BrowseFilterConditionHasNoId { condition: _ } => acc
       }
     }
   )

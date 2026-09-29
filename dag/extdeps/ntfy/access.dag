@@ -228,7 +228,8 @@ fn ntfy_access_fold_step(st: NtfyAccessFold, line: String) -> NtfyAccessFold {
             LineDefaultAccess { permission: p } =>
               if u.name == ntfy_everyone_user { NtfyAccessFold { users: st.users, default_access: concat(st.default_access, [p]), failure: none } }
               else { ntfy_access_fold_fail(st: st, line: line, cause: "default-access line under a user other than '*'") }
-            _ => ntfy_access_fold_fail(st: st, line: line, cause: "unplaced line")
+            LineUser { name: _, role: _ } => ntfy_access_fold_fail(st: st, line: line, cause: "unplaced line")
+            LineUnrecognized { cause: _ } => ntfy_access_fold_fail(st: st, line: line, cause: "unplaced line")
           }
         }
       }
