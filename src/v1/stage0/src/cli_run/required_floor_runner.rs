@@ -2028,7 +2028,9 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    imports_fixed: bool,
+    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
+    /// `NotAReference`, read from the row view's own fields.
+    rechecked: bool,
 }
 
 /// The roster as one evaluation reads it: the rows as a `.dag` value (passed back unchanged to the
@@ -2076,9 +2078,18 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
+            let not_a_reference = match ctx.field(fields, "not_a_reference") {
+                Some(v1_interpreter::Value::Bool(b)) => *b,
+                other => {
+                    return Err(format!(
+                        "{function}: row `not_a_reference` is not a Bool ({})",
+                        floor_value_shape(other)
+                    ))
+                }
+            };
             rows.push(RosterRow {
                 file,
-                imports_fixed,
+                rechecked: imports_fixed || not_a_reference,
             });
         }
         Ok(Self {
@@ -2183,7 +2194,7 @@ fn unimported_bare_provider_standing_refusals(
     for row in &head.rows {
         if lookup.contains_key(row.file.as_str()) {
             present.insert(row.file.clone());
-            if row.imports_fixed {
+            if row.rechecked {
                 checked.insert(row.file.clone());
             }
         }
