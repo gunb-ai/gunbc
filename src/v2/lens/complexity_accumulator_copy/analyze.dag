@@ -684,14 +684,7 @@ fn analyze_absent_primary_expr(
         Absent =>
           analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
-    ComputationNode { behavior: _ } =>
-      match let_spine_of(node: node) {
-        Present { value: spine } =>
-          analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
-        Absent =>
-          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
-      }
-    TypeNode { connective: _ } =>
+    _ =>
       match let_spine_of(node: node) {
         Present { value: spine } =>
           analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
@@ -849,15 +842,7 @@ fn accumulator_copy_findings(root: Node) -> List<v2.lens.complexity_accumulator_
 fn tree_contains_lowered_loop(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Loop } => true
-    ComputationNode { behavior: _ } =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          tree_contains_lowered_loop(root: e.target)
-        }
-      })
-    TypeNode { connective: _ } =>
+    _ =>
       fold(root.children, init: false, f: fn(found, e) {
         if found {
           true

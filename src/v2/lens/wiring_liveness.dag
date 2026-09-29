@@ -139,25 +139,7 @@ fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
   fold(decl.params, init: Holds, f: fn(acc, p) {
     match acc {
       Violation { diagnostic: _ } => acc
-      Holds =>
-        wiring_param_violation_verdict(
-          relation: WiringRelation {
-            output: decl.output,
-            declared_input: p.node,
-            dependence: dependence
-          },
-          reachable: reachable
-        )
-      NotApplicable { diagnostic: _ } =>
-        wiring_param_violation_verdict(
-          relation: WiringRelation {
-            output: decl.output,
-            declared_input: p.node,
-            dependence: dependence
-          },
-          reachable: reachable
-        )
-      Unrealized { diagnostic: _ } =>
+      _ =>
         wiring_param_violation_verdict(
           relation: WiringRelation {
             output: decl.output,

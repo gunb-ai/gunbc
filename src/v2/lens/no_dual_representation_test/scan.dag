@@ -383,28 +383,7 @@ fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Nod
       } else {
         output
       }
-    TypeNode { connective: _ } =>
-      node_synthetic(
-        kind: output.kind,
-        children: fold(
-          output.children,
-          init: empty_edges,
-          f: fn(acc, e) {
-            list_snoc_item(
-              xs: acc,
-              item: Edge {
-                label: e.label,
-                target: replace_param_in_output(
-                  output: e.target,
-                  param: param,
-                  arg_name: arg_name
-                )
-              }
-            )
-          }
-        )
-      )
-    ComputationNode { behavior: _ } =>
+    _ =>
       node_synthetic(
         kind: output.kind,
         children: fold(
