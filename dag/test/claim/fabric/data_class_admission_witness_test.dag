@@ -1,6 +1,7 @@
 module test.claim.fabric.data_class_admission_witness_test
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -243,16 +244,18 @@ test fn a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_
 
 // LABEL PRESERVATION AND ERASURE. A projection of a classified value is classified in the same
 // category; the erased form keeps the category and the basis and has no payload at all.
+fn email_length_of(claims: OidcStandardClaims) -> Nat {
+  match claims.email {
+    Present { value: e } => count(e as String)
+    Absent => 0
+  }
+}
+
 test fn a_projection_of_classified_data_keeps_its_category() -> Bool {
   match fx_pii_result() {
     VerifiedOidcProjectionRefused { cause: _ } => false
     VerifiedOidcProjectionProjected { projection: p } => {
-  let email_length = classified_map(c: p.standard, f: fn(claims) {
-    match claims.email {
-      Present { value: e } => count(e as String)
-      Absent => 0
-    }
-  })
+  let email_length = classified_map(c: p.standard, f: fn(claims) { email_length_of(claims: claims) })
   declaration_ref_eq(a: classified_category(c: email_length), b: personal_identity_ref())
   }
   }

@@ -225,8 +225,9 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //     runtime namespace. Replaces the former zero-external-dependency constraint (now with standard
 //     deps for v1_rt.rs, which the emitter includes unconditionally).
 //   - CONTROL (a): test.claim.self_host_logic_behavioral_witness /
-//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile WITH
-//     the seed crate (v1-compiler path dependency), run the comparison driver + --inject-fault.
+//     self_host_logic_behavioral_receipt_holds -- emit dag/std/logic.dag with gunbc, compile it with
+//     the seed's committed stage0 mirror of std_logic as the oracle module (no v1-compiler path
+//     dependency), run the comparison driver + --inject-fault.
 //     Proves the comparison discriminates (DESIGN §5). Rehomed from FalsifierSelfHostWet (dead
 //     cadence, falsifier.yml deleted at #8283). The DeclaredCadenceUnrealized standing for that
 //     cadence is preserved in the exclusion row reason as evidence of the routing gap.
@@ -692,6 +693,84 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "superseded_trees_are_reported_and_retained_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "superseded_trees_are_reported_and_retained_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_contested_tree_is_refused_not_replaced_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_contested_tree_is_refused_not_replaced_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.runner.runner_browser_toolchain_real_execution", function: "a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution" },
+      entry: "dag/test/claim/runner/runner_browser_toolchain_real_execution_witness_test.dag",
+      function: "a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.srv3_install_media_fetch_real_execution", function: "install_media_hash_matches_true_by_real_execution" },
       entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag",
       function: "install_media_hash_matches_true_by_real_execution",
@@ -1034,6 +1113,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_authorization_witness", function: "a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction" },
+      entry: "dag/test/claim/spark/pair_serving_d0_authorization_witness_test.dag",
+      function: "a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_production_route_settles_and_the_lease_governs_launch_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "the_production_route_settles_and_the_lease_governs_launch_by_real_execution",
@@ -1043,18 +1146,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.fabric_capacity_standing_wet_witness", function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet" },
-      entry: "dag/test/claim/spark/fabric_capacity_standing_wet_witness_test.dag",
-      function: "the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet" },
-      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
-      function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -1772,6 +1863,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_source_patch_converge_witness", function: "red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history" },
+      entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
+      function: "red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_row_store_encode_witness", function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships" },
       entry: "dag/test/claim/spark/v41_row_store_encode_witness_test.dag",
       function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships",
@@ -1835,6 +1932,174 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution" },
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution_test.dag",
       function: "a_symlinked_ancestor_stops_before_the_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_restore_positive_promotes_verified_members" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_restore_positive_promotes_verified_members",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_consumer_positive_promotes_verified_members" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_consumer_positive_promotes_verified_members",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_altered_member_with_valid_manifest_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_altered_member_with_valid_manifest_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_symlink_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_symlink_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_symlink_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_symlink_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_extra_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_extra_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_extra_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_extra_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_restore_duplicate_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_restore_duplicate_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_consumer_duplicate_member_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_consumer_duplicate_member_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_lookup_valid_empty_answer_is_absence" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_lookup_valid_empty_answer_is_absence",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_count_without_rows_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_count_without_rows_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_truncated_answer_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_truncated_answer_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_count_disagreeing_with_rows_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_count_disagreeing_with_rows_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_wrong_shape_row_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_wrong_shape_row_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_unchanged_inputs_key_equally" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_unchanged_inputs_key_equally",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_release_opt_level_override_changes_the_key" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_release_opt_level_override_changes_the_key",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_compiler_override_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_compiler_override_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_ancestor_cargo_config_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_ancestor_cargo_config_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_partial_print_then_failing_producer_publishes_no_key" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_partial_print_then_failing_producer_publishes_no_key",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_multiline_rustflags_keys_apart_from_its_first_line" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_multiline_rustflags_keys_apart_from_its_first_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_registry_token_refuses_and_is_never_printed" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_registry_token_refuses_and_is_never_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_named_registry_token_refuses_and_is_never_printed" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_named_registry_token_refuses_and_is_never_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_value_stream_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_value_stream_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.long.fleet_release_bins_key_witness", function: "release_bins_RED_lookup_two_documents_refuses" },
+      entry: "dag/test/claim/long/fleet_release_bins_key_witness_test.dag",
+      function: "release_bins_RED_lookup_two_documents_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "a_launch_that_cannot_publish_its_pid_stops_the_child_it_created" },
+      entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
+      function: "a_launch_that_cannot_publish_its_pid_stops_the_child_it_created",
       expectation: ExpectedToHold {}
     }
   ]

@@ -32,7 +32,7 @@ import gunbc.floor_demand {
   SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
 }
 import gunbc.fabric_floor_policy { floor_execution_requirements }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {
   FloorRunCgroupPeakMeasured {

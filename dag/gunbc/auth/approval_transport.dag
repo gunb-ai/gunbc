@@ -18,4 +18,3 @@ fn roadmap_approval_transport_request(request: ServeHttpRequest<RequestAuthentic
     },
   }
 }
-

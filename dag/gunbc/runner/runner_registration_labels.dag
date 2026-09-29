@@ -5,12 +5,13 @@ import product.placement_supply { HostIdentity }
 import extdeps.github.actions { SelfHosted }
 import gunbc.ci_fleet { fleet_compute_offer_for }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, runner_host_label, runner_label_set_union }
+import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
 // the one place that owns it:
 //   platform  self-hosted / os / arch   gunbc.runner_spec_from_offer, from the host's ComputeOffer
-//   class     gunbc-heavy                gunbc.runner_slot_allocation gunbc_runner_slot_desired
+//   class     gunbc-heavy                gunbc.runner_slot_desired gunbc_runner_slot_desired
 //   host      the host it executes on    gunbc.runner_slot_allocation runner_host_label
 // Unit-file registration, JIT mint, the replace postcondition and the org-roster readback all read
 // their labels here. The host-pinned selector (gunbc.ci_deploy_target_host host_pinned_runner_spec)

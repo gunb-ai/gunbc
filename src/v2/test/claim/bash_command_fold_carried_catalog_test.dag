@@ -1,0 +1,75 @@
+module v2.test.claim.bash_command_fold_carried_catalog
+
+import v2.compiler.target_serialize {
+  target_serialize_source_from_model,
+  target_serialize_source_from_selected_row
+}
+import v2.extdeps.languages.bash_build { bash_build_command_from_lits }
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_relation_row_witness,
+  bash_fold_target_model_for_row,
+  bash_fold_translation_rules_budget_for_row,
+  bash_fold_translation_rules_node_for_row
+}
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.node { Node, node_subtree_count }
+import v2.std.witness { Holds, Violates }
+
+// A command whose words exercise the serializer's quoting: an embedded space, an apostrophe, a
+// dollar sign and an empty word.
+data carried_catalog_specimen: Node = bash_build_command_from_lits(
+  lits: ["printf", "a b", "it's", "$HOME", ""]
+)
+
+// THE CARRIED BUDGET IS THE COUNT OF THE NODE IT STANDS FOR. bash_fold_translation_rules_budget_for_row
+// adds a carried catalog count to the row's own count instead of walking the rules node per leaf;
+// if the rules node gained or lost an edge and the budget did not follow, the serializer would run
+// under a recursion bound that belongs to a different node. Red: change either side's shape.
+test fn carried_rules_budget_equals_the_rules_node_count() -> Bool {
+  match bash_fold_relation_row_witness(emitted: carried_catalog_specimen, lhs: ^bash_production_fold_command) {
+    Holds { value: row } =>
+      bash_fold_translation_rules_budget_for_row(row: row)
+        == node_subtree_count(
+          n: bash_fold_translation_rules_node_for_row(row: row, rule_name: ^bash_relation_rule_fold_command)
+        )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// THE SELECTED-ROW ROUTE SPELLS WHAT THE GENERIC ROUTE SPELLS. Over one target model and one row,
+// target_serialize_source_from_selected_row (the fold's route) and target_serialize_source_from_model
+// (which re-selects the row from the rules and validates it against the serialize source) must
+// produce the same bytes with no diagnostics. The differential is what licenses dropping the second
+// selection: a selected-row entry that skipped a token, mis-bounded the recursion or took a
+// different row goes red here rather than in an emitted script.
+test fn selected_row_route_spells_what_the_generic_route_spells() -> Bool {
+  match bash_fold_relation_row_witness(emitted: carried_catalog_specimen, lhs: ^bash_production_fold_command) {
+    Holds { value: row } =>
+      match bash_fold_target_model_for_row(
+        row: row,
+        source_literal: ^bash_fold_dynamic_source_literal,
+        source_text: "",
+        production_binding: ^bash_production_fold_command,
+        rule_name: ^bash_relation_rule_fold_command
+      ) {
+        Holds { value: target } =>
+          match target_serialize_source_from_selected_row(
+            target: target,
+            emitted: carried_catalog_specimen,
+            row: row,
+            rules_budget: bash_fold_translation_rules_budget_for_row(row: row)
+          ) {
+            Accepted { value: selected, diagnostics: sd } =>
+              match target_serialize_source_from_model(target: target, emitted: carried_catalog_specimen) {
+                Accepted { value: generic, diagnostics: gd } =>
+                  selected.carried == generic.carried && sd == None && gd == None
+                    && selected.carried == "'printf' 'a b' 'it'\\''s' '$HOME' ''"
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Violates { diagnostic: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}

@@ -142,8 +142,9 @@ import v2.std.node {
   Bind,
   Match,
   Symbol,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
-import v2.std.compilers.lexing { symbol_lexeme, symbol_intern_lexeme }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 import gunbc.scm.object_store {

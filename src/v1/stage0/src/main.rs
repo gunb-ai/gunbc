@@ -1183,7 +1183,12 @@ fn run_verb(
     // graph differently, so which one answered is a fact the operator of a run is entitled to see
     // without reconstructing it from their own cwd. A selection nobody can observe is how a
     // fall-through becomes indistinguishable from a silent widen.
-    match cli_run::bind_process_workspace_root(source_roots) {
+    let bound = cli_run::pre_entry_phase::timed(
+        "workspace_discovery",
+        cli_run::pre_entry_phase::PhaseScale::Closure,
+        || cli_run::bind_process_workspace_root(source_roots),
+    );
+    match bound {
         Ok((root, basis)) => {
             eprintln!("[workspace-root] {} {}", basis.wire(), root.display());
         }
@@ -1227,7 +1232,14 @@ fn run_verb(
         };
     }
 
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
+    let resolve_started = std::time::Instant::now();
+    let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
+    let (graph, source_indices) = match resolved {
         Ok(resolved) => resolved,
         Err(cause) => {
             return Verdict {
@@ -1308,6 +1320,61 @@ fn run_verb(
         verdict.message = Some(failures.join("\n"));
     }
     verdict
+}
+
+/// Print the pre-entry phase receipt (`cli_run::pre_entry_phase`): the tree-scaled phases
+/// recorded where they ran, then the closure-scaled resolve stages from `ResolveStageNanos`,
+/// then the inclusive resolve window they sit inside. Printed whether resolve succeeded or
+/// refused, because a refusal after minutes of preparation is exactly the run whose cost
+/// the operator most needs attributed.
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
+    use cli_run::pre_entry_phase::{record, take_lines, PhaseScale};
+    let st = cli_run::resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    record(
+        "resolve_entry_graph_inclusive",
+        PhaseScale::Closure,
+        resolve_inclusive,
+    );
+    for line in take_lines() {
+        eprintln!("{line}");
+    }
+    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
+    // grew or because its work per input changed: the indexed pool (every module under every
+    // --source-root) against the files of the entry's resolved closure.
+    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec as i64 * 1000 + t.tv_usec as i64 / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            usage.ru_maxrss
+        );
+    }
 }
 
 fn run_one_function(

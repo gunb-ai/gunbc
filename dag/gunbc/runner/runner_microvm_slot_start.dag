@@ -214,7 +214,13 @@ fn controller_receipt_text(c: MicrovmControllerReceiptReading) -> String {
 fn microvm_slot_start_admitted(r: MicrovmSlotStartRun) -> Bool {
   match r {
     SlotStartCompleted { unit: _, invocation_id: _, exec_main_status: _, controller_receipt: ControllerReceiptRead { path: _, text: _ } } => true
-    _ => false
+    SlotStartCompleted { unit: _, invocation_id: _, exec_main_status: _, controller_receipt: ControllerReceiptUnreadable { path: _, detail: _ } } => false
+    SlotStartWrongHost { detail: _ } => false
+    SlotStartRefused { unit: _, detail: _ } => false
+    SlotStartAlreadyActive { unit: _, invocation: _ } => false
+    SlotStartInvocationUnread { unit: _, detail: _ } => false
+    SlotStartInvocationUnchanged { unit: _, invocation_id: _ } => false
+    SlotStartStillActiveAtBound { unit: _, invocation_id: _, bound: _ } => false
   }
 }
 

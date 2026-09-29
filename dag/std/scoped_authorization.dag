@@ -1,8 +1,7 @@
 module std.scoped_authorization
 
-import v2.std.algebra { is_empty, length }
-
-import std.types { NonEmptyStr, String, Bool, Timestamp, List }
+import std.types { NonEmptyStr, String, Bool, Timestamp, List, Int }
+import v2.std.algebra { skip, is_empty, length }
 import v2.std.optional { Present, Absent }
 import std.content_hash {
   ContentHash,
@@ -21,6 +20,11 @@ import std.effect_grant {
   position_under,
   effect_verb_label,
   namespace_position_label,
+  namespace_tree_label,
+  namespace_tree_eq,
+  path_is_prefix,
+  verb_of_label,
+  namespace_tree_of_label,
 }
 import std.durable_compare_and_set {
   CasAttempt,
@@ -578,6 +582,147 @@ fn claim_holder_payload(readable: CasReadableSlot<NonEmptyStr>) -> NonEmptyStr {
     CasReadablePresent { version: v } => v.value
   }
 }
+
+// ── THE SCOPE ON THE WIRE, AND THE INTENT THAT STATES IT ──────────────────────────────────────
+//
+// ONE CODEC, WRITTEN BY THE FILER AND READ BY THE VERIFIER. An intent_hash binds the exact text of
+// an operation, so when that text states the scope, a verifier that holds the text and the approved
+// revision learns the approved scope without trusting anyone to repeat it. Before this codec the
+// only spelling of a scope was authorization_scope_render -- a sentence for a person -- and a
+// verifier could only compare sentences, so filer and verifier agreed exactly as long as nobody
+// edited one side's phrasing. The wire is four space-separated fields: verb label, tree label, the
+// path joined by "/", the action. A scope whose fields cannot be written unambiguously (a space in
+// any field, a "/" or an empty segment in the path, an empty path) has NO wire and is refused at
+// encode; decode reads back only what encode writes (the round trip is the check).
+data scope_wire_field_separator: String = " "
+data scope_wire_path_separator: String = "/"
+
+fn scope_wire_field_admissible(field: String) -> Bool {
+  field != "" && !string_contains(s: field, pattern: scope_wire_field_separator)
+}
+
+fn scope_wire_segment_admissible(segment: String) -> Bool {
+  scope_wire_field_admissible(field: segment) && !string_contains(s: segment, pattern: scope_wire_path_separator)
+}
+
+fn authorization_scope_wire(scope: AuthorizationScope) -> NonEmptyStr? {
+  let tree = namespace_tree_label(tree: scope.resource.tree)
+  if !scope_wire_field_admissible(field: tree)
+    || is_empty(scope.resource.path)
+    || !all(scope.resource.path, seg => scope_wire_segment_admissible(segment: seg))
+    || !scope_wire_field_admissible(field: scope.action as String) {
+    none
+  } else {
+    Present { value: join([
+      effect_verb_label(verb: scope.verb),
+      tree,
+      join(scope.resource.path, scope_wire_path_separator),
+      scope.action as String,
+    ], scope_wire_field_separator) as NonEmptyStr }
+  }
+}
+
+fn parse_authorization_scope_wire(wire: String) -> AuthorizationScope? {
+  let fields = split(s: wire, delimiter: scope_wire_field_separator)
+  if count(fields) != 4 { none } else {
+    match verb_of_label(label: field_at(fields: fields, i: 0)) {
+      Absent => none
+      Present { value: verb } =>
+        match namespace_tree_of_label(label: field_at(fields: fields, i: 1)) {
+          Absent => none
+          Present { value: tree } => {
+            let action = field_at(fields: fields, i: 3)
+            if action == "" { none } else {
+              let scope = AuthorizationScope {
+                verb: verb,
+                resource: NamespacePosition { tree: tree, path: split(s: field_at(fields: fields, i: 2), delimiter: scope_wire_path_separator) },
+                action: action as AuthorizedAction,
+              }
+              match authorization_scope_wire(scope: scope) {
+                Present { value: w } => if (w as String) == wire { Present { value: scope } } else { none }
+                Absent => none
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// EXACT scope identity -- same verb, same tree, same path, same action -- for a verifier that must
+// know the scope stated IS the one it requires, not merely one that covers it (scope_covers is the
+// reach relation a grant is judged by; an intent names its operation exactly).
+fn authorization_scope_eq(a: AuthorizationScope, b: AuthorizationScope) -> Bool {
+  verb_eq(a: a.verb, b: b.verb)
+    && namespace_tree_eq(a: a.resource.tree, b: b.resource.tree)
+    && path_is_prefix(prefix: a.resource.path, path: b.resource.path)
+    && path_is_prefix(prefix: b.resource.path, path: a.resource.path)
+    && a.action == b.action
+}
+
+fn field_at(fields: List<String>, i: Int) -> String {
+  match first(fields |> skip(n: i)) { Present { value: f } => f  Absent => "" }
+}
+
+// THE INTENT FRAME. Every operation text an intent_hash is taken over that must be verifiable by a
+// party other than its filer opens with ONE schema line and then its scopes, one `scope=<wire>` line
+// each, and at least one: a verifier reads the scopes by position through parse_intent_scopes and
+// needs no knowledge of the domain below them. What follows the scopes is the domain's own and is
+// not read here. An intent with no scope line, a scope line that does not decode, or a scope with
+// no wire has no frame -- refused, never read as "no scopes required", which would make an intent
+// that stated nothing the most-authorized one (the empty-set trap scope_covered_by_any names).
+data intent_scope_line_prefix: String = "scope="
+
+fn intent_frame_head(schema: NonEmptyStr, scopes: List<AuthorizationScope>) -> String? {
+  if is_empty(scopes) { none } else {
+    fold(scopes, init: Present { value: schema as String }, f: (acc, sc) =>
+      match acc {
+        Absent => none
+        Present { value: text } =>
+          match authorization_scope_wire(scope: sc) {
+            Absent => none
+            Present { value: w } => Present { value: join([text, "\n", intent_scope_line_prefix, w as String], "") }
+          }
+      })
+  }
+}
+
+type IntentScopes {
+  schema: NonEmptyStr
+  scopes: List<AuthorizationScope>
+}
+
+fn parse_intent_scopes(text: String) -> IntentScopes? {
+  let lines = split(s: text, delimiter: "\n")
+  let schema = field_at(fields: lines, i: 0)
+  if schema == "" { none } else {
+    let start: IntentScopeScan = ScanningScopes { scopes: [] as List<AuthorizationScope> }
+    let scan = fold(lines |> skip(n: 1), init: start, f: (acc, l) =>
+      match acc {
+        ScopesEnded { scopes: _ } => acc
+        ScopeLineRefused => acc
+        ScanningScopes { scopes: xs } =>
+          if starts_with(s: l, prefix: intent_scope_line_prefix) {
+            match parse_authorization_scope_wire(wire: substring(s: l, start: length(intent_scope_line_prefix), end: length(l))) {
+              Present { value: sc } => ScanningScopes { scopes: concat(xs, [sc]) }
+              Absent => ScopeLineRefused
+            }
+          } else { ScopesEnded { scopes: xs } }
+      })
+    match scan {
+      ScopeLineRefused => none
+      ScanningScopes { scopes: xs } => if is_empty(xs) { none } else { Present { value: IntentScopes { schema: schema as NonEmptyStr, scopes: xs } } }
+      ScopesEnded { scopes: xs } => if is_empty(xs) { none } else { Present { value: IntentScopes { schema: schema as NonEmptyStr, scopes: xs } } }
+    }
+  }
+}
+
+// The scan's three states, as the closed sum they are (review 72048): still reading scope lines,
+// past the last one, or stopped at a line that claims to be a scope and does not decode.
+type IntentScopeScan
+  = ScanningScopes { scopes: List<AuthorizationScope> }
+  | ScopesEnded { scopes: List<AuthorizationScope> }
+  | ScopeLineRefused
 
 // EVERY FIELD THE SCOPE COMPARISON READS IS RENDERED, and that is the whole rule. scope_covers
 // judges verb, resource and action, so a render omitting any of the three can print two identical

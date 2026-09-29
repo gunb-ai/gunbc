@@ -17,4 +17,3 @@ fn auth_login_browser_admitted(transaction: OidcLoginTransaction, cookie_header:
     _ => false
   }
 }
-

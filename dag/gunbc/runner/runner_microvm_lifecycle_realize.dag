@@ -74,6 +74,7 @@ import product.fabric.sanitation { CellId }
 import extdeps.tools.e2fsprogs {
   decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
 }
+import extdeps.systemd.journalctl
 import extdeps.systemd.systemd_run { systemd_run_property_argv, SystemdRunProperty }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,

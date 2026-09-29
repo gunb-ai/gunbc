@@ -203,7 +203,11 @@ fn approval_poll_step(escalation_id: NonEmptyStr, standing: ApprovalPollStanding
     PollStillPending =>
       if remaining <= 0 { PollReturn { outcome: PollBudgetExhausted { escalation_id: escalation_id, observed_at: observed_at } } }
       else { PollSleepAndContinue { next_remaining: remaining - 1 } }
-    _ => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
+    PollApproved { revision: _, decided_by: _, decided_at: _, execute_by: _ } => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
+    PollDenied { revision: _, decided_by: _, decided_at: _, reason: _ } => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
+    PollExpired => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
+    PollNotFiled => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
+    PollUnreadable { detail: _ } => PollReturn { outcome: PollObservedAt { standing: standing, observed_at: observed_at } }
   }
 }
 

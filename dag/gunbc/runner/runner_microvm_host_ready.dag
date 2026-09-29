@@ -20,7 +20,10 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { cp_command }
-import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import gunbc.verified_archive_install {
+  verified_archive_install, ArchiveSha256,
+  ArchiveInstalled, ArchiveFetchRefused, ArchiveDigestMismatched, ArchiveDigestUnverified, ArchiveInstallRefused,
+}
 import extdeps.virtualization.firecracker {
   FirecrackerRelease, firecracker_release_aarch64, firecracker_requires_kvm_device,
   firecracker_release_tarball_filename, firecracker_release_download_url,
@@ -618,14 +621,17 @@ fn runner_microvm_host_converge_wet() -> ProcessExit
             FirecrackerInstalled { binary: _, version_line: _ } => ExitSuccess
             _ => {
               let scratch = join([root, "/scratch"], "")
-              match run_shell_commands(commands: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec) {
-                ExitSuccess =>
-                  match sha256sum_verify_via_shell(path: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr, expected_digest: firecracker_release_aarch64_tarball_sha256) {
-                    Sha256Matches => run_shell_commands(commands: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch), transport: LocalExec)
-                    Sha256Mismatch => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
-                    Sha256VerifyInfraFailure { reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r as String, "); installing NOTHING"], ""))
-                  }
-                other => other
+              match verified_archive_install(
+                fetch: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
+                archive: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr,
+                pin: ArchiveSha256 { hex: firecracker_release_aarch64_tarball_sha256 },
+                install: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
+              ) {
+                ArchiveInstalled => ExitSuccess
+                ArchiveDigestMismatched { archive: _ } => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
+                ArchiveDigestUnverified { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r, "); installing NOTHING"], ""))
+                ArchiveFetchRefused { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: ", r], ""))
+                ArchiveInstallRefused { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: ", r], ""))
               }
             }
           }

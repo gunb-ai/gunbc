@@ -20,4 +20,3 @@ fn served_storage_hold_handler(method: String, path: String, body: String, tails
       }
   }
 }
-

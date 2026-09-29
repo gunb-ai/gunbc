@@ -382,10 +382,6 @@ data excl_local_repo_wet_bash_materialized_reason: String = "real host-effect ex
 
 data excl_local_repo_wet_bash_materialized_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.Run over a sealed transport script and the emitted-bytes assertions are re-checked under a fixed mock -- which the transport_script_stdin_byte_fidelity note already refuses as vacuous for a byte-fidelity claim -- OR the bin-witness wet class regains an executing per-PR consumer; then these fns re-enroll there, drop off local_repo_wet_schedule, and this row deletes")
 
-data excl_local_repo_wet_executor_identity_reason: String = "real host-effect execution witness whose effects are the EXECUTOR'S OWN IDENTITY AND EVENT-LOG READ: the instrument entry reads the executing host's hostname (shell.Exec.RunArgv, no mock_response), resolves that host's event log layout, and reads each claimed group's serving authority from the log before judging any standing (gunbc.instruments.fabric_capacity_standing fabric_capacity_standing over gunbc.spark.pair_serving_authority_log). No temporary repository is built and nothing is written; on a runner that is no dashboard host the read refuses at the layout step and the entry reports every group unread, which is the route the claim asserts. It is the wet half of the pairing obligation whose hermetic half is test.claim.spark.fabric_capacity_standing_witness over a supplied roster."
-
-data excl_local_repo_wet_executor_identity_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.RunArgv and the event-log head read, so the instrument entry can be driven hermetically with a fixed executor and a fixed partition head; then the claim re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
-
 data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
@@ -674,7 +670,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: LocalRepoWetLane,
-    reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust WITH the seed crate (v1-compiler path dependency) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",
+    reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust with the seed's committed stage0 mirror src/v1/stage0/src/std_logic.rs as the oracle module (no v1-compiler path dependency, so the seed crate is not built) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "namespace_import_closure_witness_test.dag",
@@ -903,6 +899,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: "SUBSTANTIATED per-row: every fn here reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe, and RunArgv carries NO mock_response by the 2026-08-23 ruling -- so hermetic discovery REFUSES rather than skipping, and a refusing member fails its batch. The refusal is correct and the file cannot be made hermetic, for the reason that ruling itself gives: the deleted arm answered a FIXED exit status that did not vary with its input, under which a witness asserting `this fails closed` could not be satisfied. This IS that witness; its subject is the exit status of a real process, which no in-process assertion observes and no mock honestly supplies. THE EXECUTION IS PURELY LOCAL -- `sh -c` over the rendered wrapper text, running shell builtins, no network, no remote host, no Cargo, no install-media transfer -- which is why it belongs on the local-repo wet lane rather than the dark bin lane. SUBJECT: the verify wrapper read `cmd && echo OK || echo FAILED`, which exits ZERO in both branches because echo succeeds, so a verification that REFUSED the bytes returned AcquisitionFetched. SIZE IS DERIVED: four invocations, one per arm of the contract -- the failing red, the passing control without which the red is satisfied by a wrapper that always fails, an exact-status probe proving propagation rather than substitution, and an argv-boundary probe for a path containing a space." as String,
     dissolution: unbound_dissolution(description: "shell.Exec.RunArgv gains input-varying mock_response coverage that can express a nonzero exit -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. Publishing a fixed-status mock does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the shell, which is the vacuous pass this class already records once")},
   WitnessExclusionRow {
+    pattern: "runner_browser_toolchain_real_execution_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED per-row: every fn here drives shell.Mktemp.Dir, Filesystem.Write and shell.Remove.RecursiveForce and reaches shell.Exec.RunArgv through gunbc.command_runner (curl over a file:// URL, sha256sum, sha512sum, mkdir, test -e, ldd), none of which carries a mock_response, so hermetic discovery refuses them by construction. Their subject is the shared fetch-verify-install fold (gunbc.verified_archive_install) that every archive of the runner browser toolchain and the Firecracker release goes through: that a verified archive installs and reads back verified, that a sha256 or npm-integrity mismatch runs NO install command, that a retained archive altered after install reads back mismatched, and that the library readback runs a real ldd. Each is the exit status or on-disk product of a real process, which no mock honestly supplies. THE EXECUTION IS PURELY LOCAL: a temporary directory, a fixture file, curl over file://, the digest tools, mkdir and ldd; no network, no remote host, no Cargo -- the local-repo wet lane's subject." as String,
+    dissolution: unbound_dissolution(description: "shell.Exec.RunArgv and the file-effect shell operations gain input-varying mock_response coverage that can express a real digest mismatch and a real absent path -- at which point these fns re-enrol as ordinary hermetic discovery rows and this row deletes. A fixed mock does NOT discharge it: the subject is what the real digest tools and the real filesystem report")},
+  WitnessExclusionRow {
     pattern: "srv3_install_media_fetch_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_install_media_local_wet_reason,
@@ -977,16 +978,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
-  WitnessExclusionRow {
-    pattern: "fabric_capacity_standing_wet_witness_test.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_executor_identity_reason,
-    dissolution: excl_local_repo_wet_executor_identity_dissolve},
-  WitnessExclusionRow {
-    pattern: "spark_pair_serving_apply_wet_witness_test.dag",
-    classification: LocalRepoWetLane,
-    reason: excl_local_repo_wet_executor_identity_reason,
-    dissolution: excl_local_repo_wet_executor_identity_dissolve},
   WitnessExclusionRow {
     pattern: "devboot_text_blob_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
@@ -1069,6 +1060,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "durable_cas_file_store_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "sol_hold_stdin_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},

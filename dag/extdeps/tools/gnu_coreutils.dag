@@ -36,6 +36,7 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 data cat_program: NonEmptyStr = "cat"
+data mktemp_program: NonEmptyStr = "mktemp"
 data cp_program: NonEmptyStr = "cp"
 data printf_program: NonEmptyStr = "printf"
 data true_program: NonEmptyStr = "true"
@@ -46,6 +47,7 @@ data install_program: NonEmptyStr = "install"
 data sort_program: NonEmptyStr = "sort"
 data cut_program: NonEmptyStr = "cut"
 data od_program: NonEmptyStr = "od"
+data mkdir_program: NonEmptyStr = "mkdir"
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -56,6 +58,40 @@ data od_program: NonEmptyStr = "od"
 // needs its own builder and its own name, not a flags parameter here.
 fn ls_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program, arguments: ["-1", path])
+}
+
+// mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
+// X's replaced), mode 0700, and prints its path; it refuses rather than reuse an existing name
+// (coreutils manual, "mktemp invocation"). That exclusive creation is what makes the directory one
+// caller's own. This is the argv for a remote typed-argv transport; extdeps.shell shell.Mktemp
+// DirWithTemplate is the local realization of the same invocation -- the op-plus-builder seam
+// extdeps.crypto.hash records for sha256sum, folding when a transport row can be read from the
+// operation itself.
+fn mktemp_directory_command(template: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: mktemp_program, arguments: ["-d", template as String])
+}
+
+// mkdir -p: create the directory and any missing parents; an existing directory is success.
+fn mkdir_parents_command(path: String) -> ArgvCommand {
+  argv_command(program: mkdir_program, arguments: ["-p", "--", path])
+}
+
+// ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
+// "ln invocation"): the create-only publication step. A second name for the same inode, never a
+// replacement of the bytes behind an existing name.
+fn ln_hard_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: coreutils_ln_binary_name, arguments: ["--", source, destination])
+}
+
+// ls -ld: ONE long-format line for the path itself, never its contents. The -n form prints numeric
+// uid and gid where the plain form prints names. Both are portable argv, which a printf-format
+// `stat -c %u...` is not under a far-side shell re-parse allowlist that excludes `%`.
+fn ls_long_directory_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program, arguments: ["-ld", "--", path])
+}
+
+fn ls_long_directory_numeric_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program, arguments: ["-ldn", "--", path])
 }
 
 fn cat_command(path: String) -> ArgvCommand {
@@ -331,4 +367,21 @@ fn install_file_owned_command(source: String, destination: String, mode: NonEmpt
     coreutils_install_owner_flag as String, to_string(uid),
     coreutils_install_group_flag as String, to_string(gid), source, destination,
   ])
+}
+
+// mv -T: rename SOURCE to exactly DESTINATION, treating the destination as a file name and never as
+// a directory to move into -- so publishing a staged tree over an absent path renames it, and a
+// destination that still exists as a non-empty directory is an error rather than a nested copy.
+// Within one file system the rename is atomic: a reader sees the old path absent or the new tree
+// whole, never a partial one.
+data mv_program: NonEmptyStr = "mv"
+
+fn mv_exact_destination_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: mv_program, arguments: ["-T", source, destination])
+}
+
+// sort -o FILE FILE sorts a file in place (sort reads all input before opening the output, so the
+// same path is safe). Byte order needs LC_ALL=C in the environment, which is the caller's binding.
+fn sort_in_place_command(path: String) -> ArgvCommand {
+  argv_command(program: sort_program, arguments: ["-o", path, path])
 }

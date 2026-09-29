@@ -116,12 +116,8 @@ import gunbc.floor_demand {
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_cores_per_slot,
-  gunbc_runner_slot_desired,
-  CpuQuotaResolved,
-  SlotCpuQuotaUnbounded,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 
 
 // THE srv4 MVP CONFIGURATION, RETAINED AS THE ENVELOPE WALL'S RED INPUT.

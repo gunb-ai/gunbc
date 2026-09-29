@@ -64,6 +64,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   invariant_port_locus
 }
+import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -291,7 +292,7 @@ fn partition_carrier_identity_snoc(acc: List<Symbol>, node: Node) -> List<Symbol
 
 fn partition_carrier_identities_in_semantic(semantic: Node) -> List<Symbol> {
   fold_list(
-    xs: node_subtree_nodes(root: semantic),
+    xs: node_inferred_subtree_nodes(root: semantic),
     empty: Empty,
     cons: fn(acc, node) {
       partition_carrier_identity_snoc(acc: acc, node: node)
@@ -481,7 +482,7 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<PartialFunction<No
           ambient: partition.ambient,
           segment_root: partition.root,
           boundary: partition.boundary,
-          nodes: node_subtree_nodes(root: partition.root)
+          nodes: node_inferred_subtree_nodes(root: partition.root)
         ),
         f: fn(entries) {
           facts_map_from_entries(entries: entries)

@@ -1,10 +1,11 @@
 module v2.test.tokenize.byte_range_octet_unit
 
+import v2.std.node { symbol_intern_lexeme }
 import v2.std.text { String, OctetScalarIndex, OctetAtScalarBoundary, OctetInsideScalar, OctetBeyondEnd, string_scalar_index_of_octet }
 import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.algebra { fold_list }
-import v2.std.compilers.lexing { ModeledLexRules, Token, TokenStream, symbol_intern_lexeme }
+import v2.std.compilers.lexing { ModeledLexRules, Token, TokenStream }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex_rules }
 import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
