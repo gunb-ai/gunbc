@@ -542,7 +542,11 @@ type AccountId = Refined<String>
             user_id.clone(),
             account_id,
             result.source_indices.clone(),
-            Some(module.type_env.clone())
+            Rc::new(
+                v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
+                    env: module.type_env.clone()
+                }
+            )
         ),
         "PD-3: node_type_compatible must reject brand-twin UserId-for-AccountId"
     );
@@ -551,7 +555,11 @@ type AccountId = Refined<String>
             user_id.clone(),
             user_id,
             result.source_indices.clone(),
-            Some(module.type_env.clone())
+            Rc::new(
+                v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
+                    env: module.type_env.clone()
+                }
+            )
         ),
         "PD-3: node_type_compatible must accept same-brand UserId-for-UserId"
     );
@@ -634,7 +642,7 @@ fn list_int_index_returns_optional_element_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert_eq!(
@@ -655,7 +663,7 @@ fn malformed_map_index_returns_compiler_error_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -679,7 +687,7 @@ fn invalid_slice_returns_compiler_error_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -698,7 +706,7 @@ fn valid_list_slice_preserves_list_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert!(result.diagnostics.is_empty());
@@ -725,7 +733,7 @@ fn valid_map_index_preserves_optional_value_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert!(result.diagnostics.is_empty());
@@ -1859,7 +1867,7 @@ fn map_index_with_correct_key_type_succeeds() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
     assert!(
         result.diagnostics.is_empty(),
@@ -1886,7 +1894,7 @@ fn map_index_with_wrong_key_type_reports_error() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
-        None,
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
     assert_eq!(
         result.diagnostics.len(),
@@ -1949,7 +1957,7 @@ fn list_and_freemonoid_compatible_same_element() {
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     assert!(
-        node_type_compatible(list_sym, fm_sym, empty_source_indices(), None),
+        node_type_compatible(list_sym, fm_sym, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "List<Symbol> and FreeMonoid<Symbol> are declared aliases — must be compatible at type-comparison"
     );
 }
@@ -1958,7 +1966,7 @@ fn list_and_freemonoid_incompatible_different_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
     assert!(
-        !node_type_compatible(list_int, fm_string, empty_source_indices(), None),
+        !node_type_compatible(list_int, fm_string, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "List<Int> vs FreeMonoid<String> differ in element type — must stay incompatible"
     );
 }
@@ -1967,7 +1975,7 @@ fn list_freemonoid_compat_is_symmetric() {
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     assert!(
-        node_type_compatible(fm_sym, list_sym, empty_source_indices(), None),
+        node_type_compatible(fm_sym, list_sym, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "alias compatibility must hold in both argument orders"
     );
 }

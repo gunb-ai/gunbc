@@ -1805,6 +1805,10 @@ fn is_where_refinement_node(n: Node) -> Bool {
   n.connective == Conj && n.type_annotation != none && (n.children |> count) == 1
 }
 
+fn text_representation_is_unidentified(r: TextRepresentation) -> Bool {
+  match r { TextRepresentationUnidentified => true  HostText => false  CodePointSequence => false  NotText => false }
+}
+
 fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
   match r { HostText => true  CodePointSequence => true  NotText => false  TextRepresentationUnidentified => false }
 }

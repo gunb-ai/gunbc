@@ -3098,6 +3098,15 @@ pub fn is_where_refinement_node(n: Rc<Node>) -> bool {
         && ((n.children.clone().len() as i64) == 1))
 }
 
+pub fn text_representation_is_unidentified(r: TextRepresentation) -> bool {
+    match r.clone() {
+        TextRepresentation::TextRepresentationUnidentified => true,
+        TextRepresentation::HostText => false,
+        TextRepresentation::CodePointSequence => false,
+        TextRepresentation::NotText => false,
+    }
+}
+
 pub fn text_representation_is_text_arm(r: TextRepresentation) -> bool {
     match r.clone() {
         TextRepresentation::HostText => true,

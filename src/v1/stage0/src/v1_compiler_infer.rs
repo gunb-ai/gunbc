@@ -119,7 +119,8 @@ pub use crate::v1_compiler_infer_env::{
     qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
     qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, type_reference_declaration,
+    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    text_representation_is_unidentified, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
@@ -211,7 +212,10 @@ pub use crate::v1_compiler_infer_sigs::{
     CallableCandidate, CallableIdentity, DerivedCalleeSig, FuncSigLookup, NoDerivableSigReason,
     ResolveFuncSigsResult, ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig,
 };
-pub use crate::v1_compiler_infer_types::KernelTypeBuild;
+use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
+use crate::v1_compiler_infer_types::TextNotAskedReason::{
+    TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
+};
 pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
@@ -224,6 +228,7 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
     template_return_is_receiver_self,
 };
+pub use crate::v1_compiler_infer_types::{KernelTypeBuild, TextJudgment, TextNotAskedReason};
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -2099,7 +2104,9 @@ pub fn declared_type_conformance_diags_core(
                                         declared.clone(),
                                         produced.clone(),
                                         si.clone(),
-                                        Some(scope.type_env.clone()),
+                                        Rc::new(TextJudgment::TextJudgedIn {
+                                            env: scope.type_env.clone(),
+                                        }),
                                     ) {
                                         Rc::new(vec![])
                                     } else {
@@ -2675,7 +2682,7 @@ pub fn set_element_types_mismatch(
     recv_elem: Rc<Node>,
     operand_elem: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Option<Rc<TypeEnv>>,
+    text: Rc<TextJudgment>,
 ) -> bool {
     ((set_element_type_is_concrete(recv_elem.clone())
         && set_element_type_is_concrete(operand_elem.clone()))
@@ -2683,7 +2690,7 @@ pub fn set_element_types_mismatch(
             recv_elem.clone(),
             operand_elem.clone(),
             source_indices.clone(),
-            env.clone(),
+            text.clone(),
         ))
 }
 
@@ -3837,7 +3844,9 @@ pub fn match_arm_types_are_proven_disjoint(
                     unified_arm_type.clone(),
                     arm_type.clone(),
                     source_indices.clone(),
-                    Some(scope.type_env.clone()),
+                    Rc::new(TextJudgment::TextJudgedIn {
+                        env: scope.type_env.clone(),
+                    }),
                 ) == false))
         }
     }
@@ -7461,7 +7470,9 @@ pub fn callable_component_ground_mismatch(
                         formal_part.clone(),
                         instantiated.clone(),
                         source_indices.clone(),
-                        std::option::Option::None,
+                        Rc::new(TextJudgment::TextNotAsked {
+                            reason: TextNotAskedReason::TextNotAskedForCallableComponentResidue,
+                        }),
                     )
                 } else {
                     false
@@ -8413,15 +8424,6 @@ pub fn argument_text_representation(
     )
 }
 
-pub fn text_representation_is_text(r: TextRepresentation) -> bool {
-    match r.clone() {
-        TextRepresentation::NotText => false,
-        TextRepresentation::HostText => true,
-        TextRepresentation::CodePointSequence => true,
-        TextRepresentation::TextRepresentationUnidentified => false,
-    }
-}
-
 pub fn text_unjudged_advisories(
     a: TextRepresentation,
     b: TextRepresentation,
@@ -8429,30 +8431,22 @@ pub fn text_unjudged_advisories(
     span: Rc<SourceSpan>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
+    if ((crate::v1_compiler_infer_env::text_representation_is_text_arm(a.clone())
+        && crate::v1_compiler_infer_env::text_representation_is_unidentified(b.clone()))
+        || (crate::v1_compiler_infer_env::text_representation_is_text_arm(b.clone())
+            && crate::v1_compiler_infer_env::text_representation_is_unidentified(a.clone())))
     {
-        let a_text = text_representation_is_text(a.clone());
-        let b_text = text_representation_is_text(b.clone());
-        let a_unid = match a.clone() {
-            TextRepresentation::TextRepresentationUnidentified => true,
-            _ => false,
-        };
-        let b_unid = match b.clone() {
-            TextRepresentation::TextRepresentationUnidentified => true,
-            _ => false,
-        };
-        if ((a_text.clone() && b_unid.clone()) || (b_text.clone() && a_unid.clone())) {
-            Rc::new(vec![crate::v1_std_core::make_error_node(
-                Rc::new(
-                    CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary {
-                        position: position.clone(),
-                        span: span.clone(),
-                    },
-                ),
-                module_name.clone(),
-            )])
-        } else {
-            Rc::new(vec![])
-        }
+        Rc::new(vec![crate::v1_std_core::make_error_node(
+            Rc::new(
+                CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary {
+                    position: position.clone(),
+                    span: span.clone(),
+                },
+            ),
+            module_name.clone(),
+        )])
+    } else {
+        Rc::new(vec![])
     }
 }
 
@@ -8875,7 +8869,9 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                         re.clone(),
                                         oe.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                        Some(scope.type_env.clone()),
+                                        Rc::new(TextJudgment::TextJudgedIn {
+                                            env: scope.type_env.clone(),
+                                        }),
                                     ),
                                     std::option::Option::None => false,
                                 },
@@ -13511,7 +13507,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         then_rt.clone(),
                         else_rt.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                        Some(scope.type_env.clone()),
+                        Rc::new(TextJudgment::TextJudgedIn {
+                            env: scope.type_env.clone(),
+                        }),
                     ) {
                         Rc::new(vec![])
                     } else {
@@ -14477,7 +14475,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         span.clone(),
                         scope.module_name.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                        Some(scope.type_env.clone()),
+                        Rc::new(TextJudgment::TextJudgedIn {
+                            env: scope.type_env.clone(),
+                        }),
                     )),
                     _ => std::option::Option::None,
                 },
@@ -14545,7 +14545,9 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 span.clone(),
                                 scope.module_name.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                                Some(scope.type_env.clone()),
+                                Rc::new(TextJudgment::TextJudgedIn {
+                                    env: scope.type_env.clone(),
+                                }),
                             ))
                         }
                         _ => std::option::Option::None,
@@ -15988,7 +15990,9 @@ let field_type_diags = match field_declared_type.clone() {
 if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) {
                     Rc::new(vec![])
                 } else {
-                    if crate::v1_compiler_infer_types::node_type_compatible(expected_node.clone(), got_node.clone(), scope.type_env.clone().source_indices.clone(), Some(scope.type_env.clone())) {
+                    if crate::v1_compiler_infer_types::node_type_compatible(expected_node.clone(), got_node.clone(), scope.type_env.clone().source_indices.clone(), Rc::new(TextJudgment::TextJudgedIn {
+    env: scope.type_env.clone(),
+})) {
                         Rc::new(vec![])
                     } else {
                         if declared_alias_target_matches_produced(expected_node.clone(), got_node.clone(), scope.type_env.clone()) {
