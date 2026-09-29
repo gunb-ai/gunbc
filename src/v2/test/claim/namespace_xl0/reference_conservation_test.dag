@@ -216,6 +216,29 @@ test fn the_infix_right_operand_is_conserved_holds() -> Bool {
   reference_conservation_admitted(report: r) && report_drop_count(report: r, wanted: ^rc_rhs) == 0
 }
 
+// ---- a caret symbol's name is a conserved member (MQ-1 PR-2) -----------------------------------
+
+// Before MQ-1 PR-2 the caret's name terminal was class-stamped, published ^dag_token_ident and was
+// never in the population, so lowering `id == ^a` and `id == ^b` to one node reported nothing
+// (gunbc.recurring_failure_mode reference_conservation_population_omits_class_stamped_terminals).
+// It is lexeme-stamped now, so each name IS a population member, and the symbol literal carries it
+// with its occurrence as its payload: both are conserved. RED if a lowering drops a payload (a
+// DroppedReference row on that spelling) or if the name stops being a member (the check then
+// passes vacuously, which the non-zero-population half of the grammar claim
+// v2.test.parse.type_decl_modifier_g0_parse_probe caret_referenced_ident_publishes_the_lexeme_holds guards).
+data caret_symbol_payload_source: String = "module v2.test.reference_conservation_caret\n\nimport v2.std.logic { Bool }\n\nfn rc_caret(id: Symbol) -> Bool { if id == ^rc_sym_less { true } else { id == ^rc_sym_less_or_equal } }\n"
+
+fn caret_symbol_payload_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "caret_symbol_payload", source: caret_symbol_payload_source)
+}
+
+test fn caret_symbol_payloads_are_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: caret_symbol_payload_subject())
+  reference_conservation_admitted(report: r)
+    && report_drop_count(report: r, wanted: ^rc_sym_less) == 0
+    && report_drop_count(report: r, wanted: ^rc_sym_less_or_equal) == 0
+}
+
 // ---- a measured drop outside the brief: the named-argument label ------------------------------
 
 // Found by this check, not assumed: a call lowers its arguments positionally, so the LABEL of a

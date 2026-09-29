@@ -12,12 +12,16 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
-import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_symbol_literal_name_optional, dag_type_atom_node }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.std.integer { integer_decimal_digit_type_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
 import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic {
   None,
+  Some,
+  Diagnostic,
   Accepted,
   NodeLocus,
   NonEmptyDiagnostics,
@@ -29,14 +33,14 @@ import v2.std.diagnostic {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.node { symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { length, list_snoc_item, skip }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -443,6 +447,163 @@ test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool {
 test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
   bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
     && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
+}
+
+// (5d) A SYMBOL LITERAL IS TYPED AS v2.std.node Symbol. MQ-1 PR-2 lowers `^s` to a symbol literal
+// (v2.extdeps.languages.dag dag_symbol_literal_node), and the one canonical-literal decision
+// (dag_canonical_literal_from_node) now reads it as DagCanonicalSymbolLiteral, whose type binding
+// denotes v2.std.node symbol_type_node. RED BEFORE: infer left the literal on the counted
+// GroundingNotDerived frontier (gunbc.symbol_identity_census symbol_nominality_next_rung_trigger
+// (a)). `let y: Int = ^s` was then admitted with the frontier advisory at the caret, and
+// `let y: Symbol = ^s` was admitted without being judged.
+// - `let y: Int = ^s` refuses at the annotation with coercion's typed mismatch.
+// - `let y: Symbol = ^s` is admitted, its annotation is the Symbol binding, and no
+//   grounding-not-derived advisory is located at the literal or its name payload: the literal's
+//   frontier count is 0.
+fn bla_symbol_literal_as_int() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = ^bla_sym\n  x\n}\n")
+}
+
+fn bla_symbol_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_symbol_literal_as_int())
+}
+
+fn bla_symbol_literal_as_symbol() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Symbol = ^bla_sym\n  x\n}\n")
+}
+
+fn bla_symbol_literal_as_symbol_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_symbol_literal_as_symbol())
+}
+
+// A grounding-not-derived advisory located at the symbol literal: its caret atom or its name
+// payload (`bla_sym`). The fixture's other nodes carry their own frontier advisories, which the Int
+// literal control (5b) carries equally, so the count that must be 0 is the literal's own.
+fn bla_frontier_at_symbol_literal(xs: List<Diagnostic>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(held, d) {
+    held || ((d.reason == ^infer_grounding_not_derived) && match d.at {
+      NodeLocus { anchor: a } =>
+        match bla_atom_identity(n: a.at) {
+          Present { value: id } => (id == ^dag_token_caret) || (id == ^bla_sym)
+          Absent => false
+        }
+      _ => false
+    })
+  })
+}
+
+// (5e) THE SYMBOL LITERAL'S PAYLOAD IS TYPED AS ITS FAMILY'S PAYLOAD. The name terminal under `^s`
+// is the symbol itself, so infer records its resolved type as v2.std.node Symbol. RED BEFORE: the
+// payload fold assumed the integer shape and typed every payload atom as DecimalDigit (review
+// 5348050288 on #12549). These rows read the payload node's actual recorded resolved_type. The Int
+// row is the control that the integer family's payload is still a DecimalDigit.
+fn bla_inferred_tree(o: Outcome<Node>) -> Optional<InferredTree> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: t, diagnostics: _ } => optional_present(value: t)
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
+  match t.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
+      }
+  }
+}
+
+// Every symbol-literal name payload in the tree, and whether each one's recorded type is `ty`;
+// false when the tree carries none, so an absent literal cannot pass vacuously.
+fn bla_every_symbol_payload_typed(t: InferredTree, ty: Node) -> Bool {
+  let r = fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+    match dag_symbol_literal_name_optional(node: n) {
+      Absent => acc
+      Present { value: name } => BlaPayloadCheck { seen: true, all: acc.all && bla_resolved_type_is(t: t, n: name, ty: ty) }
+    }
+  })
+  r.seen && r.all
+}
+
+fn bla_every_int_digit_typed(t: InferredTree, ty: Node) -> Bool {
+  let r = fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+    match dag_int_literal_magnitude_node_optional(node: n) {
+      Absent => acc
+      Present { value: magnitude } =>
+        fold(node_subtree_nodes(root: magnitude), init: acc, f: fn(a, m) {
+          match m.kind {
+            TypeNode { connective: Atom { identity: _ } } => BlaPayloadCheck { seen: true, all: a.all && bla_resolved_type_is(t: t, n: m, ty: ty) }
+            _ => a
+          }
+        })
+    }
+  })
+  r.seen && r.all
+}
+
+type BlaPayloadCheck {
+  seen: Bool
+  all: Bool
+}
+
+// The verdicts are the share points, not the trees: an InferredTree carries its facts as a closure,
+// which the cross-claim store refuses, so each claim reads Bools computed once from the tree.
+type BlaSymbolPayloadVerdict {
+  typed_symbol: Bool
+  typed_digit: Bool
+}
+
+fn bla_symbol_literal_payload_verdict() -> BlaSymbolPayloadVerdict {
+  match bla_inferred_tree(o: bla_symbol_literal_as_symbol()) {
+    Absent => BlaSymbolPayloadVerdict { typed_symbol: false, typed_digit: false }
+    Present { value: t } =>
+      BlaSymbolPayloadVerdict {
+        typed_symbol: bla_every_symbol_payload_typed(t: t, ty: symbol_type_node()),
+        typed_digit: bla_every_symbol_payload_typed(t: t, ty: integer_decimal_digit_type_node())
+      }
+  }
+}
+
+fn bla_int_literal_payload_digit_verdict() -> Bool {
+  match bla_inferred_tree(o: bla_int_literal_as_int()) {
+    Absent => false
+    Present { value: t } => bla_every_int_digit_typed(t: t, ty: integer_decimal_digit_type_node())
+  }
+}
+
+test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool {
+  let v = bla_symbol_literal_payload_verdict()
+  v.typed_symbol && !v.typed_digit
+}
+
+test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool {
+  bla_int_literal_payload_digit_verdict()
+}
+
+test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
+  tpb_accepts(o: bla_symbol_literal_as_int())
+    && match bla_symbol_literal_as_int_inferred() {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bla_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
+    }
+}
+
+test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
+  bla_annotation_is(o: bla_symbol_literal_as_symbol(), id: ^symbol_node_symbol)
+    && match bla_symbol_literal_as_symbol_inferred() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: _, diagnostics: None } => true
+      Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+        !bla_frontier_at_symbol_literal(xs: Cons { head: d.head, tail: d.tail })
+    }
 }
 
 // TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and

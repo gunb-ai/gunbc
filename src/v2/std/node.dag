@@ -15,6 +15,19 @@ import std.content_hash {
 type Symbol
 type Hash = Fnv1a64Structural
 
+// THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
+// annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
+// v2.std.logic bool_node does for Bool and v2.std.integer integer_int_type_node for Int. The atom's
+// identity is the canonical binding v2.extdeps.languages.dag maps the spelling and this declaration
+// to (dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional).
+fn symbol_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^symbol_node_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 type Connective
   = Atom { identity: Symbol }
   | Conj
