@@ -406,11 +406,15 @@ test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool 
   let steps = map([1, 2, 4, 6, 8, 12, 16], c => w_step_ttft(c: c, ttft: 120000))
   let signed = match v41_run_staircase(policy: v41_capacity_policy, run_id: "run-1" as NonEmptyStr, steps: steps) {
     V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: l } } => l == 16
-    _ => false
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: _, stop: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   let covering = match v41_run_staircase(policy: PolicyOperatorSigned { policy: w_policy(gate_context: 262144), ruling: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: steps) {
     V41StaircaseRan { outcome: StaircaseStopped { last_sustained: l, stop: st } } => w_nothing_sustained(l: l) && match st { StopSloBreach { concurrency: c, which: w, observed: _ } => c == 1 && (w as String) == "ttft"  StopKvPreemption { concurrency: _, preemptions: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopReadingMissing { concurrency: _, cause: _ } => false }
-    _ => false
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   signed && covering
 }
@@ -420,7 +424,9 @@ test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool {
   let o = v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps)
   let stopped_at_8 = match o {
     V41StaircaseRan { outcome: StaircaseStopped { last_sustained: _, stop: s } } => match s { StopKvPreemption { concurrency: c, preemptions: p } => c == 8 && p == 3  StopReadingMissing { concurrency: _, cause: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopSloBreach { concurrency: _, which: _, observed: _ } => false }
-    _ => false
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   stopped_at_8 && v41_capacity_wire(c: v41_sla_capacity(o: o)) == "x6"
 }
