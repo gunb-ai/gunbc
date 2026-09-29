@@ -3,7 +3,7 @@ module v2.extdeps.languages.machine_code
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_empty_expectations, grammar_formal_nonterminal, grammar_formal_terminal }
 import v2.std.compilers.lexing {
   CharClassPattern,
   LexPattern,
@@ -451,7 +451,8 @@ fn machine_code_grammar(
     root: GrammarRoot {
       start: production_name,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: grammar_empty_sync_tokens(),
+      expectations: grammar_empty_expectations()
     }
   }
 }

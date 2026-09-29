@@ -45,6 +45,7 @@ import v2.std.grammar {
   Terminal,
   grammar_atom,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   grammar_formal_nonterminal,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -245,7 +246,8 @@ fn english_grammar() -> ParseGrammar {
     root: GrammarRoot {
       start: ^english_production_sentence,
       productions: english_productions(),
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: grammar_empty_sync_tokens(),
+      expectations: grammar_empty_expectations()
     }
   }
 }
@@ -708,7 +710,8 @@ fn english_add_fn_paragraph_grammar() -> ParseGrammar {
         left: [english_add_fn_paragraph_production()],
         right: english_productions()
       ),
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: grammar_empty_sync_tokens(),
+      expectations: grammar_empty_expectations()
     }
   }
 }

@@ -16,6 +16,7 @@ import v2.std.grammar {
   ModeledGrammar,
   grammar_atom,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   grammar_formal_nonterminal,
   grammar_formal_terminal
 }
@@ -819,7 +820,8 @@ fn llvm_ir_grammar() -> ParseGrammar {
     root: GrammarRoot {
       start: ^llvm_production_void_function,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: grammar_empty_sync_tokens(),
+      expectations: grammar_empty_expectations()
     }
   }
 }

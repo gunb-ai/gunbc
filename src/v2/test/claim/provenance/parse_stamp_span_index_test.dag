@@ -35,7 +35,8 @@ fn parse_stamp_terminal_root() -> GrammarRoot {
       },
       tail: std.algebra.Empty
     },
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 
@@ -53,7 +54,8 @@ fn parse_stamp_sequence_root() -> GrammarRoot {
       },
       tail: std.algebra.Empty
     },
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 

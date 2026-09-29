@@ -27,7 +27,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_empty_expectations, grammar_formal_nonterminal, grammar_formal_terminal }
 import v2.std.compilers.lexing {
   CharClassPattern,
   DigitChar,
@@ -309,7 +309,8 @@ fn spice_grammar() -> ParseGrammar {
     root: GrammarRoot {
       start: ^spice_production_resistor_statement,
       productions: [start],
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: grammar_empty_sync_tokens(),
+      expectations: grammar_empty_expectations()
     }
   }
 }

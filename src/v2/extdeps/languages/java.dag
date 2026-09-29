@@ -26,6 +26,7 @@ import v2.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
+  grammar_empty_expectations,
   grammar_production_to_node,
   grammar_relation_tokens_node
 }
@@ -777,7 +778,7 @@ fn java_grammar_production_method_add() -> GrammarProduction {
 
 fn java_method_add_grammar_root() -> GrammarRoot {
   let start = java_grammar_production_method_add()
-  GrammarRoot { start: ^java_production_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  GrammarRoot { start: ^java_production_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens(), expectations: grammar_empty_expectations() }
 }
 
 fn java_method_add_grammar() -> ParseGrammar {
@@ -1437,7 +1438,8 @@ fn java_grammar_root() -> GrammarRoot {
       primary_expression,
       method_add
     ],
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
 }
 

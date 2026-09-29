@@ -94,7 +94,8 @@ fn parse_table_projection_grammar() -> ParseGrammar {
         },
         tail: std.algebra.Empty
       },
-      sync_tokens: grammar_empty_sync_tokens()
+      sync_tokens: grammar_empty_sync_tokens(),
+      expectations: grammar_empty_expectations()
     }
   }
 }
@@ -116,7 +117,8 @@ data parse_table_defined_root: GrammarRoot = GrammarRoot {
     },
     tail: std.algebra.Empty
   },
-  sync_tokens: grammar_empty_sync_tokens()
+  sync_tokens: grammar_empty_sync_tokens(),
+  expectations: grammar_empty_expectations()
 }
 
 test fn parse_table_left_corner_morphism_holds() -> Bool {
@@ -207,7 +209,8 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   let root = GrammarRoot {
     start: ^pt_parse_expr_start,
     productions: std.algebra.Empty,
-    sync_tokens: grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens(),
+    expectations: grammar_empty_expectations()
   }
   let tok_a = parse_table_token(class: ^pt_parse_expr_tok_a)
   let tok_b = parse_table_token(class: ^pt_parse_expr_tok_b)
