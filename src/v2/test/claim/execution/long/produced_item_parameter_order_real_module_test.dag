@@ -1,0 +1,42 @@
+module v2.test.long.produced_item_parameter_order_real_module
+
+import v2.compiler.ingested_fixture_arrows { ingested_arrow_from_source }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Edge, Named, TypeNode, node_synthetic }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL PATH for v2.test.claim.emit.produced_item_parameter_order: a real module with a
+// non-lexical signature and a non-commutative body, through the production front end
+// (v2.compiler.staged_front_end) and the produced-declaration emitter. It asserts the route
+// inhabits the declared-order renderer end to end; the ordering discrimination itself is the
+// interface module's, because lowering keeps the authored sequence and so this path cannot tell a
+// stored-order read from a declared-order one.
+data ipo_module_source: String = "module m\n\nfn f(z: Int, a: Int) -> Int { z - a }\n"
+data ipo_module_golden: String = "fn f(z: i32, a: i32) -> i32 { z - a }"
+
+fn ipo_module_emitted() -> Outcome<String> {
+  match ingested_arrow_from_source(source: ipo_module_source, file: ^ipo_module_file) {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match emit_produced_decl(
+        decl: node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Named { name: ^f }, target: arrow }]),
+        target: rust_target_model()
+      ) {
+        Accepted { value: medium, diagnostics: d } => Accepted { value: medium.carried, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+test fn a_real_module_item_emits_its_parameters_in_declared_order() -> Bool {
+  match ipo_module_emitted() {
+    Accepted { value: text, diagnostics: _ } => text == ipo_module_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
