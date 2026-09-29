@@ -4348,47 +4348,27 @@ fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List
   concrete_syntax_token_node_targets_into(node: node, acc: Empty)
 }
 
-type ConcreteSyntaxTokenTargetsStep
-  = TargetsDone { outcome: Outcome<List<Node>> }
-  | TargetsNext { node: Node, acc: List<Node> }
-
 fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outcome<List<Node>> {
-  match concrete_syntax_token_node_targets_step(node: node, acc: acc) {
-    TargetsDone { outcome: o } => o
-    TargetsNext { node: next, acc: next_acc } =>
-      concrete_syntax_token_node_targets_into(node: next, acc: next_acc)
-  }
-}
-
-fn concrete_syntax_token_node_targets_step(node: Node, acc: List<Node>) -> ConcreteSyntaxTokenTargetsStep {
   match node.kind {
     TypeNode { connective: Conj } =>
       if is_empty(xs: node.children) {
-        TargetsDone { outcome: outcome_accepted(acc) }
+        outcome_accepted(acc)
       } else {
         match find_named_child(root: node, name: ^fold_list_node_head) {
-          Rejected { diagnostics: r } => TargetsDone { outcome: Rejected { diagnostics: r } }
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: head, diagnostics: _ } =>
             match find_named_child(root: node, name: ^fold_list_node_tail) {
-              Rejected { diagnostics: r } => TargetsDone { outcome: Rejected { diagnostics: r } }
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: tail, diagnostics: _ } =>
-                TargetsNext { node: tail, acc: list_snoc_item(xs: acc, item: head) }
+                concrete_syntax_token_node_targets_into(node: tail, acc: list_snoc_item(xs: acc, item: head))
             }
         }
       }
-    TypeNode { connective: Atom { identity: _ } } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
-    TypeNode { connective: Disj } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
-    TypeNode { connective: Arrow } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
-    TypeNode { connective: Cardinality } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
-    TypeNode { connective: Instantiation } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
-    ComputationNode { behavior: _ } => TargetsDone { outcome: concrete_syntax_token_node_targets_into_otherwise(node: node) }
+    _ =>
+      outcome_rejected(
+        target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node)
+      )
   }
-}
-
-fn concrete_syntax_token_node_targets_into_otherwise(node: Node) -> Outcome<List<Node>> {
-  outcome_rejected(
-    target_bodied_arrow_scaffold_bundle_malformed_diagnostic(bundle: node)
-  )
 }
 
 // A nested block (v2.std.grammar grammar_nested_block_edge) contributes its tokens in place: nesting
