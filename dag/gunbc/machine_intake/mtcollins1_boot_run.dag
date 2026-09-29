@@ -632,6 +632,10 @@ fn sol_capture_opens_with_banner(capture: String) -> Bool {
   }
 }
 
+// AN UNOBSERVABLE COLLECTOR IS PENDING, NOT FAILED, INSIDE THE ALLOWANCE: a process that is exec'ing or
+// exiting can briefly show an empty /proc/<pid>/cmdline, and unobservable is not ended. Only an
+// observed exit (or the hold's own records) ends the wait early; at the deadline the last observation,
+// unobservable included, is the reported cause.
 // PUBLICATION IS PART OF THE WAIT. ActivateHeld returns once the supervisor is backgrounded, before
 // it has published "<pid> <starttime>"; an unrecorded collector inside the allowance is therefore
 // publication pending, not a failure. The hold's own words end the wait early: its "pid not published"
@@ -648,6 +652,7 @@ fn mtcollins1_sol_await_establishment(pid_path: String, capture_path: String, re
       }
       true
     }
+    SolCollectorUnobservable { cause: _ } => true
     SolCollectorUnrecorded => {
       let client = Filesystem.Read(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path))
       let words = if client.success { client.content } else { "" }
