@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.a_rendered_host_grant_has_no_route_to_the_host
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_rendered_host_grant_has_no_route_to_the_host: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_rendered_host_grant_has_no_route_to_the_host" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a host-privilege artifact is regenerated, reviewed and committed from its authority (provisioning/<host>/gunbc-ghrunner.sudoers, rendered by gunbc.runner_host_grants runner_host_sudoers_content through gunbc.generated_artifact RunnerHostSudoersArtifact), while no modeled route delivers those bytes to the host. The generated-artifact gate proves the committed file equals its rendering; nothing proves the host's /etc/sudoers.d/gunbc-ghrunner equals either, so the change to the grant never reaches the host.",
+    "HARM: every narrowing of the grant is inert until someone hand-installs it, and every widening is absent, so an operation the model newly grants refuses at sudo, or succeeds only through a broader grant from another authority. The second case is the worse one because it reads as the new grant working. The file's own authority says delivery is manual: gunbc.runner_host_grants calls it 'the one artifact an operator has to install'.",
+    "SPECIMEN: gunbc#12256 added the exact row 'systemctl start gunbc-microvm-slot-reserve.service' for srv1. The full-host fleet plan at 6571276ce4 (run 36603426389), the spine that applies host-wide executor grants, rendered an apply.sh that installs no sudoers file and no allocation store. On srv1 the start is still admitted, but only because /etc/sudoers.d/gunbc-deploy grants bare /usr/bin/systemctl (gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant), so the live receipt shows the broad grant working and establishes nothing about the exact row.",
+    "DISTINGUISHING FACTS: not gunbc.recurring_failure_mode capability_arrives_outside_the_converged_path, where a capability is PRESENT with no modeled path. Here a modeled artifact EXISTS and is correct, and it is the path to the host that is missing. Not the_grant_a_frontier_refuses_is_already_held_from_another_authority either, although that row's broad grant is what hides this one.",
+    "RUNG FOUND AT: mitigatable, found by reading a plan's apply.sh during a live dispatch. CEILING: mechanically preventable. Delivery must become a modeled, root-evaluated install under the administrator edge (gunbc.fleet_bootstrap_principal, as gunbc.runner_host_file_converge does for root-evaluated files), with a readback of the installed bytes against the rendering. NEXT TRIGGER: a converge route that installs RunnerHostSudoersArtifact for a host and refuses unless the host's file reads back byte-equal. It must be executed on srv1 with a receipt naming the installed digest. SUFFICIENT FOR retiring this row only together with that readback: an install without it is the same ambiguity one step later.",
+  ],
+  evidence: [],
+}

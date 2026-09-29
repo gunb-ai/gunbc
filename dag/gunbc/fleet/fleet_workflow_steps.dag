@@ -557,7 +557,10 @@ data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 // occupancy). Run 35230228049 wrote plan.txt and apply.sh and then the shared 5m aux budget killed
 // the step before artifact upload. This budget is an envelope for that observe, not a measurement
 // of typecheck. Raising gunbc_ci_aux_step_timeout_minutes would multiply across every aux step
-// and the job backstop; this constant is the one step.
+// and the job backstop; this constant is the plan steps' one budget. The scoped plans
+// (allocation_store_plan, launch_environment_plan) resolve the same closure: run 36604979501, the
+// first allocation_store_plan ever dispatched, was still typechecking when the 5m aux budget
+// killed it, so they take this budget too rather than the aux one.
 data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
 
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
