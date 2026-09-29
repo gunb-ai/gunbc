@@ -4065,7 +4065,16 @@ pub fn kernel_value_declared_type_mismatch_bounded(
         let mut formal_name_override = __tco_loop_formal_name_override;
         #[allow(unused_mut)]
         let mut depth = __tco_loop_depth;
-        let actual_base = peel_where_refinement_base(actual.clone(), type_env.clone());
+        let formal_carries_optional =
+            ((formal.return_cardinality.clone() == Cardinality::CardOptional)
+                || (crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), formal.clone()),
+                ) == "Optional".to_string()));
+        let actual_base = if formal_carries_optional.clone() {
+            actual.clone()
+        } else {
+            peel_where_refinement_base(actual.clone(), type_env.clone())
+        };
         if (((formal.connective.clone() == Connective::Arrow)
             || (actual.connective.clone() == Connective::Arrow))
             || ((actual_base.children.clone().len() as i64) > 0))
