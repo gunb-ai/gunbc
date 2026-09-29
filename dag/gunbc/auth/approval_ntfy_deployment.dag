@@ -51,7 +51,23 @@ data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
 data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
 // The server's auth database, under its state root. Declared so the config's auth-file is checked
 // against it and so the one elevated stat of it is an exact sudoers argv rather than a pattern.
-data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/user.db"], "") as NonEmptyStr
+//
+// IT STAYS A DECLARATION, NOT A VALUE READ FROM THE CONFIG, because both of its consumers need a path
+// fixed before the read. The stat runs through `sudo -n` at an exact argv that an operator-installed
+// sudoers line must name, and a path taken from the config at runtime could only be covered by a
+// pattern grant. The readback then refuses unless the running config names exactly this path, so the
+// config is checked rather than trusted.
+//
+// THE FILE NAME WAS A GUESS, AND srv1 FALSIFIED IT. It read `user.db`. The server srv1 runs was
+// installed with `auth-file: /var/lib/gunbc-ntfy/auth.db` in /etc/gunbc-ntfy/server.yml, and that file
+// exists while user.db does not. proud-deer-538 read this on 2026-09-29 running
+// issue_device_enrolment_code by hand against release 02568b3046, and the readback refused before
+// minting. The name is now the observed one. Changing it also changes the exact stat argv that
+// approval_ntfy_deployment's human step asks the operator to grant, so srv1's sudoers line for that
+// stat must be re-issued naming auth.db, or every issuance refuses at that read. Nothing installs this
+// server from the model yet (gunbc.auth.approval_ntfy_converge names it as outside its roster); the
+// row becomes that installer's destination when one exists.
+data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/auth.db"], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
 // THE TWO ntfy USERS THE ACCESS LIST MAY NAME, declared so the ACL readback

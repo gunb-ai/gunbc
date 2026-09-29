@@ -289,7 +289,7 @@ data sample_observation: NtfyRuntimeProcessObservation = NtfyRuntimeProcessObser
   exe_target: "/usr/local/bin/ntfy",
   exe_inode: 131,
   open_fds: [
-    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/user.db (deleted)", target_inode: 77 },
+    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/auth.db (deleted)", target_inode: 77 },
     NtfyOpenFd { target: "socket:[55123]", target_inode: 55123 },
     NtfyOpenFd { target: "/tmp/a=b c", target_inode: 12 },
   ],
