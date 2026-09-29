@@ -1,0 +1,15 @@
+srv1
+Result=exit-code
+ExecMainStatus=1
+ActiveState=failed
+SubState=failed
+InvocationID=c0fceefc7d9643b0aaff0617907b1335
+MemoryMax=25769803776
+MemorySwapMax=0
+LoadState=loaded
+ActiveState=active
+ls: cannot access '/opt/fabric-cells/srv1-13': No such file or directory
+ls: cannot access '/var/lib/gunbc/microvm-cell-readiness': No such file or directory
+ls: cannot access '/var/lib/gunbc/fabric/allocation': No such file or directory
+drwxr-xr-x 3 root root 4096 Sep 21 21:23 /opt/gunbc/microvm-controller
+drwxr-xr-x 2 root root 4096 Sep 24 20:47 /var/lib/gunbc/microvm-slot-controller

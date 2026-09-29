@@ -450,3 +450,24 @@ Both credential separation/run-binding controls pass at `71aae3c54` under
 byte-identical closure. The dependency-copy failures and the pre-repair run-binding
 failure are retained beside the passing result in
 `receipts/allocation-state-provision-2026-09-28/`. No cloud operation was executed.
+
+
+## GCP workflow and custody prerequisite, 2026-09-29
+
+Bootstrap PR #12565 completed the live initial IAM setup and removed its temporary
+human grants. Real workflow `36505895733`, attempt 2, then passed observer WIF,
+app approval, apply WIF, approved effects and readback using its own credentials.
+Attempt 1's provider-create visibility refusal was recovered through a fresh
+observed plan and fresh approval, not by reusing the prior approval or admin token.
+
+Protected-state host custody is being extracted onto current main in
+`codex/allocation-state-custody`. Its secret pin and host path now have one shared
+policy authority; the transport's existing public path declaration projects that
+policy. The extracted cut does not install the held allocation or storage server.
+
+Fresh read-only srv1 observation still finds the candidate slot failed, allocation
+and readiness roots absent, and the existing controller slice active with 24 GiB
+MemoryMax and no swap. Missing stores do not establish empty history or sanitation.
+The socket dependency #12482 has six successful integrated CI checks at
+`6dae9cd38f69827e79e3b7ed09749a0b71504b8d`, but remains open; this tree has not
+silently imported or qualified that later head. The allocation HOLD remains.

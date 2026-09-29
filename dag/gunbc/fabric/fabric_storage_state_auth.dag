@@ -1,5 +1,7 @@
 module gunbc.fabric_storage_state_auth
 
+import gunbc.fabric_storage_state_location { fabric_state_key_host_path }
+
 import std.types { String, NonEmptyStr, Timestamp, Bool }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSigned, MacKeyMaterialNotHex, MacVerified, mac_sign, mac_verify }
 import extdeps.languages.json.emit { JsonValue, JsonString, json_object, json_kv, json_string, serialize_json }
@@ -9,7 +11,7 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 // This key is a distinct service authority: it cannot mint approval capabilities. Custody must
 // provision it to the admitted website/controller processes before state migration is activated.
 // No fallback to approval keys, a tailnet login, or unauthenticated state access is admitted.
-data fabric_state_key_path: NonEmptyStr = "/etc/gunbc-fabric-storage/state-writer-mac-key"
+data fabric_state_key_path: NonEmptyStr = fabric_state_key_host_path
 data fabric_state_key_id: MacKeyId = "fabric-state-writer/1" as MacKeyId
 
 fn fabric_state_operation(operation: String) -> Bool {

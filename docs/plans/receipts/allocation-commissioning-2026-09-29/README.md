@@ -28,3 +28,10 @@ commissioning, exact budgeted slot transfer with recovery/sanitation, pinned
 runtime installation, production preparation and selected-host routing, recurring
 consumer/access observations, and release/expiry/restart/same-slot-reuse acceptance.
 There is no successful VM allocation receipt yet.
+
+Follow-up: ordinary GCP IAM workflow run 36505895733 attempt 2 passed the app
+approval and apply/readback path. Credential custody is isolated in draft #12580
+on main; it remains uninstalled. The allocation transport now reads the shared
+host-path authority used by that cut. All four state authentication controls pass
+using the existing allocation branch binary over 68 byte-identical modules under
+6 GiB/no swap. Follow-up host metadata still does not establish free capacity.
