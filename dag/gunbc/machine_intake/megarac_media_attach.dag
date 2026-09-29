@@ -1210,6 +1210,7 @@ fn enumeration_decision(standing: RemoteMediaMountStanding, reading: ImagesListi
         ImagesListingUnparseable { detail: _ } => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
         ImagesListingEmpty => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
         ImagesListingLacks => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingOffersAmbiguously { image_indices: ids } => EnumerationDecided { result: EnumerationAmbiguous { image_indices: ids } }
       }
     MountRequested { window: _ } =>
       if remaining > 1 { EnumerationLookAgain } else { EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } } }
@@ -1250,12 +1251,15 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
   }
 }
 
+// A name offered twice IS listed; the await loop refuses on the ambiguity before any look reaches the
+// mount standing, so this arm states presence and decides nothing.
 fn images_listing_presence(reading: ImagesListingReading) -> RemoteMediaListing {
   match reading {
     ImagesListingOffers { image_index: _ } => MediaImageListed
     ImagesListingUnparseable { detail: _ } => MediaImageAbsentFromListing
     ImagesListingEmpty => MediaImageAbsentFromListing
     ImagesListingLacks => MediaImageAbsentFromListing
+    ImagesListingOffersAmbiguously { image_indices: _ } => MediaImageListed
   }
 }
 
