@@ -279,6 +279,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_boot_phase_timing_witness_test", function: "the_real_uptime_clock_reads_and_does_not_go_back" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_boot_phase_timing_witness_test.dag",
+      function: "the_real_uptime_clock_reads_and_does_not_go_back",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "the_real_observation_reads_this_machine" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "the_real_observation_reads_this_machine",
