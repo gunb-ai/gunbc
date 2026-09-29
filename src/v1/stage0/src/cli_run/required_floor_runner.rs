@@ -7281,6 +7281,77 @@ pub fn run_required_floor(
          modules_excluded={} digest={}",
         prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
     );
+    // THE NON-FOLD-RESIDUE ROSTER, TYPED AND DIFF-SCOPED, over the graph just prepared -- no
+    // second compile. Scope: the touched modules and the planned interface consumers, both already
+    // seeds of this subject. A local run with no diff observation evaluates nothing and says so.
+    match &compile_subject {
+        None => eprintln!(
+            "[floor-phase] phase=non-fold-residue-diff state=not-evaluated -- no diff observation \
+             on this run, so no scope"
+        ),
+        Some(subject) => {
+            let scoped: BTreeSet<String> = subject
+                .touched_modules
+                .iter()
+                .chain(interface_consumer_seeds.iter())
+                .cloned()
+                .collect();
+            let verdict = crate::cli_run::non_fold_residue_diff_verdict(
+                &prepared.graph,
+                &prepared.source_indices,
+                &scoped,
+            );
+            eprintln!(
+                "[floor-phase] phase=non-fold-residue-diff state=completed scoped_modules={} \
+                 typed_modules={} wildcard_arms={} residue_sites={} unrostered={} stale={} \
+                 scoped_but_untyped={} undetermined_scrutinees={} residual=gunbc.recurring_failure_mode.non_fold_residue_diff_scope_misses_an_untouched_flip",
+                verdict.scoped_modules,
+                verdict.walk.covered_modules.len(),
+                verdict.walk.facts.len(),
+                verdict.walk.non_fold_residue_sites().len(),
+                verdict.unrostered.len(),
+                verdict.stale.len(),
+                verdict.scoped_but_untyped.len(),
+                verdict.walk.undetermined_sites.len(),
+            );
+            for module in &verdict.scoped_but_untyped {
+                eprintln!(
+                    "[floor-plan] NonFoldResidueScopedModuleUntyped module_path={module} -- in the \
+                     diff scope but not in the prepared graph (excluded or outside the roots, as \
+                     the seed lines above say); its residue is not judged on this run"
+                );
+            }
+            for site in &verdict.walk.undetermined_sites {
+                eprintln!(
+                    "[floor-plan] NonFoldResidueScrutineeTypeUndetermined site={site} -- a wildcard \
+                     arm whose scrutinee carries no resolved inferred type; counted, not judged"
+                );
+            }
+            if !verdict.unrostered.is_empty() || !verdict.stale.is_empty() {
+                let mut lines: Vec<String> = verdict
+                    .unrostered
+                    .iter()
+                    .map(|s| format!("  unrostered live site: {s}"))
+                    .collect();
+                lines.extend(
+                    verdict
+                        .stale
+                        .iter()
+                        .map(|s| format!("  stale roster entry: {s}")),
+                );
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterDiverged unrostered={} \
+                     stale={} -- a wildcard arm whose scrutinee's inferred type is a closed \
+                     coproduct needs its own row (reason + dissolution) in \
+                     gunbc.non_fold_residue non_fold_residue_frontier, and a row whose site no \
+                     longer carries one deletes:\n{}",
+                    verdict.unrostered.len(),
+                    verdict.stale.len(),
+                    lines.join("\n")
+                ));
+            }
+        }
+    }
     // WHERE PREPARATION'S WALL AND POPULATION GO: `compile.reconcile`, measured 2026-08-16.
     //
     // No dump is emitted here, and that is the finding rather than an omission. A
