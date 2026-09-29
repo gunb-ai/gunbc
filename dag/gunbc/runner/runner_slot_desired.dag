@@ -1,0 +1,160 @@
+module gunbc.runner_slot_desired
+
+import std.types { Int, String, List }
+import std.measure { ByteSize, byte_size, HardwareThreadCount }
+
+// THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
+// granted is a leaf fact; gunbc.runner_slot_allocation derives widths, walls and floor-outcome
+// receipts over it. While the row lived there, every reader of the ceiling -- the dashboard's
+// dispatch memory ceiling, and through it the approval broker -- compiled the floor-outcome
+// vocabulary (gunbc.ci_failure_class), merge admission and the v2 compiler behind them.
+
+// THE SLOT'S CPU CEILING IS A POLICY OF THE ROW, AND THE ROW'S POLICY IS NO CEILING. CpuQuotaResolved
+// is an absolute CPUQuota= of that many threads; SlotCpuQuotaUnbounded is the affirmative declaration
+// that the slot carries no absolute ceiling and is governed by cpu_weight alone. There is no refusing
+// arm: the value used to be derived from a vendor survey that could fail to resolve, and that survey
+// is deleted (gunbc_runner_cores_per_slot_policy), so nothing upstream can refuse.
+type RunnerSlotCpuQuota
+  = CpuQuotaResolved { threads: HardwareThreadCount }
+  | SlotCpuQuotaUnbounded
+
+type RunnerSlotLabels {
+  github_labels: List<String>
+}
+
+type RunnerSlotDesired {
+  memory_max: ByteSize
+  memory_swap_max: ByteSize
+  memory_high: ByteSize
+  tasks_max: Int
+  cpu_weight: Int
+  cpu_quota: RunnerSlotCpuQuota
+  labels: RunnerSlotLabels
+}
+
+data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERSEDING THE 14GiB/13GiB ROW (operator ruling 2026-08-17). The 2026-08-05 derivation below is not repudiated — it is re-run on a changed input. Its subject is floor-job cgroup peaks, and the floor's peak moved: the claim-scope cut measures 15.6GB (14.53GiB) after taking whole-run peak from 45.4GB to 15.6GB. 14.53GiB does not fit a 14GiB MemoryMax and sits 1.53GiB above a 13GiB MemoryHigh, so the prior row can no longer hold its own consumer.\n\nTHE PIN IS OBSERVED, NOT PREDICTED (srv1, read 2026-08-17, gunbc_srv1_converged_slot_throttle_observation). All five srv1 slots carry the declared 14GiB/13GiB. Two of them — srv1-04 and srv1-05 — report memory.peak of EXACTLY 13.00GiB against 829 and 44803 memory.high events, with memory.max events and oom_kill both zero. A peak equal to the throttle line is the censored lower bound this very note taught for the four 15.0GiB pins in the 2026-08-05 sample; it is the workload being held, not the workload being measured. Survival without OOM is reclaim plus swap, and the host carried 10GiB of swap in use at the same reading.\n\nWHAT IT COSTS, STATED BECAUSE IT IS NOT FREE: two runner slots fleet-wide. At 16GiB the managed hosts admit 6 rather than 7 (7 x 16 = 112GiB against 111.4GiB available) while srv1/srv2 hold 5 (5 x 16 = 80GiB against 81.0GiB, a 1.0GiB margin — the tightest number in gunbc.runner_slot_allocation and the first thing to recheck if the sessions reservation or the legacy overhead is ever corrected upward). Fleet total 24 -> 22. The trade is bought deliberately: a 15GiB/14GiB row would have preserved all 24 slots and cleared MemoryMax, but its throttle line would sit 0.53GiB BELOW the measured peak, making the throttle confound permanent and structural in the instrument now measuring the fold.\n\nTHAT THE NEW TARGET EQUALS srv2-03'S DRIFTED READBACK IS A COINCIDENCE AND MUST NOT BE READ AS A PRECEDENT. gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation still stands unamended: this row moved because a floor-peak measurement moved, which is the same subject the 2026-08-05 ruling used, and it would have moved to 16GiB had every host in the fleet been sitting at 8. srv1 was CONVERGED to 14/13 when this was written, so the fleet was not at 16/15 to be reconciled toward.\n\nDISSOLVE-ON: the 14.53GiB peak is not established as steady. If the fold's remaining 5.6GB comes down, re-derive from the new floor-peak distribution and reclaim the two slots; this row is sized to a measurement under active reduction, not to a settled envelope.\n\nSUPERSEDED DERIVATION, RETAINED AS THE PRIOR INPUT (operator ruling 2026-08-05). 186 floor-job cgroup peaks from 2026-08-05 plus five sampled days back to 2026-07-16, read from the [calibration] floor_peak_post receipts the ci job emits: successful runs peak at p50 10.32GiB and max 10.96GiB, and NOT ONE run in the sample reached the 16GiB MemoryMax. Four of 186 reached 15.0GiB, which is the 15GiB MemoryHigh exactly — those are throttle pins, censored lower bounds rather than demand, and they are why the cap does not fall further.\n\nTHE FLOOR UNDER IT IS ALREADY MEASURED AND IT IS 12GiB: gunbc.runner_slot_allocation gunbc_floor_minimum_viable_armed_budget, enforced by claim_executor as an arm-time refusal. MemoryHigh is what the run-time governor arms against, so MemoryHigh is the axis that number constrains — 13GiB leaves exactly 1GiB of margin over it, and clears the worst p90 in the three-week sample (12.94GiB on 2026-07-30). Going to 13/12 to buy an eighth slot on the managed hosts would put the throttle line ON the measured refusal floor with zero margin, and the 2026-07-30 distribution says that day would have spent most of its runs in swap.\n\nWHAT MOVING 16 TO 14 IS NOT: it is not oversubscription and does not touch the guaranteed-mode property. Every slot still owns its ceiling outright. The ceilings are simply sized closer to what the workload was measured to want, which is what freed the width."
+
+// 🟡 REGISTERED FOLLOW-UP — task-budget envelope model (operator ruling on PR 8045, 2026-08-09).
+// tasks_max=16384 below is APPROVED as an EMERGENCY PARITY ROLLBACK ONLY: it is not accepted as
+// a derived value, and RunnerSlotDesired.tasks_max is not accepted as the model home. The
+// follow-up model must distinguish THREE task budgets, each derived from one measured envelope
+// (concurrent-build admission × compiler/thread fan-out): (1) runner-slot task budget; (2) shared
+// compile-pool task budget — sccache cache-miss compiles run as children of the SERVER'S cgroup,
+// not the requester's (gunbc.build_cache_instance placement axis), so the pool owns their task
+// count exactly as compile_pool owns their memory; (3) host-parent reserve — with the conservation
+// law sum(slots) + pool + reserve <= parent ancestor limit. Dissolve-on: that model landing, at
+// which point this row's tasks_max derives rather than being authored. Do not build it in PR 8045.
+// ── THE 2026-09-12 FLOOR-DEMAND RULING: 26 GiB MemoryMax / 25 GiB MemoryHigh ────────────────
+//
+// THE PRIOR 16/15 ROW IS NOT REPUDIATED; IT IS RE-RUN ON A MEASURED INPUT, exactly as the
+// 2026-08-17 ruling re-ran the 14/13 row on its own. Its subject is the floor job's cgroup
+// demand, and that demand is now measured DIRECTLY rather than inferred from throttle pins.
+//
+// WHY THE OLD ROW COULD NOT SEE THIS. Every reading behind 16/15 was a PIN: peaks landing on the
+// MemoryHigh line, which that ruling itself correctly named "the censored lower bound ... the
+// workload being held, not the workload being measured". A censored sample cannot report how far
+// past the line the workload wanted to go, so the row could only ever be raised to just above the
+// last pin, and would pin again.
+//
+// THE UNCENSORED MEASUREMENT, taken on the lane CI actually runs rather than on all lanes in one
+// process:
+//   command  claim_executor --required-ci --required-lane witnesses
+//                           --source-root dag --source-root src/v2
+//   commit   975706293d0f02c83ecda5f978607ad9e54b11b8
+//   binary   sha256 5cc271009d241d4049df1e5db5162fc3ca8af70c7d391dee3ee993cec2b7a471
+//   host     srv1, systemd-run --user --scope -p MemoryMax=64G, MALLOC_ARENA_MAX=2
+//   budgets  max=68719476736  high=max   <- NOT constrained; this is the check that makes the
+//                                           reading a demand rather than another pin
+//   verdict  FloorClean  planned=3762 executed=3762 claims_failed=0  phases_run=3 phases_failed=0
+//   peak     whole-job scope 24412725248 = 22.74 GiB
+//            the run heartbeat's own cgroup-charge reading peaked at 24.7 GiB
+//   stall    0 faults/min -- no thrashing, corroborating that nothing held it
+//
+// THE TWO READINGS DISAGREE AND THE LARGER ONE IS TAKEN. A charge reading above the scope peak
+// should not happen if both name the same cgroup, so one of them names a different level and this
+// row does not know which. Sizing to the smaller figure to save a slot, while unable to explain
+// the larger, is the fail-open direction; the grain rule this module already applies -- round up,
+// in the fail-closed direction -- lands 24.7 GiB on 25 GiB. MemoryHigh is the axis the run-time
+// governor arms against, so 25 GiB is the throttle line and MemoryMax is the authored max-1 GiB
+// relation above it at 26 GiB.
+//
+// IT IS AN OBSERVED DEMAND FOR ONE EXECUTION, not an established ceiling. One run cannot bound a
+// distribution, and this row does not claim it does; what it claims is that a line BELOW a
+// measured uncensored peak is known to be too low, which needs no distribution to be true.
+//
+// WHAT IT COSTS, AND BOTH AXES MOVE BY CONSTRUCTION rather than by a second edit. The memory axis
+// is now the envelope quotient, so srv1 goes 25 -> 15 and srv3/srv4 29 -> 17 on this literal alone.
+// THE CPU AXIS NO LONGER MOVES WITH THIS LITERAL (2026-09-19). Until that date
+// `gunbc_runner_cores_per_slot` derived cores from THIS ceiling against a vendor memory-per-vCPU
+// ratio, so 16 -> 26 GiB took cores_per_slot 6 -> 10 and the CPU axis 128/6 = 21 down to
+// 128/10 = 12, binding the fleet at 12/12/12 -- eight of the twenty-two lost slots bought by CPU
+// quota nothing asked for, since the floor run uses about one core sustained (cpu 20 min against
+// 24 min wall). That coupling was accepted on 2026-09-12 and REPAIRED on 2026-09-19 by the ruling
+// recorded at gunbc_runner_cores_per_slot_policy: cores_per_slot is 1, the CPU axis admits 128 and
+// does not bind, and the memory admissions 15 and 17 ARE the committed widths.
+//
+// The whole trade is bought deliberately: at 16/15 the floor welds to the throttle line on every
+// run and its verdict is decided by whether the working set happens to drift back under, which is
+// not a CI system.
+//
+// ── srv2 IS NOT SAFE AT THIS ROW AND THE HELD ARM HIDES IT ────────────────────────────────────
+//
+// THIS IS A DECLARED HAZARD IN THIS DIFF, NOT A RESOLVED ONE. The per-slot row is FLEET-UNIFORM, so
+// raising it raises srv2 too -- and srv2's five HELD slots at 26 GiB demand 130 GiB against a
+// measured 125.09 GiB of usable RAM (`gunbc.host_memory_observation` `gunbc_ci_srv2_memtotal_measured`,
+// 134314512384 bytes), BEFORE any overhead or session charge. At 16 GiB the same five demanded
+// 80 GiB and fit with room; the hazard is created by this row, not inherited.
+//
+// WHY NO WALL CAUGHT IT, which is the part worth keeping. srv2's width comes from the HELD arm,
+// which exists precisely because its session denominator is unestablished -- so there is no
+// envelope to divide and the conservation checks have no denominator to test against. The held
+// value is a DESCRIPTION of what the host currently runs, and a description does not stop being
+// reported when the declaration moves underneath it. `runner_slot_allocation_wall_holds` and
+// `runner_slot_allocation_oversubscription_boundary_exact` both pass, correctly, because neither
+// can reach a host whose envelope is unestablished. The deleted held arm's note recorded that a
+// held width must not outrank a zero-memory refusal; this is the same class one step out. Both
+// arms are now gone: `gunbc_runner_committed_width` checks the slot shape before the per-host
+// derivation and answers RunnerWidthUnresolved for an unestablished envelope.
+//
+// CONSEQUENCE FOR THE HEADLINE NUMBER: 41 is NOT a safe uniform target. It counts srv2 at five
+// slots it cannot hold at this size. srv2 needs its own derivation -- or exclusion from the raise,
+// which the fleet-uniform row cannot currently express -- before any total including it is quoted.
+//
+// AND 41 IS NOT THE CI-SERVING NUMBER EITHER. `host_github_slot_count` is the committed width MINUS
+// `host_fabric_slot_count`, so some committed slots are fabric execution members rather than GitHub
+// runners. Every total in this note is an ALLOCATION count; the serving count is lower and is the
+// one a capacity conversation actually wants.
+//
+// dissolve-on: the floor's demand falls below this line. The prepared-product and dependency
+// lifetime reductions have a measured exchange rate now -- roughly one slot per GiB removed on
+// srv1 -- so this row is sized to a workload under active reduction and is expected to fall.
+// THE BYTE COUNT IS THE AUTHORITY AND THE ByteSize IS DERIVED FROM IT, so the number has one home
+// and the width arithmetic below stays in the Int domain. Mixing Int and Nat in one expression is a
+// corpus-wide hazard rather than a local inconvenience -- one such expression in std.nat broke
+// resolution in unrelated modules -- so the quotient is taken over byte COUNTS and the measure is
+// reconstructed for the consumers that want a ByteSize.
+data gunbc_runner_slot_memory_max_bytes: Int = 27917287424
+
+data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory_max_bytes)
+
+// THE SLOT CARRIES NO ABSOLUTE CPU CEILING, BY THE SAME RULING THAT SETS cores_per_slot TO ONE.
+// This used to be CpuQuotaResolved at the derived cores_per_slot, which with the policy at 1 would
+// render CPUQuota=100% on every runner unit and fabric cell slice -- a ceiling that throttles the
+// parallel link and codegen phases of the very single-core-sustained workload the ruling describes.
+// The hosts run with CPUQuota unlimited today; this arm says so rather than emitting a new
+// constraint the ruling did not ask for. cpu_weight stays the relative-share governor.
+fn gunbc_runner_slot_cpu_quota() -> RunnerSlotCpuQuota {
+  SlotCpuQuotaUnbounded
+}
+
+fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
+  RunnerSlotDesired {
+    memory_max: gunbc_runner_slot_memory_max,
+    memory_swap_max: byte_size(34359738368),
+    memory_high: byte_size(26843545600),
+    tasks_max: 16384,
+    cpu_weight: 100,
+    cpu_quota: gunbc_runner_slot_cpu_quota(),
+    labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] }
+  }
+}

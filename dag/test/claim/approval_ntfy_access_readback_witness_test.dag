@@ -39,7 +39,10 @@ import gunbc.auth.approval_ntfy_access_readback {
 import gunbc.auth.approval_ntfy_runtime_observe {
   NtfyRuntimeProcessObservation, NtfyOpenFd, NtfyRuntimeObserved, NtfyRuntimeObserveRefused, ntfy_runtime_observe_encode,
 }
-import gunbc.live_deploy.emit { RevisionBoundAtEmission, approval_ntfy_runtime_observe_helper_argv }
+import gunbc.live_deploy.release_locus {
+  RevisionBoundAtEmission,
+  approval_ntfy_runtime_observe_helper_argv,
+}
 import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved }
 import extdeps.linux.proc_net_tcp { proc_net_tcp_table, ProcNetTcpParsed, ProcNetTcpUnparseable, tcp_listen_state_hex }
 
