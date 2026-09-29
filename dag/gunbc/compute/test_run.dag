@@ -173,7 +173,7 @@ fn test_run_report_json(r: TestRunReport) -> JsonValue {
         json_kv(key: "pattern", value: json_string(s: pattern)),
         json_kv(key: "snapshot_commit", value: json_string(s: commit)),
         json_kv(key: "selected", value: json_int(n: count(modules))),
-        json_kv(key: "succeeded", value: json_int(n: count(filter(modules, m => match m { ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _, host_record: record } => ending == "succeeded" && record == ""  _ => false })))),
+        json_kv(key: "succeeded", value: json_int(n: count(filter(modules, m => match m { ModuleRan { label: _, module_path: _, planned: _, declined: _, ending, identity: _, document: _, host_record: record } => ending == "succeeded" && record == ""  ModuleAllDeclined { label: _, module_path: _, declined: _ } => false  ModuleUnreadable { label: _, path: _, reason: _ } => false  ModuleNotAWitness { label: _, path: _, reason: _ } => false })))),
         json_kv(key: "not_succeeded", value: json_int(n: count(filter(modules, m => !module_run_succeeded(r: m))))),
         json_kv(key: "modules", value: json_array(elements: map(modules, module_run_json))),
       ])

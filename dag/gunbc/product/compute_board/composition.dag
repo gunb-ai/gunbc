@@ -191,26 +191,50 @@ fn requirement_met(components: List<ComponentInstance>, r: CapabilityRequirement
       any_provision(components: components, pred: p => match p {
         ProvidesManagement { power_control: a, console: b, recovery: c } =>
           (!pc || a) && (!cons || b) && (!rec || c)
-        _ => false
+        ProvidesCores { cores: _ } => false
+        ProvidesMemoryCapacity { capacity: _ } => false
+        ProvidesNetworkPaths { paths: _ } => false
+        ProvidesBootStoragePaths { paths: _ } => false
+        ProvidesPowerBoundary => false
+        ProvidesCoolingContract => false
+        ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => false
+        ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => false
+        ProvidesMechanicalEnvelope => false
       })
     PowerInputBoundary { boundary: _ } =>
-      any_provision(components: components, pred: p => match p { ProvidesPowerBoundary => true, _ => false })
+      any_provision(components: components, pred: p => match p { ProvidesPowerBoundary => true, ProvidesCores { cores: _ } => false, ProvidesMemoryCapacity { capacity: _ } => false, ProvidesNetworkPaths { paths: _ } => false, ProvidesBootStoragePaths { paths: _ } => false, ProvidesManagement { power_control: _, console: _, recovery: _ } => false, ProvidesCoolingContract => false, ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => false, ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => false, ProvidesMechanicalEnvelope => false })
     CoolingBoundary { boundary: _ } =>
-      any_provision(components: components, pred: p => match p { ProvidesCoolingContract => true, _ => false })
+      any_provision(components: components, pred: p => match p { ProvidesCoolingContract => true, ProvidesCores { cores: _ } => false, ProvidesMemoryCapacity { capacity: _ } => false, ProvidesNetworkPaths { paths: _ } => false, ProvidesBootStoragePaths { paths: _ } => false, ProvidesManagement { power_control: _, console: _, recovery: _ } => false, ProvidesPowerBoundary => false, ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => false, ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => false, ProvidesMechanicalEnvelope => false })
     FirmwareInterfaceSurface { boot_flash: bf, write_protect: wp, recovery_path: rp } =>
       any_provision(components: components, pred: p => match p {
         ProvidesFirmwareInterface { boot_flash: a, write_protect: b, recovery_path: c } =>
           (!bf || a) && (!wp || b) && (!rp || c)
-        _ => false
+        ProvidesCores { cores: _ } => false
+        ProvidesMemoryCapacity { capacity: _ } => false
+        ProvidesNetworkPaths { paths: _ } => false
+        ProvidesBootStoragePaths { paths: _ } => false
+        ProvidesManagement { power_control: _, console: _, recovery: _ } => false
+        ProvidesPowerBoundary => false
+        ProvidesCoolingContract => false
+        ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => false
+        ProvidesMechanicalEnvelope => false
       })
     ManufactureAndBringUp { programming_surface: ps, test_access: ta } =>
       any_provision(components: components, pred: p => match p {
         ProvidesManufactureAndBringUp { programming_surface: a, test_access: b } =>
           (!ps || a) && (!ta || b)
-        _ => false
+        ProvidesCores { cores: _ } => false
+        ProvidesMemoryCapacity { capacity: _ } => false
+        ProvidesNetworkPaths { paths: _ } => false
+        ProvidesBootStoragePaths { paths: _ } => false
+        ProvidesManagement { power_control: _, console: _, recovery: _ } => false
+        ProvidesPowerBoundary => false
+        ProvidesCoolingContract => false
+        ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => false
+        ProvidesMechanicalEnvelope => false
       })
     MechanicalEnvelope { envelope: _ } =>
-      any_provision(components: components, pred: p => match p { ProvidesMechanicalEnvelope => true, _ => false })
+      any_provision(components: components, pred: p => match p { ProvidesMechanicalEnvelope => true, ProvidesCores { cores: _ } => false, ProvidesMemoryCapacity { capacity: _ } => false, ProvidesNetworkPaths { paths: _ } => false, ProvidesBootStoragePaths { paths: _ } => false, ProvidesManagement { power_control: _, console: _, recovery: _ } => false, ProvidesPowerBoundary => false, ProvidesCoolingContract => false, ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => false, ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => false })
   }
 }
 

@@ -764,7 +764,10 @@ fn owned_stock_consumed(resolutions: BuildResolution) -> List<LotDraw> {
         match f {
           OwnedInventory { lot: l, quantity: q, reservation: _, available_after: _ } =>
             draw_step(acc: acc, lot: l, quantity: q)
-          _ => acc
+          NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
+          IncludedInSystem { part: _, quantity: _ } => acc
+          SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } => acc
+          CompatibilityUnread { part: _, obligation: _ } => acc
         }
     }
   })

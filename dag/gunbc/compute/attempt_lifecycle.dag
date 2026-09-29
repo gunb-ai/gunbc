@@ -202,7 +202,7 @@ type AttemptSlotReading
 
 fn attempt_member(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  _ => none }
+    JsonMemberFound { value } => match value { JsonString { value: s } => Present { value: s }  JsonNull => none  JsonBool { value: _ } => none  JsonNumber { lexeme: _ } => none  JsonArray { elements: _ } => none  JsonObject { members: _ } => none }
     JsonMemberAbsent => none
     JsonMemberDuplicated => none
     JsonMemberNotAnObject => none
@@ -211,7 +211,7 @@ fn attempt_member(doc: JsonValue, key: String) -> String? {
 
 fn attempt_member_int(doc: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value } => match value { JsonNumber { lexeme: n } => parse_int(s: n as String)  _ => none }
+    JsonMemberFound { value } => match value { JsonNumber { lexeme: n } => parse_int(s: n as String)  JsonNull => none  JsonBool { value: _ } => none  JsonString { value: _ } => none  JsonArray { elements: _ } => none  JsonObject { members: _ } => none }
     JsonMemberAbsent => none
     JsonMemberDuplicated => none
     JsonMemberNotAnObject => none
