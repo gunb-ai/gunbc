@@ -398,13 +398,15 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering", decl_name: "expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering"),
       why: "an operator, call or record expression that contains a match or if (`t && match w {..}`, `h(a: match .., b: s)`) lowers to the block alone or collapses to its scrutinee atom, dropping the enclosing expression and the block's siblings with the module accepted; the `call(..) && match g(..) {..}` operand collapse is the same route. Rostered as a silent drop in accepted modules by gunbc#12309 (15bcbfa95e). No fix has merged." as NonEmptyStr,
     }
-    DataInitializerMatchScrutineeLowering => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering", decl_name: "data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering"),
-      why: "a match in a data initializer reads its scrutinee from an arm rather than from the scrutinee position, so the authored scrutinee's references never reach resolve and the module is accepted. Rostered by gunbc#12364 (b1b7aea9aa). No fix has merged." as NonEmptyStr,
+    DataInitializerMatchScrutineeLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_position_structure", decl_name: "a_data_initializer_match_lowers_its_scrutinee_from_the_match_position_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12510, merge_sha: "b768b0f431" as NonEmptyStr, measured_at: "b768b0f431" as NonEmptyStr },
+      qualification: "v2.compiler.body_lowering_fold reads a match scrutinee from its grammar position (the binary_expr after `match`) rather than the first binary_expr found in the match subtree, so a data initializer's scrutinee, folded bottom-up before its declaration is dispatched, is no longer read from the first arm; the same match as a fn body lowers identically (the_same_match_as_a_fn_body_lowers_its_scrutinee_from_the_match_position_holds), and a spine not headed by `match` refuses as match_arm_navigation_refused. Delivers the trigger capability of gunbc.recurring_failure_mode.data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering (rostered by gunbc#12364, b1b7aea9aa). Bounded to the scrutinee position: an expression enclosing the match is EnclosingExpressionLoweredWhole." as NonEmptyStr,
     }
-    MatchArmStatementBodyLowering => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering", decl_name: "match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering"),
-      why: "a match arm whose body is a statement block lowers to its first expression, so every later statement of the arm body is dropped silently in an accepted module. Rostered by gunbc#12364 (b1b7aea9aa). No fix has merged." as NonEmptyStr,
+    MatchArmStatementBodyLowering => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_position_structure", decl_name: "a_match_arm_statement_body_lowers_to_the_let_binding_its_continuation_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12510, merge_sha: "b768b0f431" as NonEmptyStr, measured_at: "b768b0f431" as NonEmptyStr },
+      qualification: "a match arm's body is read from the right of its `=>` and a statement body lowers through the statement authority body_lower_stmt_spine that fn bodies and if-arms already use, so `X =>` then `let t = v` then `e` lowers to the let binding with its continuation instead of to `v`. Delivers the trigger capability of gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering (rostered by gunbc#12364, b1b7aea9aa). Bounded to the arm body: the arm list is MatchEveryArmLowered." as NonEmptyStr,
     }
   }
 }
