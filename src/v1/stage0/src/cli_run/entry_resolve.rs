@@ -1078,6 +1078,7 @@ pub(crate) fn new_multi_entry_index_shell(
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
+        parsed_references: RefCell::new(HashMap::new()),
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -2995,6 +2996,11 @@ pub(crate) struct ParsedFileReferences {
     /// return or field type in `inferred: Resolved`. Kept apart from `bare` so the reference-edge
     /// producer's population is unchanged by this reader.
     pub(crate) authored_types: std::collections::HashSet<String>,
+    /// The module paths the file's `import` lines name, as the parser read them.
+    pub(crate) imports: Vec<String>,
+    /// The names this module binds for itself (`module_self_bound_names`): a bare occurrence of
+    /// one is bound by that declaration and is never a reference out.
+    pub(crate) self_declared: BTreeSet<String>,
 }
 
 /// The authored type positions of a RAW parse (see `ParsedFileReferences::authored_types`),
@@ -3009,8 +3015,11 @@ fn raw_parse_authored_type_names(
     if let Some(ty) = &node.type_annotation {
         raw_type_names(ty, out);
     }
-    for param in node.params.iter() {
-        for ty in param.children.iter() {
+    // A `uses` binding (`uses net: std.resources.Network`) carries its resource type the way a
+    // parameter carries its type: as the binding node's child. Missing it dropped the declaring
+    // module from both the module-path closure and the bare gate.
+    for binding in node.params.iter().chain(node.uses.iter()) {
+        for ty in binding.children.iter() {
             raw_type_names(ty, out);
         }
     }
@@ -3116,11 +3125,18 @@ pub(crate) fn parsed_file_references(
     let positions = std::mem::take(&mut classify.bare_positions);
     let mut authored_types = std::collections::HashSet::new();
     raw_parse_authored_type_names(&tree, &mut authored_types);
+    let imports = crate::v1_std_core::module_imports(tree.clone())
+        .iter()
+        .map(|import| import.name.clone())
+        .filter(|path| !path.is_empty())
+        .collect();
     Ok(ParsedFileReferences {
         bare,
         chains,
         positions,
         authored_types,
+        imports,
+        self_declared: module_self_bound_names(&tree),
     })
 }
 

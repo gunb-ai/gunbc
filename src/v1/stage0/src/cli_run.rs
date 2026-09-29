@@ -877,10 +877,25 @@ fn test_sig_or_none(
 
 #[cfg(test)]
 pub(crate) mod bare_reference_scanner_tests {
-    use super::{
-        bare_candidates_from_source, explicit_import_member_names, module_self_declared_names,
-        BareCandidates,
-    };
+    use super::{bare_candidates_from_source, explicit_import_member_names, BareCandidates};
+
+    /// The names the gate treats as bound by the module itself, read from the module's parse
+    /// (`module_self_bound_names` through `parsed_file_references`).
+    fn module_self_declared_names(src: &str) -> std::collections::BTreeSet<String> {
+        let src = if src.starts_with("module ") {
+            src.to_string()
+        } else {
+            format!("module t\n{src}")
+        };
+        super::entry_resolve::parsed_file_references(
+            "fixture/self_declared.dag",
+            &src,
+            "t",
+            &std::collections::HashSet::new(),
+        )
+        .unwrap_or_else(|cause| panic!("fixture must parse and reconcile: {cause}"))
+        .self_declared
+    }
 
     /// The gate's reading of a fixture source, over an empty module set.
     fn parsed(src: &str) -> BareCandidates {
@@ -1192,7 +1207,8 @@ pub(crate) mod bare_reference_scanner_tests {
                    }\n\
                    type Result<ok, err> = Ok { value: ok } | Err { value: err }\n\
                    data volume_row: Int = 3\n\
-                   fn trim_one(s: String) -> String { s }\n";
+                   fn trim_one(s: String) -> String { s }\n\
+                   fn id<t>(x: t) -> t { x }\n";
         let names = module_self_declared_names(src);
         for expected in [
             "VisibilityScope",
@@ -1215,12 +1231,18 @@ pub(crate) mod bare_reference_scanner_tests {
             "Err",
             "volume_row",
             "trim_one",
+            "id",
+            "t",
         ] {
             assert!(
                 names.contains(expected),
                 "missing self-declared name {expected}"
             );
         }
+        assert!(
+            !names.contains("x") && !names.contains("s"),
+            "a function's VALUE parameter is a local binder, not a module-wide declaration"
+        );
     }
 
     /// A coproduct may be spaced out. `std.measure`'s `Dimension` puts blank lines
@@ -5044,6 +5066,7 @@ fn extend_with_reference_closure(
     facts: &ModuleGraphFactsLive,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let path_lookup = path_to_source_lookup(index);
+    let module_names: HashSet<String> = index.keys().cloned().collect();
     let mut known_paths: std::collections::HashSet<String> = sources
         .iter()
         .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
@@ -5056,7 +5079,7 @@ fn extend_with_reference_closure(
         // separates "a content-hash memo on a pure function" from "a union graph". Timed
         // here because this is the call the duplication factor multiplies.
         let scan_started = std::time::Instant::now();
-        let referenced = referenced_module_paths_in_text(&sf.content, index);
+        let referenced = referenced_module_paths_of_source(&sf.path, &sf.content, &module_names)?;
         resolve_stage_slot_add(|s| {
             s.load_reference_scan += scan_started.elapsed().as_nanos();
             s.load_reference_scan_bytes += sf.content.len() as u128;
@@ -5114,56 +5137,72 @@ fn extend_with_reference_closure_for_pool(
     )
 }
 
-/// Candidate module paths referenced by dotted names in `content`: every maximal
-/// `seg(.seg)+` identifier chain contributes its longest leading prefix that is a
-/// declared module path in `index` (>= 2 segments — a bare single identifier is a
-/// global-bare census reference, never a module projection). String literals are
-/// skipped: a module path inside a string is data (a registry row, prose), not a
-/// reference, and following it over-pulls modules the corpus never resolves against.
-fn referenced_module_paths_in_text(content: &str, index: &ModuleSourceIndex) -> Vec<String> {
-    let content: &str = &annotation_erased_scan_text(content);
-    let bytes = content.as_bytes();
-    let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
-    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let mut out = std::collections::BTreeSet::new();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                    i += 1;
-                }
-                i += 1;
-            }
-            i += 1;
-            continue;
-        }
-        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
-        {
-            i += 1;
-            continue;
-        }
-        let start = i;
-        let mut segment_ends: Vec<usize> = Vec::new();
-        loop {
-            while i < bytes.len() && is_ident(bytes[i]) {
-                i += 1;
-            }
-            segment_ends.push(i);
-            if i + 1 < bytes.len() && bytes[i] == b'.' && is_ident_start(bytes[i + 1]) {
-                i += 1;
-            } else {
-                break;
-            }
-        }
-        if segment_ends.len() >= 2 {
-            for k in (2..=segment_ends.len()).rev() {
-                let candidate = &content[start..segment_ends[k - 1]];
-                if index.contains_key(candidate) {
-                    out.insert(candidate.to_string());
-                    break;
-                }
+/// The module paths one source references, read from its full parse
+/// (`entry_resolve::parsed_file_references`): the paths its `import` lines name, and for every
+/// dotted spelling the reference walk recorded -- field chains, method-call chains, and qualified
+/// names at value and type positions -- the longest leading prefix of at least two segments that
+/// is a declared module path (a bare single identifier is a global-bare census
+/// reference, never a module projection; `longest_declared_module_prefix` over the chain).
+///
+/// The parse is the authority for what is a reference: a string literal is data and an
+/// annotation is not program text (DESIGN §4c), and neither produces a chain, so no erasure pass
+/// stands in front of this reader. A file the parser refuses has no readable reference set, and
+/// the closure REFUSES for it rather than following a guessed one; the required parse sweep
+/// (`run_dag_parse_sweep`) holds every pool file to parse.
+fn referenced_module_paths_of_source(
+    path: &str,
+    content: &str,
+    module_names: &HashSet<String>,
+) -> Result<Vec<String>, String> {
+    let file_rel = workspace_relative_repo_path(path);
+    let self_module = extract_module_path(content).unwrap_or_default();
+    let refs = entry_resolve::parsed_file_references(path, content, &self_module, module_names)
+        .map_err(|cause| {
+            format!(
+                "reference_closure: '{file_rel}' has no readable reference set (cause={cause}); \
+                 its module-path references cannot be followed (fail-closed)"
+            )
+        })?;
+    Ok(module_paths_of_references(&refs, module_names))
+}
+
+fn module_paths_of_references(
+    refs: &entry_resolve::ParsedFileReferences,
+    module_names: &HashSet<String>,
+) -> Vec<String> {
+    let dotted_names = refs
+        .bare
+        .iter()
+        .chain(refs.authored_types.iter())
+        .chain(refs.positions.undotted.iter())
+        .filter(|name| name.contains('.'))
+        .map(|name| name.split('.').map(str::to_string).collect::<Vec<_>>());
+    let mut out: BTreeSet<String> = refs
+        .imports
+        .iter()
+        .filter(|path| module_names.contains(path.as_str()))
+        .cloned()
+        .collect();
+    // ONLY MAXIMAL CHAINS. The walk records a chain at every field-access node, so
+    // `extdeps.browser.chromium.anchor` also arrives as `extdeps.browser.chromium` and
+    // `extdeps.browser`; the shorter ones are receivers inside the longer one, not references of
+    // their own, and resolving one names the PARENT module (`extdeps.browser`), which the file
+    // never referenced. A chain that is a strict prefix of another recorded chain is skipped.
+    let chains: Vec<Vec<String>> = refs
+        .chains
+        .iter()
+        .chain(refs.positions.method_chains.iter())
+        .cloned()
+        .chain(dotted_names)
+        .collect();
+    let receivers: HashSet<&[String]> = chains
+        .iter()
+        .flat_map(|chain| (1..chain.len()).map(move |k| &chain[..k]))
+        .collect();
+    for chain in chains.iter().filter(|c| !receivers.contains(c.as_slice())) {
+        if let Some(path) = longest_declared_module_prefix(chain, module_names) {
+            if path.contains('.') {
+                out.insert(path);
             }
         }
     }
@@ -9198,6 +9237,8 @@ struct BareCandidates {
     dotted_chains: BTreeSet<String>,
     /// Free variables that head a chain or a method receiver and are not module-path roots.
     dotted_heads: BTreeSet<String>,
+    /// Names this module binds for itself (`module_self_bound_names`), never a reference out.
+    self_declared: BTreeSet<String>,
 }
 
 /// The gate's reading of one file. A file the parser refuses, or whose binders the walk cannot
@@ -9206,100 +9247,74 @@ struct BareCandidates {
 fn parsed_bare_candidates(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
-    referencing_module: &str,
 ) -> Result<BareCandidates, String> {
-    let module_names = index
-        .pool_module_names
-        .get_or_init(|| Rc::new(index.source_files.keys().cloned().collect()))
-        .clone();
     let file_rel = workspace_relative_repo_path(&sf.path);
-    bare_candidates_from_source(&sf.path, &sf.content, referencing_module, &module_names).map_err(
-        |cause| {
+    parsed_file_references_of(index, sf)
+        .map(|refs| bare_candidates_from_references(&refs))
+        .map_err(|cause| {
             format!(
             "bare_reference_closure: '{file_rel}' has no readable reference set (cause={cause}); \
              its bare references cannot be judged (fail-closed)"
             )
-        },
-    )
+        })
 }
 
+/// One demanded file's reference reading, parsed once per index (see
+/// `MultiEntryIndex::parsed_references`).
+fn parsed_file_references_of(
+    index: &MultiEntryIndex,
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+) -> Result<Rc<entry_resolve::ParsedFileReferences>, &'static str> {
+    let file = workspace_relative_repo_path(&sf.path);
+    if let Some(hit) = index.parsed_references.borrow().get(&file) {
+        return hit.clone();
+    }
+    let module_names = pool_module_names(index);
+    let self_module = extract_module_path(&sf.content).unwrap_or_default();
+    let reading =
+        entry_resolve::parsed_file_references(&sf.path, &sf.content, &self_module, &module_names)
+            .map(Rc::new);
+    index
+        .parsed_references
+        .borrow_mut()
+        .insert(file, reading.clone());
+    reading
+}
+
+fn pool_module_names(index: &MultiEntryIndex) -> Rc<HashSet<String>> {
+    index
+        .pool_module_names
+        .get_or_init(|| Rc::new(index.source_files.keys().cloned().collect()))
+        .clone()
+}
+
+#[cfg(test)]
 fn bare_candidates_from_source(
     path: &str,
     content: &str,
     referencing_module: &str,
     module_names: &HashSet<String>,
 ) -> Result<BareCandidates, &'static str> {
-    let refs =
-        entry_resolve::parsed_file_references(path, content, referencing_module, module_names)?;
-    let entry_resolve::ParsedFileReferences {
-        bare: _,
-        chains,
-        positions,
-        authored_types,
-    } = refs;
-    let dotted_chains = chains
-        .iter()
-        .chain(positions.method_chains.iter())
-        .map(|chain| chain.join("."))
-        .collect();
-    let mut names = positions.undotted;
-    names.extend(authored_types);
-    Ok(BareCandidates {
-        names,
-        call_position: positions.callees,
-        dotted_chains,
-        dotted_heads: positions.dotted_heads,
-    })
+    entry_resolve::parsed_file_references(path, content, referencing_module, module_names)
+        .map(|refs| bare_candidates_from_references(&refs))
 }
 
-/// Blank every source-annotation (`//` to end of line) region, preserving byte
-/// offsets and line structure so a scanner's spans stay valid.
-///
-/// DESIGN §4c: semantic passes receive only the annotation-erased projection.
-/// The raw-text scanners that read it (`referenced_module_paths_in_text`,
-/// `module_self_declared_names`) already skip string literals; annotations were the remaining unerased region, so prose
-/// carried in an annotation was lexed as program text. Measured on the M1C
-/// prose migration: moving rationale out of a `data _note: String` — a region
-/// the string skip already erased — into the sanctioned `//` form made the
-/// English word `edge` in `v2.lens.identity_captured_navigation` a bare
-/// reference, which bound to `v2.test.manual.ownership_movable`'s `fn edge`
-/// and pulled that module (an off-path manual witness importing `src/v1`) into
-/// an unrelated `src/v2` entry's pool, where its import cannot resolve.
-/// Erasure is one authority, applied at each scan entry, rather than a
-/// per-scanner comment rule.
-fn annotation_erased_scan_text(content: &str) -> String {
-    let bytes = content.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            out.push(bytes[i]);
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                    out.push(bytes[i]);
-                    i += 1;
-                }
-                out.push(bytes[i]);
-                i += 1;
-            }
-            if i < bytes.len() {
-                out.push(bytes[i]);
-                i += 1;
-            }
-            continue;
-        }
-        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
-            while i < bytes.len() && bytes[i] != b'\n' {
-                out.push(b' ');
-                i += 1;
-            }
-            continue;
-        }
-        out.push(bytes[i]);
-        i += 1;
+fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -> BareCandidates {
+    let dotted_chains = refs
+        .chains
+        .iter()
+        .chain(refs.positions.method_chains.iter())
+        .map(|chain| chain.join("."))
+        .collect();
+    let mut names = refs.positions.undotted.clone();
+    names.extend(refs.authored_types.iter().cloned());
+    BareCandidates {
+        names,
+        call_position: refs.positions.callees.clone(),
+        dotted_chains,
+        dotted_heads: refs.positions.dotted_heads.clone(),
+        self_declared: refs.self_declared.clone(),
     }
-    String::from_utf8(out).unwrap_or_else(|_| content.to_string())
 }
 
 /// Outgoing rows materialized only for sources visited by a closure demand. The index
@@ -9314,139 +9329,6 @@ struct BothClosureEdgeIndex {
     ref_out: HashMap<String, Vec<String>>,
     /// Import-stripped files that may originate bare-reference edges.
     bare_scan_eligible: HashSet<String>,
-}
-
-/// The names a module declares FOR ITSELF, including the variant heads of its own
-/// coproducts.
-///
-/// The bare census indexes top-level declaration heads. A coproduct VARIANT is not
-/// one, so a module that declares `type VisibilityScope = Repo | Org | Network | World`
-/// and then writes `World` was scanned as referencing some other module — and the
-/// pool happens to contain `type World sole_constructor` in `dag/gunbc/product/spatial_world.dag`,
-/// so `std.cache_interface` acquired a closure edge to the spatial product corpus.
-///
-/// Three more of the identical shape in one closure: `Volume` (a variant of
-/// `std.measure`'s own `Dimension`, pulled `gunbc.roadmap_model`), `Measured` (a
-/// variant of `std.realization_schedule`'s own coproduct, pulled `std.observation`),
-/// and `ExtentInFrame` (a variant in `std.spatial_frame`, pulled `std.attribution`).
-///
-/// This is not a tiebreak and not a policy: a name the module itself declares is
-/// bound by that declaration, so it can never be a reference OUT. Skipping it is the
-/// language's own scoping rule, not a heuristic about which candidate is likelier.
-fn module_self_declared_names(content: &str) -> BTreeSet<String> {
-    let content: &str = &annotation_erased_scan_text(content);
-    let mut out = BTreeSet::new();
-    let ident_head = |s: &str| -> Option<String> {
-        let s = s.trim_start();
-        let mut end = 0;
-        for (idx, c) in s.char_indices() {
-            if c.is_alphanumeric() || c == '_' {
-                end = idx + c.len_utf8();
-            } else {
-                break;
-            }
-        }
-        if end == 0 {
-            None
-        } else {
-            Some(s[..end].to_string())
-        }
-    };
-    let mut in_coproduct = false;
-    for line in content.lines() {
-        let l = line.trim_start();
-        let decl_head = [
-            "pub type ",
-            "pub data ",
-            "pub fn ",
-            "pub func ",
-            "type ",
-            "data ",
-            "fn ",
-            "func ",
-            "test fn ",
-            "test data ",
-        ]
-        .iter()
-        .find_map(|k| l.strip_prefix(*k));
-        if let Some(rest) = decl_head {
-            if let Some(name) = ident_head(rest) {
-                out.insert(name);
-            }
-            // TYPE PARAMETERS on the declaration head. `type Result<ok, err> = Ok { value: ok }
-            // | Err { value: err }` in `std.error_primitives` binds `ok` and `err`; scanned as
-            // references they resolved against the whole pool to `fn ok(out: String) ->
-            // SshSessionExecResult` in a spark serving witness test, so `std.error_primitives`
-            // acquired closure edges to that witness and to `extdeps.ssh.session` — and
-            // `extdeps.dns.domain_name`'s `Ok { value: labels |> list_push(label) }` then
-            // typed `labels` as `SshSessionExecResult`.
-            let after_name = rest.trim_start();
-            let ident_end = after_name
-                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
-                .unwrap_or(after_name.len());
-            let tail = after_name[ident_end..].trim_start();
-            if let Some(params) = tail.strip_prefix('<').and_then(|s| s.split_once('>')) {
-                for part in params.0.split(',') {
-                    if let Some(name) = ident_head(part) {
-                        out.insert(name);
-                    }
-                }
-            }
-            // `type X = ...` opens a coproduct whose variant heads continue on this
-            // line and on following lines beginning with `|`. The MULTILINE form puts
-            // the `=` on the NEXT line instead —
-            //
-            //     type FrameExtent
-            //       = ExtentInFrame { length: FrameLength }
-            //       | ExtentFrameUnregistered { .. }
-            //
-            // — so a bare `type X` head opens one too, pending its `=`. Review 55386
-            // caught this: without it `ExtentInFrame` and `Predicted` were never
-            // collected, two of the four variants this guard exists for, and the
-            // closure improvement measured for their modules came from those modules
-            // leaving the closure for an unrelated reason. Right conclusion, wrong
-            // evidence.
-            //
-            // The same-line extraction below is gated on the LINE's own `=` rather than
-            // on the flag, so widening the flag cannot silently disable it.
-            let is_type_head = l.starts_with("type ") || l.starts_with("pub type ");
-            in_coproduct = is_type_head;
-            if is_type_head {
-                if let Some((_, body)) = l.split_once('=') {
-                    // An ALIAS is not a declaration of its target. `type List<element> =
-                    // FreeMonoid<element>` declares `List`; `FreeMonoid` is a REFERENCE
-                    // OUT, and collecting it here suppresses the closure edge to whoever
-                    // declares it — an under-pull, the dangerous direction (review 55399).
-                    // The discriminator is the RHS's own shape: a coproduct alternates
-                    // (`|`) or carries a record payload (`{`); an alias does neither.
-                    let is_alias = !body.contains('|') && !body.contains('{');
-                    if is_alias {
-                        in_coproduct = false;
-                    } else {
-                        for part in body.split('|') {
-                            if let Some(name) = ident_head(part) {
-                                out.insert(name);
-                            }
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-        if l.starts_with('|') || (in_coproduct && l.starts_with('=')) {
-            in_coproduct = true;
-            for part in l.trim_start_matches(['|', '=']).split('|') {
-                if let Some(name) = ident_head(part) {
-                    out.insert(name);
-                }
-            }
-            continue;
-        }
-        if !l.is_empty() && !l.starts_with('|') {
-            in_coproduct = in_coproduct && l.starts_with('{');
-        }
-    }
-    out
 }
 
 fn source_declares_import_lines(content: &str) -> bool {
@@ -9725,7 +9607,7 @@ fn visit_bare_reference_providers(
     });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
     let cand_started = std::time::Instant::now();
-    let candidates = parsed_bare_candidates(sf, index, &referencing_module)?;
+    let candidates = parsed_bare_candidates(sf, index)?;
     resolve_stage_slot_add(|st| st.edge_index_bare_candidates += cand_started.elapsed().as_nanos());
     // The name-universe fold: dotted-chain prefixes, builtin service keys, and the
     // unbound-name join that produces the roster the resolve loop below walks. Split
@@ -9784,7 +9666,7 @@ fn visit_bare_reference_providers(
     resolve_stage_slot_add(|st| {
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
-    let self_declared = module_self_declared_names(&sf.content);
+    let self_declared = &candidates.self_declared;
     let explicit_imports = explicit_import_member_names(&sf.content);
     // SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER. The 8 kernel type names
     // (`std_types::kernel_type_set` -- String/Int/Bool/Float/Secret/Json/Unit/Bytes) and the
@@ -9802,7 +9684,7 @@ fn visit_bare_reference_providers(
     let resolve_loop_started = std::time::Instant::now();
     let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
-        // Bound by this module's own declaration — see `module_self_declared_names`.
+        // Bound by this module's own declaration — see `module_self_bound_names`.
         if !service_head && self_declared.contains(&name) {
             continue;
         }
@@ -9987,12 +9869,20 @@ fn visit_bare_reference_providers(
 
 fn reference_pull_paths_for_source(
     sf: &Rc<v1_compiler_compile::SourceFile>,
-    index: &ModuleSourceIndex,
-    facts: &ModuleGraphFactsLive,
+    entry_index: &MultiEntryIndex,
 ) -> Result<Vec<String>, String> {
+    let index = &entry_index.source_files;
+    let facts = &entry_index.module_graph_facts;
+    let refs = parsed_file_references_of(entry_index, sf).map_err(|cause| {
+        format!(
+            "reference_closure: '{}' has no readable reference set (cause={cause}); its \
+             module-path references cannot be followed (fail-closed)",
+            workspace_relative_repo_path(&sf.path)
+        )
+    })?;
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
-    for module_path in referenced_module_paths_in_text(&sf.content, index) {
+    for module_path in module_paths_of_references(&refs, &pool_module_names(entry_index)) {
         let Some(dep) = index.get(&module_path) else {
             continue;
         };
@@ -10036,8 +9926,7 @@ fn build_both_closure_edge_index(
         }
     }
     let ref_started = std::time::Instant::now();
-    let ref_paths =
-        reference_pull_paths_for_source(source, &index.source_files, &index.module_graph_facts)?;
+    let ref_paths = reference_pull_paths_for_source(source, index)?;
     resolve_stage_slot_add(|st| st.edge_index_ref_half += ref_started.elapsed().as_nanos());
     let bare_paths = if source_declares_import_lines(&source.content) {
         None
@@ -13164,6 +13053,12 @@ pub struct MultiEntryIndex {
     /// walk so a chain whose prefix is a module path is read as a path, not a bare head. Derived
     /// once from `source_files`, which is fixed for the index's life.
     pool_module_names: std::cell::OnceCell<Rc<HashSet<String>>>,
+    /// Each demanded file's full-parse reference reading (`parsed_file_references_of`), refusals
+    /// included, keyed by workspace-relative path. Both halves of a file's closure row -- its
+    /// module-path references and its bare references -- and its bare-reference admission read
+    /// this one value; the file's bytes and the pool's module names are fixed for the index's life.
+    parsed_references:
+        RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, &'static str>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -15490,7 +15385,7 @@ pub struct ResolveStageNanos {
     // does not say WHICH part of the closure walk costs; the split below is the number
     // that decides whether a per-source content-hash memo suffices or a union graph is
     // needed, because only `load_reference_scan` is a pure function of source content.
-    /// `referenced_module_paths_in_text` — the unmemoized full-content byte scan run once
+    /// `referenced_module_paths_of_source` — the unmemoized full parse and reference walk run once
     /// per (entry, module) pair. The unit the duplication factor multiplies.
     pub load_reference_scan: u128,
     /// Bytes fed to that scan (sum over calls) — lets the scan be priced per byte rather
@@ -25605,7 +25500,7 @@ pub struct SelectedEntryClosureOverlap {
     pub union_modules: usize,
     /// BYTE-weighted counterparts (operator review 2026-07-31). A module-count duplication
     /// factor weights every membership equally, but the repeated unit
-    /// (`referenced_module_paths_in_text`) costs in proportion to CONTENT BYTES, and
+    /// (`referenced_module_paths_of_source`) costs in proportion to CONTENT BYTES, and
     /// closure sizes here span 504 modules down to a median of 2-5. So the module-count
     /// factor and the byte factor are different claims, and only the byte one matches how
     /// the scan actually costs. Both are reported; neither is presented as the other.
@@ -33382,6 +33277,45 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
         }
     }
     names
+}
+
+/// The names a module binds FOR ITSELF: every name it exports (`collect_module_decl_names`, which
+/// already carries each coproduct's variant heads, a single payload-bearing variant included) plus
+/// the TYPE PARAMETERS of its declaration heads. Kept apart from `collect_module_decl_names`
+/// because a type parameter is bound only inside its declaration and is not importable: adding it
+/// there would put `ok` and `S` into the pool's name→module index.
+///
+/// Why each member is here, measured on the closure before this reading existed: a module that
+/// declares `type VisibilityScope = Repo | Org | Network | World` and writes `World` bound it to
+/// `type World` in `gunbc.product.spatial_world`; `Volume`, `Measured` and `ExtentInFrame` did the
+/// same through `std.measure`, `std.realization_schedule` and `std.spatial_frame`; and
+/// `type Result<ok, err>` in `std.error_primitives` bound `ok` to a spark serving witness's
+/// `fn ok`. A name the module itself declares is bound by that declaration, so it can never be a
+/// reference OUT -- the language's own scoping rule, not a heuristic.
+///
+/// An alias TARGET is not a member (`type List<element> = FreeMonoid<element>` declares `List`
+/// and binds `element`; `FreeMonoid` is a reference out), and neither is a record field label.
+/// A function's value parameters are not either: they are binders the reference walk already
+/// scopes, and module-wide they would suppress real references of the same spelling.
+fn module_self_bound_names(module: &Rc<crate::v1_std_core::Node>) -> BTreeSet<String> {
+    use crate::v1_std_core::ParsedModuleItemKind;
+    let mut out: BTreeSet<String> = collect_module_decl_names(module).into_iter().collect();
+    for item in module.children.iter() {
+        let type_params = match item.module_item_kind {
+            ParsedModuleItemKind::ModuleItemTypeDeclaration => item.params.clone(),
+            ParsedModuleItemKind::ModuleItemFunction => {
+                crate::v1_compiler_emit_rust::function_type_params(item.params.clone())
+            }
+            _ => continue,
+        };
+        out.extend(
+            type_params
+                .iter()
+                .filter(|p| !p.name.is_empty())
+                .map(|p| p.name.clone()),
+        );
+    }
+    out
 }
 
 /// SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER: the kernel type names
@@ -41530,61 +41464,92 @@ pub mod census_exclude_derive;
 
 #[cfg(test)]
 mod annotation_erased_scan_projection {
-    //! DESIGN §4c: a semantic pass reads the annotation-erased projection. These pin the
-    //! discriminating direction — prose inside an annotation must not become a reference,
-    //! while identical text outside one must — plus the offset law the span-carrying
-    //! scanner depends on.
+    //! DESIGN §4c: a semantic pass reads the annotation-erased projection. The module-path
+    //! reader takes it from the parse, which routes annotations through their own lexical channel
+    //! and reads string literals as data; these pin the discriminating direction -- a module path
+    //! inside an annotation or a string must not become a reference, while the same path in
+    //! program text must.
 
     use super::*;
 
-    #[test]
-    fn erasure_preserves_byte_offsets_and_lines() {
-        let src = "module m\n// prose ünïcode here\nfn f() -> Bool { true }\n";
-        let erased = annotation_erased_scan_text(src);
-        assert_eq!(erased.len(), src.len(), "byte offsets must stay aligned");
-        assert_eq!(erased.lines().count(), src.lines().count());
-        assert!(!erased.contains("prose"));
-        assert!(erased.contains("fn f()"));
-    }
-
-    #[test]
-    fn a_double_slash_inside_a_string_literal_is_not_an_annotation() {
-        let src = "module m\ndata u: String = \"https://example.invalid/edge\"\nfn g() -> Bool { true }\n";
-        let erased = annotation_erased_scan_text(src);
-        assert!(
-            erased.contains("https://example.invalid/edge"),
-            "string content must survive erasure"
-        );
+    fn paths(src: &str) -> Vec<String> {
+        let module_names: HashSet<String> = ["std.decl_ref".to_string()].into_iter().collect();
+        referenced_module_paths_of_source("fixture/m.dag", src, &module_names)
+            .unwrap_or_else(|e| panic!("fixture must parse: {e}"))
     }
 
     /// The second, independently discovered route into the same defect
     /// (loyal-ram-550, found by writing a dotted module path in an annotation and
     /// watching it become a real dependency edge in the source-loading fixpoint).
-    /// Different scanner, different token shape than the bare-identifier case
-    /// above, so it is its own discriminating input rather than a restatement.
     #[test]
     fn a_dotted_module_path_in_an_annotation_is_not_a_dependency_edge() {
-        let mut index: ModuleSourceIndex = HashMap::new();
-        index.insert(
-            "std.decl_ref".to_string(),
-            Rc::new(v1_compiler_compile::SourceFile {
-                path: "dag/std/decl_ref.dag".to_string(),
-                content: "module std.decl_ref\n".to_string(),
-            }),
-        );
-
-        let annotated = "module m\n// see std.decl_ref for the carrier\nfn f() -> Bool { true }\n";
         assert!(
-            referenced_module_paths_in_text(annotated, &index).is_empty(),
+            paths("module m\n// see std.decl_ref for the carrier\nfn f() -> Bool { true }\n")
+                .is_empty(),
             "a module path named in an annotation must not become a dependency edge"
         );
-
-        let referenced = "module m\nimport std.decl_ref { DeclarationRef }\n";
         assert_eq!(
-            referenced_module_paths_in_text(referenced, &index),
+            paths("module m\nimport std.decl_ref { DeclarationRef }\n"),
             vec!["std.decl_ref".to_string()],
-            "a real reference to the same module must still produce the edge"
+            "an import of the same module must still produce the edge"
         );
+    }
+
+    #[test]
+    fn a_module_path_inside_a_string_literal_is_data_not_an_edge() {
+        assert!(
+            paths("module m\ndata u: String = \"std.decl_ref.f // https://x\"\n").is_empty(),
+            "a string literal is data, not a reference"
+        );
+    }
+
+    #[test]
+    fn a_qualified_reference_in_program_text_is_an_edge() {
+        assert_eq!(
+            paths("module m\nfn g() -> Int { std.decl_ref.f(1) }\n"),
+            vec!["std.decl_ref".to_string()],
+            "a qualified call names its module by longest declared prefix"
+        );
+        assert_eq!(
+            paths("module m\nfn g(x: std.decl_ref.DeclarationRef) -> Bool { true }\n"),
+            vec!["std.decl_ref".to_string()],
+            "a qualified type at a parameter position names its module"
+        );
+        assert_eq!(
+            paths("module m\nfn g() -> Bool\n  uses r: std.decl_ref.Resource\n{\n  true\n}\n"),
+            vec!["std.decl_ref".to_string()],
+            "a qualified resource type in a uses clause names its module"
+        );
+    }
+
+    /// The receiver of a qualified name is not a reference of its own: `std.decl_ref.child.f`
+    /// names `std.decl_ref.child`, and must not also pull the parent module `std.decl_ref`.
+    #[test]
+    fn a_qualified_chain_names_its_longest_module_not_its_parent() {
+        let module_names: HashSet<String> = ["std.decl_ref", "std.decl_ref.child"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            referenced_module_paths_of_source(
+                "fixture/m.dag",
+                "module m\nfn g() -> Int { std.decl_ref.child.f(1) + std.decl_ref.child.k }\n",
+                &module_names,
+            )
+            .unwrap(),
+            vec!["std.decl_ref.child".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_unparseable_file_refuses_rather_than_answering_empty() {
+        let module_names: HashSet<String> = HashSet::new();
+        assert!(referenced_module_paths_of_source(
+            "fixture/m.dag",
+            "module m\nfn (",
+            &module_names
+        )
+        .is_err());
     }
 }
 
