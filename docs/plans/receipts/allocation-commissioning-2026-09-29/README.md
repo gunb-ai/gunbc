@@ -35,3 +35,16 @@ on main; it remains uninstalled. The allocation transport now reads the shared
 host-path authority used by that cut. All four state authentication controls pass
 using the existing allocation branch binary over 68 byte-identical modules under
 6 GiB/no swap. Follow-up host metadata still does not establish free capacity.
+
+The desired workspace designation now selects the already-budgeted srv1-13 cell.
+This is the operator-authorized purpose transfer in source, not a live installation
+or a commissioning receipt. All five CI-purpose controls passed over a
+byte-identical 574-module closure under 6 GiB/no swap, including a real-roster
+control that the selected cell refuses new CI while another fabric cell still
+admits it, with the existing 28 GiB/no-swap envelope retained. Existing CI cleanup
+and workspace owner-settlement routing remain discriminated.
+
+Two prior srv1-13 controller receipts both refused before reservation: one had
+no reservation, the later one could not read the allocation store. Their existence
+is not proof of complete history or sanitation; live commissioning must still
+observe the authorities. No slot or service was changed during this census.

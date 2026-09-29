@@ -1,0 +1,8 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 23 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+PASS workspace_purpose_blocks_direct_ci_launch
+PASS missing_or_foreign_authority_cannot_launch
+PASS withdrawal_preserves_ci_cleanup_without_new_registration
+PASS workspace_recovery_cannot_bypass_owner_settlement
+PASS desired_workspace_transfer_withdraws_only_the_budgeted_demo_cell_from_ci

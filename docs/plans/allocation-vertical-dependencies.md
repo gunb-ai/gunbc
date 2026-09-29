@@ -471,3 +471,11 @@ MemoryMax and no swap. Missing stores do not establish empty history or sanitati
 The socket dependency #12482 has six successful integrated CI checks at
 `6dae9cd38f69827e79e3b7ed09749a0b71504b8d`, but remains open; this tree has not
 silently imported or qualified that later head. The allocation HOLD remains.
+
+
+The first desired workspace cell is now `srv1-13`, reusing its existing budgeted
+28 GiB/no-swap envelope and separate controller charge. This is a source purpose
+transfer, not observed commissioning. Shared executor classification withdraws
+new CI launches there; five controls passed, including a real-roster control and
+preserved prior-attempt cleanup. The offer producer still requires commissioned
+history, sanitation, host/tool/image/access evidence and provider-use policy.
