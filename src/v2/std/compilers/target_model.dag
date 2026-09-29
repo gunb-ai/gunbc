@@ -1136,56 +1136,92 @@ fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn target_lex_rule_literal_step(
-  acc: Outcome<String>,
-  rule: LexRule,
-  token_class: Symbol
-) -> Outcome<String> {
-  match acc {
-    Accepted { value: _, diagnostics: _ } => acc
-    Rejected { diagnostics: _ } =>
-      match rule {
-        TokenRule { token_class: c, pattern: pattern } =>
-          if c == token_class {
-            match pattern {
-              LiteralPattern { text: text } =>
-                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
-              KeywordPattern { text: text } =>
-                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
-              _ =>
-                Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-                  )
+// THE ONE SELECTION RULE FOR A CLASS'S FIXED SPELLING: a token rule for that class whose pattern is
+// a literal or a keyword gives its text; any other rule gives none. The first such rule in the lex
+// wins. Both readers below apply this step and nothing else, so they cannot disagree about which
+// spelling a class has (DESIGN §3): the index, built once when a serializer spells many tokens, and
+// the single lookup, which folds the rules once for one class without building a map.
+fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<String> {
+  match rule {
+    TokenRule { token_class: c, pattern: pattern } =>
+      if c == token_class {
+        lex_pattern_fixed_spelling(pattern: pattern)
+      } else {
+        optional_absent()
+      }
+    TriviaRule { pattern: _ } => optional_absent()
+    AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
+  }
+}
+
+fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
+  match pattern {
+    LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    _ => optional_absent()
+  }
+}
+
+type LexLiteralIndex {
+  by_class: Map<Symbol, String>
+}
+
+fn lex_literal_index(rules: LexRules) -> LexLiteralIndex {
+  match rules {
+    VoidLexRules => LexLiteralIndex { by_class: empty_map() }
+    ModeledLexRules { root: set } =>
+      LexLiteralIndex {
+        by_class: fold_list(
+          xs: set.rules,
+          empty: empty_map(),
+          cons: fn(acc, rule) {
+            match rule {
+              TokenRule { token_class: c, pattern: _ } =>
+                match map_lookup(m: acc, key: c) {
+                  Present { value: _ } => acc
+                  Absent =>
+                    match lex_rule_fixed_spelling(rule: rule, token_class: c) {
+                      Present { value: text } => map_insert(m: acc, key: c, value: text)
+                      Absent => acc
+                    }
                 }
+              TriviaRule { pattern: _ } => acc
+              AnnotationRule { annotation_class: _, pattern: _ } => acc
             }
-          } else {
-            acc
           }
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
+        )
       }
   }
 }
 
-fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+fn lex_literal_indexed(index: LexLiteralIndex, token_class: Symbol) -> Outcome<String> {
+  match map_lookup(m: index.by_class, key: token_class) {
+    Present { value: literal } => outcome_accepted(value: literal)
+    Absent => outcome_rejected(target_lex_rule_literal_not_found_diagnostic(token_class: token_class))
+  }
+}
+
+fn lex_rules_fixed_spelling(rules: LexRules, token_class: Symbol) -> Optional<String> {
   match rules {
-    VoidLexRules =>
-      outcome_rejected(
-        target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-      )
+    VoidLexRules => optional_absent()
     ModeledLexRules { root: set } =>
       fold_list(
         xs: set.rules,
-        empty: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-          )
-        },
+        empty: optional_absent(),
         cons: fn(acc, rule) {
-          target_lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
+          match acc {
+            Present { value: _ } => acc
+            Absent => lex_rule_fixed_spelling(rule: rule, token_class: token_class)
+          }
         }
       )
+  }
+}
+
+fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+  match lex_rules_fixed_spelling(rules: rules, token_class: token_class) {
+    Present { value: literal } => outcome_accepted(value: literal)
+    Absent => outcome_rejected(target_lex_rule_literal_not_found_diagnostic(token_class: token_class))
   }
 }
 
@@ -1439,11 +1475,11 @@ fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) ->
 // its line breaks. It takes the token already decoded: the serializer decodes each token node once to
 // classify it (v2.compiler.target_serialize token_sequence_item_kind) and hands that value here, so a
 // token is not decoded a second time to be spelled.
-fn token_text_from_decoded(target: TargetModel, decoded: ConcreteSyntaxToken) -> Outcome<TargetText> {
+fn token_text_from_decoded(target: TargetModel, lex: LexLiteralIndex, decoded: ConcreteSyntaxToken) -> Outcome<TargetText> {
   match decoded {
     FixedToken { token_class: token_class } =>
       bind_outcome(
-        o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+        o: lex_literal_indexed(index: lex, token_class: token_class),
         f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
       )
     BoundToken { token_class: token_class, binding: binding } =>
