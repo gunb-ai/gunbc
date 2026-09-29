@@ -1116,7 +1116,8 @@ fn mercurial_first_duplicate_changeset_parent(
               parent: first,
             },
           }
-        _ => MercurialReferencesValid
+        MercurialNoParents => MercurialReferencesValid
+        MercurialOneParent { parent: _ } => MercurialReferencesValid
       }
   }
 }
@@ -1146,7 +1147,8 @@ fn mercurial_first_duplicate_file_revision_parent(
               parent: first,
             },
           }
-        _ => MercurialReferencesValid
+        MercurialNoParents => MercurialReferencesValid
+        MercurialOneParent { parent: _ } => MercurialReferencesValid
       }
   }
 }

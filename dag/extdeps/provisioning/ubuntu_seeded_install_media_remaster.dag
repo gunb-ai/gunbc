@@ -269,7 +269,9 @@ fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> String
         Absent => none
         Present { value: d } => Present { value: d.hex as String }
       }
-    _ => none
+    HostCommandFailed { exit_code: _, stderr: _ } => none
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => none
+    HostCommandNotDispatched { reason: _ } => none
   }
 }
 
