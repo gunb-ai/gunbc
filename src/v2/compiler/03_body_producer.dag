@@ -46,7 +46,42 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
           )
         )
       )
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+    TypeNode { connective: Conj } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+    TypeNode { connective: Disj } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+    TypeNode { connective: Cardinality } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_malformed_attachment,
+          n: arrow
+        )
+      )
+    ComputationNode { behavior: _ } =>
       outcome_rejected(
         d: body_producer_diagnostic(
           reason: ^body_producer_reason_malformed_attachment,
@@ -72,7 +107,42 @@ fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
 fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_resolved_shape,
+          n: body
+        )
+      )
+    TypeNode { connective: Conj } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_resolved_shape,
+          n: body
+        )
+      )
+    TypeNode { connective: Disj } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_resolved_shape,
+          n: body
+        )
+      )
+    TypeNode { connective: Arrow } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_resolved_shape,
+          n: body
+        )
+      )
+    TypeNode { connective: Cardinality } =>
+      outcome_rejected(
+        d: body_producer_diagnostic(
+          reason: ^body_producer_reason_resolved_shape,
+          n: body
+        )
+      )
+    TypeNode { connective: Instantiation } =>
       outcome_rejected(
         d: body_producer_diagnostic(
           reason: ^body_producer_reason_resolved_shape,

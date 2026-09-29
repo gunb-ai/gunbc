@@ -414,7 +414,11 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
     TypeNode { connective: c } =>
       match c {
         Atom { identity: _ } => false
-        _ => true
+        Conj => true
+        Disj => true
+        Arrow => true
+        Cardinality => true
+        Instantiation => true
       }
     ComputationNode { behavior: _ } => false
   }
@@ -731,9 +735,14 @@ fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredF
                   }
               }
           }
-        _ => outcome_accepted(value: true)
+        Absent => outcome_accepted(value: true)
       }
-    _ => outcome_accepted(value: true)
+    TypeNode { connective: Atom { identity: _ } } => outcome_accepted(value: true)
+    TypeNode { connective: Conj } => outcome_accepted(value: true)
+    TypeNode { connective: Disj } => outcome_accepted(value: true)
+    TypeNode { connective: Cardinality } => outcome_accepted(value: true)
+    TypeNode { connective: Instantiation } => outcome_accepted(value: true)
+    ComputationNode { behavior: _ } => outcome_accepted(value: true)
   }
 }
 
@@ -1112,7 +1121,12 @@ fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
 fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -1137,7 +1151,12 @@ fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<
           Absent => infer_conj_edge_named_type_for_binding(edge: e, binding: binding)
         }
       })
-    _ => Absent
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -1149,7 +1168,12 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
           infer_conj_named_type_for_binding(domain: domain, binding: binding)
         Absent => Absent
       }
-    _ => Absent
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -1175,7 +1199,8 @@ fn infer_parameter_scope_search(root: Node, reference: Node, binding: Symbol) ->
     match fold(root.children, init: ParameterReferenceNotHere, f: fn(acc, e) {
       match acc {
         ParameterReferenceNotHere => infer_parameter_scope_search(root: e.target, reference: reference, binding: binding)
-        _ => acc
+        ParameterReferenceUnbound => acc
+        ParameterReferenceBound { declared: _ } => acc
       }
     }) {
       ParameterReferenceUnbound =>
@@ -1247,16 +1272,31 @@ fn infer_branch_type_atoms_equal(a: Node, b: Node) -> Bool {
     TypeNode { connective: Atom { identity: id_a } } =>
       match b.kind {
         TypeNode { connective: Atom { identity: id_b } } => id_a == id_b
-        _ => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
-    _ => a == b
+    TypeNode { connective: Conj } => a == b
+    TypeNode { connective: Disj } => a == b
+    TypeNode { connective: Arrow } => a == b
+    TypeNode { connective: Cardinality } => a == b
+    TypeNode { connective: Instantiation } => a == b
+    ComputationNode { behavior: _ } => a == b
   }
 }
 
 fn infer_branch_type_is_bool(type_node: Node) -> Bool {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^bool_node_symbol
-    _ => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1270,7 +1310,12 @@ fn infer_branch_cond_type_is_bool(cond_target: Node, cond_facts: InferredFacts) 
 fn infer_branch_type_is_int(type_node: Node) -> Bool {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_binding_type_int
-    _ => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1566,7 +1611,28 @@ fn infer_match_bool_arm_row(
               match infer_bool_literal_pattern_classify(pattern: pat) {
                 InferBoolLiteralPatternOther =>
                   outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
-                _ =>
+                InferBoolLiteralPatternTrue =>
+                  let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
+                  match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
+                    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
+                    Present { value: body_facts } =>
+                      match infer_match_bool_arm_body_type(
+                        body_target: body_target,
+                        body_facts: body_facts,
+                        scrutinee_type: scrutinee_type
+                      ) {
+                        Violates { diagnostic: d } => outcome_rejected(d)
+                        Holds { value: body_type } =>
+                          Accepted {
+                            value: InferMatchArmRow {
+                              coverage: coverage,
+                              body_type: body_type
+                            },
+                            diagnostics: diagnostics_merge(outer: pd, inner: bd)
+                          }
+                      }
+                  }
+                InferBoolLiteralPatternFalse =>
                   let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
                   match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
@@ -1590,7 +1656,12 @@ fn infer_match_bool_arm_row(
               }
           }
       }
-    _ => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    TypeNode { connective: Atom { identity: _ } } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    TypeNode { connective: Disj } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    TypeNode { connective: Arrow } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    TypeNode { connective: Cardinality } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    TypeNode { connective: Instantiation } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    ComputationNode { behavior: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
   }
 }
 
@@ -1771,7 +1842,32 @@ fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
           wire: op_node,
           operation: canonical_operation_op_add()
         )
-    _ =>
+    TypeNode { connective: Conj } =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+    TypeNode { connective: Disj } =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+    TypeNode { connective: Arrow } =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+    TypeNode { connective: Cardinality } =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+    TypeNode { connective: Instantiation } =>
+      canonical_operation_wire_matches_operation(
+        wire: op_node,
+        operation: canonical_operation_op_add()
+      )
+    ComputationNode { behavior: _ } =>
       canonical_operation_wire_matches_operation(
         wire: op_node,
         operation: canonical_operation_op_add()
@@ -1827,7 +1923,12 @@ fn infer_transform_argument_targets(node: Node) -> List<Node> {
 fn infer_operator_arrow(operator: Node) -> Optional<Node> {
   match operator.kind {
     TypeNode { connective: Arrow } => Present { value: operator }
-    _ => Absent
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -1853,7 +1954,12 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
             }
         }
       })
-    _ => Absent
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -3145,9 +3251,19 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
         && (length(xs: edge.target.children) == 0)
         && (match edge.target.kind {
           TypeNode { connective: Conj } => true
-          _ => false
+          TypeNode { connective: Atom { identity: _ } } => false
+          TypeNode { connective: Disj } => false
+          TypeNode { connective: Arrow } => false
+          TypeNode { connective: Cardinality } => false
+          TypeNode { connective: Instantiation } => false
+          ComputationNode { behavior: _ } => false
         })
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -3186,7 +3302,11 @@ fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
       optional_present(value: integer_decimal_digit_type_node())
     TypeNode { connective: Conj } =>
       optional_present(value: integer_decimal_digits_type_node())
-    _ => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -3245,7 +3365,10 @@ fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEn
         Absent => true
         Present { value: _ } => false
       }
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -3352,7 +3475,12 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 fn infer_arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Arrow } => (edge_label_of(e: edge) == arrow_signature_order_label)
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 

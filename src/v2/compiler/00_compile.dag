@@ -1683,7 +1683,37 @@ fn native_test_eval_one(
                     body: body
                   )
               }
-            _ =>
+            TypeNode { connective: Atom { identity: _ } } =>
+              native_test_entry_refused(
+                module: prepared.module,
+                declaration: declaration,
+                reason: ^native_test_entry_declaration_not_arrow
+              )
+            TypeNode { connective: Conj } =>
+              native_test_entry_refused(
+                module: prepared.module,
+                declaration: declaration,
+                reason: ^native_test_entry_declaration_not_arrow
+              )
+            TypeNode { connective: Disj } =>
+              native_test_entry_refused(
+                module: prepared.module,
+                declaration: declaration,
+                reason: ^native_test_entry_declaration_not_arrow
+              )
+            TypeNode { connective: Cardinality } =>
+              native_test_entry_refused(
+                module: prepared.module,
+                declaration: declaration,
+                reason: ^native_test_entry_declaration_not_arrow
+              )
+            TypeNode { connective: Instantiation } =>
+              native_test_entry_refused(
+                module: prepared.module,
+                declaration: declaration,
+                reason: ^native_test_entry_declaration_not_arrow
+              )
+            ComputationNode { behavior: _ } =>
               native_test_entry_refused(
                 module: prepared.module,
                 declaration: declaration,
