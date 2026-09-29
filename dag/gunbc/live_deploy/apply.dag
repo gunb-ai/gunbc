@@ -762,7 +762,13 @@ fn approval_broker_liveness_poll(
           }
         }
       }
-      _ => read
+      ServeLivenessBodyUnparseable => read
+      ServeLivenessBodyNotAnObject => read
+      ServeLivenessRevisionAbsent => read
+      ServeLivenessRevisionDuplicated { count: _ } => read
+      ServeLivenessRevisionNotAString => read
+      ServeLivenessRevisionMalformed { text: _ } => read
+      ServeLivenessObserved { revision: _ } => read
     }
   }
 }
