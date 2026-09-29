@@ -222,6 +222,10 @@ type Xl2Prerequisite
   | ElseLessIfStatementLowering
   | WildcardMatchArmResolution
   | QualifiedFieldTypeVisibility
+  | MatchEveryArmLowered
+  | EnclosingExpressionLoweredWhole
+  | DataInitializerMatchScrutineeLowering
+  | MatchArmStatementBodyLowering
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -262,6 +266,10 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
   QualifiedFieldTypeVisibility,
+  MatchEveryArmLowered,
+  EnclosingExpressionLoweredWhole,
+  DataInitializerMatchScrutineeLowering,
+  MatchArmStatementBodyLowering,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -285,6 +293,10 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
     QualifiedFieldTypeVisibility => "a QUALIFIED field-position type name reaches the census, so field position is established as a whole, not only for bare names"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
+    MatchEveryArmLowered => "a match lowers every arm, the third and later arms included, in source order"
+    EnclosingExpressionLoweredWhole => "an expression that contains a match or if (an operator, call or record around the block) lowers to itself with the block as one part, not to the block alone or its scrutinee"
+    DataInitializerMatchScrutineeLowering => "a match in a data initializer reads its scrutinee from the scrutinee position, not from an arm"
+    MatchArmStatementBodyLowering => "a match arm whose body is a statement block lowers the whole block, not its first expression"
   }
 }
 
@@ -375,7 +387,24 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),
-      why: "reference-position atoms that lowering rebuilds do not keep their minted occurrence through normalize: record-literal tags and pattern constructors are lowered from their enclosing shell (v2.std.node_query construct_tag_edge), and dotted-spine segments are rebuilt as node_synthetic (v2.std.qualified_name qualified_name_spine_node). Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. Binders and labels are also locus-erased but are outside the XL-2 residual. Design and ranked sites: docs/plans/lowering-occurrence-projection-design.md. The per-module count is the conservation check's, re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. No fix has merged." as NonEmptyStr,
+      why: "Reference-position atoms that lowering rebuilds now carry their authored token's occurrence at the two sites that rebuilt them: record-literal tags and pattern constructors are lowered from their tag token (gunbc#12305, 6c3c84f7f3), and dotted-spine segments from their own tokens (gunbc#12314, b40c7f6067). The occurrence-role producer (gunbc#12317, 3ae62b426c) and the conservation census that consumes it (gunbc#12334, 60ef76cc5a) separate binders, labels and module-header segments -- outside the XL-2 residual -- from references, so `locus_erased` now counts only references that lost their locus; the census sample's rule is one fold checked against its pin at the pin's revision (gunbc#12475, 987c55d26c), and every token after a line comment is located at its real source position since the lexer locus fix (gunbc#12313, 285ea309cf). The per-module count is re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. Design: docs/plans/lowering-occurrence-projection-design.md. The rehearsal's excluded populations stand as gunbc.namespace_xl2_rehearsal_census Xl2ExcludedPopulation HeaderSegmentsNotRefusalSites (no resolve refusal locates at a header segment; counted by the census header_channel) and NestingScopedReferencesUncounted (as that arm states it; the nesting-scope ruling is pending). STILL OUTSTANDING: v2.compiler.occurrence_role dag_name_production_rows types ten binder-bearing productions NameRoleNotYetRead -- param_list, field_decl_block, generic_params, let_expr, fn_literal, arrow_lambda, operation, transport, input_block, output_block -- so a binder under any of them is still counted in locus_erased rather than role-separated, and the arm cannot be delivered until each has its reader." as NonEmptyStr,
+    }
+    MatchEveryArmLowered => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.body_lowering.match_arm_list_structure", decl_name: "a_four_arm_match_lowers_exactly_four_arms"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12383, merge_sha: "8ebd8b671d" as NonEmptyStr, measured_at: "8ebd8b671d" as NonEmptyStr },
+      qualification: "the arm list is read by the one comma-list reader, so a match lowers every arm in source order with each pattern keeping its own body (the_arms_keep_source_order_and_each_pattern_keeps_its_own_body), and a malformed later arm refuses rather than shortening the list (a_malformed_third_arm_refuses_rather_than_shortening_the_list); the MatchLaterArm accepted drop is retired (gunbc.recurring_failure_mode.match_arms_after_the_second_are_dropped_at_v2_body_lowering, rostered by gunbc#12309, 15bcbfa95e). Bounded to the arm LIST: what an arm's body and a data initializer's scrutinee lower to are MatchArmStatementBodyLowering and DataInitializerMatchScrutineeLowering." as NonEmptyStr,
+    }
+    EnclosingExpressionLoweredWhole => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering", decl_name: "expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering"),
+      why: "an operator, call or record expression that contains a match or if (`t && match w {..}`, `h(a: match .., b: s)`) lowers to the block alone or collapses to its scrutinee atom, dropping the enclosing expression and the block's siblings with the module accepted; the `call(..) && match g(..) {..}` operand collapse is the same route. Rostered as a silent drop in accepted modules by gunbc#12309 (15bcbfa95e). No fix has merged." as NonEmptyStr,
+    }
+    DataInitializerMatchScrutineeLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering", decl_name: "data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering"),
+      why: "a match in a data initializer reads its scrutinee from an arm rather than from the scrutinee position, so the authored scrutinee's references never reach resolve and the module is accepted. Rostered by gunbc#12364 (b1b7aea9aa). No fix has merged." as NonEmptyStr,
+    }
+    MatchArmStatementBodyLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering", decl_name: "match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering"),
+      why: "a match arm whose body is a statement block lowers to its first expression, so every later statement of the arm body is dropped silently in an accepted module. Rostered by gunbc#12364 (b1b7aea9aa). No fix has merged." as NonEmptyStr,
     }
   }
 }

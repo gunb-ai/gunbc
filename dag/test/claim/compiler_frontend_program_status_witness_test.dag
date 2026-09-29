@@ -697,8 +697,8 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
-test fn xl2_prerequisites_partition_into_eleven_delivered_and_eight_outstanding() -> Bool {
-  count(xl2_prerequisites) == 19
+test fn xl2_prerequisites_partition_into_twelve_delivered_and_eleven_outstanding() -> Bool {
+  count(xl2_prerequisites) == 23
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
@@ -718,7 +718,11 @@ test fn xl2_prerequisites_partition_into_eleven_delivered_and_eight_outstanding(
     && xl2_outstanding_tracked_by(p: ElseLessIfStatementLowering, decl_name: "else_less_if_statement_has_no_lowered_form")
     && xl2_delivered_by(p: WildcardMatchArmResolution, pr: 12297, merge_sha: "0579afae7f")
     && xl2_outstanding_tracked_by(p: QualifiedFieldTypeVisibility, decl_name: "a_qualified_field_type_mention_is_absent_from_the_census_today")
-    && count(xl2_prerequisites_outstanding()) == 8
+    && xl2_delivered_by(p: MatchEveryArmLowered, pr: 12383, merge_sha: "8ebd8b671d")
+    && xl2_outstanding_tracked_by(p: EnclosingExpressionLoweredWhole, decl_name: "expression_enclosing_a_block_headed_operand_lowers_to_that_block_at_v2_body_lowering")
+    && xl2_outstanding_tracked_by(p: DataInitializerMatchScrutineeLowering, decl_name: "data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering")
+    && xl2_outstanding_tracked_by(p: MatchArmStatementBodyLowering, decl_name: "match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering")
+    && count(xl2_prerequisites_outstanding()) == 11
     && all(xl2_prerequisites_outstanding(),
          p => xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
            || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
@@ -727,16 +731,19 @@ test fn xl2_prerequisites_partition_into_eleven_delivered_and_eight_outstanding(
            || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
            || xl2_label_is(p: p, want: AsCastOperandLowering)
            || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
-           || xl2_label_is(p: p, want: QualifiedFieldTypeVisibility))
+           || xl2_label_is(p: p, want: QualifiedFieldTypeVisibility)
+           || xl2_label_is(p: p, want: EnclosingExpressionLoweredWhole)
+           || xl2_label_is(p: p, want: DataInitializerMatchScrutineeLowering)
+           || xl2_label_is(p: p, want: MatchArmStatementBodyLowering))
     && all(xl2_prerequisites,
          p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable with ten of eighteen delivered
-// -- and would stay so with eighteen of eighteen, because the producer is its own deliverable.
+// XL-2 stays NotDerivable and the producer literal stays Unavailable with twelve of twenty-three delivered
+// -- and would stay so with twenty-three of twenty-three, because the producer is its own deliverable.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 10
+  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 12
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
     && match rehearsal_producer_standing() {
          RehearsalProducerUnavailable { why: _, cause: _ } => true
