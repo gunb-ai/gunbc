@@ -123,14 +123,7 @@ fn first_located_file(ds: NonEmptyDiagnostics) -> String {
 fn first_arrow_in(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    TypeNode { connective: _ } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => first_arrow_in(root: e.target)
-        }
-      })
-    ComputationNode { behavior: _ } =>
+    _ =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
