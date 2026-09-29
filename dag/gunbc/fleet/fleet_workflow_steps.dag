@@ -48,7 +48,7 @@ import gunbc.fleet_release_bins_key {
   release_bins_cache_hit_expression,
   release_bins_build_condition, release_bins_key_step_id, release_bins_lookup_step_id,
   release_bins_cache_step_id, release_bins_outcome_step_id, release_bins_preimage_name,
-  release_bins_manifest_name, release_bins_staging_dir,
+  release_bins_manifest_name, release_bins_staging_dir, release_bins_download_path_expression,
 }
 import gunbc.ci_spec {
   ci_release_bins_archive_name,
@@ -442,7 +442,10 @@ fn ci_release_bins_download_step() -> Step {
     id: none,
     uses: download_artifact_action,
     with: Present {
-      value: [kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name))]
+      value: [
+        kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name)),
+        kv(key: "path", value: yaml_string(s: release_bins_download_path_expression())),
+      ]
     },
     env: none,
     if_condition: none,

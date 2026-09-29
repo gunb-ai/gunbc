@@ -11416,14 +11416,15 @@ mod pure_producer_share_tests {
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let roster = |rows: &str| {
-            std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let roster = |rows: &str| {
+                std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
                 .expect("roster source")
                 .split("data unimported_bare_provider_dispositions:")
                 .next()
@@ -11432,56 +11433,58 @@ mod pure_producer_share_tests {
                 + "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n"
                 + rows
                 + "]\n"
-        };
-        let row = |file: &str, name: &str, standing: &str| {
-            format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
-        };
-        let a_active = row("dag/a.dag", "f", "ActiveDebt");
-        let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
-        let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
-        let b_active = row("dag/b.dag", "g", "ActiveDebt");
-        let read = |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
-        let base = read(roster(&a_active));
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&a_active)))
-                .expect("verdict"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
-                .expect("verdict"),
-            vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
-        );
-        // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
-        // under either cause is a typed disposition and admits; dropping the row instead refuses.
-        for retired in [&a_fixed, &a_deleted] {
+            };
+            let row = |file: &str, name: &str, standing: &str| {
+                format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
+            };
+            let a_active = row("dag/a.dag", "f", "ActiveDebt");
+            let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
+            let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
+            let b_active = row("dag/b.dag", "g", "ActiveDebt");
+            let read =
+                |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
+            let base = read(roster(&a_active));
             assert_eq!(
                 judge
-                    .judge_edit(&base, &read(roster(retired)))
+                    .judge_edit(&base, &read(roster(&a_active)))
                     .expect("verdict"),
                 Vec::<String>::new()
             );
-        }
-        assert_eq!(
-            judge
-                .judge_edit(
-                    &read(roster(&format!("{a_active}{b_active}"))),
-                    &read(roster(&a_active))
-                )
-                .expect("verdict"),
-            vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
-                .expect("verdict"),
-            vec![
+            assert_eq!(
+                judge
+                    .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
+                    .expect("verdict"),
+                vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
+            );
+            // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
+            // under either cause is a typed disposition and admits; dropping the row instead refuses.
+            for retired in [&a_fixed, &a_deleted] {
+                assert_eq!(
+                    judge
+                        .judge_edit(&base, &read(roster(retired)))
+                        .expect("verdict"),
+                    Vec::<String>::new()
+                );
+            }
+            assert_eq!(
+                judge
+                    .judge_edit(
+                        &read(roster(&format!("{a_active}{b_active}"))),
+                        &read(roster(&a_active))
+                    )
+                    .expect("verdict"),
+                vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
+                    .expect("verdict"),
+                vec![
                 "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
                     .to_string()
             ]
-        );
+            );
+        });
     }
 
     /// THE REAL BASE READ, END TO END: the roster at `HEAD` is read through the `.dag`
@@ -11491,44 +11494,46 @@ mod pure_producer_share_tests {
     /// roster-editing change; the fixture-coproduct control beside it cannot fail for that reason.
     #[test]
     fn a_retirement_against_the_real_base_read_admits_and_a_growth_refuses() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-            .expect("the roster exists at HEAD and decodes as BaseRosterShown");
-        let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
-        let base = read(&base_source);
-        let active = "standing: ActiveDebt }";
-        assert!(
-            base_source.contains(active),
-            "the base roster carries active debt"
-        );
-        let retired =
-            base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
-        assert_eq!(
-            judge.judge_edit(&base, &read(&retired)).expect("verdict"),
-            Vec::<String>::new()
-        );
-        let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
-        assert!(
-            base_source.contains(marker),
-            "the roster's data row opens as expected"
-        );
-        let grown = base_source.replacen(
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
+                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
+            let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
+            let base = read(&base_source);
+            let active = "standing: ActiveDebt }";
+            assert!(
+                base_source.contains(active),
+                "the base roster carries active debt"
+            );
+            let retired =
+                base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
+            assert_eq!(
+                judge.judge_edit(&base, &read(&retired)).expect("verdict"),
+                Vec::<String>::new()
+            );
+            let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
+            assert!(
+                base_source.contains(marker),
+                "the roster's data row opens as expected"
+            );
+            let grown = base_source.replacen(
             marker,
             &format!("{marker}  UnimportedBareProviderDisposition {{ file: \"dag/zz_new.dag\", name: \"g\", standing: ActiveDebt }},\n"),
             1,
         );
-        let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
-        assert!(
-            refused
-                .iter()
-                .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
-            "{refused:?}"
-        );
+            let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
+            assert!(
+                refused
+                    .iter()
+                    .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
+                "{refused:?}"
+            );
+        });
     }
 
     /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a

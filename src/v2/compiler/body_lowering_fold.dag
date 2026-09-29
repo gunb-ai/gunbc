@@ -32,7 +32,6 @@ import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   dag_grammar_binary_expr_expr,
   dag_grammar_unary_expr_expr,
-  dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
   dag_lex_keyword_symbol,
@@ -136,6 +135,7 @@ import v2.std.node_query {
   construct_node,
   construct_tag_optional,
   field_projection_node,
+  field_projection_optional,
   find_named_child,
   positional_payload_field_name,
   repeated_name_edges,
@@ -496,25 +496,6 @@ fn body_lower_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
-fn body_lower_canonical_type_binding_optional(sym: Symbol) -> Optional<Symbol> {
-  if sym == dag_int_type_binding() {
-    optional_present(value: sym)
-  } else if symbol_lexeme(sym: sym) == "Int" {
-    optional_present(value: dag_int_type_binding())
-  } else if symbol_lexeme(sym: sym) == "Bool" {
-    optional_present(value: ^bool_node_symbol)
-  } else {
-    optional_absent()
-  }
-}
-
-fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
-  match body_lower_canonical_type_binding_optional(sym: sym) {
-    Present { value: canonical } => canonical
-    Absent => sym
-  }
-}
-
 // THE SOURCE IS THE AUTHORED TYPE NAME, and it is a parameter rather than an omission. This atom is
 // the lowered form of a type the author wrote -- `Bool` in `fn f() -> Bool` -- so it stands at that
 // text's position and keeps that text's occurrence. Built synthetic, it was a node an
@@ -524,7 +505,7 @@ fn body_lower_resolved_type_binding(sym: Symbol) -> Symbol {
 // be the plausible guess DESIGN section 5 forbids.
 fn body_lower_type_atom_node(sym: Symbol, source: Node) -> Node {
   node_lowered_from(
-    kind: TypeNode { connective: Atom { identity: body_lower_resolved_type_binding(sym: sym) } },
+    kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     source: source
   )
@@ -554,6 +535,13 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<BodyLowering> {
 // first -- must pass it through as it passes an Arrow or a Transform; the first-atom fallback
 // they otherwise take would answer the construct's tag and drop its fields, which is exactly how
 // `data d: R = R { .. }` reached the graft as the atom R before this arm.
+// A FIELD PROJECTION IS LOWERED SUBSTRATE, for the construct's reason. The postfix chain fold
+// answers `f(x).a` as v2.std.node_query field_projection_node, a two-edge Conj (base, field), and
+// until this arm nothing above the postfix reduce recognised it: an operator operand, a paren
+// group or a unary operand re-read the Conj as unlowered, and the first-child descent answered its
+// BASE -- `p + g(x).a` lowered to `p + g(x)` with no diagnostic, silent wrongness below the ladder
+// (DESIGN 4b). The producer and this predicate now agree on one shape, field_projection_optional,
+// the same reader the projection's consumers use.
 // A LOWERED INT LITERAL IS SUBSTRATE, AND ITS PAYLOAD IS NOT A NAME. body_lower_int_literal_with_magnitude_optional
 // produces an Atom(dag_token_int_literal) carrying the integer authority's decimal digit list as
 // its magnitude field, and that list is a FreeMonoid cons spine: the same head/tail shape
@@ -570,6 +558,7 @@ fn body_lower_is_core_substrate(node: Node) -> Bool {
       (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
         || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
 
@@ -3794,9 +3783,10 @@ fn body_lower_operand_ref_acceptable_read(node: Node) -> OperandRefRead {
   }
 }
 
-// A REFUSED OPERAND IS THIS READER'S REFUSAL. The literal and pattern readers below are deep
-// first-match searches, so reaching them for an operand the operator reader refused answered the
-// operand's first atom: `b && (u)` lowered to `b`. They stay the readers for what is not an operand.
+// A REFUSED OPERAND IS THIS READER'S REFUSAL. Reaching a deep first-match search for an operand the
+// operator reader refused answered the operand's first atom: `b && (u)` lowered to `b`. The last
+// arm is body_lower_value_sole_atom_optional, not a search: a capture that is not itself one atom
+// answers Absent and the caller refuses (unsupported_form).
 fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
   match body_lower_operand_ref_acceptable_read(node: captured) {
     OperandRefAbsent =>
@@ -3806,9 +3796,9 @@ fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
           match body_lower_literal_int_atom_optional(node: captured) {
             Present { value: lit } => OperandRefLowered { lowered: lit }
             Absent =>
-              match body_lower_pattern_first_atom_optional(node: captured) {
-                Present { value: first } =>
-                  if body_lower_atom_is_keyword_token(node: first) { OperandRefAbsent } else { OperandRefLowered { lowered: first } }
+              match body_lower_value_sole_atom_optional(node: captured) {
+                Present { value: leaf } =>
+                  if body_lower_atom_is_keyword_token(node: leaf) { OperandRefAbsent } else { OperandRefLowered { lowered: leaf } }
                 Absent => OperandRefAbsent
               }
           }
@@ -4277,8 +4267,8 @@ fn body_lower_function_value_type_var_atom(tv: Symbol) -> Node {
 // THE DOMAIN AND ITS DECLARED ORDER COME OUT OF THE ONE PARAMETER-LIST MINT (v2.std.anonymous_binder
 // anonymous_binder_mint_parameter_list), exactly as a named fn's do: every binder the author spelled
 // `_` is relabelled `<anonymous-parameter-N>` by its slot, every other binder keeps its name, and the
-// labels' authored order is carried beside the domain, because the domain is a Conj sorted by label
-// and cannot carry it. The minted labels then key both the domain edge and its fresh type parameter.
+// labels' authored order is carried beside the domain, because the domain is a Conj -- a set of
+// labelled binders that canonicalization sorts by label -- and cannot carry it. The minted labels then key both the domain edge and its fresh type parameter.
 // The mint relabels Named edges and passes any other edge through unchanged, so every edge here is
 // Named; one that were not would be kept in the domain as is, where v2.std.node edges_conform refuses
 // a Positional edge in a record -- loudly.
@@ -5314,7 +5304,8 @@ fn body_lower_postfix_chain_lowered_from_steps(
     Absent =>
       match body_lower_operand_ref_optional(node: head_node) {
         Absent =>
-          if body_lower_postfix_steps_carry_cast(steps: steps) {
+          if body_lower_postfix_steps_carry_cast(steps: steps)
+            || body_lower_postfix_head_is_call(head_node: head_node) {
             body_lower_postfix_cast_chain_computed_head(head_node: head_node, steps: steps, source: node)
           } else {
             outcome_accepted(value: optional_absent())
@@ -5329,11 +5320,23 @@ fn body_lower_postfix_chain_lowered_from_steps(
   }
 }
 
-// A CHAIN CARRYING A CAST NEVER DECLINES. Every arm after this door reads the primary and ignores
+// A CHAIN CARRYING A CAST, OR HEADED BY A CALL, NEVER DECLINES. Every arm after this door reads the primary and ignores
 // the suffixes, so declining `g(v: x) as T` answered it with `g(v: x)` and dropped the cast --
 // Accepted with no cast node (measured). A head the operand reader does not read (a call, a group)
 // is lowered as the primary expression it is; a head that does not lower refuses with that
 // lowering's own diagnostic.
+// A CALL HEAD takes the same path for the same reason (gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, the call-then-field residue): on the top-down walker
+// route `f(x).a.b` still carries its head as a raw primary with its call suffix, which the operand
+// reader does not read, so the door declined and the chain fell to arms that refused it
+// (operator_operand_unread, warm-bear-132's c02590) or kept the call alone.
+fn body_lower_postfix_head_is_call(head_node: Node) -> Bool {
+  match body_lower_primary_call_suffix_optional(root: head_node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn body_lower_postfix_cast_chain_computed_head(
   head_node: Node,
   steps: List<PostfixStep>,
@@ -5568,14 +5571,42 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
 // The same ordering as body_lower_operand_ref_optional: an int literal is read whole before the
 // branded-atom arm, which would rebuild it without its magnitude (the postfix reduce reaches
 // this reader for every literal operand).
-fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: node)
+// ONE ATOM, CLASSIFIED ONCE. A node that IS a single atom (after optional elements) is read here: an
+// int literal with its magnitude, a branded binding, `true`/`false`, or a reference. Both readers
+// below call it, so the classification has one home.
+fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
   match dag_node_is_int_literal_atom(node: stripped) {
     true => body_lower_int_literal_with_magnitude_optional(node: stripped)
     false =>
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
       optional_present(value: body_lower_param_ref_atom(source: stripped, identity: binding))
+    Absent =>
+      match node_atom_identity_optional(node: stripped) {
+        Present { value: id } =>
+          if dag_lex_token_symbol(sym: id) {
+            if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
+              optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
+            } else {
+              body_lower_int_literal_with_magnitude_optional(node: stripped)
+            }
+          } else {
+            optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
+          }
+        Absent => optional_absent()
+      }
+  }
+  }
+}
+
+// THE PATTERN READER: an atom, or the first atom a pattern capture's children yield. A pattern
+// capture such as `A { x: v }` is a sequence whose first atom IS its tag, so the child search is this
+// reader's contract (the pattern claims of v2.test.claim.body_lowering.single_arm_match and
+// v2.test.manual.body_lowering_match go red without it).
+fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_atom_node_lowered_optional(stripped: stripped) {
+    Present { value: atom } => optional_present(value: atom)
     Absent =>
       match parse_production_emitted_identity_optional(node: stripped) {
         Present { value: emitted } =>
@@ -5594,27 +5625,41 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
               }
           }
         Absent =>
-          match node_atom_identity_optional(node: stripped) {
-            Present { value: id } =>
-              if dag_lex_token_symbol(sym: id) {
-                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                  optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
-                } else {
-                  body_lower_int_literal_with_magnitude_optional(node: stripped)
-                }
-              } else {
-                optional_present(value: body_lower_param_ref_atom(source: stripped, identity: id))
-              }
-            Absent =>
-              fold(stripped.children, init: Absent, f: fn(acc, e) {
-                match acc {
-                  Present { value: _ } => acc
-                  Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
-                }
-              })
-          }
+          fold(stripped.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_pattern_leaf_atom_optional(node: e.target)
+            }
+          })
       }
   }
+}
+
+// THE VALUE READER'S ATOM: the node is its atom only if, through optional elements, production
+// shells and empty-tail sequences (an operator-free tower level, the peel
+// body_lower_find_control_form_optional also makes), it IS one atom; anything with more structure is
+// Absent, so the caller refuses. The primary,
+// postfix and operand fall-backs used the pattern reader's child search here, and answered a map
+// literal `{ "k": v }` with its `{` token and a qualified constructor `a.b.T { f: v }` with `a`
+// (gunbc.recurring_failure_mode unrecognized_primary_expression_lowers_to_its_first_atom_at_v2_body_lowering).
+fn body_lower_value_sole_atom_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: node)
+  match body_lower_atom_node_lowered_optional(stripped: stripped) {
+    Present { value: atom } => optional_present(value: atom)
+    Absent =>
+      match parse_production_captured_child_optional(node: stripped) {
+        Present { value: captured } => body_lower_value_sole_atom_optional(node: captured)
+        Absent =>
+          match sugar_sequence_pair_optional(node: stripped) {
+            Present { value: pair } =>
+              if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+                body_lower_value_sole_atom_optional(node: pair.left)
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
+      }
   }
 }
 
@@ -6445,6 +6490,26 @@ fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node>
   }
 }
 
+// THE VALUE IS WHAT PRECEDES `in`, READ OFF THE GRAMMAR'S POSITIONS. `let NAME = value in body`: what
+// follows `=` is sequence(value, sequence(`in`, body)), so the value is the left element when the
+// right one opens with `in`. The reader used to hand back the whole of what follows `=` -- value AND
+// continuation -- and relied on a deep first-atom search to pull the value out of it, which a value
+// reader that refuses what is not one atom rightly does not do.
+fn body_lower_let_in_value_before_in(after_eq: Node) -> Node {
+  match sugar_sequence_pair_optional(node: after_eq) {
+    Present { value: pair } =>
+      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.right)) {
+        Present { value: tail } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: tail.left)) {
+            Present { value: id } => if id == ^dag_token_kw_in { pair.left } else { after_eq }
+            Absent => after_eq
+          }
+        Absent => after_eq
+      }
+    Absent => after_eq
+  }
+}
+
 fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
   match body_lower_let_in_prefix_before_in_optional(captured: captured) {
     Absent => Absent
@@ -6457,7 +6522,7 @@ fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
               match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
                 Present { value: id } =>
                   if id == ^dag_token_eq {
-                    optional_present(value: right)
+                    optional_present(value: body_lower_let_in_value_before_in(after_eq: right))
                   } else {
                     body_lower_let_in_value_capture_optional(captured: right)
                   }
@@ -7715,7 +7780,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: Present { value: spine }, diagnostics: _ } => outcome_accepted(value: spine)
         Accepted { value: Absent, diagnostics: _ } =>
-      match body_lower_pattern_first_atom_optional(node: captured) {
+      match body_lower_value_sole_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
@@ -8051,7 +8116,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             d: body_lower_diagnostic(reason: ^body_lowering_reason_caret_symbol_not_lowered, n: caret)
           )
         Absent =>
-      match body_lower_pattern_first_atom_optional(node: captured) {
+      match body_lower_value_sole_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {

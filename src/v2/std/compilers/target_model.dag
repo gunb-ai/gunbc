@@ -148,9 +148,13 @@ import v2.std.witness {
 }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
   find_named_child,
+  named_child_lookup,
   node_labeled_child_edges,
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
@@ -678,6 +682,72 @@ fn produced_decl_signature_segments_tokens(
   )
 }
 
+// A FUNCTION ITEM'S PARAMETERS, IN DECLARED ORDER. The item is called positionally, so its emitted
+// parameter list is the Arrow's declared order (v2.std.arrow_signature arrow_declared_parameter_order,
+// the one reader of ^arrow_signature_order_edge) -- never the domain Conj's stored sequence, which is
+// a set's storage and which canonicalization sorts by label. The domain is read only for MEMBERSHIP:
+// each declared label selects its binder edge, so the parameter's type still comes from the domain.
+// A domain that binds named parameters but carries no readable order refuses typed; there is no
+// domain-order fallback. A domain that binds no name -- a function TYPE's positional product, or a
+// lone parameter type (produced_decl_function_type_domain_edges) -- has no labels to order: its
+// positional edges are the sequence, so its children pass through. A domain mixing named and
+// positional edges is neither and refuses as malformed rather than dropping the positional ones.
+fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>> {
+  match arrow_domain_binder_names(arrow: arrow) {
+    Empty => outcome_accepted(value: domain.children)
+    Cons { head: _, tail: _ } =>
+      match arrow_declared_parameter_order(arrow: arrow) {
+        ArrowParameterOrderDeclared { labels: labels } =>
+          if length(xs: labels) != length(xs: domain.children) {
+            outcome_rejected(
+              d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+            )
+          } else {
+            fold_list(
+              xs: labels,
+              empty: outcome_accepted(value: Empty),
+              cons: fn(acc, label) {
+                bind_outcome(
+                  o: acc,
+                  f: fn(so_far) {
+                    bind_outcome(
+                      o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
+                      f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        ArrowParameterOrderAbsent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
+          )
+        ArrowParameterOrderMalformed =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+          )
+      }
+  }
+}
+
+// The membership read: the one domain binder a declared label names. arrow_declared_parameter_order
+// admits only an order that is a permutation of the domain's binders, so a missing or repeated
+// binder here is a wall the reader already holds; it still refuses typed rather than dropping one.
+fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outcome<Edge> {
+  match named_child_lookup(root: domain, name: label) {
+    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Named { name: label }, target: t })
+    NamedChildMissing =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
+    NamedChildAmbiguous =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
+  }
+}
+
 fn produced_decl_subject_from_name_and_arrow(
   fn_name: Symbol,
   arrow: Node
@@ -686,11 +756,16 @@ fn produced_decl_subject_from_name_and_arrow(
     Present { value: domain } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
         Present { value: codomain } =>
-          outcome_accepted(
-            value: ProducedDeclSignatureSubject {
-              fn_name: fn_name,
-              params: domain.children,
-              codomain: codomain
+          bind_outcome(
+            o: produced_decl_ordered_params(arrow: arrow, domain: domain),
+            f: fn(params) {
+              outcome_accepted(
+                value: ProducedDeclSignatureSubject {
+                  fn_name: fn_name,
+                  params: params,
+                  codomain: codomain
+                }
+              )
             }
           )
         Absent =>
@@ -15210,7 +15285,7 @@ fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
 // A RETURNED CLOSURE'S PARAMETERS, IN DECLARED ORDER. The emitted closure is applied positionally,
 // so its parameter list is the Arrow's declared order (v2.std.compilers.body_lowering
 // arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
-// Conj's stored sequence, which is sorted by label and is not the signature (#12361). Scope
+// Conj's stored sequence, which canonicalization sorts by label and is not the signature (#12361). Scope
 // MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
 // binds names but carries no readable order refuses typed, exactly as eval's
 // eval_param_labels_in_declared_order does: there is no domain-order fallback. A domain that binds
