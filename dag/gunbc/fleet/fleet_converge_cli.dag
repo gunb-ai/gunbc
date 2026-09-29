@@ -33,7 +33,7 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
+import gunbc.host_converge { HostConverge, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
 import gunbc.host_effect {
   HostOs,
   ProvisionCodexRuntime,
@@ -837,6 +837,20 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
   }
 }
 
+fn converge_cli_receipt_for_listed_host(hosts: List<HostConverge>, host: String) -> ConvergeCliReceipt {
+  match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
+    Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
+    Absent =>
+      ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present { value: absent_converge_target_cause(host: host) },
+      }
+  }
+}
+
 fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
   match fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
@@ -878,30 +892,8 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
                 reason: Present { value: SparkPreEnrollment { host: host } },
               }
           }
-        ConvergeKnobFrontier =>
-          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
-          Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
-          Absent =>
-            ConvergeCliReceipt {
-              host: host,
-              applied: 0,
-              drifted: 0,
-              verdict: Absent,
-              reason: Present { value: absent_converge_target_cause(host: host) },
-            }
-          }
-        ConvergeOutsideFleet =>
-          match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
-          Present { value: hc } => converge_cli_receipt_for_host(host_converge: hc)
-          Absent =>
-            ConvergeCliReceipt {
-              host: host,
-              applied: 0,
-              drifted: 0,
-              verdict: Absent,
-              reason: Present { value: absent_converge_target_cause(host: host) },
-            }
-          }
+        ConvergeKnobFrontier => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
+        ConvergeOutsideFleet => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
       }
   }
 }

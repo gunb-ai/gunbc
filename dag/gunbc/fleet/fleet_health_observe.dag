@@ -56,6 +56,7 @@ import extdeps.bmc.redfish_telemetry {
   RedfishHealthWarning,
   RedfishLogEntry,
   RedfishOtherReading,
+  RedfishReading,
   RedfishReadingMissing,
   RedfishReadingNull,
   RedfishReadingValue,
@@ -249,29 +250,21 @@ fn fan_sample_of(p: RedfishTelemetryPoint) -> FanTachSample {
   }
 }
 
+fn temperature_reading_sample(reading: RedfishReading) -> TemperatureSample {
+  match reading {
+    RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
+    RedfishReadingNull => TemperatureReadingUnavailable
+    RedfishReadingMissing => TemperatureReadingUnavailable
+  }
+}
+
 fn temperature_sample_of(p: RedfishTelemetryPoint) -> TemperatureSample {
   match p.state {
     RedfishStateDisabled => TemperatureSensorDisabled
-    RedfishStateEnabled => match p.reading {
-      RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
-      RedfishReadingNull => TemperatureReadingUnavailable
-      RedfishReadingMissing => TemperatureReadingUnavailable
-    }
-    RedfishStateAbsent => match p.reading {
-      RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
-      RedfishReadingNull => TemperatureReadingUnavailable
-      RedfishReadingMissing => TemperatureReadingUnavailable
-    }
-    RedfishStateOther { state: _ } => match p.reading {
-      RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
-      RedfishReadingNull => TemperatureReadingUnavailable
-      RedfishReadingMissing => TemperatureReadingUnavailable
-    }
-    RedfishStateUnreported => match p.reading {
-      RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
-      RedfishReadingNull => TemperatureReadingUnavailable
-      RedfishReadingMissing => TemperatureReadingUnavailable
-    }
+    RedfishStateEnabled => temperature_reading_sample(reading: p.reading)
+    RedfishStateAbsent => temperature_reading_sample(reading: p.reading)
+    RedfishStateOther { state: _ } => temperature_reading_sample(reading: p.reading)
+    RedfishStateUnreported => temperature_reading_sample(reading: p.reading)
   }
 }
 

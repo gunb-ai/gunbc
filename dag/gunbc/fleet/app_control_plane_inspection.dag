@@ -168,29 +168,19 @@ fn decode_hook_url(raw: NonEmptyStr) -> HookUrlDecode {
     Present { value: url } => match url.scheme {
       Https => HookUrlDecoded { url: url }
       Http => HookUrlDecoded { url: url }
-      Tftp => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
-      File => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
-      Ftp => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
-      Javascript => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
-      Data => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
-      Vbscript => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
-      Mailto => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-      }
+      Tftp => hook_url_scheme_refused(raw: raw)
+      File => hook_url_scheme_refused(raw: raw)
+      Ftp => hook_url_scheme_refused(raw: raw)
+      Javascript => hook_url_scheme_refused(raw: raw)
+      Data => hook_url_scheme_refused(raw: raw)
+      Vbscript => hook_url_scheme_refused(raw: raw)
+      Mailto => hook_url_scheme_refused(raw: raw)
     }
   }
+}
+
+fn hook_url_scheme_refused(raw: NonEmptyStr) -> HookUrlDecode {
+  HookUrlRefused { reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr }
 }
 
 // ---------------------------------------------------------------------------------------------
