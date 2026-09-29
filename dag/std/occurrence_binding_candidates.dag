@@ -2521,11 +2521,12 @@ fn resolve_type_reference_containment_binding(
         inputs: inputs,
         reference: reference,
       )
-    _ =>
-      ReferenceBindingProjectionWrongCategory {
-        occurrence: reference.occurrence,
-        observed: reference.category,
-      }
+    LexicalValueOccurrence => ReferenceBindingProjectionWrongCategory { occurrence: reference.occurrence, observed: reference.category }
+    CallableOccurrence => ReferenceBindingProjectionWrongCategory { occurrence: reference.occurrence, observed: reference.category }
+    ConstructorOccurrence => ReferenceBindingProjectionWrongCategory { occurrence: reference.occurrence, observed: reference.category }
+    NamespaceSegmentOccurrence => ReferenceBindingProjectionWrongCategory { occurrence: reference.occurrence, observed: reference.category }
+    FieldOccurrence => ReferenceBindingProjectionWrongCategory { occurrence: reference.occurrence, observed: reference.category }
+    MethodOccurrence => ReferenceBindingProjectionWrongCategory { occurrence: reference.occurrence, observed: reference.category }
   }
 }
 
@@ -2990,7 +2991,12 @@ fn section13_population_law_roster_adjudicate(
                     observations: observations,
                     required_head: required_head,
                   )
-                _ => verdict
+                Section13PopulationLawRosterRefusedDuplicateLaw { law: _ } => verdict
+                Section13PopulationLawRosterRefusedUncoveredLaw { law: _ } => verdict
+                Section13PopulationLawRosterRefusedPositionalModulePath { receipt: _ } => verdict
+                Section13PopulationLawRosterRefusedMissingObservation { receipt: _ } => verdict
+                Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: _ } => verdict
+                Section13PopulationLawRosterRefusedDeferredMissingTrigger => verdict
               },
           )
       }
@@ -3006,7 +3012,12 @@ fn section13_population_law_roster_denominator_holds(
     required_head: required_head,
   ) {
     Section13PopulationLawRosterHolds => true
-    _ => false
+    Section13PopulationLawRosterRefusedDuplicateLaw { law: _ } => false
+    Section13PopulationLawRosterRefusedUncoveredLaw { law: _ } => false
+    Section13PopulationLawRosterRefusedPositionalModulePath { receipt: _ } => false
+    Section13PopulationLawRosterRefusedMissingObservation { receipt: _ } => false
+    Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: _ } => false
+    Section13PopulationLawRosterRefusedDeferredMissingTrigger => false
   }
 }
 

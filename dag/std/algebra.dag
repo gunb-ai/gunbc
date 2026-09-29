@@ -383,7 +383,16 @@ fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
       Absent =>
         match p {
           CallableOf { params: _, return_type: _ } => StepPositionScan { next: acc.next + 1, found: Present { value: acc.next } }
-          _ => StepPositionScan { next: acc.next + 1, found: none }
+          ReceiverSelf => StepPositionScan { next: acc.next + 1, found: none }
+          ReceiverElement => StepPositionScan { next: acc.next + 1, found: none }
+          ReceiverKey => StepPositionScan { next: acc.next + 1, found: none }
+          ReceiverValue => StepPositionScan { next: acc.next + 1, found: none }
+          NamedTemplate { name: _ } => StepPositionScan { next: acc.next + 1, found: none }
+          ContainerOf { source: _, element: _ } => StepPositionScan { next: acc.next + 1, found: none }
+          OptionalOf { inner: _ } => StepPositionScan { next: acc.next + 1, found: none }
+          WitnessOf { inner: _ } => StepPositionScan { next: acc.next + 1, found: none }
+          TupleOf { first: _, second: _ } => StepPositionScan { next: acc.next + 1, found: none }
+          AlgebraTypeVariable { id: _ } => StepPositionScan { next: acc.next + 1, found: none }
         }
     }
   })
