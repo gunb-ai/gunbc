@@ -1,5 +1,6 @@
 module v1.compiler.infer_resolve
 
+import std.decl_ref { DeclarationRef }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan, container_param_name }
@@ -48,7 +49,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  TypeEnv, TypeBinding, declaration_ref_of_type_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
   lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -1231,6 +1232,43 @@ fn has_duplicate_type_param_name(names: List<String>) -> Bool {
   )
 }
 
+// A DECLARATION FIELD'S TYPE REFERENCE RECORDS THE DECLARATION RESOLVE BOUND IT TO. The parser
+// (v1.compiler.parse field_to_child_node) stores the authored reference as the field's `inferred`.
+// resolve_item_types resolved that reference and kept only its properties, so the typed tree's
+// field reference named no declaration and every consumer re-derived one by spelling in its own
+// scope (gunbc.recurring_failure_mode resolved_value_computed_then_discarded_for_the_authored_one).
+// IDENTITY GOES ON Node.declaration, NEVER ON `inferred`. Measured: writing the declaration into the
+// reference's `inferred` slot broke the generation-2 compiler (derives vanished; rustc E0369 and
+// E0373), because consumers read `inferred` as the resolved STRUCTURE and chased it into the
+// declaration body. Identity and structure are two facts, so they have two slots
+// (neat-boar-16 ruling, 2026-09-29).
+// The identity is the resolver's own ident-keyed binding (lookup_type_for) in the item's scope, the
+// scope the reference was authored in, joined through the one derivation
+// (v1.compiler.infer_env declaration_ref_of_type_node). A kernel spelling names no corpus
+// declaration and is left as authored.
+fn field_inferred_with_declaration(field: Node, env: TypeEnv) -> InferredNode? {
+  match field.inferred {
+    Present { value: Resolved { node: authored } } =>
+      if authored.declaration != none || is_kernel_type(name: authored_name(env: env, node: authored)) {
+        field.inferred
+      } else {
+        match lookup_type_for(env: env, node: authored) {
+          Present { value: bound } =>
+            match declaration_ref_of_type_node(rt: bound, source_indices: env.source_indices, env: env) {
+              Present { value: d } => Present { value: Resolved { node: node_with_declaration(n: authored, declaration: d) } }
+              Absent => field.inferred
+            }
+          Absent => field.inferred
+        }
+      }
+    _ => field.inferred
+  }
+}
+
+fn node_with_declaration(n: Node, declaration: DeclarationRef) -> Node {
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: Present { value: declaration }, expr_data: n.expr_data }
+}
+
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResolveResult {
   let tp_names = if item.connective != NoConnective && item.transport == none {
     item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
@@ -1295,7 +1333,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
       ItemResolveResult {
-        item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
+        item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: field_inferred_with_declaration(field: child, env: env), return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
         diagnostics: type_diags
       }
     )
@@ -1306,7 +1344,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
         let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
         let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
         ItemResolveResult {
-          item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field.inferred, return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
+          item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field_inferred_with_declaration(field: field, env: env), return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
           diagnostics: type_diags
         }
       )

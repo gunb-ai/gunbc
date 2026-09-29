@@ -3,6 +3,7 @@
 
 use self::AliasKind::*;
 use self::KindInhabitance::*;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -16,9 +17,10 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
-    is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for, lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
+    authored_name, bare_name_miss_diagnostic, declaration_ref_of_type_node,
+    env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
+    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
+    lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
 };
 pub use crate::v1_compiler_infer_env::{
     TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
@@ -367,6 +369,7 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
         match_pattern: structural.match_pattern.clone(),
         module_item_kind: structural.module_item_kind.clone(),
         declaration_marker: structural.declaration_marker.clone(),
+        declaration: structural.declaration.clone(),
         expr_data: structural.expr_data.clone(),
     })
 }
@@ -772,6 +775,7 @@ pub fn substitute_type_slots_scoped(
                                         match_pattern: child.match_pattern.clone(),
                                         module_item_kind: child.module_item_kind.clone(),
                                         declaration_marker: child.declaration_marker.clone(),
+                                        declaration: child.declaration.clone(),
                                         expr_data: child.expr_data.clone(),
                                         ident: None,
                                     })
@@ -823,6 +827,7 @@ pub fn substitute_type_slots_scoped(
                     match_pattern: n.match_pattern.clone(),
                     module_item_kind: n.module_item_kind.clone(),
                     declaration_marker: n.declaration_marker.clone(),
+                    declaration: n.declaration.clone(),
                     expr_data: n.expr_data.clone(),
                     ident: None,
                 })
@@ -951,6 +956,7 @@ pub fn resolve_nominal_alias_rhs(
                         match_pattern: std::option::Option::None,
                         module_item_kind: n.module_item_kind.clone(),
                         declaration_marker: n.declaration_marker.clone(),
+                        declaration: n.declaration.clone(),
                         expr_data: Rc::new(ExprData::NoExprData),
                     }),
                     diagnostics: v1_rt::concat(arg_diags.clone(), validation.diagnostics.clone()),
@@ -1110,6 +1116,7 @@ pub fn resolve_node_bounded(
                         match_pattern: n.match_pattern.clone(),
                         module_item_kind: n.module_item_kind.clone(),
                         declaration_marker: n.declaration_marker.clone(),
+                        declaration: n.declaration.clone(),
                         expr_data: n.expr_data.clone(),
                         ident: None,
                     }),
@@ -1154,6 +1161,7 @@ pub fn resolve_node_bounded(
                                             match_pattern: std::option::Option::None,
                                             module_item_kind: n.module_item_kind.clone(),
                                             declaration_marker: n.declaration_marker.clone(),
+                                            declaration: n.declaration.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         }),
@@ -1204,6 +1212,7 @@ Rc::new(NodeResolveResult {
     match_pattern: std::option::Option::None,
     module_item_kind: child.module_item_kind.clone(),
     declaration_marker: child.declaration_marker.clone(),
+    declaration: child.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -1249,6 +1258,7 @@ Rc::new(NodeResolveResult {
                                         match_pattern: std::option::Option::None,
                                         module_item_kind: n.module_item_kind.clone(),
                                         declaration_marker: n.declaration_marker.clone(),
+                                        declaration: n.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     }),
@@ -1328,6 +1338,7 @@ Rc::new(NodeResolveResult {
     match_pattern: std::option::Option::None,
     module_item_kind: field_child.module_item_kind.clone(),
     declaration_marker: field_child.declaration_marker.clone(),
+    declaration: field_child.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -1358,6 +1369,7 @@ Rc::new(NodeResolveResult {
     match_pattern: std::option::Option::None,
     module_item_kind: variant_child.module_item_kind.clone(),
     declaration_marker: variant_child.declaration_marker.clone(),
+    declaration: variant_child.declaration.clone(),
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -1403,6 +1415,7 @@ Rc::new(NodeResolveResult {
                                             match_pattern: std::option::Option::None,
                                             module_item_kind: n.module_item_kind.clone(),
                                             declaration_marker: n.declaration_marker.clone(),
+                                            declaration: n.declaration.clone(),
                                             expr_data: Rc::new(ExprData::NoExprData),
                                             ident: None,
                                         }),
@@ -1581,6 +1594,7 @@ Rc::new(NodeResolveResult {
                                     match_pattern: n.match_pattern.clone(),
                                     module_item_kind: n.module_item_kind.clone(),
                                     declaration_marker: n.declaration_marker.clone(),
+                                    declaration: n.declaration.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 });
@@ -1606,6 +1620,7 @@ Rc::new(NodeResolveResult {
                                     match_pattern: n.match_pattern.clone(),
                                     module_item_kind: n.module_item_kind.clone(),
                                     declaration_marker: n.declaration_marker.clone(),
+                                    declaration: n.declaration.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 });
@@ -1661,6 +1676,7 @@ Rc::new(NodeResolveResult {
                                     match_pattern: n.match_pattern.clone(),
                                     module_item_kind: n.module_item_kind.clone(),
                                     declaration_marker: n.declaration_marker.clone(),
+                                    declaration: n.declaration.clone(),
                                     expr_data: n.expr_data.clone(),
                                     ident: None,
                                 });
@@ -1687,6 +1703,7 @@ Rc::new(NodeResolveResult {
                                         match_pattern: n.match_pattern.clone(),
                                         module_item_kind: n.module_item_kind.clone(),
                                         declaration_marker: n.declaration_marker.clone(),
+                                        declaration: n.declaration.clone(),
                                         expr_data: n.expr_data.clone(),
                                         ident: None,
                                     }),
@@ -1814,6 +1831,7 @@ Rc::new(NodeResolveResult {
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     declaration_marker: DeclarationMarker::Unmarked,
+                                    declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -1839,6 +1857,7 @@ Rc::new(NodeResolveResult {
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                                     declaration_marker: DeclarationMarker::Unmarked,
+                                    declaration: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -1866,6 +1885,7 @@ Rc::new(NodeResolveResult {
                                         match_pattern: std::option::Option::None,
                                         module_item_kind: n.module_item_kind.clone(),
                                         declaration_marker: n.declaration_marker.clone(),
+                                        declaration: n.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
                                     }),
@@ -1943,6 +1963,7 @@ Rc::new(NodeResolveResult {
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
                                                 declaration_marker: DeclarationMarker::Unmarked,
+                                                declaration: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             });
@@ -1973,6 +1994,7 @@ Rc::new(NodeResolveResult {
                                                     declaration_marker: n
                                                         .declaration_marker
                                                         .clone(),
+                                                    declaration: n.declaration.clone(),
                                                     expr_data: Rc::new(ExprData::NoExprData),
                                                     ident: None,
                                                 }),
@@ -2258,6 +2280,7 @@ pub fn resolve_optional_node(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -2351,6 +2374,7 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             match_pattern: authored.match_pattern.clone(),
             module_item_kind: authored.module_item_kind.clone(),
             declaration_marker: authored.declaration_marker.clone(),
+            declaration: authored.declaration.clone(),
             expr_data: authored.expr_data.clone(),
             ident: None,
         })
@@ -2375,6 +2399,7 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
             match_pattern: resolved.match_pattern.clone(),
             module_item_kind: resolved.module_item_kind.clone(),
             declaration_marker: resolved.declaration_marker.clone(),
+            declaration: resolved.declaration.clone(),
             expr_data: resolved.expr_data.clone(),
             ident: None,
         })
@@ -3193,6 +3218,7 @@ pub fn resolve_expr_types(
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
                 });
@@ -3731,6 +3757,68 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
     }
 }
 
+pub fn field_inferred_with_declaration(
+    field: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<InferredNode>> {
+    match field.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: authored, .. }) => {
+            if ((authored.declaration.clone() != std::option::Option::None)
+                || crate::std_types::is_kernel_type(crate::v1_compiler_infer_env::authored_name(
+                    env.clone(),
+                    authored.clone(),
+                )))
+            {
+                field.inferred.clone()
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), authored.clone()) {
+                    Some(bound) => {
+                        match crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+                            bound.clone(),
+                            env.source_indices.clone(),
+                            env.clone(),
+                        ) {
+                            Some(d) => Some(Rc::new(InferredNode::Resolved {
+                                node: node_with_declaration(authored.clone(), d.clone()),
+                            })),
+                            std::option::Option::None => field.inferred.clone(),
+                        }
+                    }
+                    std::option::Option::None => field.inferred.clone(),
+                }
+            }
+        }
+        _ => field.inferred.clone(),
+    }
+}
+
+pub fn node_with_declaration(n: Rc<Node>, declaration: Rc<DeclarationRef>) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: Some(declaration.clone()),
+        expr_data: n.expr_data.clone(),
+        ident: None,
+    })
+}
+
 pub fn resolve_item_types(
     item: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -3947,7 +4035,10 @@ pub fn resolve_item_types(
                                 children: child.children.clone(),
                                 connective: child.connective.clone(),
                                 params: child.params.clone(),
-                                inferred: child.inferred.clone(),
+                                inferred: field_inferred_with_declaration(
+                                    child.clone(),
+                                    env.clone(),
+                                ),
                                 return_cardinality: child.return_cardinality.clone(),
                                 uses: child.uses.clone(),
                                 body: child.body.clone(),
@@ -3962,6 +4053,7 @@ pub fn resolve_item_types(
                                 match_pattern: std::option::Option::None,
                                 module_item_kind: child.module_item_kind.clone(),
                                 declaration_marker: child.declaration_marker.clone(),
+                                declaration: child.declaration.clone(),
                                 expr_data: Rc::new(ExprData::NoExprData),
                                 ident: None,
                             }),
@@ -4009,7 +4101,10 @@ pub fn resolve_item_types(
                                                 children: field.children.clone(),
                                                 connective: field.connective.clone(),
                                                 params: field.params.clone(),
-                                                inferred: field.inferred.clone(),
+                                                inferred: field_inferred_with_declaration(
+                                                    field.clone(),
+                                                    env.clone(),
+                                                ),
                                                 return_cardinality: field
                                                     .return_cardinality
                                                     .clone(),
@@ -4028,6 +4123,7 @@ pub fn resolve_item_types(
                                                 declaration_marker: field
                                                     .declaration_marker
                                                     .clone(),
+                                                declaration: field.declaration.clone(),
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }),
@@ -4072,6 +4168,7 @@ pub fn resolve_item_types(
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: variant.module_item_kind.clone(),
                                     declaration_marker: variant.declaration_marker.clone(),
+                                    declaration: variant.declaration.clone(),
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -4130,6 +4227,7 @@ pub fn resolve_item_types(
                 match_pattern: std::option::Option::None,
                 module_item_kind: item.module_item_kind.clone(),
                 declaration_marker: item.declaration_marker.clone(),
+                declaration: item.declaration.clone(),
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),

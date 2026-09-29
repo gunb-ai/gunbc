@@ -1619,6 +1619,41 @@ fn ct_kernel_identity_single_authority_test() -> String {
     "\n")
 }
 
+// Cause 1b of the type-reference identity census: a declaration field's reference carries resolve's
+// binding. The Rust it renders says what each row discriminates.
+fn ct_declaration_field_reference_identity_test() -> String {
+  concat(
+    "    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.\n",
+    "    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept\n",
+    "    // only its properties, so the typed tree's field reference named no declaration.\n",
+    "    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run\n",
+    "    // the REAL route, parse through resolve through infer, via the census entry, and read the\n",
+    "    // decl_identity column (v1.compiler.infer_env type_reference_declaration_reading).\n",
+    "    // THE RED is the first row: without the repair the field reads Unidentified. The control keeps\n",
+    "    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint\n",
+    "    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.\n",
+    "    #[test]\n",
+    "    fn declaration_field_reference_names_its_declaration() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let sources = vec![\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/a.dag\".to_string(), content: \"module fid.a\\n\\ntype Leaf {\\n  count: Int\\n}\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/b.dag\".to_string(), content: \"module fid.b\\n\\nimport fid.a { Leaf }\\n\\ntype Holder {\\n  leaf: Leaf\\n}\\n\".to_string() }),\n",
+    "        ];\n",
+    "        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(std::rc::Rc::new(sources.into()));\n",
+    "        assert!(!receipt.starts_with(\"REFUSED\"), \"the census must compile the fixture: \{receipt}\");\n",
+    "        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {\n",
+    "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == \"declaration_field\" && c[3] == authored)\n",
+    "                .map(|c| c[8].to_string()).collect()\n",
+    "        };\n",
+    "        // (1) THE RED: a field naming another module's record.\n",
+    "        assert_eq!(decl_identity(\"Holder\", \"Leaf\"), vec![\"Declaration:fid.a::Leaf\".to_string()], \"\{receipt}\");\n",
+    "        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.\n",
+    "        assert_eq!(decl_identity(\"Leaf\", \"Int\"), vec![\"Kernel:Int\".to_string()], \"\{receipt}\");\n",
+    "    }\n\n"
+  )
+}
+
 // CARRIER-KEY-1 split witness; the Rust it renders says what each row discriminates.
 fn ct_type_reference_identity_split_test() -> String {
   concat(
@@ -1743,6 +1778,7 @@ fn ct_coercion_tests() -> String {
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
     ct_type_reference_identity_split_test(),
+    ct_declaration_field_reference_identity_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
 

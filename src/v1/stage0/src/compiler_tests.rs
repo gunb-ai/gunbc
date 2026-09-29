@@ -4920,6 +4920,60 @@ mod compiler_tests {
         );
     }
 
+    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.
+    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept
+    // only its properties, so the typed tree's field reference named no declaration.
+    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run
+    // the REAL route, parse through resolve through infer, via the census entry, and read the
+    // decl_identity column (v1.compiler.infer_env type_reference_declaration_reading).
+    // THE RED is the first row: without the repair the field reads Unidentified. The control keeps
+    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint
+    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.
+    #[test]
+    fn declaration_field_reference_names_its_declaration() {
+        use crate::v1_compiler_compile::SourceFile;
+        let sources = vec![
+            std::rc::Rc::new(SourceFile {
+                path: "fixtures/field_identity/a.dag".to_string(),
+                content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n".to_string(),
+            }),
+            std::rc::Rc::new(SourceFile {
+                path: "fixtures/field_identity/b.dag".to_string(),
+                content:
+                    "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n"
+                        .to_string(),
+            }),
+        ];
+        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
+            std::rc::Rc::new(sources.into()),
+        );
+        assert!(
+            !receipt.starts_with("REFUSED"),
+            "the census must compile the fixture: {receipt}"
+        );
+        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {
+            receipt
+                .lines()
+                .skip(1)
+                .map(|l| l.split('\t').collect::<Vec<_>>())
+                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == authored)
+                .map(|c| c[8].to_string())
+                .collect()
+        };
+        // (1) THE RED: a field naming another module's record.
+        assert_eq!(
+            decl_identity("Holder", "Leaf"),
+            vec!["Declaration:fid.a::Leaf".to_string()],
+            "{receipt}"
+        );
+        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.
+        assert_eq!(
+            decl_identity("Leaf", "Int"),
+            vec!["Kernel:Int".to_string()],
+            "{receipt}"
+        );
+    }
+
     fn item_of_kind(
         name: &str,
         kind: crate::v1_std_core::ParsedModuleItemKind,

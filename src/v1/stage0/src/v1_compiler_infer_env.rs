@@ -1534,6 +1534,7 @@ pub fn qualify_borrowed_type_names(
                             match_pattern: n.match_pattern.clone(),
                             module_item_kind: n.module_item_kind.clone(),
                             declaration_marker: n.declaration_marker.clone(),
+                            declaration: n.declaration.clone(),
                             expr_data: n.expr_data.clone(),
                             ident: None,
                         })
@@ -1567,6 +1568,7 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
         declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -1593,6 +1595,7 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         match_pattern: n.match_pattern.clone(),
         module_item_kind: n.module_item_kind.clone(),
         declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -2269,6 +2272,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
                     declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -2535,6 +2539,11 @@ pub fn declaration_reading_of_type_node(
     env: Rc<TypeEnv>,
 ) -> Rc<TypeNodeDeclarationReading> {
     {
+        if (rt.declaration.clone() != std::option::Option::None) {
+            return Rc::new(TypeNodeDeclarationReading::TypeNodeNamesDeclaration {
+                declaration: rt.declaration.clone().clone().unwrap(),
+            });
+        }
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
         let decl_name = crate::v1_std_core::qualified_last_segment(authored.clone());
         if (decl_name.clone() == "".to_string()) {
