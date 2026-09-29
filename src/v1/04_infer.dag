@@ -3946,7 +3946,7 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
-  let carrier_verdict = if is_container_type(name: declared_name) {
+  let carrier_verdict = if is_container_type(name: declared_name) && !is_container_type(name: produced_name) {
     kernel_container_carrier_verdict(
       formal: declared,
       owner: type_reference_declaration_ref(n: produced, source_indices: source_indices, env: scope.type_env),
