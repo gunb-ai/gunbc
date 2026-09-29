@@ -10,7 +10,7 @@ import std.list { list_cover }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, content_hash_equal, parse_content_hash }
 import std.temporal_effect { HeldLease, LeaseEpoch, held_lease, LeaseRunningExpected }
 import std.scoped_authorization {
-  OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction,
+  OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationPending, AuthorizationDenied, AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction,
   AuthorizationPermitted, AuthorizationRefused, AuthorizationRefusalCause, AuthorizationEscalationMismatch, authorize, authorization_scopes_render, authorization_refusal_reason,
   intent_frame_head, parse_intent_scopes, authorization_scope_eq,
   AuthorizationClaimState, Unclaimed, ClaimedBy, CompletedBy, AbortedBy, claim_authorization, claim_transition_claimed, claim_transition_completed, claim_transition_aborted,
@@ -65,7 +65,7 @@ import gunbc.spark.pair_incumbent_identity {
 }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline, released_baseline_wire, parse_released_baseline }
 import gunbc.spark.pair_serving_authority {
-  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
   PairRealizationKeyed,
 }
 import gunbc.spark.pair_serving_authority_log {
@@ -678,7 +678,8 @@ fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: Fab
         }
         }
       }
-    _ => D0SubjectNotGranted
+    AuthorizationPending { request: _ } => D0SubjectNotGranted
+    AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => D0SubjectNotGranted
   }
 }
 
@@ -1401,6 +1402,14 @@ type D0Recovery
   | D0RecoverAbort { claim_generation: CasGeneration, cause: String }
   | D0RecoveryRefused { cause: String }
 
+fn d0_unwritten_claim_abort(g: CasGeneration, current: PairServingGroupAuthority) -> D0Recovery {
+  D0RecoverAbort { claim_generation: g, cause: join(["the claim is held but no write landed and the authority is not Active (", authority_wire(a: current), "), so there is nothing this consent can do"], "") }
+}
+
+fn d0_pending_moved_refusal(current: PairServingGroupAuthority) -> D0Recovery {
+  D0RecoveryRefused { cause: join(["this transaction's pending state was moved by another writer (the authority is ", authority_wire(a: current), "); the group needs an operator's disposition"], "") }
+}
+
 fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: ContentHash?, executor: NonEmptyStr, current: PairServingGroupAuthority, transitions: List<AuthorityTransitionRecord>) -> D0Recovery {
   match claim {
     D0ClaimUnreadable { reason: r } => D0RecoveryRefused { cause: r as String }
@@ -1427,7 +1436,9 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: Conte
                     } else {
                       D0RecoverAbort { claim_generation: g, cause: join(["the claim is held but no write landed and the authority is pending under another transaction (", pt as String, "), so there is nothing this consent can do"], "") }
                     }
-                  _ => D0RecoverAbort { claim_generation: g, cause: join(["the claim is held but no write landed and the authority is not Active (", authority_wire(a: current), "), so there is nothing this consent can do"], "") }
+                  SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => d0_unwritten_claim_abort(g: g, current: current)
+                  FencedRefusal { group: _, cause: _, disposition_authority: _ } => d0_unwritten_claim_abort(g: g, current: current)
+                  ReleasedToFleet { group: _, release_receipt: _ } => d0_unwritten_claim_abort(g: g, current: current)
                 }
               Present { value: mine } =>
                 match mine.next {
@@ -1443,9 +1454,15 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: Conte
                         } else {
                           D0RecoverResume { claim_generation: g }
                         }
-                      _ => D0RecoveryRefused { cause: join(["this transaction's pending state was moved by another writer (the authority is ", authority_wire(a: current), "); the group needs an operator's disposition"], "") }
+                      PairServingActive { group: _, exact_realization: _ } => d0_pending_moved_refusal(current: current)
+                      SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => d0_pending_moved_refusal(current: current)
+                      FencedRefusal { group: _, cause: _, disposition_authority: _ } => d0_pending_moved_refusal(current: current)
+                      ReleasedToFleet { group: _, release_receipt: _ } => d0_pending_moved_refusal(current: current)
                     }
-                  _ => D0RecoverComplete { claim_generation: g, settled: mine }
+                  PairServingActive { group: _, exact_realization: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
+                  SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
+                  FencedRefusal { group: _, cause: _, disposition_authority: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
+                  ReleasedToFleet { group: _, release_receipt: _ } => D0RecoverComplete { claim_generation: g, settled: mine }
                 }
             }
             }

@@ -1058,46 +1058,6 @@ fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn kotlin_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: kotlin_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: kotlin_atom(id: ^kotlin_source_literal)
-    ),
-    tail: Cons {
-      head: kotlin_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: kotlin_atom(id: ^kotlin_production_fn_add)
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn kotlin_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: kotlin_serialize_source_prefix_edges(),
-    right: [
-      kotlin_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: kotlin_concrete_tokens(),
-          token_to_node: kotlin_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn kotlin_serialize_source_node() -> Node {
-  let _authority = kotlin_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: kotlin_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn kotlin_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
@@ -1348,10 +1308,6 @@ fn kotlin_target_model_node() -> Node {
       kotlin_named_edge(
         name: ^target_model_edge_translation_rules,
         target: kotlin_translation_rules_node()
-      ),
-      kotlin_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: kotlin_serialize_source_node()
       )
     ],
     occurrence_id: OccurrenceSynthetic
