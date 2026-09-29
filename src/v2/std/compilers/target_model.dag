@@ -15150,9 +15150,19 @@ fn target_value_expr_loop_gate(node: Node) -> Bool {
 // (target_value_expr_bind_let_gate) admits it by shape, and projecting it as a plain let would drop its v2.std.type_binder
 // <type-annotation> -- a target whose let spells a type would lose what the source wrote. So it
 // refuses, located at the Bind, until a target realization row carries the annotation.
+//
+// THE TAIL IS AN EXPRESSION, NOT A BINDING. The statement-let lowering
+// (v2.compiler.body_lowering_fold, lower_bind) puts the REST OF THE BLOCK at positional 2, so a
+// tail is whatever the block ends in -- a name, another let, a record, a call, a function value --
+// and eval and the bind_let carrier both take it as one. A plain name stays a binding reference;
+// any other tail projects as a body subexpression. `tail_return` is the function-typed position the
+// tail occupies when this Bind IS the function's body (or the tail of one that is): a function
+// value there is the returned closure and renders through target_project_realized_closure, exactly
+// as a FunctionValueBody does; a Bind in any other position passes Absent.
 fn target_project_bind_let(
   arrow: Node,
   body: Node,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -15178,8 +15188,15 @@ fn target_project_bind_let(
           o: target_transform_positional_operand_binding(node: body, index: 0),
           f: fn(key_binding) {
             bind_outcome(
-              o: target_transform_positional_operand_binding(node: body, index: 2),
-              f: fn(body_binding) {
+              o: target_project_bind_tail(
+                arrow: arrow,
+                bind: body,
+                tail_return: tail_return,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(projected_tail) {
                 match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
                   Absent =>
                     outcome_rejected(
@@ -15202,7 +15219,7 @@ fn target_project_bind_let(
                           target_value_expression_bind_let(
                             bind_key: target_value_expression_binding_ref(binding: key_binding),
                             bind_value: projected_value,
-                            bind_body: target_value_expression_binding_ref(binding: body_binding)
+                            bind_body: projected_tail
                           )
                         )
                       }
@@ -15213,6 +15230,67 @@ fn target_project_bind_let(
           }
         )
     }
+  }
+}
+
+fn target_project_bind_tail(
+  arrow: Node,
+  bind: Node,
+  tail_return: Optional<FunctionTypePosition>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: node_positional_child_targets(node: bind), index: 2) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: bind
+        )
+      )
+    Present { value: tail } =>
+      match tail.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          outcome_accepted(target_value_expression_binding_ref(binding: id))
+        TypeNode { connective: Arrow } =>
+          match tail_return {
+            Present { value: position } =>
+              target_project_realized_closure(
+                closure: tail,
+                position: position,
+                enclosing: arrow_domain_binder_names(arrow: arrow),
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+            Absent =>
+              target_value_expr_project_body_subexpression(
+                arrow: arrow,
+                node: tail,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+          }
+        ComputationNode { behavior: Bind } =>
+          target_project_bind_let(
+            arrow: arrow,
+            body: tail,
+            tail_return: tail_return,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+        _ =>
+          target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: tail,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+      }
   }
 }
 
@@ -15287,6 +15365,7 @@ fn target_value_expr_project_body_subexpression(
       target_project_bind_let(
         arrow: arrow,
         body: node,
+        tail_return: optional_absent(),
         target: target,
         source_bool_form: source_bool_form,
         handle_transform: handle_transform
@@ -15629,6 +15708,7 @@ fn target_project_arrow_body_by_kind(
         target_project_bind_let(
           arrow: arrow,
           body: body,
+          tail_return: optional_present(value: FunctionTypeAtItemReturn),
           target: target,
           source_bool_form: source_bool_form,
           handle_transform: handle_transform
