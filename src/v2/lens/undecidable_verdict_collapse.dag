@@ -97,12 +97,23 @@ fn symbol_in_roster(sym: Symbol, roster: List<Symbol>) -> Bool {
 fn pattern_head_identity_optional(pattern: Node) -> Optional<Symbol> {
   match pattern.kind {
     TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-    _ =>
+    TypeNode { connective: _ } =>
       match list_at_optional(xs: node_positional_child_targets(node: pattern), index: 0) {
         Present { value: head } =>
           match head.kind {
             TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-            _ => optional_absent()
+            TypeNode { connective: _ } => optional_absent()
+            ComputationNode { behavior: _ } => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    ComputationNode { behavior: _ } =>
+      match list_at_optional(xs: node_positional_child_targets(node: pattern), index: 0) {
+        Present { value: head } =>
+          match head.kind {
+            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+            TypeNode { connective: _ } => optional_absent()
+            ComputationNode { behavior: _ } => optional_absent()
           }
         Absent => optional_absent()
       }

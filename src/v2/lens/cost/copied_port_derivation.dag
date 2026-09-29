@@ -78,12 +78,14 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
                     Positional => a
                   }
                 })
-              _ => acc
+              ComputationNode { behavior: _ } => acc
+              TypeNode { connective: _ } => acc
             }
           Named { name: _ } => acc
         }
       })
-    _ => Empty
+    ComputationNode { behavior: _ } => Empty
+    TypeNode { connective: _ } => Empty
   }
 }
 

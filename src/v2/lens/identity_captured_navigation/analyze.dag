@@ -141,7 +141,10 @@ fn node_source_symbol_of_occurrence(occ_id: std.occurrence_identity.OccurrenceId
             ByteRange { start: start, end: end } =>
               source_slice_of_byte_range(source_text: source_text, start: start, end: end)
           }
-        _ => Absent
+        NodeLocus { anchor: _ } => Absent
+        SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+        InvariantPortLocus { anchor: _, invariant: _ } => Absent
+        DeclarationLocus { declaration: _ } => Absent
       }
   }
 }

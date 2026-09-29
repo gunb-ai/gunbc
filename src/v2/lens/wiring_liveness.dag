@@ -51,7 +51,9 @@ fn wiring_relation_verdict(relation: WiringRelation) -> LensVerdict {
 fn wiring_relation_is_wired(relation: WiringRelation) -> Bool {
   match wiring_relation_verdict(relation: relation) {
     Holds => true
-    _ => false
+    Violation { diagnostic: _ } => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
   }
 }
 
@@ -118,7 +120,9 @@ fn wiring_fn_dead_wires(decl: FnArrowDecl) -> List<WiringDeadWire> {
           xs: acc,
           item: WiringDeadWire { fn_qualified_name: decl.qualified_name, param: p.name }
         )
-      _ => acc
+      Holds => acc
+      NotApplicable { diagnostic: _ } => acc
+      Unrealized { diagnostic: _ } => acc
     }
   })
 }
@@ -135,7 +139,25 @@ fn wiring_decl_verdict(decl: FnArrowDecl) -> LensVerdict {
   fold(decl.params, init: Holds, f: fn(acc, p) {
     match acc {
       Violation { diagnostic: _ } => acc
-      _ =>
+      Holds =>
+        wiring_param_violation_verdict(
+          relation: WiringRelation {
+            output: decl.output,
+            declared_input: p.node,
+            dependence: dependence
+          },
+          reachable: reachable
+        )
+      NotApplicable { diagnostic: _ } =>
+        wiring_param_violation_verdict(
+          relation: WiringRelation {
+            output: decl.output,
+            declared_input: p.node,
+            dependence: dependence
+          },
+          reachable: reachable
+        )
+      Unrealized { diagnostic: _ } =>
         wiring_param_violation_verdict(
           relation: WiringRelation {
             output: decl.output,
@@ -152,7 +174,9 @@ fn wiring_liveness_corpus_verdict(pool_roots: List<String>) -> LensVerdict {
   fold(fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: no_declared_pool_files), init: Holds, f: fn(acc, decl) {
     match acc {
       Violation { diagnostic: _ } => acc
-      _ => wiring_decl_verdict(decl: decl)
+      Holds => wiring_decl_verdict(decl: decl)
+      NotApplicable { diagnostic: _ } => wiring_decl_verdict(decl: decl)
+      Unrealized { diagnostic: _ } => wiring_decl_verdict(decl: decl)
     }
   })
 }
@@ -168,7 +192,9 @@ fn wiring_liveness_corpus_dead_wire_count(pool_roots: List<String>) -> Int {
 fn wiring_liveness_corpus_is_clean(pool_roots: List<String>) -> Bool {
   match wiring_liveness_corpus_verdict(pool_roots: pool_roots) {
     Holds => true
-    _ => false
+    Violation { diagnostic: _ } => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
   }
 }
 

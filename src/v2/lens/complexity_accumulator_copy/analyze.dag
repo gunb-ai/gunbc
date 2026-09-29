@@ -539,7 +539,8 @@ fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
           Absent => v2.std.grammar.node_atom_identity_optional(node: t)
         }
       })
-    _ => Absent
+    ComputationNode { behavior: _ } => Absent
+    TypeNode { connective: _ } => Absent
   }
 }
 
@@ -585,7 +586,8 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
           }
         }
       ).readings
-    _ => std.algebra.Empty
+    ComputationNode { behavior: _ } => std.algebra.Empty
+    TypeNode { connective: _ } => std.algebra.Empty
   }
 }
 
@@ -604,7 +606,8 @@ fn lowered_loop_carrier_optional(node: Node) -> Optional<Symbol> {
         Ambiguous => Absent
         Absent => Absent
       }
-    _ => Absent
+    ComputationNode { behavior: _ } => Absent
+    TypeNode { connective: _ } => Absent
   }
 }
 
@@ -681,7 +684,14 @@ fn analyze_absent_primary_expr(
         Absent =>
           analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
-    _ =>
+    ComputationNode { behavior: _ } =>
+      match let_spine_of(node: node) {
+        Present { value: spine } =>
+          analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
+        Absent =>
+          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
+      }
+    TypeNode { connective: _ } =>
       match let_spine_of(node: node) {
         Present { value: spine } =>
           analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
@@ -803,7 +813,8 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
       } else {
         1
       }
-    _ => 0
+    ComputationNode { behavior: _ } => 0
+    TypeNode { connective: _ } => 0
   }
   let surface_here = match primary_expr_capture(node: n) {
     Absent => 0
@@ -838,7 +849,15 @@ fn accumulator_copy_findings(root: Node) -> List<v2.lens.complexity_accumulator_
 fn tree_contains_lowered_loop(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Loop } => true
-    _ =>
+    ComputationNode { behavior: _ } =>
+      fold(root.children, init: false, f: fn(found, e) {
+        if found {
+          true
+        } else {
+          tree_contains_lowered_loop(root: e.target)
+        }
+      })
+    TypeNode { connective: _ } =>
       fold(root.children, init: false, f: fn(found, e) {
         if found {
           true
