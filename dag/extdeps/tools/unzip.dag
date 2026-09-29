@@ -1,5 +1,7 @@
 module extdeps.tools.unzip
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr }
 import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -20,10 +22,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data unzip_program: NonEmptyStr = "unzip"
+fn unzip_program() -> ProgramIdentity = cataloged_program(invocation: "unzip")
 
 data unzip_cli_tool: CliTool = CliTool {
-  name: unzip_program,
+  name: unzip_program().invocation,
   min_version: none,
   installable_via: [SourceApt { package: package_unzip, bin_dir: apt_bin_dir }],
 }
@@ -44,5 +46,5 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // stop on a tty prompt a CI step cannot answer), -d names the destination so archive paths resolve
 // against it rather than against the process's working directory.
 fn unzip_extract_command(archive: String, into_directory: String) -> ArgvCommand {
-  argv_command(program: unzip_program, arguments: ["-q", "-o", archive, "-d", into_directory])
+  argv_command(program: unzip_program(), arguments: ["-q", "-o", archive, "-d", into_directory])
 }
