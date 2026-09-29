@@ -11,7 +11,21 @@ import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.text { String }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_release_path,
+  witness_bin_ensure_built_typed,
+  witness_bin_artifact_readiness,
+  WitnessBinReadiness,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusalReason,
+  WitnessBinNotEnrolled,
+  WitnessBinBuildFailed,
+  WitnessBinArtifactAbsent,
+  WitnessBinArtifactNotExecutable,
+  WitnessBinArtifactEmpty,
+}
 
 // Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated
 // emit->assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe
@@ -244,19 +258,81 @@ fn cssl_fault_run_detected_the_planted_fault(
     && !string_contains(s: fault_stdout, pattern: pass_marker)
 }
 
+// THE RECEIPT'S OUTCOME IS THREE-WAY, NOT A Bool. It used to be one conjunction over every step, so
+// a witness binary that was never built (the drive then exits 127, `No such file or directory`)
+// returned the same false as an emitted module that ran and behaved differently from its contract
+// -- a missing artifact read as a behavioral divergence (srv1 validation run, 2026-09-27). The
+// arms now separate the two: CsslSetupRefused names the step that did not produce what the drive
+// needs (a read, a tool binary with its tools.host_prelude WitnessBinRefusalReason, the emit, the
+// assembly, the cargo build, the witness artifact itself, or the cleanup), and only a drive that
+// RAN can answer CsslBehaviorHeld or CsslBehaviorDiverged. This retires this harness's use of the
+// lossy tools.host_prelude witness_bin_ready projection, per that note's dissolve-on.
+type CsslReceiptOutcome
+  = CsslBehaviorHeld
+  | CsslBehaviorDiverged { observed: String }
+  | CsslSetupRefused { step: String }
+
+fn cssl_refusal_reason_word(reason: WitnessBinRefusalReason) -> String {
+  match reason {
+    WitnessBinNotEnrolled => "not enrolled"
+    WitnessBinBuildFailed => "build failed"
+    WitnessBinArtifactAbsent => "artifact absent"
+    WitnessBinArtifactNotExecutable => "artifact not executable"
+    WitnessBinArtifactEmpty => "artifact empty"
+  }
+}
+
+// Empty when ready; otherwise the located refusal as a step description.
+fn cssl_readiness_refusal(readiness: WitnessBinReadiness) -> String {
+  match readiness {
+    WitnessBinReady { path: _ } => ""
+    WitnessBinRefused { bin_name, path, reason } =>
+      concat(concat(concat(concat(concat("binary ", bin_name), ": "), cssl_refusal_reason_word(reason: reason)), " at "), path)
+  }
+}
+
+fn cssl_first_setup_refusal(steps: List<CsslStep>) -> String {
+  fold_list(
+    xs: steps,
+    empty: "",
+    cons: fn(acc, st) { if acc != "" { acc } else if st.ok { "" } else { st.name } }
+  )
+}
+
+type CsslStep {
+  name: String
+  ok: Bool
+}
+
+// PURE, SO THE ORDER IS PINNABLE WITHOUT THE WET DRIVE: a located setup refusal decides FIRST, so
+// a drive that failed because its artifact was absent can never be read as a divergence.
+fn cssl_classify_receipt(setup_refusal: String, pass_ok: Bool, fault_detected: Bool, claim_ok: Bool) -> CsslReceiptOutcome {
+  if setup_refusal != "" {
+    CsslSetupRefused { step: setup_refusal }
+  } else if !pass_ok {
+    CsslBehaviorDiverged { observed: "the pass run did not exit success with its pass marker" }
+  } else if !fault_detected {
+    CsslBehaviorDiverged { observed: "the planted-fault run was not caught" }
+  } else if !claim_ok {
+    CsslBehaviorDiverged { observed: "a supplementary claim run did not hold" }
+  } else {
+    CsslBehaviorHeld
+  }
+}
+
 fn cssl_seed_linked_behavioral_receipt(
   source_rel: String,
   driver_rel: String,
   pass_marker: String,
   claim_runs: List<CuratedSeedLinkedClaimRun>
-) -> Bool {
+) -> CsslReceiptOutcome {
   let root = git.Inspect.Toplevel()
   let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
   let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let cssl_assemble_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+  let gunbc_ready = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let cssl_assemble_ready = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
   let emit = gunbc.WitnessBin.Run(
@@ -291,6 +367,7 @@ fn cssl_seed_linked_behavioral_receipt(
   )
 
   let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let witness_ready = witness_bin_artifact_readiness(bin_name: "witness", path: witness_bin_path)
   let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
   let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
   let fault_detected = cssl_fault_run_detected_the_planted_fault(
@@ -306,14 +383,28 @@ fn cssl_seed_linked_behavioral_receipt(
 
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
-  module_read.success && driver_read.success
-    && out_dir.success && gunbc_built && cssl_assemble_built && emit.success
-    && src_dir.success
-    && generic_assembly_ok
-    && manifest.success && main_rs.success
-    && build.success
-    && pass_run.success && string_contains(s: pass_run.stdout, pattern: pass_marker)
-    && fault_detected
-    && claim_ok
-    && cleanup_out.success
+  let gunbc_refusal = cssl_readiness_refusal(readiness: gunbc_ready)
+  let cssl_assemble_refusal = cssl_readiness_refusal(readiness: cssl_assemble_ready)
+  let witness_refusal = cssl_readiness_refusal(readiness: witness_ready)
+  let setup = cssl_first_setup_refusal(steps: [
+    CsslStep { name: concat("read module ", source_rel), ok: module_read.success },
+    CsslStep { name: concat("read driver ", driver_rel), ok: driver_read.success },
+    CsslStep { name: "make scratch directory", ok: out_dir.success },
+    CsslStep { name: gunbc_refusal, ok: gunbc_refusal == "" },
+    CsslStep { name: cssl_assemble_refusal, ok: cssl_assemble_refusal == "" },
+    CsslStep { name: concat("emit ", source_rel), ok: emit.success },
+    CsslStep { name: "make src directory", ok: src_dir.success },
+    CsslStep { name: "assemble the emitted closure", ok: generic_assembly_ok },
+    CsslStep { name: "write Cargo.toml", ok: manifest.success },
+    CsslStep { name: "write the witness driver", ok: main_rs.success },
+    CsslStep { name: "cargo build of the emitted crate", ok: build.success },
+    CsslStep { name: witness_refusal, ok: witness_refusal == "" },
+    CsslStep { name: "remove scratch directory", ok: cleanup_out.success }
+  ])
+  cssl_classify_receipt(
+    setup_refusal: setup,
+    pass_ok: pass_run.success && string_contains(s: pass_run.stdout, pattern: pass_marker),
+    fault_detected: fault_detected,
+    claim_ok: claim_ok
+  )
 }
