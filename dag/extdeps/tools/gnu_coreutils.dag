@@ -2,9 +2,6 @@ module extdeps.tools.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath, String, List, Int }
 import std.measure { Second, second_count }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -181,9 +178,10 @@ fn ln_symbolic_force_command(target: String, link_name: String) -> ArgvCommand {
 // With the trailing separator, a D that does not exist fails with ENOENT instead of minting a
 // LINK NAMED D -- the fail-closed half of "into the directory"; without it, `ln -sf T D` on a
 // missing D silently creates that stray link and reports success. The one live caller
-// (extdeps.linux.usb_gadget configfs_op_staging) refuses a destination that is not
-// directory-spelled before any argv is minted, so the contract is enforced where the arguments
-// are, not hoped for here.
+// (extdeps.linux.usb_gadget configfs_prepared_realization) DERIVES the destination directory-spelled
+// from the prepared link operation's own validated fields -- the configuration name cannot carry a
+// slash or a dot segment (configfs_name_verdict refuses it one preparation earlier) -- so the
+// contract is enforced by construction upstream of any argv, not hoped for here.
 //
 // PATH-RESOLVED program spelling, for the reason program_spelling_is_an_observation_claim
 // (extdeps.exec.command) records: the gadget setup runs on an OpenBMC image over ssh, whose
@@ -197,34 +195,17 @@ fn ln_symbolic_force_into_directory_command(target: String, directory: String) -
   )
 }
 
-// rmdir(1) -- GNU coreutils, "rmdir: remove directories if they are empty". configfs teardown
-// removes the directories it created, innermost first, and rmdir REFUSES a non-empty directory,
-// which is the fail-closed half: a teardown that would empty a directory holding something it did
-// not create stops instead of destroying it. Tolerance for an ALREADY-ABSENT directory is NOT
-// re-appended here as `|| true` -- the absorbing-fallback rule the shell-to-dag census names for
-// exactly this spelling -- and the consumer that models the absence is NAMED in the declared
-// frontier beside this declaration (review 38602, finding 3).
+// rmdir(1) -- GNU coreutils, "rmdir: remove directories if they are empty". rmdir REFUSES a
+// non-empty directory, which is the fail-closed half: a removal that would empty a directory
+// holding something it did not create stops instead of destroying it. This builder mints the
+// plain command and carries NO tolerance policy: "an already-absent directory is already
+// converged" is configfs TEARDOWN policy -- a property of the gadget teardown's five rmdir
+// operations, not of every rmdir invocation -- so its declared frontier lives beside
+// ConfigfsRmdir in extdeps.linux.usb_gadget (moved there per review on a28daf4844, finding 3,
+// from this module, where it fronted a declaration whose other callers have no such policy).
 //
 // PATH-RESOLVED spelling for the same unobserved-OpenBMC reason the ln sibling above carries.
 data coreutils_rmdir_binary_name: NonEmptyStr = "rmdir"
-
-// DECLARED FRONTIER (DESIGN §3c), stated beside the declaration it fronts: an already-removed
-// directory is a MODELED outcome, not a suppressed error, and this builder mints the plain
-// command only. The debt is a typed DissolutionCondition on the dissolution census roster, not a
-// bare commentary String (DESIGN §4c; review 72478 finding 1), and the carrier's description is
-// also the rung-change record §4b(3) asks a handling change to declare (review 72478 finding 2).
-// UNBOUND, deliberately: the condition is the ARRIVAL of a family the host-effect lane has not
-// yet named anywhere in its plan, so a bound forward ref would cite a symbol nobody declared.
-// The census reads this row as unmet until the paying change binds the outcome and deletes it.
-data rmdir_already_absent_realization_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
-    reason: "rmdir_command|already-absent-outcome:unmodeled-owed-to-host-effect-lane",
-    dissolution: unbound_dissolution(
-      description: "The old teardown text carried `2>/dev/null || true`, which is absorbing-fallback shell (DESIGN §5) and was deleted with the script; the plain rmdir stays the instruction and its nonzero on an absent directory is not swallowed here. PREVIOUS RUNG: an already-absent directory was tolerated by an unmodeled shell fallback -- silent absorption, which is below the ladder, not a rung on it. TEMPORARY RUNG: the described teardown surfaces the honest nonzero, and the witnesses gate the staging as a description. REASON: absorbing-fallback shell text is forbidden, and modeling absence without a state observer would fabricate a readback the described command cannot supply. BOUNDED POPULATION: the ConfigfsRmdir arm of the configfs staging -- this builder's sole executing call site -- i.e. the final rmdir of the gunbcvm gadget teardown. RESTORATION TRIGGER: the host-effect lane's configfs teardown realization (roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49, fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md), which observes the target's state and records an absent directory as already-converged instead of re-running a suppressed command; when that node's effect family binds typed execution it takes over the absent-directory outcome and this frontier dissolves -- no `|| true` re-enters.",
-    ),
-  ),
-]
 
 fn rmdir_command(path: String) -> ArgvCommand {
   argv_command(program: coreutils_rmdir_binary_name, arguments: [path])

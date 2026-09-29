@@ -14,7 +14,6 @@ import extdeps.linux.usb_gadget {
   UsbGadget,
   MassStorageLun,
   ConfigfsOp,
-  ConfigfsOpCommand,
   ConfigfsStaging,
   usb_gadget_setup_ops,
   usb_gadget_setup_staging,
@@ -121,6 +120,12 @@ fn plan_vm_gadget(plan: BmcVirtualMediaPlan) -> UsbGadget {
     },
     udc: plan.udc,
   }
+}
+
+// THE FIXTURE GADGET for the witness tests (dag/test/claim/...): the srv4 plan's gadget record,
+// the single UsbGadget every srv4 gadget witness derives its ops, staging, and verdicts from.
+fn srv4_vm_gadget() -> UsbGadget {
+  plan_vm_gadget(plan: srv4_bmc_virtual_media_plan)
 }
 
 fn srv4_nbd_server_config_text() -> String {

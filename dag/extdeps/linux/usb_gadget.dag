@@ -8,7 +8,6 @@ import std.decl_ref { decl_ref }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_into_directory_command, rm_force_command, rmdir_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
-import gunbc.rust_item_scan { ends_with }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -39,11 +38,21 @@ type UsbGadget {
   udc: NonEmptyStr
 }
 
+// THE SEMANTIC AUTHORITY: the five operations a gadget's configfs lifecycle consists of. The
+// link operations carry NAMES, not paths -- staging derives both endpoints from THIS gadget's
+// record, so "the target is this gadget's function, the destination is this gadget's
+// configuration, both of the same gadget" is not a check that can pass or fail but a
+// CONSTRUCTION that cannot be authored wrong (review on a28daf4844, finding 2: the old
+// `ConfigfsSymlink { target, link }` accepted any target -- `/dev/nbd0` was the fixture's
+// positive -- and so blessed an argv shape that cannot represent the configfs operation being
+// modeled, which links `functions/<function>` into `configs/<configuration>`). Paths on the
+// directory operations are authored spellings; staging validates them against the gadget's own
+// root (finding 1) before anything is prepared.
 type ConfigfsOp
   = ConfigfsMkdir { path: NonEmptyStr }
   | ConfigfsWriteAttr { path: NonEmptyStr, value: String }
-  | ConfigfsSymlink { target: NonEmptyStr, link: NonEmptyStr }
-  | ConfigfsRemoveLink { link: NonEmptyStr }
+  | ConfigfsLinkFunction { function: NonEmptyStr, configuration: NonEmptyStr }
+  | ConfigfsUnlinkFunction { function: NonEmptyStr, configuration: NonEmptyStr }
   | ConfigfsRmdir { path: NonEmptyStr }
 
 fn usb_gadget_dir(gadget: UsbGadget) -> NonEmptyStr {
@@ -75,30 +84,30 @@ fn usb_gadget_setup_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
     ConfigfsWriteAttr { path: join([lun, "/file"], "") as NonEmptyStr, value: gadget.lun.backing_device as String },
     ConfigfsMkdir { path: join([config, "/strings/0x409"], "") as NonEmptyStr },
     ConfigfsWriteAttr { path: join([config, "/strings/0x409/configuration"], "") as NonEmptyStr, value: gadget.config_label as String },
-    ConfigfsSymlink { target: func as NonEmptyStr, link: join([config, "/"], "") as NonEmptyStr },
+    ConfigfsLinkFunction { function: "mass_storage.0", configuration: gadget.config_label },
     ConfigfsWriteAttr { path: join([g, "/UDC"], "") as NonEmptyStr, value: gadget.udc as String },
   ]
 }
 
 fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
   let g = usb_gadget_dir(gadget: gadget) as String
-  let config = join([g, "/configs/", gadget.config_label as String], "")
   [
     ConfigfsWriteAttr { path: join([g, "/UDC"], "") as NonEmptyStr, value: "" },
-    ConfigfsRemoveLink { link: join([config, "/mass_storage.0"], "") as NonEmptyStr },
+    ConfigfsUnlinkFunction { function: "mass_storage.0", configuration: gadget.config_label },
     ConfigfsRmdir { path: join([g, "/functions/mass_storage.0"], "") as NonEmptyStr },
-    ConfigfsRmdir { path: join([config, "/strings/0x409"], "") as NonEmptyStr },
-    ConfigfsRmdir { path: config as NonEmptyStr },
+    ConfigfsRmdir { path: join([g, "/configs/", gadget.config_label as String, "/strings/0x409"], "") as NonEmptyStr },
+    ConfigfsRmdir { path: join([g, "/configs/", gadget.config_label as String], "") as NonEmptyStr },
     ConfigfsRmdir { path: join([g, "/strings/0x409"], "") as NonEmptyStr },
     ConfigfsRmdir { path: g as NonEmptyStr },
   ]
 }
 
-// The ConfigfsOp list is the typed authority for the structure; each op ACTS through a typed
-// command minted below. The previous realization rendered each op to a POSIX shell line (a single
-// per-variant renderer that had replaced 32 scattered concats); that renderer is retired, because
-// a shell line is an unchecked serialization exactly as the concats were -- shell syntax embedded
-// in decision-making code cannot be checked before it runs and cannot be reused anywhere else.
+// The ConfigfsOp list is the typed authority for the structure; each op is PREPARED by staging
+// (validated, still semantic) and only then REALIZED at the boundary below. The previous
+// realization rendered each op to a POSIX shell line (a single per-variant renderer that had
+// replaced 32 scattered concats); that renderer is retired, because a shell line is an unchecked
+// serialization exactly as the concats were -- shell syntax embedded in decision-making code
+// cannot be checked before it runs and cannot be reused anywhere else.
 //
 // THE RETIREMENT OBLIGATION IS DISCHARGED, NOT CARRIED: the renderer (`configfs_op_line`) is gone
 // from this tree as of the same change that described the transport, and a retirement obligation
@@ -108,21 +117,11 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
 // rather than to shell text -- is continued, one layer further along, in the host-effect lane,
 // which now consumes these typed commands instead of shell text.
 
-// THE DESCRIBED TRANSPORT (roadmap node shell-typed-invocation). One ConfigfsOp's typed command:
-// the operation a caller names and the arguments that carry it. This is what a transport consumes
-// INSTEAD of shell text -- the instruction is the typed value, and every spelling below is
-// derived from a cited builder, not hand-glued.
-//
-//   - Process-backed ops (mkdir / symlink / unlink / rmdir) run as `ArgvCommand`s minted through
-//     the tool's own extdeps builder -- one operation of one tool, admitted by name on
-//     extdeps.exec.command argv_command.
-//   - `ConfigfsWriteAttr` is a TYPED ATTRIBUTE WRITE, not an argv command: writing a configfs
-//     attribute is write(2) on an existing kernel-owned file, which no argv carries without a
-//     shell redirect (the old `printf '%s' ... > path` WAS the shell dependence). Its transport
-//     is a native file write over the target's transport; modeling that realization is the
-//     host-effect lane's work, and this node's bar is only that no shell text is produced.
-//   - `ConfigfsWriteAttr`'s named later consumer and trigger are stated in the declared frontier
-//     beside this declaration (its realization is a native write, owed to the host-effect lane).
+// `ConfigfsWriteAttr` is a TYPED ATTRIBUTE WRITE, not an argv command: writing a configfs
+// attribute is write(2) on an existing kernel-owned file, which no argv carries without a shell
+// redirect (the old `printf '%s' ... > path` WAS the shell dependence). Its transport is a
+// native file write over the target's transport; modeling that realization is the host-effect
+// lane's work, and this node's bar is only that no shell text is produced.
 type ConfigfsOpCommand
   = ConfigfsOpRunsArgv { command: ArgvCommand }
   | ConfigfsOpWritesAttr { path: NonEmptyStr, value: String }
@@ -147,112 +146,267 @@ data configfs_attr_write_realization_frontier_rows: List<FrontierRow> = [
   ),
 ]
 
-// THE STAGED RESULT of turning described ops into commands (review 38602, finding 1): either the
-// commands to run, or the WHOLE staging refused. There is no state in which a refused op sits in
-// a list beside runnable commands, so a bad argument cannot act while the ops around it are
-// skipped past -- the refusal is a stop at the grain a caller consumes, not a mixed-in arm.
+// DECLARED FRONTIER (DESIGN §3c), stated beside the operation it fronts (review on a28daf4844,
+// finding 3: the debt MOVED HERE from extdeps.tools.gnu_coreutils, whose plain rmdir correctly
+// models the coreutils operation -- there, an absent directory is an error, and "absent means
+// already converged" is configfs TEARDOWN policy, not a property of every rmdir invocation).
+// An already-removed configfs directory is a MODELED teardown outcome, not a suppressed error:
+// the old shell text carried `2>/dev/null || true` (absorbing-fallback, DESIGN §5), which this
+// migration deleted with the script, and the plain rmdir stays the instruction -- its nonzero on
+// an absent directory is not swallowed here. BOUNDED POPULATION, complete: the FIVE
+// ConfigfsRmdir operations of the gunbcvm gadget teardown -- functions/mass_storage.0,
+// configs/c.1/strings/0x409, configs/c.1, strings/0x409, and the gadget root itself -- and no
+// other consumer of rmdir_command anywhere in the closure. PREVIOUS RUNG: tolerated by an
+// unmodeled shell fallback -- silent absorption, which is below the ladder, not a rung on it.
+// TEMPORARY RUNG: the described teardown surfaces the honest nonzero, and the witnesses gate the
+// staging as a description. REASON: absorbing-fallback shell text is forbidden, and modeling
+// absence without a state observer would fabricate a readback the described command cannot
+// supply. THE NAMED LATER CONSUMER: the host-effect lane's configfs teardown realization, which
+// observes the target's state and records an absent directory as already-converged instead of
+// re-running a suppressed command. THE NAMED LATER CHANGE: roadmap node
+// rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md).
+// THE TRIGGER, stated beside the declaration: when that node's effect family binds typed
+// execution it takes over the absent-directory outcome and this frontier dissolves; no `|| true`
+// re-enters.
+data configfs_rmdir_absent_as_converged_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "ConfigfsRmdir"),
+    reason: "ConfigfsRmdir|teardown-absent-as-converged:unmodeled-owed-to-host-effect-lane",
+    dissolution: unbound_dissolution(
+      description: "An already-removed configfs directory is a MODELED teardown outcome, not a suppressed error: the old shell text carried `2>/dev/null || true` (absorbing-fallback shell, DESIGN §5) and was deleted with the script; the plain rmdir stays the instruction and its nonzero on an absent directory is not swallowed here. BOUNDED POPULATION, complete: the five ConfigfsRmdir operations of the gunbcvm gadget teardown -- functions/mass_storage.0, configs/c.1/strings/0x409, configs/c.1, strings/0x409, and the gadget root -- and no other consumer of rmdir_command in the closure. PREVIOUS RUNG: tolerated by an unmodeled shell fallback, silently. TEMPORARY RUNG: the described teardown surfaces the honest nonzero, and the witnesses gate the staging as a description. REASON: absorbing-fallback shell is forbidden, and modeling absence without a state observer would fabricate a readback the described command cannot supply. THE NAMED LATER CONSUMER: the host-effect lane's configfs teardown realization, which observes the target's state and records an absent directory as already-converged instead of re-running a suppressed command. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md). THE TRIGGER, stated beside the declaration: when that node's effect family binds typed execution it takes over the absent-directory outcome and this frontier dissolves; no `|| true` re-enters.",
+    ),
+  ),
+]
+
+
+// ---- PATH CONTAINMENT (review on a28daf4844, finding 1) ----
+
+// ONE CONTAINMENT FACT, VALIDATED SEGMENT-WISE. `starts_with` alone admits lexical escapes: the
+// spelling `<mount>/usb_gadget/<gadget>/../outside` carries the prefix and resolves outside the
+// gadget tree, and a sibling gadget under the same mount carries it too. The verdict therefore
+// answers three ways: inside THIS gadget's directory, escaped WITHIN the mount (a `.`/`..`
+// segment, or another gadget's or the class's own entry), or outside the mount entirely. The
+// mount itself comes from the gadget record (`config_root`) -- the kernel interface permits
+// configfs mounted at a chosen location with gadgets underneath it, so `/sys/kernel/config` is
+// this deployment's conventional mount, not the semantic identity, and no root is hard-coded
+// here any more.
+type ConfigfsPathVerdict
+  = ConfigfsPathInside { path: NonEmptyStr }
+  | ConfigfsPathEscaped { path: NonEmptyStr }
+  | ConfigfsPathOutside { path: NonEmptyStr }
+
+fn configfs_path_has_dot_segment(path: String) -> Bool {
+  any(split(s: path, delimiter: "/"), seg => seg == "." || seg == "..")
+}
+
+fn configfs_path_verdict(gadget: UsbGadget, path: NonEmptyStr) -> ConfigfsPathVerdict {
+  let class_prefix = join([gadget.config_root as String, "/"], "")
+  let gadget_dir = usb_gadget_dir(gadget: gadget) as String
+  let gadget_prefix = join([gadget_dir, "/"], "")
+  if !starts_with(s: path as String, prefix: class_prefix) {
+    ConfigfsPathOutside { path: path }
+  } else if configfs_path_has_dot_segment(path: path as String) {
+    ConfigfsPathEscaped { path: path }
+  } else if starts_with(s: path as String, prefix: gadget_prefix) || (path as String) == gadget_dir {
+    ConfigfsPathInside { path: path }
+  } else {
+    ConfigfsPathEscaped { path: path }
+  }
+}
+
+// A function or configuration NAME must be one well-formed path segment: staging derives the
+// link endpoints from it, so a name carrying `/` or a dot segment would aim the derived path
+// outside the gadget tree exactly as a hand-written path would.
+type ConfigfsNameVerdict
+  = ConfigfsNameWellFormed { name: NonEmptyStr }
+  | ConfigfsNameNotASegment { name: NonEmptyStr }
+
+fn configfs_name_verdict(name: NonEmptyStr) -> ConfigfsNameVerdict {
+  let n = name as String
+  if n == "" || string_contains(s: n, pattern: "/") || n == "." || n == ".." || starts_with(s: n, prefix: ".") {
+    ConfigfsNameNotASegment { name: name }
+  } else {
+    ConfigfsNameWellFormed { name: name }
+  }
+}
+
+// THE VALIDATED SEMANTIC OPERATIONS staging returns: the same five operations with their paths
+// PROVEN descendants of this gadget's directory (or endpoints derived from this gadget's own
+// record), and with no process form in them at all -- a prepared operation says what configfs
+// will do, never which program spells it (review on a28daf4844, recommended next slice:
+// `ConfigfsOpRunsArgv` stops being a semantic surface and becomes the private process-boundary
+// carrier the realization lowers to).
+type ConfigfsPreparedOp
+  = ConfigfsPreparedMkdir { path: NonEmptyStr }
+  | ConfigfsPreparedWriteAttr { path: NonEmptyStr, value: String }
+  | ConfigfsPreparedLinkFunction { gadget_dir: NonEmptyStr, function: NonEmptyStr, configuration: NonEmptyStr }
+  | ConfigfsPreparedUnlinkFunction { gadget_dir: NonEmptyStr, function: NonEmptyStr, configuration: NonEmptyStr }
+  | ConfigfsPreparedRmdir { path: NonEmptyStr }
+
+// THE STAGED RESULT: the validated semantic operations to hand the realization, or the WHOLE
+// staging refused. There is no state in which a refused op sits beside prepared ones, so a bad
+// argument cannot act while the ops around it are skipped past -- the refusal is a stop at the
+// grain a caller consumes. READY, not RAN: no operation has run yet; the name names what the
+// value IS (a prepared plan), not what will happen to it.
 type ConfigfsStaging
-  = ConfigfsStagingRan { commands: List<ConfigfsOpCommand> }
+  = ConfigfsStagingReady { operations: List<ConfigfsPreparedOp> }
   | ConfigfsStagingRefused { reason: NonEmptyStr }
 
-// The gadget's configfs tree root -- the prefix extdeps_external_authority_anchor's cited
-// procedure operates on, and the same string the acceptance oracle's positive control asserts
-// every op path carries.
-data gadget_configfs_root: NonEmptyStr = "/sys/kernel/config/usb_gadget/"
-
-fn configfs_staging_refused_outside_tree(op_path: String) -> ConfigfsStaging {
+fn configfs_staging_refused_outside_mount(op_path: String) -> ConfigfsStaging {
   ConfigfsStagingRefused {
     reason: join(
-      ["configfs op names a path outside the gadget configfs tree: ", op_path],
+      ["configfs op names a path outside the gadget configfs mount: ", op_path],
       "",
     ) as NonEmptyStr,
   }
 }
 
-// One op staged alone: the command its cited builder mints, the typed attribute write, or the
-// refusal of the staging it would have joined. The guards are the same per-variant prefix checks
-// (and the symlink's directory-spelled suffix) as before the staging climb; what changed is the
-// GRAIN the refusal lives at -- see configfs_staging_of.
-fn configfs_op_staging(op: ConfigfsOp) -> ConfigfsStaging {
+fn configfs_staging_refused_escape(op_path: String) -> ConfigfsStaging {
+  ConfigfsStagingRefused {
+    reason: join(
+      ["configfs op path escapes the gadget directory it was validated against: ", op_path],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+fn configfs_staging_refused_name(bad_name: String) -> ConfigfsStaging {
+  ConfigfsStagingRefused {
+    reason: join(
+      ["configfs operation name is not a single well-formed path segment: ", bad_name],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+// One op prepared alone: the validated semantic operation, or the refusal of the staging it
+// would have joined. The path operations are validated against THIS gadget's record; the link
+// operations validate their names and derive both endpoints from the gadget, which is what makes
+// the functions-to-configs relationship structural rather than checked.
+fn configfs_op_prepared(gadget: UsbGadget, op: ConfigfsOp) -> ConfigfsStaging {
+  let g = usb_gadget_dir(gadget: gadget)
   match op {
     ConfigfsMkdir { path: p } =>
-      if starts_with(s: p as String, prefix: gadget_configfs_root as String) {
-        ConfigfsStagingRan {
-          commands: [ConfigfsOpRunsArgv {
-            command: mkdir_parents_command_at(
-              mkdir_binary: mkdir_path_resolved_program,
-              path: p as String,
-            ),
-          }],
-        }
-      } else {
-        configfs_staging_refused_outside_tree(op_path: p as String)
+      match configfs_path_verdict(gadget: gadget, path: p) {
+        ConfigfsPathInside { path: _ } =>
+          ConfigfsStagingReady { operations: [ConfigfsPreparedMkdir { path: p }] }
+        ConfigfsPathEscaped { path: e } => configfs_staging_refused_escape(op_path: e as String)
+        ConfigfsPathOutside { path: o } => configfs_staging_refused_outside_mount(op_path: o as String)
       }
     ConfigfsWriteAttr { path: p, value: v } =>
-      if starts_with(s: p as String, prefix: gadget_configfs_root as String) {
-        ConfigfsStagingRan { commands: [ConfigfsOpWritesAttr { path: p, value: v }] }
-      } else {
-        configfs_staging_refused_outside_tree(op_path: p as String)
+      match configfs_path_verdict(gadget: gadget, path: p) {
+        ConfigfsPathInside { path: _ } =>
+          ConfigfsStagingReady { operations: [ConfigfsPreparedWriteAttr { path: p, value: v }] }
+        ConfigfsPathEscaped { path: e } => configfs_staging_refused_escape(op_path: e as String)
+        ConfigfsPathOutside { path: o } => configfs_staging_refused_outside_mount(op_path: o as String)
       }
-    ConfigfsSymlink { target: t, link: l } =>
-      if starts_with(s: l as String, prefix: gadget_configfs_root as String)
-        && ends_with(s: l as String, suffix: "/") {
-        ConfigfsStagingRan {
-          commands: [ConfigfsOpRunsArgv {
-            command: ln_symbolic_force_into_directory_command(target: t as String, directory: l as String),
-          }],
-        }
-      } else {
-        configfs_staging_refused_outside_tree(op_path: l as String)
+    ConfigfsLinkFunction { function: f, configuration: c } =>
+      match configfs_name_verdict(name: f) {
+        ConfigfsNameNotASegment { name: bad } => configfs_staging_refused_name(bad_name: bad as String)
+        ConfigfsNameWellFormed { name: _ } =>
+          match configfs_name_verdict(name: c) {
+            ConfigfsNameNotASegment { name: bad } => configfs_staging_refused_name(bad_name: bad as String)
+            ConfigfsNameWellFormed { name: _ } =>
+              ConfigfsStagingReady {
+                operations: [ConfigfsPreparedLinkFunction {
+                  gadget_dir: g,
+                  function: f,
+                  configuration: c,
+                }],
+              }
+          }
       }
-    ConfigfsRemoveLink { link: l } =>
-      if starts_with(s: l as String, prefix: gadget_configfs_root as String) {
-        ConfigfsStagingRan {
-          commands: [ConfigfsOpRunsArgv { command: rm_force_command(path: l as String) }],
-        }
-      } else {
-        configfs_staging_refused_outside_tree(op_path: l as String)
+    ConfigfsUnlinkFunction { function: f, configuration: c } =>
+      match configfs_name_verdict(name: f) {
+        ConfigfsNameNotASegment { name: bad } => configfs_staging_refused_name(bad_name: bad as String)
+        ConfigfsNameWellFormed { name: _ } =>
+          match configfs_name_verdict(name: c) {
+            ConfigfsNameNotASegment { name: bad } => configfs_staging_refused_name(bad_name: bad as String)
+            ConfigfsNameWellFormed { name: _ } =>
+              ConfigfsStagingReady {
+                operations: [ConfigfsPreparedUnlinkFunction {
+                  gadget_dir: g,
+                  function: f,
+                  configuration: c,
+                }],
+              }
+          }
       }
     ConfigfsRmdir { path: p } =>
-      if starts_with(s: p as String, prefix: gadget_configfs_root as String) {
-        ConfigfsStagingRan { commands: [ConfigfsOpRunsArgv { command: rmdir_command(path: p as String) }] }
-      } else {
-        configfs_staging_refused_outside_tree(op_path: p as String)
+      match configfs_path_verdict(gadget: gadget, path: p) {
+        ConfigfsPathInside { path: _ } =>
+          ConfigfsStagingReady { operations: [ConfigfsPreparedRmdir { path: p }] }
+        ConfigfsPathEscaped { path: e } => configfs_staging_refused_escape(op_path: e as String)
+        ConfigfsPathOutside { path: o } => configfs_staging_refused_outside_mount(op_path: o as String)
       }
   }
 }
 
 // The staged setup or teardown: fold the ops, refusing the WHOLE staging at the first op that
-// does not resolve. Ops before a refusal never become observable -- a refused staging carries no
-// command list at all, so a caller cannot act on the good prefix and skip the bad op past it.
-fn configfs_staging_of(ops: List<ConfigfsOp>) -> ConfigfsStaging {
+// does not prepare. Ops before a refusal never become observable -- a refused staging carries no
+// operation list at all, so a caller cannot act on the good prefix and skip the bad op past it.
+fn configfs_staging_of(gadget: UsbGadget, ops: List<ConfigfsOp>) -> ConfigfsStaging {
   fold(
     ops,
-    init: ConfigfsStagingRan { commands: [] },
+    init: ConfigfsStagingReady { operations: [] },
     f: (acc, op) =>
       match acc {
         ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
-        ConfigfsStagingRan { commands: cs } =>
-          match configfs_op_staging(op: op) {
+        ConfigfsStagingReady { operations: os } =>
+          match configfs_op_prepared(gadget: gadget, op: op) {
             ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
-            ConfigfsStagingRan { commands: minted } =>
-              ConfigfsStagingRan { commands: list_append(left: cs, right: minted) },
+            ConfigfsStagingReady { operations: minted } =>
+              ConfigfsStagingReady { operations: list_append(left: os, right: minted) },
           },
       },
   )
 }
 
 fn usb_gadget_setup_staging(gadget: UsbGadget) -> ConfigfsStaging {
-  configfs_staging_of(ops: usb_gadget_setup_ops(gadget: gadget))
+  configfs_staging_of(gadget: gadget, ops: usb_gadget_setup_ops(gadget: gadget))
 }
 
 fn usb_gadget_teardown_staging(gadget: UsbGadget) -> ConfigfsStaging {
-  configfs_staging_of(ops: usb_gadget_teardown_ops(gadget: gadget))
+  configfs_staging_of(gadget: gadget, ops: usb_gadget_teardown_ops(gadget: gadget))
 }
 
-// One display line per described command. The argv arm goes through the one quoting fact
+// ---- THE REALIZATION BOUNDARY ----
+
+// A prepared semantic operation lowers here to what a process runs: the private process-boundary
+// carrier (`ArgvCommand`) or the native attribute write. Only the executing consumer (the
+// host-effect lane's transport realization) and the tool-realization witnesses are admitted past
+// this point; the domain witnesses stop at `ConfigfsPreparedOp`, and no configfs or BMC consumer
+// learns what an operation means from anything rendered below it (review on a28daf4844,
+// recommended next slice, structural control). The link endpoints are RE-DERIVED from the
+// prepared operation's own validated fields, so the realized `ln -sf` carries the functions
+// endpoint as its target and the directory-spelled configuration directory as its destination.
+fn configfs_prepared_realization(op: ConfigfsPreparedOp) -> ConfigfsOpCommand {
+  match op {
+    ConfigfsPreparedMkdir { path: p } =>
+      ConfigfsOpRunsArgv {
+        command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: p as String),
+      }
+    ConfigfsPreparedWriteAttr { path: p, value: v } => ConfigfsOpWritesAttr { path: p, value: v }
+    ConfigfsPreparedLinkFunction { gadget_dir: g, function: f, configuration: c } =>
+      ConfigfsOpRunsArgv {
+        command: ln_symbolic_force_into_directory_command(
+          target: join([g as String, "/functions/", f as String], ""),
+          directory: join([g as String, "/configs/", c as String, "/"], ""),
+        ),
+      }
+    ConfigfsPreparedUnlinkFunction { gadget_dir: g, function: f, configuration: c } =>
+      ConfigfsOpRunsArgv {
+        command: rm_force_command(path: join([g as String, "/configs/", c as String, "/", f as String], "")),
+      }
+    ConfigfsPreparedRmdir { path: p } =>
+      ConfigfsOpRunsArgv { command: rmdir_command(path: p as String) }
+  }
+}
+
+// One display line per realized command. The argv arm goes through the one quoting fact
 // (extdeps.exec.command shell_command_render); the attribute-write arm renders as a key/value
-// description, which is not shell and carries no shell control word.
+// description, which is not shell and carries no shell control word. This is the RENDER BOUNDARY:
+// a narration surface and the shell-word oracle's subject -- no consumer reads meaning out of it.
 fn configfs_op_command_display(cmd: ConfigfsOpCommand) -> String {
   match cmd {
     ConfigfsOpRunsArgv { command: c } => shell_command_render(command: c)
@@ -260,14 +414,13 @@ fn configfs_op_command_display(cmd: ConfigfsOpCommand) -> String {
   }
 }
 
-// What a staging renders to: one line per command, or the refusal with its reason. The DISPLAY
-// FOLD IS MODELED ONCE, here, and every caller's display surface derives from this one (review
-// 38602, finding 2). Still NOT an instruction: the instruction is the typed staging; this is what
-// a log or a witness reads when it asks what the staging renders to.
+// What a staging renders to: one line per realized command, or the refusal with its reason. The
+// DISPLAY FOLD IS MODELED ONCE, here, and every caller's display surface derives from this one
+// (review 38602, finding 2). Still NOT an instruction: the instruction is the typed staging.
 fn configfs_staging_display(staging: ConfigfsStaging) -> String {
   match staging {
-    ConfigfsStagingRan { commands: cs } =>
-      fold(cs, init: "", f: (acc, cmd) => join([acc, configfs_op_command_display(cmd: cmd), "\n"], "")),
+    ConfigfsStagingReady { operations: os } =>
+      fold(os, init: "", f: (acc, op) => join([acc, configfs_op_command_display(cmd: configfs_prepared_realization(op: op)), "\n"], "")),
     ConfigfsStagingRefused { reason: r } => join(["refused: ", r as String, "\n"], ""),
   }
 }
