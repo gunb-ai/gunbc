@@ -10307,7 +10307,7 @@ mod closure_edge_demand_tests {
                  response {{\n      200 => Payload\n    }}\n  }}\n}}\n{call}"
             )
         };
-        let helper = "module test.claim.helper\nfn response() -> Int { 1 }\n";
+        let helper = "module test.claim.helper\nfn response(result: String) -> String { result }\n";
         let types = "module svc.types\ntype Payload = { id: Int }\n";
         let clean = Fixture::new(&[
             ("consumer.dag", service("").as_str()),
@@ -10323,7 +10323,7 @@ mod closure_edge_demand_tests {
         let control = Fixture::new(&[
             (
                 "consumer.dag",
-                service("fn use_it() -> Int { response() }\n").as_str(),
+                service("fn use_it() -> String { response(result: \"x\") }\n").as_str(),
             ),
             ("helper.dag", helper),
             ("types.dag", types),
