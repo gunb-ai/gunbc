@@ -1085,7 +1085,12 @@ fn conj_positional_children(parent: Node) -> List<Node> {
           }
         }
       )
-    _ => Empty
+    TypeNode { connective: Atom { identity: _ } } => Empty
+    TypeNode { connective: Disj } => Empty
+    TypeNode { connective: Arrow } => Empty
+    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Instantiation } => Empty
+    ComputationNode { behavior: _ } => Empty
   }
 }
 
@@ -1179,7 +1184,8 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
     cons: formal_production_rhs_singleton_terminal_identity_step
   ) {
     RhsSingletonTerminalFound { identity: id } => Present { value: id }
-    _ => Absent
+    RhsSingletonTerminalNotSeen => Absent
+    RhsSingletonTerminalAmbiguous => Absent
   }
 }
 
@@ -1215,14 +1221,20 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
     cons: formal_production_rhs_singleton_binding_step
   ) {
     RhsSingletonBindingFound { binding: b } => Present { value: b }
-    _ => Absent
+    RhsSingletonBindingNotSeen => Absent
+    RhsSingletonBindingAmbiguous => Absent
   }
 }
 
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -1389,7 +1401,12 @@ fn formal_production_rhs_matches_emitted_conj(
         children: children,
         child_count: child_count
       )
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1446,7 +1463,11 @@ fn formal_production_matches_resolution(
         children: children,
         child_count: child_count
       )
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1454,7 +1475,11 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
   match child.kind {
     TypeNode { connective: Conj } => true
     TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1621,7 +1646,11 @@ fn formal_emitted_index_key(emitted: Node, children: List<Node>) -> Symbol? {
         Empty => optional_absent()
         Cons { head: first, tail: _ } => node_atom_identity_optional(node: first)
       }
-    _ => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -1945,7 +1974,11 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
     TypeNode { connective: Conj } =>
       conj_positional_child_count(children: conj_positional_children(parent: emitted))
     TypeNode { connective: Atom { identity: _ } } => 0
-    _ => 0 - 1
+    TypeNode { connective: Disj } => 0 - 1
+    TypeNode { connective: Arrow } => 0 - 1
+    TypeNode { connective: Cardinality } => 0 - 1
+    TypeNode { connective: Instantiation } => 0 - 1
+    ComputationNode { behavior: _ } => 0 - 1
   }
 }
 
@@ -2342,7 +2375,12 @@ fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Sym
     empty: match n.kind {
       TypeNode { connective: Atom { identity: id } } =>
         grammar_symbol_map_put(m: m, sym: id)
-      _ => m
+      TypeNode { connective: Conj } => m
+      TypeNode { connective: Disj } => m
+      TypeNode { connective: Arrow } => m
+      TypeNode { connective: Cardinality } => m
+      TypeNode { connective: Instantiation } => m
+      ComputationNode { behavior: _ } => m
     },
     cons: fn(acc, e) {
       grammar_node_insert_atom_identities_child(m: acc, e: e)
@@ -2891,7 +2929,12 @@ fn grammar_relation_row_forward_select(
           }
         }
       )
-    _ => GrammarRelationForwardRowNone
+    TypeNode { connective: Atom { identity: _ } } => GrammarRelationForwardRowNone
+    TypeNode { connective: Disj } => GrammarRelationForwardRowNone
+    TypeNode { connective: Arrow } => GrammarRelationForwardRowNone
+    TypeNode { connective: Cardinality } => GrammarRelationForwardRowNone
+    TypeNode { connective: Instantiation } => GrammarRelationForwardRowNone
+    ComputationNode { behavior: _ } => GrammarRelationForwardRowNone
   }
 }
 
@@ -3022,7 +3065,11 @@ fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -
           }
         }
       })
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
