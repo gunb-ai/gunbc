@@ -1595,7 +1595,7 @@ fn issue_detail_fixture_panel() -> gunbc.roadmap_presentation.IssueLinkPanel {
     rn: gunbc.roadmap_authority.authored(identity: "rnfx_idspec", id: "issue-detail-specimen", done: false, content: "Specimen issue"),
     nodes: nodes,
     edges: edges,
-    memberships: [gunbc.roadmap_nesting.RoadmapMembership { member: "issue-detail-specimen", project: "issue-detail-parent" }, gunbc.roadmap_nesting.RoadmapMembership { member: "issue-detail-child", project: "issue-detail-specimen" }])
+    memberships: [gunbc.roadmap_nesting.RoadmapMembership { member: "issue-detail-specimen", project: "issue-detail-parent", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "issue-detail-child", project: "issue-detail-specimen", contribution: "fixture contribution" }])
 }
 
 fn fixture_human_ref() -> gunbc.principal_projection.PrincipalRef {
@@ -2585,7 +2585,7 @@ test fn witness_inline_assignment_context_chip_html_carries_the_profile_display(
 // These older fixtures explicitly declare both relations with the same endpoints. Production
 // never derives ownership this way; the independent-relation control uses different endpoints.
 fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_nesting.RoadmapMembership> {
-  map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String })
+  map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String, contribution: "fixture contribution" })
 }
 
 test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> Bool {

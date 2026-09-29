@@ -3084,6 +3084,81 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
       )
     ),
+    active_small(
+      identity: "rn_GUNBCROOT0PROJECT0FACTORY0A",
+      id: "gunbc-project-root",
+      owner: "program",
+      path: "dag/gunbc/design_document.dag",
+      t: fields(
+        headline: "Build the self-hosting, proof-carrying LLM software factory",
+        boundary: "The admitted root of the functional decomposition: every dispatchable task reaches this node through authored membership, each edge carrying why the child's work advances its parent. DESIGN.md is the principles authority orthogonal to this hierarchy, not a level of it.",
+        displaced_cost: "Without a declared root, a projectless task reads as its own justification and drift has no chain to be measured against.",
+        first_slice: "Admit this root, attach the active harness lineage and the shell batch to it, and refuse alignment chains that end anywhere else.",
+        red_control: "A task whose membership walk ends at a node not declared a root refuses its alignment resolution; this node is the only parentless one the walk may end at.",
+        out_of_scope: "This node is never dispatched and never carried by an execution contract; it exists so the walk has an admitted end.",
+        handback: "The rooted hierarchy, the walk's refusal of unrooted chains, and the receipts binding both."
+      )
+    ),
+    active_small(
+      identity: "rn_HARNESS0WORK0LIFECYCLE00A",
+      id: "harness-work-lifecycle",
+      owner: "harness",
+      path: "docs/plans/harness-work-lifecycle.md",
+      t: fields(
+        headline: "Make the mandatory journey from intake through delivery workflow-owned, durable, recoverable, and autonomous",
+        boundary: "The steps every code change must traverse -- orientation, implementation, test, commit, publication, review -- are owned by the workflow as durable state, not by an agent's memory of its instructions.",
+        displaced_cost: "Every obligation left in prose is re-learned per session and silently dropped under pressure; the failures look like agent error but are missing structure.",
+        first_slice: "Name the mandatory steps of one real worker journey and drag the first of them into a durable, workflow-owned mechanism.",
+        red_control: "A step the workflow claims to own survives process death and controller restart; one that lives only in a prompt does not count.",
+        out_of_scope: "No change to what verification or review require; the lane is who owns the journey, not whether it happens.",
+        handback: "The lifecycle model, the durable state, and the receipt of one journey completed by workflow ownership."
+      )
+    ),
+    active_small(
+      identity: "rn_HARNESS0RECURSIVE0ALIGN0A",
+      id: "harness-recursive-alignment",
+      owner: "harness",
+      path: "docs/plans/harness-work-lifecycle.md",
+      t: fields(
+        headline: "Allow work to continue across durable epochs while preserving alignment to every project level and the task contract",
+        boundary: "Continuation is unbounded in time but bounded in grounding: at each epoch boundary an independent adjudication reads the attempt's evidence against its rooted chain and resumes, steers, re-plans, routes, or stops the lineage.",
+        displaced_cost: "A fixed round budget ends correct work mid-task; uncapped continuation without adjudication trades longer execution for quiet drift. Both failure shapes were measured on live workers.",
+        first_slice: "Turn the harness's round-count terminal into a checkpoint-due announcement the workflow adjudicates outside the worker loop.",
+        red_control: "A worker crosses two checkpoints on one lineage and submits one candidate; no checkpoint is reported as task failure or completion; a planted steer is accepted and visible in the next epoch.",
+        out_of_scope: "The checkpoint never establishes submission, verification, publication, or readiness; those gates are untouched.",
+        handback: "The checkpoint mechanism, the durable cadence state, the adjudication boundary, and the two-checkpoint acceptance receipt."
+      )
+    ),
+    active_small(
+      identity: "rn_HCONVO0LOG0FORK0POINTS0A",
+      id: "harness-conversation-log-forking",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_turn.dag",
+      t: fields(
+        headline: "The attempt lineage owns its conversation log; epochs resume and probes fork from typed fork points",
+        boundary: "Every round's exact wire (messages sent, blocks received) persists under the attempt's state directory keyed by round, so any (attempt, epoch, round) names an exact conversation state. Epoch resume replays the log to its tip and appends the guidance bundle; an alignment probe forks at the checkpoint's log tip: shared chain prefix plus one level-specific suffix branch. The engine's prefix cache only accelerates what the log already makes correct; nothing may depend on the cache being warm.",
+        displaced_cost: "Without a durable log, continuation re-briefs blind, a worker's hard-won context dies with its process, and 'fork from a known point' is impossible because no known point exists.",
+        first_slice: "Persist per-round request/response bodies keyed by round in the attempt state directory; wire continuation resume to replay from the log instead of a fresh brief.",
+        red_control: "A fork is typed: ForkAdmitted { tip } / ForkInvalid { cause }, where a model, weights, chat-template, or chain-fingerprint change invalidates the fork point; a crashed worker's next epoch resumes from the durable log, not from a re-authored brief; a probe can name the exact log tip it forked from.",
+        out_of_scope: "No engine-side KV pinning or replica affinity; the cache stays an opportunistic derivation. No change to what the alignment probes judge.",
+        handback: "The durable log, the fork-point typing, resume-from-log, and receipts for crash recovery and invalidation."
+      )
+    ),
+    active_small(
+      identity: "rn_HALIGN0CHECKPOINT0RESUME0A",
+      id: "harness-alignment-checkpoint-resume",
+      owner: "harness",
+      path: "dag/gunbc/harness/harness_turn.dag",
+      t: fields(
+        headline: "Replace fixed round exhaustion with an evidence-bound checkpoint whose verdict resumes, steers, re-plans, routes, or stops the same attempt lineage",
+        boundary: "At the epoch boundary the harness emits turn.alignment_checkpoint_due bound to the chain fingerprint and returns control; adjudication runs outside the worker loop against durable evidence; the verdict and next cadence state publish atomically; only adjudication resumes the lineage.",
+        displaced_cost: "An in-loop checkpoint that asks the worker to grade itself mints continuation on the worker's own word -- the drift the checkpoint exists to catch is exactly the drift such a worker would not report.",
+        first_slice: "Typed TurnAlignmentCheckpointDue outcome plus the durable event, the admitted-root chain projection, and the belt's adjudication-and-resume wiring.",
+        red_control: "An unrooted task refuses its chain; a worker's own aligned assertion cannot mint a continuation receipt; a changed node contract or edge contribution invalidates earlier receipts; a crash after verdict publication produces exactly one next epoch.",
+        out_of_scope: "No change to submission, verification, or publication gates; reviewers, auditors and probes keep hard step budgets.",
+        handback: "The outcome, the rooted projection, the adjudication boundary, durable cadence state, and witnesses for the red controls."
+      )
+    ),
   ], guarantee_ladder_nodes())
 }
 

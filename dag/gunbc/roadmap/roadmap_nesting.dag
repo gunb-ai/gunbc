@@ -4,22 +4,45 @@ import std.types { String, List }
 
 // Nesting is independently authored. A blocking edge never assigns project ownership.
 // Both ends name the same recursive kind of work item; no Epic/Task type hierarchy exists.
-type RoadmapMembership { member: String, project: String }
+//
+// THE EDGE CARRIES THE ALIGNMENT ARGUMENT (review 5354823380). contribution says why the member's
+// work advances THIS project -- a membership list without it is a list of titles, which no
+// checkpoint can be read against. It belongs to the relationship, not to either node: the same
+// member under a different project would play a different role.
+type RoadmapMembership { member: String, project: String, contribution: String }
+
+// THE ADMITTED ROOTS. A membership walk may end parentless only at one of these -- every other
+// standalone end means the chain never reached the top of a functional decomposition, and the
+// alignment projection refuses rather than calling an arbitrary node the root
+// (gunbc.roadmap.roadmap_alignment AlignmentChainUnrooted). DESIGN.md is NOT here: it is the
+// principles authority orthogonal to the hierarchy, reached as the chain's terminal pointer, not
+// as a project level.
+fn declared_roadmap_roots() -> List<String> {
+  ["gunbc-project-root"]
+}
 
 // First authored migration: shell → DAG batch 1, selected by the operator on 2026-09-28.
 // The batch contract above declared_roadmap_nodes names these ten children of the typed
 // invocation work item. This is a nesting declaration, not an inverse-dependency projection.
+//
+// The harness lineage (review 5354823380): the checkpoint task serves recursive alignment,
+// recursive alignment serves the work lifecycle, and the lifecycle serves the root project.
 fn declared_roadmap_memberships() -> List<RoadmapMembership> {
   [
-    RoadmapMembership { member: "shell-dag-cron-entry-line-builder", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-floor-peak-calibration-rows", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-ci-fmt-gate-line", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-ci-deploy-invoke-prelude", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-ci-heal-regen-invoke", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-compile-pool-slice-install", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-slot-population-census-read", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-codex-app-server-trip-script", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-live-deploy-install-owned", project: "shell-typed-invocation" },
-    RoadmapMembership { member: "shell-dag-live-deploy-restart-tailscale", project: "shell-typed-invocation" }
+    RoadmapMembership { member: "shell-dag-cron-entry-line-builder", project: "shell-typed-invocation", contribution: "Shows the pattern on the smallest surface: one rendered line derived from typed intent, proving callers can name operations instead of shell text." },
+    RoadmapMembership { member: "shell-dag-floor-peak-calibration-rows", project: "shell-typed-invocation", contribution: "Removes the echo-row calibration shell so the project's claim covers observation rows as well as invocations." },
+    RoadmapMembership { member: "shell-dag-ci-fmt-gate-line", project: "shell-typed-invocation", contribution: "Moves the CI format gate's line-building onto described operations, extending the pattern into the CI surfaces." },
+    RoadmapMembership { member: "shell-dag-ci-deploy-invoke-prelude", project: "shell-typed-invocation", contribution: "Moves the deploy invocation prelude onto described operations, so the riskiest CI call is checkable before it runs." },
+    RoadmapMembership { member: "shell-dag-ci-heal-regen-invoke", project: "shell-typed-invocation", contribution: "Moves the heal/regen invocation onto described operations, closing the CI invocation pair with the deploy prelude." },
+    RoadmapMembership { member: "shell-dag-compile-pool-slice-install", project: "shell-typed-invocation", contribution: "Describes the compile-pool slice installation instead of scripting it, so the factory's own build plumbing follows the pattern." },
+    RoadmapMembership { member: "shell-dag-slot-population-census-read", project: "shell-typed-invocation", contribution: "Describes the slot census read, replacing a shell probe whose output shape nothing could check." },
+    RoadmapMembership { member: "shell-dag-codex-app-server-trip-script", project: "shell-typed-invocation", contribution: "Describes the Codex app-server trip script, carrying the pattern into provider tooling." },
+    RoadmapMembership { member: "shell-dag-live-deploy-install-owned", project: "shell-typed-invocation", contribution: "Describes the owned live-deploy install, so deployment of our own service is as checkable as the CI calls." },
+    RoadmapMembership { member: "shell-dag-live-deploy-restart-tailscale", project: "shell-typed-invocation", contribution: "Describes the Tailscale restart step, completing the live-deploy pair." },
+    RoadmapMembership { member: "shell-typed-invocation", project: "gunbc-project-root", contribution: "Described commands are the factory's own dogfood: every invocation the harness issues becomes checkable before it runs." },
+    RoadmapMembership { member: "harness-alignment-checkpoint-resume", project: "harness-recursive-alignment", contribution: "The checkpoint turns an arbitrary terminal counter into the durable mechanism that enforces recursive alignment." },
+    RoadmapMembership { member: "harness-conversation-log-forking", project: "harness-recursive-alignment", contribution: "The lineage-owned conversation log is what makes resume and probe forks possible at all: without it every epoch is a cold start and every fork point is imaginary." },
+    RoadmapMembership { member: "harness-recursive-alignment", project: "harness-work-lifecycle", contribution: "Recursive alignment permits autonomous continuation without silently trading longer execution for project drift." },
+    RoadmapMembership { member: "harness-work-lifecycle", project: "gunbc-project-root", contribution: "The lifecycle makes the software factory autonomous without relying on an agent remembering mandatory obligations." }
   ]
 }

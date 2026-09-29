@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
-  alignment_resolve, alignment_base_cadence_state,
+  alignment_resolve, alignment_base_cadence_state, alignment_chain_fingerprint,
 }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.dispatch_pipe_pane_emit {
@@ -1922,6 +1922,7 @@ fn gunbc_harness_spawn_argv(
   request_scratch_path: String,
   events_path: String,
   attempt_identity: String,
+  alignment_chain_fingerprint: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -1938,6 +1939,7 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["repo_root=", repo_root], ""),
     "--arg", join(["gunbc_program=", gunbc_program], ""),
     "--arg", join(["attempt_identity=", attempt_identity], ""),
+    "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
   ]
 }
 
@@ -1994,6 +1996,7 @@ fn dispatch_provider_inner_argv_for_instance(
   attempt_key: String,
   worktree_path: String,
   brief: String,
+  alignment_chain_fingerprint: String,
 ) -> DispatchProviderInnerArgv {
   match provider {
     ClaudeCodeProvider =>
@@ -2059,6 +2062,7 @@ fn dispatch_provider_inner_argv_for_instance(
             attempt_key: attempt_key,
           ),
           attempt_identity: dispatch_worker_attempt_identity(node_id: node_id as String, attempt_key: attempt_key),
+          alignment_chain_fingerprint: alignment_chain_fingerprint,
         ),
       }
   }
@@ -2748,7 +2752,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
         step: "alignment" as NonEmptyStr,
         detail: alignment_refusal_reason(cause: cause),
       }
-    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } =>
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
       DispatchSpawnRefused {
@@ -2784,6 +2788,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     attempt_key: attempt_key,
     worktree_path: worktree_path,
     brief: brief,
+    alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
   ) {
     CursorProviderSpawnUnwired { reason } =>
       DispatchSpawnRefused {
