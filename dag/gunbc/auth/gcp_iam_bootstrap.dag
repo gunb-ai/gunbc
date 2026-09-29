@@ -5,11 +5,12 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import extdeps.google.userinfo
 import extdeps.auth.oidc { OidcStandardClaims }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.iam_deny
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam {
-  GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
+  GcpPolicy, GcpBinding, IamCondition, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   gcp_cells_bindings, gcp_policy_from_wire, gcp_policy_cells, gcp_cell_in, reconcile_gcp_policy,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
 }
@@ -24,7 +25,7 @@ import gunbc.auth.heal_publisher_provision {
   FederationClassified, FederationUnclassified, rest_ok, rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.auth.gcp_iam_bootstrap_model {
-  IamBootstrapRole, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
+  IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_capability_bindings, iam_bootstrap_trust_bindings,
   iam_bootstrap_apply_federation, iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
@@ -47,9 +48,9 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // identity. Its credential is never a fallback in the ongoing approval-gated job.
 // Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
-type IamBootstrapStage = BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapPrivilegeReadback | BootstrapWorkflowTrust
+type IamBootstrapStage = BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust]
+data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
@@ -60,14 +61,16 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapDeny => [BootstrapIdentities]
     BootstrapAuthorityCleanup => [BootstrapDeny]
     BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup]
-    BootstrapPrivilegeReadback => [BootstrapCapabilities]
-    BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback]
+    BootstrapProbeAuthority => [BootstrapCapabilities]
+    BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapProbeAuthority]
+    BootstrapProbeCleanup => [BootstrapProbeAuthority]
+    BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback, BootstrapProbeCleanup]
   }
   all(required, prerequisite => any(completed, done => done == prerequisite))
 }
 
 fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
-  match stage { BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
+  match stage { BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapProbeAuthority => "probe-authority" BootstrapProbeCleanup => "probe-cleanup" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
 }
 
 fn iam_bootstrap_plan() -> CliWireResponse {
@@ -258,7 +261,9 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     }
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
     BootstrapCapabilities => fold(iam_bootstrap_capability_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
+    BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
     BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
+    BootstrapProbeCleanup => iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
     BootstrapWorkflowTrust => {
       let guarded = iam_bootstrap_ensure_deny(token: token)
       if guarded != "" { guarded } else { fold(iam_bootstrap_trust_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) }) }
@@ -290,7 +295,9 @@ fn iam_bootstrap_apply() -> ProcessExit {
             else if outcome != "" { IamBootstrapProgress { completed: prior.completed, refusal: outcome } }
             else { IamBootstrapProgress { completed: prior.completed + [stage], refusal: "" } }
           })
-        let cleanup = iam_bootstrap_authority_converge(token: token, withdrawing: true)
+        let probe_cleanup = iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
+        let deny_cleanup = iam_bootstrap_authority_converge(token: token, withdrawing: true)
+        let cleanup = concat(probe_cleanup, if probe_cleanup != "" && deny_cleanup != "" { "; " } else { "" }, deny_cleanup)
         if result.refusal == "" && cleanup == "" { ExitSuccess }
         else { exit_failure(reason: concat(result.refusal, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
       }
@@ -358,31 +365,52 @@ fn iam_bootstrap_is_forbidden(outcome: RestOutcome) -> Bool {
   match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403 _ => false }
 }
 
-// The operator must already be authorized to impersonate for this readback. Bootstrap never
-// grants itself tokenCreator to make a failed probe pass. No service-account key is created.
+// Readback uses a temporary, exact-account token permission for the verified operator.
+// Its grant is retired before workflow trust; no signing permission or account key is added.
 fn iam_bootstrap_privilege_readback(token: Secret) -> String {
-  let apply = gcp.IAM.GenerateAccessToken(access_token: token, target_sa: iam_converge_service_account, lifetime: "600s")
-  if !rest_ok(o: apply.outcome) { concat("apply-account readback credential unavailable; workflow trust withheld: ", rest_refusal_text(o: apply.outcome)) }
-  else {
-    let positive = iam_bootstrap_positive_probes(token: apply.access_token)
-    if positive != "" { positive } else {
-      let negative = iam_bootstrap_negative_probes(token: apply.access_token)
-      if negative != "" { negative } else {
-        let observer = gcp.IAM.GenerateAccessToken(access_token: token, target_sa: iam_observe_service_account, lifetime: "600s")
-        if !rest_ok(o: observer.outcome) { concat("observer readback credential unavailable; workflow trust withheld: ", rest_refusal_text(o: observer.outcome)) }
-        else { match observe_and_plan_estate(token: observer.access_token) {
-          GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
-          _ => fold(gcp_iam_observe_dedicated_federation().secret_grants, init: "", f: (prior, grant) => if prior != "" { prior } else {
-            let permitted = gcp.SecretManager.AccessVersion(access_token: observer.access_token, project_id: grant.target.project, secret: grant.target.secret, version: grant.target.version)
-            if !rest_ok(o: permitted.outcome) { "observer cannot read its pinned approval-submission credential" }
-            else {
-              let denied = gcp.SecretManager.AccessVersion(access_token: apply.access_token, project_id: grant.target.project, secret: grant.target.secret, version: grant.target.version)
-              if iam_bootstrap_is_forbidden(outcome: denied.outcome) { "" } else { "apply account did not receive exact HTTP 403 for the known readable approval credential; workflow trust withheld" }
+  match iam_bootstrap_probe_token(token: token, account: iam_converge_service_account, remaining: 30) {
+    BootstrapProbeTokenRefused { reason } => concat("apply-account readback credential unavailable; workflow trust withheld: ", reason)
+    BootstrapProbeTokenReady { access_token: apply_token } => {
+      let positive = iam_bootstrap_positive_probes(token: apply_token)
+      if positive != "" { positive } else {
+        let negative = iam_bootstrap_negative_probes(token: apply_token)
+        if negative != "" { negative } else {
+          match iam_bootstrap_probe_token(token: token, account: iam_observe_service_account, remaining: 30) {
+            BootstrapProbeTokenRefused { reason } => concat("observer readback credential unavailable; workflow trust withheld: ", reason)
+            BootstrapProbeTokenReady { access_token: observer_token } => match observe_and_plan_estate(token: observer_token) {
+              GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
+              _ => fold(gcp_iam_observe_dedicated_federation().secret_grants, init: "", f: (prior, grant) => if prior != "" { prior } else {
+                let permitted = gcp.SecretManager.AccessVersion(access_token: observer_token, project_id: grant.target.project, secret: grant.target.secret, version: grant.target.version)
+                if !rest_ok(o: permitted.outcome) { "observer cannot read its pinned approval-submission credential" }
+                else {
+                  let denied = gcp.SecretManager.AccessVersion(access_token: apply_token, project_id: grant.target.project, secret: grant.target.secret, version: grant.target.version)
+                  if iam_bootstrap_is_forbidden(outcome: denied.outcome) { "" } else { "apply account did not receive exact HTTP 403 for the known readable approval credential; workflow trust withheld" }
+                }
+              })
             }
-          })
-        } }
+          }
+        }
       }
     }
+  }
+}
+
+type IamBootstrapProbeToken = BootstrapProbeTokenReady { access_token: Secret } | BootstrapProbeTokenRefused { reason: String }
+
+// Permission propagation may lag readback. Retry only explicit permission refusals,
+// within both a bounded count and the original absolute authority deadline.
+fn iam_bootstrap_probe_token(token: Secret, account: ServiceAccountEmail, remaining: Int) -> IamBootstrapProbeToken {
+  let generated = gcp.IAM.GenerateAccessToken(access_token: token, target_sa: account, lifetime: "600s")
+  if rest_ok(o: generated.outcome) { BootstrapProbeTokenReady { access_token: generated.access_token } }
+  else {
+    let intent = BootstrapAuthorityIntent { operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_ID"),
+      expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp }
+    let live = match approval_instant_now() { Absent => false Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) }
+    if bootstrap_deny_retry_admitted(outcome: generated.outcome, remaining: remaining, live: live) {
+      if sleep_delay_seconds_second_carrier_projection(duration: second(count: 2)) {
+        iam_bootstrap_probe_token(token: token, account: account, remaining: remaining - 1)
+      } else { BootstrapProbeTokenRefused { reason: "probe permission propagation wait failed" } }
+    } else { BootstrapProbeTokenRefused { reason: rest_refusal_text(o: generated.outcome) } }
   }
 }
 
@@ -438,8 +466,30 @@ fn iam_bootstrap_authority_converge(token: Secret, withdrawing: Bool) -> String 
 }
 
 fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Secret, withdrawing: Bool) -> String {
-  let stem = concat("gcp-iam-authority-", intent.operation)
-  let wire = bootstrap_authority_intent_wire(intent: intent)
+  iam_bootstrap_cell_authority_reconcile(intent: intent, stem: concat("gcp-iam-authority-", intent.operation),
+    wire: bootstrap_authority_intent_wire(intent: intent), cell: bootstrap_authority_cell(intent: intent),
+    resource: BootstrapOrganizationAuthority, token: token, withdrawing: withdrawing)
+}
+
+type IamBootstrapAuthorityResource = BootstrapOrganizationAuthority | BootstrapAccountAuthority { resource: IamBootstrapResource }
+
+fn iam_bootstrap_authority_resource_read(resource: IamBootstrapAuthorityResource, token: Secret) -> PolicyReading {
+  match resource {
+    BootstrapOrganizationAuthority => iam_bootstrap_organization_policy_read(token: token)
+    BootstrapAccountAuthority { resource: account } => iam_bootstrap_read_policy(resource: account, token: token)
+  }
+}
+
+fn iam_bootstrap_authority_resource_write(resource: IamBootstrapAuthorityResource, policy: GcpPolicy, token: Secret) -> RestOutcome {
+  match resource {
+    BootstrapOrganizationAuthority => gcp.ResourceManager.SetOrganizationIamPolicy(access_token: token, organization: iam_bootstrap_authority_organization, policy: policy).outcome
+    BootstrapAccountAuthority { resource: account } => iam_bootstrap_write_policy(resource: account, policy: policy, token: token)
+  }
+}
+
+// Deny administration and probe access share one election, deadline, CAS and cleanup protocol.
+fn iam_bootstrap_cell_authority_reconcile(intent: BootstrapAuthorityIntent, stem: String, wire: String,
+  cell: GcpIamBindingCell, resource: IamBootstrapAuthorityResource, token: Secret, withdrawing: Bool) -> String {
   let intent_name = concat(stem, "-intent.txt")
   let elected_name = concat(stem, "-publication-elected.txt")
   let closed_name = concat(stem, "-publication-closed.txt")
@@ -456,9 +506,8 @@ fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Se
     let closed = iam_authority_record_present(record: closed_record)
     let retired = iam_authority_record_present(record: retired_record)
     if !owned && (elected || closed || retired) { "authority intent missing beside publication history; recovery evidence unavailable" }
-    else { match iam_bootstrap_organization_policy_read(token: token) {
+    else { match iam_bootstrap_authority_resource_read(resource: resource, token: token) {
       PolicyObserved { policy } => {
-        let cell = bootstrap_authority_cell(intent: intent)
         let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: policy))
         if !owned && present { "existing authority cell has no ownership journal; refusing adoption or removal" }
         else if !owned && withdrawing { "" }
@@ -472,40 +521,38 @@ fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Se
             AuthoritySettled => if withdrawing && iam_authority_pin(name: retired_name, wire: wire) { "" }
               else { "authority operation is retired; a new authorized intent is required to grant again" }
             UseAuthority => if iam_authority_pin(name: closed_name, wire: wire) { "" } else { "authority publication readback could not be recorded" }
-            PublishAuthority => iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: false, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
+            PublishAuthority => iam_bootstrap_authority_policy_change(cell: cell, wire: wire, resource: resource, before: policy, removing: false, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
             RemoveAuthority => if !iam_authority_pin(name: closed_name, wire: wire) { "authority readback could not be recorded before cleanup" }
               else {
-                let removed = iam_bootstrap_authority_policy_change(intent: intent, before: policy, removing: true, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
+                let removed = iam_bootstrap_authority_policy_change(cell: cell, wire: wire, resource: resource, before: policy, removing: true, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
                 if removed != "" || withdrawing { removed } else { "expired or retired authority cleaned up; no use admitted" }
               }
           }
         }
       }
-      PolicyUnreadable { cause } => concat("organization IAM read dependency unresolved: ", cause)
-      PolicyResourceAbsent => "organization policy resource absent; no authority change attempted"
+      PolicyUnreadable { cause } => concat("authority IAM read dependency unresolved: ", cause)
+      PolicyResourceAbsent => "authority policy resource absent; no authority change attempted"
     } }
   }
 }
 
 // Both publication and retirement use the existing cell reconciler and its etag. The owned
 // universe is exactly this conditioned cell; pre-existing unconditional or unrelated grants survive.
-fn iam_bootstrap_authority_policy_change(intent: BootstrapAuthorityIntent, before: GcpPolicy, removing: Bool, token: Secret, elected_name: String, closed_name: String, retired_name: String) -> String {
-  let cell = bootstrap_authority_cell(intent: intent)
-  let wire = bootstrap_authority_intent_wire(intent: intent)
+fn iam_bootstrap_authority_policy_change(cell: GcpIamBindingCell, wire: String, resource: IamBootstrapAuthorityResource, before: GcpPolicy, removing: Bool, token: Secret, elected_name: String, closed_name: String, retired_name: String) -> String {
   match reconcile_gcp_policy(observed: before, desired_owned: if removing { [] } else { [cell] }, owned_universe: GcpIamOwnedCellUniverse { cells: [cell] }) {
-    GcpPolicyRepresentationLossy { conditional_roles: _ } => "organization policy loses conditions; authority change refused"
+    GcpPolicyRepresentationLossy { conditional_roles: _ } => "authority policy loses conditions; authority change refused"
     GcpPolicyAlreadyConverged { policy: _ } => "authority policy moved before the intended change; reconverge"
     GcpPolicyDeltaRequired { policy: after, added: _, removed: _, preserved: _ } => if before.etag == "" { "authority mutation requires an etag" }
     else {
       let elected = if removing { true } else { Filesystem.WriteCreateNew(path: concat("target/", elected_name), content: wire).success }
       if !elected { "authority publication already elected or election unreadable; reread, never issue a second grant" }
       else {
-      let changed = gcp.ResourceManager.SetOrganizationIamPolicy(access_token: token, organization: iam_bootstrap_authority_organization, policy: after).outcome
+      let changed = iam_bootstrap_authority_resource_write(resource: resource, policy: after, token: token)
       if !rest_ok(o: changed) {
         let terminal_refusal = if !removing && bootstrap_authority_publication_refused(outcome: changed) { iam_authority_pin(name: closed_name, wire: wire) } else { false }
-        concat(if terminal_refusal { "organization IAM writer dependency refused without publication: " } else { "authority mutation not established; recovery remains owed: " }, rest_refusal_text(o: changed))
+        concat(if terminal_refusal { "authority IAM writer dependency refused without publication: " } else { "authority mutation not established; recovery remains owed: " }, rest_refusal_text(o: changed))
       } else if !removing && !iam_authority_pin(name: closed_name, wire: wire) { "acknowledged authority publication could not be recorded; recovery remains owed" }
-      else { match iam_bootstrap_organization_policy_read(token: token) {
+      else { match iam_bootstrap_authority_resource_read(resource: resource, token: token) {
         PolicyObserved { policy: checked } => {
           let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: checked))
           if present == removing { "authority mutation lacks the required independent readback" }
@@ -658,5 +705,51 @@ fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> Str
         }
       }
     } }
+  }
+}
+
+
+fn iam_bootstrap_probe_cell(intent: BootstrapAuthorityIntent) -> GcpIamBindingCell {
+  GcpIamBindingCell { role: iam_bootstrap_role_name(role: BootstrapProbeToken) as String,
+    member: iam_bootstrap_operator_member, condition: Present { value: IamCondition {
+      title: concat("gunbc-bootstrap-probe-", intent.operation),
+      description: Present { value: "Temporary exact-account bootstrap readback; physical cleanup required after expiry." },
+      expression: concat("request.time < timestamp('", intent.expires_at as String, "')"),
+    } } }
+}
+
+fn iam_bootstrap_probe_authority_converge(token: Secret, withdrawing: Bool) -> String {
+  let intent = BootstrapAuthorityIntent {
+    operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_ID"),
+    expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp,
+  }
+  if intent.operation == "" && intent.expires_at == "" {
+    if withdrawing { "" } else { "probe token authority requires a pinned operation identity and absolute expiry" }
+  } else if !bootstrap_authority_intent_valid(intent: intent) { "probe authority intent is invalid" }
+  else {
+    let actor = if withdrawing { "" } else { iam_bootstrap_operator_readback(token: token) }
+    if actor != "" { actor } else {
+      fold([iam_converge_service_account, iam_observe_service_account], init: "", f: (prior, account) => {
+        let cell = iam_bootstrap_probe_cell(intent: intent)
+        let subject = BootstrapAccount { account: account }
+        let result = if prior != "" && !withdrawing { prior } else {
+          iam_bootstrap_cell_authority_reconcile(intent: intent,
+            stem: concat("gcp-iam-probe-", intent.operation, "-", account as String),
+            wire: concat(iam_bootstrap_resource_key(resource: subject), ";", cell_preimage(c: cell)),
+            cell: cell, resource: BootstrapAccountAuthority { resource: subject }, token: token, withdrawing: withdrawing)
+        }
+        if prior == "" { result } else if result == "" || result == prior { prior } else { concat(prior, "; ", result) }
+      })
+    }
+  }
+}
+
+fn iam_bootstrap_probe_cleanup() -> ProcessExit {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => exit_failure(reason: cause as String)
+    SuppliedTokenReady { token } => {
+      let result = iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
+      if result == "" { ExitSuccess } else { exit_failure(reason: result) }
+    }
   }
 }

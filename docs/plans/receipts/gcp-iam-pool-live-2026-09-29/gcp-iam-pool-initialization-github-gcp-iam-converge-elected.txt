@@ -1,0 +1,3 @@
+exclusive-pool-policy-initialization-20260929
+projects/582015116396/locations/global/workloadIdentityPools/github-gcp-iam-converge
+role:49:projects/gunbai-secrets/roles/gunbcIamObservePool;member:65:serviceAccount:iam-observe@gunbai-secrets.iam.gserviceaccount.com;condition:4:none;

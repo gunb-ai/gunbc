@@ -48,18 +48,23 @@ boundary, not a declaration that organization IAM authority must forever be manu
    observer/apply accounts. Create only bare pools and accounts for declared
    target federations, so resource-local administrative roles can be attached.
 2. Create or exactly read back the existing four apply role definitions and
-   three resource-specific observer roles. Existing drift refuses adoption.
+   three resource-specific observer roles plus one single-permission bootstrap probe role. Existing drift refuses adoption.
 3. For an absent deny policy, converge the temporary operator authority, install
    and read back the policy, and retire the exact temporary grant. Cleanup is
    attempted on ordinary failure too; later capabilities and workflow trust require
    successful cleanup. Existing exact deny policies need no new authority grant.
 4. Add declared capability bindings with policy etags, preserving foreign cells.
-5. Check access using short-lived impersonated observer/apply credentials. The
-   operator must already have impersonation authority; bootstrap does not grant
-   that authority to itself. Observer reads must work, and the apply account must
-   receive HTTP 403 reading a credential that the observer just successfully read.
-6. Only after these checks, add workload-identity impersonation bindings for the
-   existing, pinned IAM workflow.
+5. Converge a time-bounded probe grant for the verified operator on only the
+   observer/apply accounts. The custom role contains only
+   `iam.serviceAccounts.getAccessToken`. Check access using 600-second tokens:
+   observer reads must work, and the apply account must receive HTTP 403 reading
+   a credential that the observer just successfully read.
+6. Remove and independently verify absence of both temporary probe grants. Cleanup
+   also runs after ordinary failure and has a standalone recovery entry. Issued
+   tokens retain their original 600-second lifetime; deleting a grant is not
+   revocation of an already minted token.
+7. Only after these checks and cleanup, add workload-identity impersonation
+   bindings for the existing, pinned IAM workflow.
 
 Target providers, workload impersonation, and target secret-access grants remain
 in the existing approval-gated convergence plan. Bare target containers do not
@@ -241,3 +246,22 @@ Consequently that workflow cannot bootstrap its own initial trust. An existing
 administrator credential is a remaining explicit dependency; this environment
 has neither gcloud nor a configured readable GCP token file. No credential or
 refresh token is stored in these sources or receipts.
+
+
+## Temporary probe authority
+
+The live pool run completed all capability grants, then the administrator token
+received HTTP 403 for `iam.serviceAccounts.getAccessToken` on `iam-converge`.
+That is now another explicit bootstrap dependency, not a console instruction.
+`GUNBC_IAM_BOOTSTRAP_PROBE_ID` and `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` pin its
+operation and deadline, at most one hour away. The two exact-account conditional
+grants name the verified human identity. They share the deny authority's journal,
+publication election, etag update and cleanup machinery. No signing, key-creation,
+policy-write or project-wide impersonation permission is included.
+
+Google documents the [access-token permission](https://docs.cloud.google.com/iam/docs/service-account-permissions).
+Permission propagation retries accept only explicit HTTP 403, at most 30 attempts
+with two-second waits, and stop at the original deadline. Other failures are not
+converted to propagation. `iam_bootstrap_probe_cleanup` can recover both exact
+grants without rerunning bootstrap; keep its journal and original environment.
+Trust requires cleanup success. A retired probe operation cannot grant again.

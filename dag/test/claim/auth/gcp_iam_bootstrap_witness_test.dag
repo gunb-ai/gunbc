@@ -5,12 +5,12 @@ import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
-  iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
+  BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
 }
 import gunbc.auth.gcp_iam_bootstrap {
-  iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
-  BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
+  iam_bootstrap_probe_cell, iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
+  BootstrapCapabilities, BootstrapProbeAuthority, BootstrapProbeCleanup, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
@@ -60,7 +60,7 @@ test fn workflow_trust_requires_completed_deny_and_privilege_readback() -> Bool 
     && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities])
     && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapPrivilegeReadback])
-    && iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapPrivilegeReadback])
+    && iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup])
 }
 
 
@@ -176,4 +176,21 @@ test fn pool_initialization_readback_requires_exact_cells_and_a_revision() -> Bo
     && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: policy.bindings, etag: "", version: 3 }, cells: cells)
     && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: [], etag: "revision", version: 3 }, cells: cells)
     && !iam_bootstrap_pool_initialized(policy: policy, cells: [])
+}
+
+
+test fn probe_authority_has_no_signing_or_policy_permission() -> Bool {
+  iam_bootstrap_role_permissions(role: BootstrapProbeToken) == ["iam.serviceAccounts.getAccessToken"]
+    && iam_bootstrap_probe_cell(intent: authority_specimen).member == "user:brian@gunb.ai"
+    && (match iam_bootstrap_probe_cell(intent: authority_specimen).condition {
+      Absent => false
+      Present { value: condition } => condition.expression == "request.time < timestamp('2026-09-28T23:00:00Z')"
+    })
+}
+
+test fn probe_cleanup_is_required_for_trust_but_not_successful_probes() -> Bool {
+  iam_bootstrap_stage_admitted(stage: BootstrapProbeCleanup, completed: [BootstrapProbeAuthority])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust,
+      completed: [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities])
 }

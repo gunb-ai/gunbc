@@ -16,7 +16,7 @@ import gunbc.auth.heal_publisher_provision { DedicatedFederation, impersonation_
 import gunbc.auth.gcp_secret_access { secret_access_desired_cells }
 
 // Bootstrap owns the job's trust. Ongoing iam-converge never receives authority over these subjects.
-type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret
+type IamBootstrapRole = BootstrapApplyRole { role: IamConvergeRole } | BootstrapObservePool | BootstrapObserveAccount | BootstrapObserveSecret | BootstrapProbeToken
 
 type IamBootstrapResource = BootstrapProject | BootstrapPool { pool: NonEmptyStr } | BootstrapAccount { account: ServiceAccountEmail } | BootstrapSecret { secret: NonEmptyStr }
 
@@ -25,7 +25,7 @@ type IamBootstrapBinding { resource: IamBootstrapResource, cell: GcpIamBindingCe
 data iam_bootstrap_roles: List<IamBootstrapRole> = [
   BootstrapApplyRole { role: ConvergeCreateRole }, BootstrapApplyRole { role: ConvergeProviderRole },
   BootstrapApplyRole { role: ConvergeAccountPolicyRole }, BootstrapApplyRole { role: ConvergeSecretPolicyRole },
-  BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret,
+  BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapProbeToken,
 ]
 
 fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
@@ -35,6 +35,7 @@ fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
       BootstrapObservePool => "gunbcIamObservePool"
       BootstrapObserveAccount => "gunbcIamObserveAccount"
       BootstrapObserveSecret => "gunbcIamObserveSecret"
+      BootstrapProbeToken => "gunbcIamBootstrapProbeToken"
       _ => "invalid"
     }], "") as NonEmptyStr
   }
@@ -52,6 +53,7 @@ fn iam_bootstrap_role_permissions(role: IamBootstrapRole) -> List<String> {
     BootstrapObservePool => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "iam.workloadIdentity"))
     BootstrapObserveAccount => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "iam.serviceAccounts"))
     BootstrapObserveSecret => filter(iam_observe_role_permissions, p => starts_with(s: p, prefix: "secretmanager."))
+    BootstrapProbeToken => ["iam.serviceAccounts.getAccessToken"]
   }
 }
 
