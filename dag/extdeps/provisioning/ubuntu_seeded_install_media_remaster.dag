@@ -17,8 +17,8 @@ import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import v2.std.optional { Present }
 import gunbc.host_command_binding {
-  CommandHost, HostEffect, HostEffectDone, HostEffectFailed, HostEffectUnconfirmed, HostEffectNotDispatched,
-  host_effect, host_effect_text, host_run, host_transport_kind,
+  CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  host_command, host_command_outcome_text, host_run, host_transport_kind,
   HostFileWrite, HostFileWritten, HostFileWriteRefused, HostFileWriteNotConverged, host_write_file, host_file_write_text,
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
   CreationNotRequested,
@@ -205,16 +205,16 @@ fn install_media_remaster_write_seeds(host: CommandHost, writes: List<SeedWrite>
 
 fn install_media_remaster_write_nocloud_seed(host: CommandHost, work_dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> String? {
   let nocloud_dir = concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr
-  match host_effect(host: host, command: mkdir_parents_command(path: nocloud_dir as String)) {
-    HostEffectDone { stdout: _ } =>
+  match host_command(host: host, command: mkdir_parents_command(path: nocloud_dir as String)) {
+    HostCommandDone { stdout: _ } =>
       install_media_remaster_write_seeds(host: host, writes: install_media_remaster_seed_writes(nocloud_dir: nocloud_dir, input: input), scope_root: work_dir)
-    other => Present { value: concat("mkdir -p ", nocloud_dir as String, ": ", host_effect_text(e: other)) }
+    other => Present { value: concat("mkdir -p ", nocloud_dir as String, ": ", host_command_outcome_text(e: other)) }
   }
 }
 
 fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> String? {
-  match host_effect(host: host, command: sha256sum_file_command(path: path as String)) {
-    HostEffectDone { stdout: o } =>
+  match host_command(host: host, command: sha256sum_file_command(path: path as String)) {
+    HostCommandDone { stdout: o } =>
       match sha256_hex_digest(hex: trim(s: first_or_empty(xs: split(s: trim(s: o), delimiter: " ")))) {
         Absent => none
         Present { value: d } => Present { value: d.hex as String }
@@ -231,7 +231,7 @@ fn first_or_empty(xs: List<String>) -> String {
 }
 
 fn install_media_remaster_digest_refusal(host: CommandHost, path: NonEmptyStr) -> String {
-  concat("the sha256 of ", path as String, " could not be read: ", host_effect_text(e: host_effect(host: host, command: sha256sum_file_command(path: path as String))))
+  concat("the sha256 of ", path as String, " could not be read: ", host_command_outcome_text(e: host_command(host: host, command: sha256sum_file_command(path: path as String))))
 }
 
 // The steps inside an acquired work directory, in order; the first that does not hold ends the build.
@@ -243,17 +243,17 @@ fn install_media_remaster_from_tree(
   work_dir: NonEmptyStr,
 ) -> SeededInstallMediaStageOutcome? {
   let grub_cfg = install_media_remaster_grub_cfg_path(work_dir: work_dir)
-  match host_effect(host: host, command: xorriso_extract_tree_command(iso_path: stock_path, destination: work_dir)) {
-    HostEffectDone { stdout: _ } =>
-      match host_effect(host: host, command: chmod_recursive_set_mode_command(chmod_program: chmod_path_resolved_program, mode: install_media_remaster_tree_mode, path: work_dir as String)) {
-        HostEffectDone { stdout: _ } =>
+  match host_command(host: host, command: xorriso_extract_tree_command(iso_path: stock_path, destination: work_dir)) {
+    HostCommandDone { stdout: _ } =>
+      match host_command(host: host, command: chmod_recursive_set_mode_command(chmod_program: chmod_path_resolved_program, mode: install_media_remaster_tree_mode, path: work_dir as String)) {
+        HostCommandDone { stdout: _ } =>
           match install_media_remaster_write_nocloud_seed(host: host, work_dir: work_dir, input: input) {
             Present { value: r } => Present { value: seeded_install_media_stage_refused(reason: concat("writing NoCloud seed files failed: ", r), work: CreationNotRequested) }
             Absent =>
               match install_media_remaster_grub_edit(host: host, grub_cfg: grub_cfg, input: input, scope_root: work_dir) {
                 GrubCmdlineRefused { reason: r } => Present { value: seeded_install_media_stage_refused(reason: concat("grub kernel cmdline not applied: ", r), work: CreationNotRequested) }
                 GrubCmdlineApplied =>
-                  match host_effect(host: host, command: xorriso_replay_build_pinned_dates_command(
+                  match host_command(host: host, command: xorriso_replay_build_pinned_dates_command(
                     stock_iso_path: stock_path,
                     output_path: staging_path,
                     volume_id: input.volume_id,
@@ -264,18 +264,18 @@ fn install_media_remaster_from_tree(
                     map_two_source: grub_cfg,
                     map_two_iso_path: install_media_remaster_grub_cfg_on_iso,
                   )) {
-                    HostEffectDone { stdout: _ } =>
+                    HostCommandDone { stdout: _ } =>
                       match install_media_remaster_digest(host: host, path: staging_path) {
                         Absent => Present { value: seeded_install_media_stage_refused(reason: install_media_remaster_digest_refusal(host: host, path: staging_path), work: CreationNotRequested) }
                         Present { value: d } => Present { value: SeededInstallMediaStaged { staging_path: staging_path, output_digest: d as NonEmptyStr, work: CreationNotRequested } }
                       }
-                    other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -boot_image any replay build: ", host_effect_text(e: other)), work: CreationNotRequested) }
+                    other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -boot_image any replay build: ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
                   }
               }
           }
-        other => Present { value: seeded_install_media_stage_refused(reason: concat("chmod -R ", install_media_remaster_tree_mode as String, ": ", host_effect_text(e: other)), work: CreationNotRequested) }
+        other => Present { value: seeded_install_media_stage_refused(reason: concat("chmod -R ", install_media_remaster_tree_mode as String, ": ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
       }
-    other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -osirrox extract: ", host_effect_text(e: other)), work: CreationNotRequested) }
+    other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -osirrox extract: ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
   }
 }
 
@@ -321,8 +321,8 @@ fn seeded_install_media_stage(
   stock_path: NonEmptyStr,
   staging_path: NonEmptyStr,
 ) -> SeededInstallMediaStageOutcome {
-  match host_effect(host: host, command: test_regular_file_command(path: stock_path as String)) {
-    HostEffectDone { stdout: _ } =>
+  match host_command(host: host, command: test_regular_file_command(path: stock_path as String)) {
+    HostCommandDone { stdout: _ } =>
       match install_media_remaster_digest(host: host, path: stock_path) {
         Absent => seeded_install_media_stage_refused(reason: concat("stock ISO digest could not be verified: ", install_media_remaster_digest_refusal(host: host, path: stock_path)), work: CreationNotRequested)
         Present { value: d } =>
@@ -332,9 +332,9 @@ fn seeded_install_media_stage(
             seeded_install_media_stage_refused(reason: concat("stock ISO at ", stock_path as String, " does not hash to the pinned ", input.stock_artifact.content_sha256 as String), work: CreationNotRequested)
           }
       }
-    HostEffectFailed { exit_code: _, stderr: _ } =>
+    HostCommandFailed { exit_code: _, stderr: _ } =>
       seeded_install_media_stage_refused(reason: concat("stock ISO missing at ", stock_path as String), work: CreationNotRequested)
     other =>
-      seeded_install_media_stage_refused(reason: concat("stock ISO presence at ", stock_path as String, " unread: ", host_effect_text(e: other)), work: CreationNotRequested)
+      seeded_install_media_stage_refused(reason: concat("stock ISO presence at ", stock_path as String, " unread: ", host_command_outcome_text(e: other)), work: CreationNotRequested)
   }
 }
