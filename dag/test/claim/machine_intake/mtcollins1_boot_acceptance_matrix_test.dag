@@ -508,14 +508,11 @@ test fn pinned_an_interrupted_attempt_locks_out_the_next_one() -> Bool {
 // The media readiness wait is bounded by the WALL clock (gunbc.machine_intake_megarac_media_attach
 // megarac_await_readiness over extdeps.clock clock_unix_millis_read). In this scenario the attach's
 // readiness looks run from t=16 to t=35 of virtual time, so a jump at t=20 lands inside the wait.
-fn with_clock_jump(w: MtCollins1BootWorld, at: Int, by: Int) -> MtCollins1BootWorld {
-  match std.checked_arithmetic.checked_int_to_nat(n: at) {
-    Absent => w
-    Present { value: t } => MtCollins1BootWorld {
-      bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
-      clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: second(count: t), by: std.measure.second_displacement(count: by) }) },
-      worker: w.worker, console: w.console, media: w.media,
-    }
+fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
+    clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
+    worker: w.worker, console: w.console, media: w.media,
   }
 }
 
@@ -524,7 +521,7 @@ fn with_clock_jump(w: MtCollins1BootWorld, at: Int, by: Int) -> MtCollins1BootWo
 // ReadinessClockIncoherent arm -- rather than waiting on a window it can no longer measure, and
 // nothing after the attach is written.
 test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bool {
-  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: 20, by: 0 - 60)) {
+  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 0 - 60)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "the clock cannot bound the readiness wait")
         && count_named(route: route, name: "megarac.Media.StartMedia") == 1
@@ -537,7 +534,7 @@ test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bo
 // next look, and the attempt refuses without a handoff: a forward step shortens the wait, it never
 // buys an unbounded one.
 test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
-  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: 20, by: 600)) {
+  match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
         && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
