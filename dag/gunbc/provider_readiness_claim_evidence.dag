@@ -400,7 +400,15 @@ fn provider_readiness_fidelity_claim(
     ProviderCredentialsRecordedUnverified => fidelity.losses.length() == 2
     ProviderAuthenticated => fidelity.losses.length() == 0
     ProviderRefreshFailed { reason: _ } => fidelity.losses.length() == 0
-    _ => false
+    ProviderReadinessUnobserved { reason: _ } => false
+    ProviderExecutableMissing => false
+    ProviderVersionDrift { observed: _, expected: _ } => false
+    ProviderSetupRequired => false
+    ProviderCredentialsAbsent => false
+    ProviderAccessTokenExpired => false
+    ProviderQuotaExhausted => false
+    ProviderRateLimited => false
+    ProviderRequestRefused { reason: _ } => false
   }
 }
 
@@ -448,7 +456,9 @@ fn provider_readiness_link_relation(
           bound: link.fact.value.bound,
         )
         && link.fidelity.boundary == ProviderAuthenticated
-    _ => false
+    ProviderLoginCredentialAbsent { response: _ } => false
+    ProviderLoginStatusUnrecognized { response: _ } => false
+    ProviderLiveRequestRefused { reason: _ } => false
   }
 }
 

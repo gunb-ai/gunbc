@@ -55,7 +55,12 @@ fn yaml_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
       if kv.key == "env" {
         match kv.value {
           YamlMapping { entries: es } => es
-          _ => acc
+          YamlNull => acc
+          YamlBool { value: _ } => acc
+          YamlInt { lexeme: _ } => acc
+          YamlFloat { lexeme: _ } => acc
+          YamlString { value: _ } => acc
+          YamlSequence { elements: _ } => acc
         }
       } else {
         acc
@@ -79,7 +84,12 @@ fn epoch_from_entry(kv: YamlKeyValue) -> RequiredCiEpochObservation {
       } else {
         RequiredCiEpochObserved { epoch: s as ContractEpoch }
       }
-    _ => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
+    YamlNull => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
+    YamlBool { value: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
+    YamlInt { lexeme: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
+    YamlFloat { lexeme: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
+    YamlSequence { elements: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
+    YamlMapping { entries: _ } => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
   }
 }
 

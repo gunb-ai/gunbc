@@ -2904,7 +2904,8 @@ fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<Loca
   fold(roster, init: [], f: fn(acc, row) {
     match row.check {
       CommitCargoFmtCheck => concat(acc, [LocalTidyCargoFmtCheck])
-      _ => acc
+      CommitSpecGate { gate: _ } => acc
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
     }
   })
 }

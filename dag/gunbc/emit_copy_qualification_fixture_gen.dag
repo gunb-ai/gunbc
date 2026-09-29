@@ -282,21 +282,45 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
 fn subject_param_type(id: EmitCopyQualificationCaseId) -> String {
   match id.ownership_pattern {
     LoopCarriedAccumulator => "List<Int>"
-    _ => carrier_type_text(c: id.carrier_realization)
+    ConsumedOnce => carrier_type_text(c: id.carrier_realization)
+    BorrowedReadOnly => carrier_type_text(c: id.carrier_realization)
+    ByValueThenReused => carrier_type_text(c: id.carrier_realization)
+    BranchExclusive => carrier_type_text(c: id.carrier_realization)
+    ReuseAcrossJoin => carrier_type_text(c: id.carrier_realization)
+    AliasThenMutate => carrier_type_text(c: id.carrier_realization)
+    MoveIntoClosure => carrier_type_text(c: id.carrier_realization)
+    BorrowIntoClosure => carrier_type_text(c: id.carrier_realization)
+    FieldExtractThenReuseEnclosing => carrier_type_text(c: id.carrier_realization)
   }
 }
 
 fn subject_param_name(id: EmitCopyQualificationCaseId) -> String {
   match id.ownership_pattern {
     LoopCarriedAccumulator => "xs"
-    _ => "x"
+    ConsumedOnce => "x"
+    BorrowedReadOnly => "x"
+    ByValueThenReused => "x"
+    BranchExclusive => "x"
+    ReuseAcrossJoin => "x"
+    AliasThenMutate => "x"
+    MoveIntoClosure => "x"
+    BorrowIntoClosure => "x"
+    FieldExtractThenReuseEnclosing => "x"
   }
 }
 
 fn input_expr(id: EmitCopyQualificationCaseId) -> String {
   match id.ownership_pattern {
     LoopCarriedAccumulator => "ecq_build_list(n: n)"
-    _ => carrier_input_expr(c: id.carrier_realization)
+    ConsumedOnce => carrier_input_expr(c: id.carrier_realization)
+    BorrowedReadOnly => carrier_input_expr(c: id.carrier_realization)
+    ByValueThenReused => carrier_input_expr(c: id.carrier_realization)
+    BranchExclusive => carrier_input_expr(c: id.carrier_realization)
+    ReuseAcrossJoin => carrier_input_expr(c: id.carrier_realization)
+    AliasThenMutate => carrier_input_expr(c: id.carrier_realization)
+    MoveIntoClosure => carrier_input_expr(c: id.carrier_realization)
+    BorrowIntoClosure => carrier_input_expr(c: id.carrier_realization)
+    FieldExtractThenReuseEnclosing => carrier_input_expr(c: id.carrier_realization)
   }
 }
 

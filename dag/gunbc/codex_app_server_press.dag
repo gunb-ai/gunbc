@@ -658,7 +658,10 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
         key: codex_account_read_result_requires_openai_auth_key as String,
       ) {
         JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
-        _ => AccountTripMissing
+        JsonMemberFound { value: _ } => AccountTripMissing
+        JsonMemberAbsent => AccountTripMissing
+        JsonMemberDuplicated { count: _ } => AccountTripMissing
+        JsonMemberNotAnObject => AccountTripMissing
       }
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
@@ -781,9 +784,13 @@ fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
         key: codex_rate_limits_window_resets_at_key as String,
       ) {
         JsonMemberFound { value: ts } => json_number_as_epoch_secs(v: ts)
-        _ => none
+        JsonMemberAbsent => none
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -798,7 +805,10 @@ fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
       } else {
         Present { value: t as NonEmptyStr }
       }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -905,7 +915,11 @@ fn rate_limit_buckets_from_result(result: JsonValue) -> List<CodexRateLimitBucke
     JsonMemberFound { value: by_id } =>
       match by_id {
         JsonObject { members: _ } => rate_limit_buckets_from_by_limit_id(by_id: by_id)
-        _ => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonNull => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonBool { value: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonNumber { lexeme: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonString { value: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonArray { elements: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
       }
     JsonMemberAbsent => rate_limit_buckets_from_legacy_rate_limits(result: result)
     JsonMemberDuplicated { count: _ } => []
@@ -940,9 +954,15 @@ fn rate_limit_buckets_from_legacy_rate_limits(
               ]
             CodexRateLimitIdMalformed { cause: _ } => []
           }
-        _ => []
+        JsonNull => []
+        JsonBool { value: _ } => []
+        JsonNumber { lexeme: _ } => []
+        JsonString { value: _ } => []
+        JsonArray { elements: _ } => []
       }
-    _ => []
+    JsonMemberAbsent => []
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
   }
 }
 
@@ -955,7 +975,10 @@ fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDis
       match snapshot {
         JsonObject { members: _ } => AccountTripResultOk
         JsonNull => AccountTripMissing
-        _ => AccountTripMissing
+        JsonBool { value: _ } => AccountTripMissing
+        JsonNumber { lexeme: _ } => AccountTripMissing
+        JsonString { value: _ } => AccountTripMissing
+        JsonArray { elements: _ } => AccountTripMissing
       }
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
@@ -1038,8 +1061,10 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
       }
     JsonMemberFound { value: JsonNumber { lexeme: n } } =>
       AccountTripNativeCauseNumericCode { code: n }
-    _ =>
-      native_cause_from_json_rpc_error(err: err)
+    JsonMemberFound { value: _ } => native_cause_from_json_rpc_error(err: err)
+    JsonMemberAbsent => native_cause_from_json_rpc_error(err: err)
+    JsonMemberDuplicated { count: _ } => native_cause_from_json_rpc_error(err: err)
+    JsonMemberNotAnObject => native_cause_from_json_rpc_error(err: err)
   }
 }
 
@@ -1193,7 +1218,9 @@ fn buckets_from_rate_limits_frame(
     AccountTripResponseAbsent =>
       match json_object_unique_member(v: obj, key: "result") {
         JsonMemberFound { value: result } => rate_limit_buckets_from_result(result: result)
-        _ => []
+        JsonMemberAbsent => []
+        JsonMemberDuplicated { count: _ } => []
+        JsonMemberNotAnObject => []
       }
     AccountTripResponseUnique { response: _ } => prior_buckets
     AccountTripResponseDuplicate { id: _, count: _ } => prior_buckets
