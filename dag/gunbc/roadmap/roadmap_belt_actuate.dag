@@ -3433,10 +3433,32 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
       match refusal {
         LaunchNoCapacity { occupied: _, max_concurrent: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1 }
-        _ =>
-          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchNoActuatingInstance { reason: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchInstanceActuationRefused { instance_id: _, reason: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchTransitionInhibited { reason: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchRevisionUnobserved { cause: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchAuthorityUnobserved { detail: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchNodeUnknown => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchNodeSuperseded { by: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchAlreadyAccepted => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchReviewRequired => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchDispatchBindingMissing => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchExecutionContractMissing { reason: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchNotAgentWork { mode: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchDependenciesBlocked { blockers: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchSessionsUnobservable { reason: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchAlreadyLive { session_name: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchStaleSession { session_name: _, detail: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchLivenessUnobserved { session_name: _, reason: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchSessionMultiplicityConflict { session_names: _, session_count: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchCauseNotPermitted { cause: _, mode: _ } => belt_spawn_tally_not_admitted(acc: acc)
+        LaunchGateNotEvaluated { gate: _ } => belt_spawn_tally_not_admitted(acc: acc)
       }
   })
+}
+
+fn belt_spawn_tally_not_admitted(acc: BeltSpawnTally) -> BeltSpawnTally {
+  BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
 }
 
 fn belt_tick_spawn_ok_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).spawned }
