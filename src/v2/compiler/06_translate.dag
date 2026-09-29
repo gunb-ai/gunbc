@@ -238,6 +238,7 @@ import v2.compiler.target_serialize {
   translate_apply_use_site_ownership_to_type_shell,
   translate_boundary_source_carrier_node,
   translate_conj_invalid_edge_diagnostic,
+  translate_grammar_inverse_not_realized_diagnostic,
   translate_grammar_relation_row_not_found_diagnostic,
   translate_reference_layer_tokens_from_target,
   translate_type_expression_shape_missing_diagnostic,
@@ -446,53 +447,17 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
           outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
       }
     TypeNode { connective: Atom { identity: _ } } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Disj } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Cardinality } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
   }
 }
 fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {

@@ -283,53 +283,17 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
           outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
       }
     TypeNode { connective: Atom { identity: _ } } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Disj } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Cardinality } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     ComputationNode { behavior: _ } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
   }
 }
 fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> Diagnostic {

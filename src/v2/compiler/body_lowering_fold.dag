@@ -562,35 +562,27 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<BodyLowering> {
 // or `fn f() -> Int = 606060`) stepped past the literal and returned its digit list as the body,
 // which resolve then refused as an unbound qualified name. Recognizing the literal stops every
 // search at the literal, before it reaches the payload.
+fn body_lower_is_core_substrate_leaf(node: Node) -> Bool {
+  (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+    || qualified_name_spine_shape_present(root: node)
+    || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
+    || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+}
+
 fn body_lower_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
     TypeNode { connective: Atom { identity: _ } } =>
-      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
-        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+      body_lower_is_core_substrate_leaf(node: node)
     TypeNode { connective: Conj } =>
-      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
-        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+      body_lower_is_core_substrate_leaf(node: node)
     TypeNode { connective: Disj } =>
-      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
-        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+      body_lower_is_core_substrate_leaf(node: node)
     TypeNode { connective: Cardinality } =>
-      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
-        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+      body_lower_is_core_substrate_leaf(node: node)
     TypeNode { connective: Instantiation } =>
-      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
-        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+      body_lower_is_core_substrate_leaf(node: node)
   }
 }
 
