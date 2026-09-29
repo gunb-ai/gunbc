@@ -375,7 +375,7 @@ fn host_converge_slice1_tasks_verdict(limit: SystemdCgroupTaskLimit, knob: Conve
     TaskLimitCount { count: n } =>
       if to_string(n) == knob.desired { VerdictConverged } else { Drifted }
     TaskLimitUnbounded => Drifted
-    TaskLimitAbsent => VerdictAbsent
+    TaskLimitAbsent => Absent
   }
 }
 
@@ -488,7 +488,7 @@ fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: Conver
             Present {
               value: "host_converge_slice1: tasks reapply-noop failed — still drifted after second apply; fail-closed",
             }
-          VerdictAbsent =>
+          Absent =>
             Present {
               value: "host_converge_slice1: tasks reapply-noop read returned Absent verdict after second apply; fail-closed",
             }
@@ -562,7 +562,7 @@ fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptySt
                                 }
                               Drifted =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply still drifted; fail-closed" }
-                              VerdictAbsent =>
+                              Absent =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks read-back after apply returned Absent verdict; fail-closed" }
                             }
                           _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply returned absent; fail-closed" }
@@ -571,7 +571,7 @@ fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptySt
                     }
                   }
               }
-            VerdictAbsent =>
+            Absent =>
               HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live TasksMax parsed Absent (empty/untyped wire) for ", unit as String) }
           }
         _ => HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live systemctl show TasksMax read absent for ", unit as String) }
