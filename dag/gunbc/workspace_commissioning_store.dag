@@ -21,7 +21,7 @@ import std.durable_compare_and_set {
   CasCommitted, CasPreconditionFailed, CasStoreRefused,
 }
 import gunbc.durable_cas_file_store {
-  observe_cas_slot_state, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
+  observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
   file_compare_and_set, OwnerOnlyCreateOnly,
 }
 
@@ -92,13 +92,16 @@ fn workspace_commissioning_store_observe(root: NonEmptyStr, provenance: Workspac
           expected: ExpectSlotAbsent, reading: WorkspaceCommissioningRecordAbsent },
       }
       CasObservedReadable { readable: CasReadablePresent { version } } => {
-        match workspace_commissioning_record_read(value: version.value, provenance: provenance) {
-          WorkspaceCommissioningRecordRead { record } => WorkspaceCommissioningStoreObserved {
-            snapshot: WorkspaceCommissioningStoreSnapshot { root: root, key: key, provenance: provenance,
-              expected: ExpectSlotGeneration { generation: version.generation },
-              reading: WorkspaceCommissioningRecordRead { record: record } },
-          }
-          _ => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
+        match read_store_ownership(path: cas_file_slot_path(root: root, key: key, generation: version.generation)) {
+          OwnershipRead { ownership: StoreRootOwned } => match workspace_commissioning_record_read(value: version.value, provenance: provenance) {
+              WorkspaceCommissioningRecordRead { record } => WorkspaceCommissioningStoreObserved {
+                snapshot: WorkspaceCommissioningStoreSnapshot { root: root, key: key, provenance: provenance,
+                  expected: ExpectSlotGeneration { generation: version.generation },
+                  reading: WorkspaceCommissioningRecordRead { record: record } },
+              }
+              _ => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
+            }
+          _ => WorkspaceCommissioningStoreRefused { reason: "commissioning record is not root-owned and protected from other writers" }
         }
       }
       _ => WorkspaceCommissioningStoreRefused { reason: "commissioning CAS head is unreadable; no absent transaction was established" }

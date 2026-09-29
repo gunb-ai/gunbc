@@ -2,7 +2,7 @@ module test.claim.workspace_commissioning_seal_witness
 
 import std.types { Bool, String, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import gunbc.compile_census_probe { blocking_subject_count_for }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -13,13 +13,15 @@ data commissioning_skipped_readback_source: String = "module test.probe.commissi
 data commissioning_admitted_readback_source: String = "module test.probe.commissioning_admitted_readback\nimport gunbc.workspace_commissioning_store { WorkspaceCommissioningStoreSnapshot, WorkspaceCommissioningSupplyReadback, workspace_commissioning_store_admit_supply }\nfn read(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback { workspace_commissioning_store_admit_supply(snapshot: snapshot) }\n"
 
 test fn initial_admission_cannot_forge_committed_supply() -> Bool {
-  blocking_class_count_for(source: commissioning_forged_supply_source, wanted_class: "SoleConstructorViolation") == 1
+  blocking_subject_count_for(source: commissioning_forged_supply_source, wanted_class: "SoleConstructorViolation", wanted_subject: "WorkspaceCommittedCommissioning") == 1
 }
 
 test fn supply_cannot_skip_fresh_provenance_readback() -> Bool {
-  blocking_class_count_for(source: commissioning_skipped_readback_source, wanted_class: "ConstructorCallAdmissionRefused") == 1
+  blocking_subject_count_for(source: commissioning_skipped_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply") == 1
 }
 
-test fn the_public_fresh_readback_route_is_callable() -> Bool {
-  total_blocking_count_for(source: commissioning_admitted_readback_source) == 0
+// The census includes imported production diagnostics. Scope this positive control to the
+// same access boundary as the negative control; a failed census returns -1, never zero.
+test fn the_public_fresh_readback_route_preserves_constructor_admission() -> Bool {
+  blocking_subject_count_for(source: commissioning_admitted_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply") == 0
 }
