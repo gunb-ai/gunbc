@@ -1,7 +1,7 @@
 module gunbc.ci_spec
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
-import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path }
+import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -58,7 +58,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_receipt_path }
+import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -857,6 +857,11 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
   function: "runner_password_session_tool_converge_ci_wet",
 }
 
+data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_browser_toolchain.dag",
+  function: "runner_browser_toolchain_converge_ci_wet",
+}
+
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
@@ -945,6 +950,11 @@ data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget
   function: "microvm_slot_start_ci_wet",
 }
 
+data gunbc_ci_microvm_slot_reserve_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_slot_reserve.dag",
+  function: "microvm_slot_reserve_ci_wet",
+}
+
 data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
   function: "runner_microvm_boot_probe_wet",
@@ -961,7 +971,7 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
 }
 
 data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_census_image.dag",
+  entry: "dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag",
   function: "mtcollins1_census_image_publish_wet",
 }
 
@@ -1237,10 +1247,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
+    gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
+    gunbc_ci_microvm_slot_reserve_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
@@ -2513,6 +2525,16 @@ fn gunbc_ci_site_pxe_edge_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_browser_toolchain_converge_target.entry,
+    function: gunbc_ci_runner_browser_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
+  )
+}
+
 fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2553,6 +2575,16 @@ fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
   )
 }
 
+fn gunbc_ci_microvm_slot_reserve_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_slot_reserve_target.entry,
+    function: gunbc_ci_microvm_slot_reserve_target.function,
+    claim_run: false,
+    receipt_rel: microvm_slot_reserve_receipt_path
+  )
+}
+
 fn gunbc_ci_microvm_slot_start_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2573,8 +2605,9 @@ fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
   )
 }
 
-// The census image publish needs no credential prelude: it reads and writes only the runner's own
-// host (srv2's /srv/bmc export) and reaches no controller, so its step is the plain gunbc run.
+// The census image publish needs no credential prelude: it reaches srv2 over fleet SSH (the mode
+// consumes the fleet key, gunbc.fleet_converge_workflow) and no controller, so its step is the plain
+// gunbc run.
 fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,

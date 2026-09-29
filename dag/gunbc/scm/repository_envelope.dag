@@ -2812,7 +2812,27 @@ fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDoc
     RepositoryFormatUnrecognized { found: f } => RepositoryProtocolUnrecognizedFormat { found: f }
     RepositoryIdentityRuleUnrecognized { found: f } =>
       RepositoryProtocolUnrecognizedIdentityRule { found: f }
-    _ => RepositoryProtocolNotAProtocolRefusal
+    RepositoryDecodeObjectTableRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryMemberReadRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitRootReferenceUnresolved { reference: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitRootNotInObjectTable { root: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitRootIsAuthoredSource { root: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitRootIsSemanticNode { root: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryDecodedManifestSourceIsSemanticNode { source: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryDecodedTargetIsAuthoredSource { target: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryDecodedTargetIsCorpusManifest { target: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryStagedReferenceUnresolved { reference: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryStagedNotInObjectTable { staged: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryStagedIsAuthoredSource { staged: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryStagedIsSemanticNode { staged: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCheckoutReferenceUnresolved { reference: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryUnexpectedMember { context: _, key: _ } => RepositoryProtocolNotAProtocolRefusal
+    RepositoryTargetReferenceRefused { cause: _ } => RepositoryProtocolNotAProtocolRefusal
   }
 }
 

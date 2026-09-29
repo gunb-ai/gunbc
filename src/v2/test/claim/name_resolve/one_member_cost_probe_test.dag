@@ -104,7 +104,7 @@ fn probe_resolve(roots: FreeMonoid<NormalizedTree>) -> Outcome<ResolvedTree> {
   )
 }
 
-fn probe_resolved_export_identity(tree: ResolvedTree, wanted: Symbol) -> Bool {
+fn probe_resolved_export_identity(tree: Node, wanted: Symbol) -> Bool {
   match tree.kind {
     TypeNode { connective: Atom { identity: id } } => id == wanted
     _ =>
@@ -115,12 +115,12 @@ fn probe_resolved_export_identity(tree: ResolvedTree, wanted: Symbol) -> Bool {
 }
 
 test fn one_member_module_resolves_under_full_language_model() -> Bool {
-  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+  probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match probe_resolve(roots: roots) {
       Accepted { value: resolved, diagnostics: _ } =>
         probe_resolved_export_identity(
-          tree: resolved,
-          wanted: ^dag_c3_surface_sugar_service
+          tree: resolved.root,
+          wanted: ^dag_token_ident
         )
       Rejected { diagnostics: _ } => false
     }
@@ -137,7 +137,7 @@ test fn one_member_uncanonical_export_still_refuses() -> Bool {
 }
 
 test fn one_member_missing_subject_still_refuses() -> Bool {
-  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+  probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match resolve_with_admission(
       lm: dag_language_model(),
       roots: roots,
@@ -155,7 +155,7 @@ test fn one_member_missing_subject_still_refuses() -> Bool {
 }
 
 test fn empty_prelude_service_atom_still_refuses() -> Bool {
-  probe_with_export_roots(export_sym: ^dag_c3_surface_sugar_service, f: fn(roots) {
+  probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match resolve_with_admission(
       lm: dag_language_model_surface_empty_prelude(),
       roots: roots,
@@ -172,7 +172,7 @@ test fn empty_prelude_service_atom_still_refuses() -> Bool {
 
 test fn language_model_carries_its_canonical_symbols() -> Bool {
   let lm = dag_language_model()
-  lm.canonical_symbols.member(^dag_c3_surface_sugar_service)
+  lm.canonical_symbols.member(^dag_token_ident)
     && !lm.canonical_symbols.member(^probe_uncanonical_export)
 }
 
@@ -194,6 +194,6 @@ test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool {
 }
 
 test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool {
-  dag_canonical_symbols().member(^dag_c3_surface_sugar_service)
+  dag_canonical_symbols().member(^dag_token_ident)
     && !dag_canonical_symbols().member(^probe_uncanonical_export)
 }

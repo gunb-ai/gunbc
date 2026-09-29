@@ -15,6 +15,7 @@ import extdeps.apt {
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
+  tailscale_serve_unix_target,
   TailscaleServeEndpoint,
   TailscaleServeMount,
   ServeRootMount,
@@ -40,7 +41,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_listen_port }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
 import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -639,7 +640,7 @@ fn deployment_fabric_storage_serve_endpoint() -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
     https_port: fabric_storage_https_port,
     mount: ServeRootMount,
-    backend: to_string(fabric_storage_listen_port) as NonEmptyStr,
+    backend: tailscale_serve_unix_target(path: fabric_storage_door_socket()),
   }
 }
 
