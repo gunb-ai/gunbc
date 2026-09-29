@@ -1711,7 +1711,7 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 // The Arrow's own <T> binders are checked from the OUTER context: the frame they open must not
 // answer for them, or every binder would read as shadowing itself.
 // THE DECLARED ORDER IS LABELS, NOT REFERENCES. The ^arrow_signature_order_edge's atoms name the
-// domain's binders (v2.std.compilers.body_lowering signature_order_edge); walking them
+// domain's binders (v2.std.arrow_signature signature_order_edge); walking them
 // under scope_body would resolve each against a parameter or, spelled like a free name, against the
 // enclosing scope, and a minted anonymous label against nothing. It is carried unwalked; the Arrow
 // wall (v2.std.node arrow_signature_order_conforms) is its check.

@@ -75,6 +75,11 @@ fn chmod_add_executable_argv(path: String) -> List<String> {
 // every caller's behalf and would have changed a live actuation the moment it was introduced --
 // gunbc.fleet_converge_plan_cli writes its apply script on a fleet host and cites the resolved row.
 // The caller says which claim it is making; neither spelling is this builder's to assume.
+// chmod -R: the same symbolic or octal mode applied to the path and everything beneath it.
+fn chmod_recursive_set_mode_command(chmod_program: NonEmptyStr, mode: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(program: chmod_program, arguments: ["-R", mode as String, path])
+}
+
 fn chmod_set_mode_command(chmod_program: NonEmptyStr, mode: NonEmptyStr, path: String) -> ArgvCommand {
   argv_command(program: chmod_program, arguments: [mode as String, path])
 }
