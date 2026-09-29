@@ -7,7 +7,6 @@ import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.collection {
   Map,
   empty_map,
-  list_at_optional,
   map_insert
 }
 import v2.std.optional {
@@ -24,11 +23,14 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  FirstPositionalAbsent,
+  FirstPositionalFound,
   Named,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  arrow_first_positional_target,
   node_subtree_nodes
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
@@ -50,7 +52,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.type_binder { GenericOpaqueTypeDecl, GenericTypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -90,8 +92,8 @@ type SymbolIndexDeclared {
 fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   match type_decl_view(target: target) {
     GenericTypeDecl { binders: _, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
-    GenericTypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
-    GenericOpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    TypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
+    OpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent() }
     PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m) }
   }
 }
@@ -151,6 +153,11 @@ fn symbol_index_fill_containment_edge(
 // reachable. New TypeNode connectives that carry real named bindings must get an explicit arm
 // before relying on this fallback.
 
+// AN ARROW'S DOMAIN IS A PARAMETER LIST, NEVER A NAMESPACE SPINE SEGMENT. The Arrow arm indexes the
+// domain's binders under the Arrow's path by label, directly, rather than handing the domain to the
+// Conj arm: there, namespace_graft_spine_segment_edge_optional read a one-binder domain whose binder is
+// a record (an operation's ^operation_input, a fn of one record-typed parameter) as a dotted-name
+// segment, and indexed the record's fields at the Arrow's path with the binder's level erased.
 fn symbol_index_fill_containment_node(
   index: SymbolIndex,
   path: QualifiedName,
@@ -193,14 +200,21 @@ fn symbol_index_fill_containment_node(
         }
       })
     TypeNode { connective: Arrow } =>
-      match list_at_optional(xs: node.children, index: 0) {
-        Present { value: domain_edge } =>
-          symbol_index_fill_containment_node(
-            index: index,
-            path: path,
-            node: domain_edge.target
-          )
-        Absent => index
+      match arrow_first_positional_target(children: node.children) {
+        FirstPositionalFound { target: domain } =>
+          match domain.kind {
+            TypeNode { connective: Conj } =>
+              fold(domain.children, init: index, f: fn(acc, edge) {
+                symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+              })
+            _ =>
+              symbol_index_fill_containment_node(
+                index: index,
+                path: path,
+                node: domain
+              )
+          }
+        FirstPositionalAbsent => index
       }
     _ =>
       fold(node.children, init: index, f: fn(acc, edge) {

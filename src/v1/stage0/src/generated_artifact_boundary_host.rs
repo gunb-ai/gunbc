@@ -120,8 +120,14 @@ pub fn generated_artifact_ctx<'a>(
     cell: &'a mut Option<InterpContext>,
 ) -> Result<&'a InterpContext, String> {
     if cell.is_none() {
+        // A CORPUS KEY IS NOT A CWD PATH. `AUTHORITY_ENTRY` is workspace-relative, and the entry
+        // loader opens its argument as a filesystem path, so the bare key named a file only while
+        // the process cwd happened to be the workspace root. It is anchored at the root the index
+        // was keyed against instead, as the floor closure arm does (gunbc#12516). Class:
+        // `gunbc.recurring_failure_mode` `workspace_relative_corpus_key_handed_to_a_cwd_relative_reader`.
+        let entry = authority_entry_path();
         let (graph, indices) =
-            crate::cli_run::resolve_entry_graph_shared(source_roots, AUTHORITY_ENTRY)
+            crate::cli_run::resolve_entry_graph_shared(source_roots, &entry.to_string_lossy())
                 .map_err(|e| format!("resolve {AUTHORITY_ENTRY}: {e}"))?;
         *cell = Some(crate::cli_run::make_eval_context(
             &graph,
@@ -133,6 +139,12 @@ pub fn generated_artifact_ctx<'a>(
         ));
     }
     Ok(cell.as_ref().expect("the context was just installed"))
+}
+
+/// The authority entry as a path the loader can open from ANY cwd: the workspace-relative key
+/// joined onto the root the module index was keyed against.
+fn authority_entry_path() -> std::path::PathBuf {
+    super::process_workspace_root().join(AUTHORITY_ENTRY)
 }
 
 /// Ask the already-resolved generated-artifact authority for the body it generates at a path.
@@ -445,6 +457,30 @@ mod tests {
             generated: generated.to_string(),
             committed: committed.map(|c| c.to_string()),
         }
+    }
+
+    /// THE AUTHORITY ENTRY IS A CORPUS KEY, NOT A CWD PATH. `cargo test` runs this binary with
+    /// the crate directory as its cwd, which is exactly the non-root cwd that reproduces the
+    /// production dependence: before the entry was anchored, `generated_artifact_ctx` refused
+    /// here with `entry file does not exist` while succeeding from the root. The claim is at the
+    /// anchoring interface, not over a whole-closure resolve (DESIGN section 3, a witness
+    /// discriminates at one interface); the real route stays executed by the behavioural-receipt
+    /// and generated-artifact phases that call `generated_artifact_ctx`.
+    /// Class: `gunbc.recurring_failure_mode` `workspace_relative_corpus_key_handed_to_a_cwd_relative_reader`.
+    #[test]
+    fn the_authority_entry_resolves_from_a_non_root_cwd() {
+        let cwd = std::env::current_dir().expect("test working directory");
+        // THE DISCRIMINATOR: the bare key does not name the file from this cwd.
+        assert!(
+            !cwd.join(AUTHORITY_ENTRY).is_file(),
+            "the control needs a cwd that is not the workspace root: {cwd:?}"
+        );
+        let entry = authority_entry_path();
+        assert!(entry.is_absolute(), "{entry:?}");
+        assert!(
+            entry.is_file(),
+            "the anchored entry must name the authority from {cwd:?}: {entry:?}"
+        );
     }
 
     #[test]

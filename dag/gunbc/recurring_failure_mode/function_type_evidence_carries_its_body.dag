@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.function_type_evidence_carries_its_body
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data function_type_evidence_carries_its_body: RecurringFailureMode = RecurringFailureMode {
+  identity: "function_type_evidence_carries_its_body" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a bodied Arrow's derived type in v2.compiler.infer is the product-introduction composition over EVERY child, so it carries the body's type as a child edge, and v2.extdeps.languages.dag dag_arrow_with_body_node lists the return atom twice. A function type is domain to codomain; the body is how the function is realized, not part of its type.",
+
+    "HARM: two functions with the same domain and codomain but differently typed bodies derive unequal types, so a structural comparison of function types (inhabitance of a function-typed formal, unification of function-typed arms) can refuse an equal pair or depend on the body. A reader that takes the codomain from the composed evidence reads a body-dependent, positionally doubled carrier instead of the declaration.",
+
+    "DISTINGUISHING FACT: arrow elimination does not depend on this defect by construction. v2.compiler.infer infer_arrow_declared_return_type reads the return atom AS WRITTEN (positional child 1) and never the composed evidence, per the v2-foundation ruling on docs/plans/arrow-elimination-model.md (2026-09-26).",
+
+    "RECOGNITION RULE: an Arrow's derived evidence has more children than domain plus codomain, or two Arrows with equal domain and declared return but different bodies derive unequal types.",
+
+    "RUNG FOUND AT: mitigatable. No consumer compares function types structurally on the current route; elimination is shielded by reading the declaration.",
+
+    "CEILING: structurally impossible, since the Arrow's type node can be constructed as domain to codomain only.",
+
+    "NEXT-RUNG TRIGGER: a function-type introduction rule in v2.compiler.infer that derives an Arrow's type from its domain and declared return alone, with the body judged against the return (infer_arrow_body_inhabits_declared_return) instead of composed into the type, and a fixture constructor carrying the return once. It must be sufficient that two Arrows differing only in body derive equal types.",
+  ],
+
+  evidence: [],
+}

@@ -417,7 +417,11 @@ fn verify_capability(
       } else {
         verify_authenticated_claims(claims: c, expectation: expectation, observed_at: observed_at)
       }
-    _ => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacTagMismatch { key_id: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacKeyUnknown { key_id: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacKeyRetired { key_id: _, retired_at: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacSuiteMismatch { expected: _, key_suite: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
   }
 }
 

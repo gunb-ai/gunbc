@@ -995,8 +995,25 @@ impl Value {
     }
 }
 
+// TEST-ONLY WORK OBSERVATION: how many times structural equality ran. The memo's verification
+// equality (`value_fast_eq`) is a cost contract, not only a result contract -- a top-level-only
+// shortcut followed by `==` returns the same answers while walking every shared part -- so its
+// control must observe the WORK, and this counter is that observation. Compiled only under
+// cfg(test): production equality pays nothing.
+#[cfg(test)]
+thread_local! {
+    static VALUE_EQ_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn value_eq_calls() -> u64 {
+    VALUE_EQ_CALLS.with(|c| c.get())
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        #[cfg(test)]
+        VALUE_EQ_CALLS.with(|c| c.set(c.get() + 1));
         match (self, other) {
             (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
@@ -1230,6 +1247,18 @@ pub enum InterpError {
         argv0: String,
         cause: String,
     },
+    /// An operation issued while a modeled operation realization is active that the realization
+    /// does not answer: uncovered, bound to another handler, unbound, bound twice, a harness fault,
+    /// or a frame admitted outside Hermetic execution. No real transport, fixture or mock is tried.
+    ModeledOperationRefused {
+        operation: String,
+        cause: String,
+    },
+    /// A modeled realization reported that the worker died after this operation and before any
+    /// reply. The evaluation stops here; the frame returns `WitnessInterrupted`.
+    ModeledWorkerKilled {
+        operation: String,
+    },
     /// A host-tool program could not be resolved to an existing executable path.
     /// `probed` carries every candidate location examined so the refusal is located
     /// and countable by class rather than by grepping a format string.
@@ -1415,6 +1444,16 @@ impl fmt::Display for InterpError {
                 f,
                 "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
+            ),
+            InterpError::ModeledOperationRefused { operation, cause } => write!(
+                f,
+                "modeled operation realization refused {}: {} (no real transport, recorded fixture or published mock was consulted)",
+                operation, cause
+            ),
+            InterpError::ModeledWorkerKilled { operation } => write!(
+                f,
+                "modeled operation realization: the worker was killed after {} and before any reply",
+                operation
             ),
             InterpError::ShellSpawnRefused { argv0, cause } => write!(
                 f,
@@ -7752,6 +7791,9 @@ impl Drop for WitnessFramePop {
         WITNESS_EVALUATION_FRAMES.with(|frames| {
             let _ = frames.borrow_mut().pop();
         });
+        MODELED_REALIZATION_SLOTS.with(|slots| {
+            let _ = slots.borrow_mut().pop();
+        });
     }
 }
 
@@ -7796,21 +7838,617 @@ fn witness_evaluation_diagnostic_value(
     }
 }
 
-fn witness_evaluation_variant(
-    ctx: &InterpContext,
-    variant: &str,
-    field: &str,
-    value: Value,
-) -> Value {
-    Value::Variant {
-        type_name: ctx.sym("WitnessEvaluation"),
-        variant_name: ctx.sym(variant),
-        fields: Rc::new(vec![(ctx.sym(field), value)]),
+fn current_witness_evaluation_frame() -> Option<Value> {
+    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+}
+
+// HAND-RUST GATE, seed-retained, admitted by `gunbc.modeled_operation_realization_seed_growth`
+// `modeled_operation_realization_seed_growth_justification` (gunbc#12486, #12423 decision
+// 5858742863). This is the seed realization of a .dag contract: selection
+// (`operation_handler_selection`), duplicate admission, the virtual clock and every scenario
+// transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
+// dispatches. Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS), with the
+// witness-frame stack above. Deletion condition, checkable by execution: the emitted runtime realizes
+// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness_test`
+// stays green without this code.
+/// The dynamic-extent state of one witness frame's modeled operation realization. The model is
+/// `.dag` (`v2.std.operation_realization`): this slot only holds its current state, the virtual
+/// clock and the dispatch log the dispatcher writes. It is pushed and popped with its frame, so a
+/// nested frame has its own slot and an outer slot is untouched by an inner scenario.
+struct ModeledRealizationSlot {
+    envelope: Value,
+    realization: Value,
+    identity: String,
+    state: Value,
+    /// The virtual clock, an opaque `std.measure` `Second`: the dispatcher never reads its
+    /// representation, it only passes it to `virtual_clock_after`.
+    now: Value,
+    route: Vec<Value>,
+    interrupted: Option<Value>,
+}
+
+thread_local! {
+    static MODELED_REALIZATION_SLOTS: RefCell<Vec<Option<ModeledRealizationSlot>>> =
+        const { RefCell::new(Vec::new()) };
+    /// Nonzero while a modeled handler or advance function is being applied.
+    static MODELED_HANDLER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+struct ModeledHandlerScope;
+
+impl ModeledHandlerScope {
+    fn enter() -> Self {
+        MODELED_HANDLER_DEPTH.with(|d| d.set(d.get() + 1));
+        ModeledHandlerScope
     }
 }
 
-fn current_witness_evaluation_frame() -> Option<Value> {
-    WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow().last().cloned())
+impl Drop for ModeledHandlerScope {
+    fn drop(&mut self) {
+        MODELED_HANDLER_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
+
+fn apply_modeled_handler(
+    closure: &Value,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let _scope = ModeledHandlerScope::enter();
+    apply_closure(closure, args, env, ctx)
+}
+
+fn modeled_refused(operation: &str, cause: impl Into<String>) -> InterpError {
+    InterpError::ModeledOperationRefused {
+        operation: operation.to_string(),
+        cause: cause.into(),
+    }
+}
+
+fn record_field(ctx: &InterpContext, value: &Value, name: &str) -> Option<Value> {
+    match value {
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            ctx.field(fields, name).cloned()
+        }
+        _ => None,
+    }
+}
+
+fn variant_parts(ctx: &InterpContext, value: &Value) -> Option<(String, Rc<Vec<(Symbol, Value)>>)> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => Some((ctx.resolve(*variant_name).to_string(), fields.clone())),
+        _ => None,
+    }
+}
+
+fn record_value(ctx: &InterpContext, type_name: &str, fields: Vec<(&str, Value)>) -> Value {
+    Value::Record {
+        type_name: ctx.sym(type_name),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+fn variant_value(
+    ctx: &InterpContext,
+    type_name: &str,
+    variant: &str,
+    fields: Vec<(&str, Value)>,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+/// Admits a frame's realization before its subject runs. Refuses outside Hermetic execution (the
+/// realization is the DRY arm; a Wet or Record run -- including any physical qualification -- can
+/// never be answered by a model), a realization binding one identity twice, and a binding whose
+/// identity resolves to no declared operation.
+fn admit_modeled_realization(
+    frame: &Value,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Option<ModeledRealizationSlot>> {
+    // FRAME COMPOSITION: while a modeled realization is active, NO further witness frame may open
+    // inside it -- not one without a realization, not one with another realization, not one with
+    // the same. Any nested frame would sit above the active slot and could only weaken it (a
+    // realization-less frame would let the dispatcher fall through to ordinary dispatch while the
+    // parent is still in force). The refusal is independent of what the nested frame carries.
+    let enclosing_modeled =
+        MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow().iter().any(|slot| slot.is_some()));
+    if enclosing_modeled {
+        return Err(modeled_refused(
+            "(frame)",
+            "a witness frame cannot open while a modeled operation realization is active; nested frames are refused whatever they carry",
+        ));
+    }
+    let realization = match record_field(ctx, frame, "realization") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) if ctx.resolve(variant_name) == "Present" => {
+            ctx.field(&fields, "value").cloned().ok_or_else(|| {
+                modeled_refused(
+                    "(frame)",
+                    "the frame's realization is Present with no value",
+                )
+            })?
+        }
+        Some(Value::Variant { variant_name, .. }) if ctx.resolve(variant_name) == "Absent" => {
+            return Ok(None)
+        }
+        Some(other) => other,
+    };
+    let mode = variant_value(
+        ctx,
+        "ExecutionMode",
+        match ctx.execution_mode {
+            ExecutionMode::Hermetic => "Hermetic",
+            ExecutionMode::Wet => "Wet",
+            ExecutionMode::Record => "Record",
+        },
+        vec![],
+    );
+    let admitted = run_in_context_with_args(
+        ctx,
+        "modeled_realization_admitted_in",
+        &[(Some("mode".to_string()), mode)],
+        false,
+    )?;
+    if !matches!(admitted, Value::Bool(true)) {
+        return Err(modeled_refused(
+            "(frame)",
+            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
+        ));
+    }
+    let envelope = record_field(ctx, frame, "envelope")
+        .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
+    let identity = match record_field(ctx, &realization, "identity") {
+        Some(Value::Str(s)) => s.to_string(),
+        _ => {
+            return Err(modeled_refused(
+                "(frame)",
+                "the realization carries no identity",
+            ))
+        }
+    };
+    let duplicate = run_in_context_with_args(
+        ctx,
+        "operation_realization_duplicate",
+        &[(Some("realization".to_string()), realization.clone())],
+        false,
+    )?;
+    if let Some((name, fields)) = variant_parts(ctx, &duplicate) {
+        if name == "Present" {
+            let at = ctx
+                .field(&fields, "value")
+                .and_then(|b| record_field(ctx, b, "at"))
+                .map(|at| format!("{at}"))
+                .unwrap_or_default();
+            return Err(modeled_refused(
+                "(frame)",
+                format!("the realization binds one operation identity twice: {at}"),
+            ));
+        }
+    }
+    let bindings = match record_field(ctx, &realization, "bindings") {
+        Some(Value::List(items)) => items,
+        _ => {
+            return Err(modeled_refused(
+                "(frame)",
+                "the realization carries no binding list",
+            ))
+        }
+    };
+    for binding in bindings.iter() {
+        let at = record_field(ctx, binding, "at")
+            .ok_or_else(|| modeled_refused("(frame)", "a binding carries no operation identity"))?;
+        let part = |name: &str| match record_field(ctx, &at, name) {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => String::new(),
+        };
+        let (path, service, operation) = (part("path"), part("service"), part("operation"));
+        let resolves = ctx
+            .indexes
+            .service_ops
+            .get(&format!("{service}.{operation}"))
+            .is_some_and(|(_, op_node)| op_node.span.file.as_ref() as &str == path.as_str());
+        if !resolves {
+            return Err(modeled_refused(
+                "(frame)",
+                format!(
+                    "binding {service}.{operation} declared at {path} resolves to no declared operation with that identity"
+                ),
+            ));
+        }
+    }
+    let initial = record_field(ctx, &realization, "initial")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no initial state"))?;
+    // The realization's clock starts at its declared epoch -- the origin for a fresh scenario, the
+    // interrupted attempt's clock (plus any absence the supervisor declares) for a resume -- and
+    // every event due by then fires before the subject issues anything.
+    let now = record_field(ctx, &realization, "epoch")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no epoch"))?;
+    let advance = record_field(ctx, &realization, "advance")
+        .ok_or_else(|| modeled_refused("(frame)", "the realization carries no advance function"))?;
+    let state = apply_modeled_handler(&advance, &[initial, now.clone()], env, ctx)?;
+    Ok(Some(ModeledRealizationSlot {
+        envelope,
+        realization,
+        identity,
+        state,
+        now,
+        route: Vec::new(),
+        interrupted: None,
+    }))
+}
+
+fn op_declared_readonly(op_node: &Rc<Node>, ctx: &InterpContext) -> bool {
+    op_node.properties.iter().any(|p| {
+        matches!(
+            crate::v1_std_core::field_init_operation_modifier(p.clone(), ctx.si()),
+            Some(crate::v1_std_core::OperationModifier::Readonly)
+        )
+    })
+}
+
+/// The BoundOperationInvocation (`v2.std.operation_argv`) of one dispatched operation: its resolved
+/// identity -- declaring file, service, operation -- and each declared input by name.
+fn bound_operation_invocation_value(
+    service_name: &str,
+    op_name: &str,
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let at = operation_ref_value(&op_node.span.file, service_name, op_name, ctx);
+    let mut bindings = Vec::new();
+    for p in op_node.params.iter() {
+        let name = param_node_name_at(p.clone(), ctx.si());
+        let Some(value) = param_env.lookup(ctx.sym(&name)) else {
+            continue;
+        };
+        let bound = match value {
+            Value::List(items) => {
+                let texts: Vec<Value> = items.iter().map(|v| str_value(render_input(v))).collect();
+                variant_value(
+                    ctx,
+                    "OperationInputValue",
+                    "InputTextList",
+                    vec![("items", list_value(texts))],
+                )
+            }
+            other => variant_value(
+                ctx,
+                "OperationInputValue",
+                "InputText",
+                vec![("text", str_value(render_input(&other)))],
+            ),
+        };
+        bindings.push(record_value(
+            ctx,
+            "OperationInputBinding",
+            vec![("name", str_value(name)), ("value", bound)],
+        ));
+    }
+    Ok(record_value(
+        ctx,
+        "BoundOperationInvocation",
+        vec![("at", at), ("bindings", list_value(bindings))],
+    ))
+}
+
+fn render_input(value: &Value) -> String {
+    match value {
+        Value::Str(s) => s.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        other => format!("{other}"),
+    }
+}
+
+/// Answers one operation from the active modeled realization, or `None` when no frame carries one.
+/// While one is active this is the ONLY route: every refusal is terminal and nothing falls through
+/// to a real transport, the recorded fixture store, a published mock or the checkout carve-out.
+fn dispatch_modeled_operation(
+    service_name: &str,
+    op_name: &str,
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Option<Value>> {
+    let snapshot = MODELED_REALIZATION_SLOTS.with(|slots| {
+        slots.borrow().last().and_then(|slot| {
+            slot.as_ref().map(|s| {
+                (
+                    s.envelope.clone(),
+                    s.realization.clone(),
+                    s.identity.clone(),
+                    s.state.clone(),
+                    s.now.clone(),
+                    s.route.len() as i64,
+                )
+            })
+        })
+    });
+    let Some((envelope, realization, identity, state, now, ordinal)) = snapshot else {
+        return Ok(None);
+    };
+    let key = format!("{service_name}.{op_name}");
+    let invocation =
+        bound_operation_invocation_value(service_name, op_name, op_node, param_env, ctx)?;
+    let log =
+        |outcome: Value, completed: Value, state: Option<Value>, interrupted: bool| -> Value {
+            let record = record_value(
+                ctx,
+                "DispatchRecord",
+                vec![
+                    ("ordinal", Value::Int(ordinal)),
+                    ("invocation", invocation.clone()),
+                    ("realization", str_value(identity.clone())),
+                    ("dispatched_at", now.clone()),
+                    ("completed_at", completed.clone()),
+                    ("outcome", outcome),
+                ],
+            );
+            MODELED_REALIZATION_SLOTS.with(|slots| {
+                if let Some(Some(slot)) = slots.borrow_mut().last_mut() {
+                    slot.route.push(record.clone());
+                    slot.now = completed;
+                    if let Some(s) = state {
+                        slot.state = s;
+                    }
+                    if interrupted {
+                        slot.interrupted = Some(record.clone());
+                    }
+                }
+            });
+            record
+        };
+    let selection = run_in_context_with_args(
+        ctx,
+        "operation_handler_selection",
+        &[
+            (Some("env".to_string()), envelope),
+            (Some("realization".to_string()), realization.clone()),
+            (Some("invocation".to_string()), invocation.clone()),
+            (
+                Some("readonly".to_string()),
+                Value::Bool(op_declared_readonly(op_node, ctx)),
+            ),
+        ],
+        false,
+    )?;
+    let (arm, fields) = variant_parts(ctx, &selection)
+        .ok_or_else(|| modeled_refused(&key, "handler selection returned a malformed value"))?;
+    let binding = match arm.as_str() {
+        "OperationHandlerSelected" => ctx
+            .field(&fields, "binding")
+            .cloned()
+            .ok_or_else(|| modeled_refused(&key, "selection omitted its binding"))?,
+        "OperationHandlerRefused" => {
+            let cause = ctx.field(&fields, "cause").cloned().unwrap_or(Value::Unit);
+            let rendered = format!("{cause}");
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchUnbound",
+                    vec![("cause", cause)],
+                ),
+                now.clone(),
+                None,
+                false,
+            );
+            return Err(modeled_refused(&key, rendered));
+        }
+        other => {
+            return Err(modeled_refused(
+                &key,
+                format!("unrecognized handler selection {other}"),
+            ))
+        }
+    };
+    let harness_fault = |reason: String| -> InterpError {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchHarnessFault",
+                vec![("reason", str_value(reason.clone()))],
+            ),
+            now.clone(),
+            None,
+            false,
+        );
+        modeled_refused(&key, format!("harness fault: {reason}"))
+    };
+    if !is_shell_transport(transport.clone()) {
+        return Err(harness_fault(
+            "a modeled realization supplies shell transport observations only; this operation's transport is not shell".to_string(),
+        ));
+    }
+    let handler = record_field(ctx, &binding, "handler")
+        .ok_or_else(|| harness_fault("the binding carries no handler".to_string()))?;
+    let call = record_value(
+        ctx,
+        "OperationCall",
+        vec![("invocation", invocation.clone()), ("now", now.clone())],
+    );
+    // A HANDLER OR advance THAT FAILS STILL LEAVES A RECORD. The dispatch happened -- this operation,
+    // at this ordinal -- so its record is finalized with the original cause, the last established
+    // state and the unadvanced clock, and the cause then propagates unchanged. No completion is
+    // manufactured: the outcome is a callback failure, never an observation.
+    let callback_failed = |stage: &str, error: &InterpError, state: Option<Value>| {
+        log(
+            variant_value(
+                ctx,
+                "DispatchOutcome",
+                "DispatchCallbackFailed",
+                vec![
+                    ("stage", variant_value(ctx, "CallbackStage", stage, vec![])),
+                    ("cause", str_value(error.to_string())),
+                ],
+            ),
+            now.clone(),
+            state,
+            false,
+        );
+    };
+    let step = match apply_modeled_handler(&handler, &[state, call], env, ctx) {
+        Ok(step) => step,
+        Err(error) => {
+            callback_failed("HandlerFailed", &error, None);
+            return Err(error);
+        }
+    };
+    let (step_arm, step_fields) = variant_parts(ctx, &step)
+        .ok_or_else(|| harness_fault("the handler returned a malformed step".to_string()))?;
+    match step_arm.as_str() {
+        "OperationObserved" => {
+            let observation = ctx
+                .field(&step_fields, "observation")
+                .cloned()
+                .ok_or_else(|| {
+                    harness_fault("an observed step carries no observation".to_string())
+                })?;
+            let stepped = ctx
+                .field(&step_fields, "state")
+                .cloned()
+                .ok_or_else(|| harness_fault("an observed step carries no state".to_string()))?;
+            let elapsed = ctx.field(&step_fields, "elapsed").cloned().ok_or_else(|| {
+                harness_fault("an observed step carries no elapsed time".to_string())
+            })?;
+            let completed = run_in_context_with_args(
+                ctx,
+                "virtual_clock_after",
+                &[
+                    (Some("now".to_string()), now.clone()),
+                    (Some("elapsed".to_string()), elapsed),
+                ],
+                false,
+            )?;
+            let advance = record_field(ctx, &realization, "advance").ok_or_else(|| {
+                harness_fault("the realization carries no advance function".to_string())
+            })?;
+            let advanced = match apply_modeled_handler(
+                &advance,
+                &[stepped.clone(), completed.clone()],
+                env,
+                ctx,
+            ) {
+                Ok(advanced) => advanced,
+                Err(error) => {
+                    callback_failed("AdvanceFailed", &error, Some(stepped));
+                    return Err(error);
+                }
+            };
+            let shell = shell_result_of_observation(&observation, ctx).map_err(&harness_fault)?;
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchObserved",
+                    vec![("observation", observation)],
+                ),
+                completed,
+                Some(advanced),
+                false,
+            );
+            shell_result_projection(shell, op_node, ctx).map(Some)
+        }
+        "OperationWorkerKilled" => {
+            let committed = ctx
+                .field(&step_fields, "committed")
+                .cloned()
+                .unwrap_or(Value::Bool(false));
+            let stepped = ctx
+                .field(&step_fields, "state")
+                .cloned()
+                .ok_or_else(|| harness_fault("a killed step carries no state".to_string()))?;
+            log(
+                variant_value(
+                    ctx,
+                    "DispatchOutcome",
+                    "DispatchWorkerKilled",
+                    vec![("committed", committed)],
+                ),
+                now.clone(),
+                Some(stepped),
+                true,
+            );
+            Err(InterpError::ModeledWorkerKilled { operation: key })
+        }
+        "OperationHarnessFault" => {
+            let reason = match ctx.field(&step_fields, "reason") {
+                Some(Value::Str(s)) => s.to_string(),
+                _ => "unstated".to_string(),
+            };
+            Err(harness_fault(reason))
+        }
+        other => Err(harness_fault(format!("unrecognized step {other}"))),
+    }
+}
+
+/// A modeled ShellExchangeObservation as the shell transport result the real dispatcher produces.
+fn shell_result_of_observation(
+    observation: &Value,
+    ctx: &InterpContext,
+) -> Result<InterpResult<ShellResult>, String> {
+    let (arm, fields) = variant_parts(ctx, observation).ok_or("the observation is malformed")?;
+    if arm != "ShellObserved" {
+        return Err(format!("unsupported transport observation {arm}"));
+    }
+    let shell = ctx
+        .field(&fields, "observation")
+        .ok_or("ShellObserved carries no observation")?;
+    let (shell_arm, shell_fields) =
+        variant_parts(ctx, shell).ok_or("the shell observation is malformed")?;
+    let text = |name: &str| match ctx.field(&shell_fields, name) {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        _ => Err(format!("the shell observation carries no {name}")),
+    };
+    match shell_arm.as_str() {
+        "ShellProcessExited" => {
+            let exit_code = match ctx.field(&shell_fields, "exit_code") {
+                Some(Value::Int(n)) => {
+                    i32::try_from(*n).map_err(|_| "exit_code out of range".to_string())?
+                }
+                _ => return Err("the shell observation carries no exit_code".to_string()),
+            };
+            let stream = |t: String| bounded_shell_host_drain::CapturedStreamEvidence {
+                total_bytes: t.len() as u64,
+                retained_bytes: t.len() as u64,
+                truncated: false,
+                digest_hex: None,
+                retained_text: t.trim_end().to_string(),
+            };
+            Ok(Ok(ShellResult {
+                exit_code,
+                stdout: stream(text("stdout")?),
+                stderr: stream(text("stderr")?),
+            }))
+        }
+        "ShellProcessSpawnRefused" => Ok(Err(InterpError::ShellSpawnRefused {
+            argv0: text("program")?,
+            cause: text("cause")?,
+        })),
+        other => Err(format!("unrecognized shell observation {other}")),
+    }
 }
 
 fn try_witness_evaluation_dispatch(
@@ -7858,18 +8496,79 @@ fn try_witness_evaluation_dispatch(
                     msg: "evaluate_in_witness_frame requires a subject".to_string(),
                 }));
             };
-            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
-            let evaluated = {
-                let _pop = WitnessFramePop;
-                apply_closure(&subject, &[Value::Bool(true)], env, ctx)
+            let empty_route = || list_value(Vec::<Value>::new());
+            let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
+            let admitted = match admit_modeled_realization(&frame, env, ctx) {
+                Ok(slot) => slot,
+                Err(error) => {
+                    return Some(Ok(variant_value(
+                        ctx,
+                        "WitnessEvaluation",
+                        "WitnessRefused",
+                        vec![
+                            (
+                                "diagnostic",
+                                witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                            ),
+                            ("route", empty_route()),
+                            ("state", absent_state()),
+                        ],
+                    )))
+                }
             };
-            Some(Ok(match evaluated {
-                Ok(value) => witness_evaluation_variant(ctx, "WitnessReturned", "value", value),
-                Err(error) => witness_evaluation_variant(
+            WITNESS_EVALUATION_FRAMES.with(|frames| frames.borrow_mut().push(frame));
+            MODELED_REALIZATION_SLOTS.with(|slots| slots.borrow_mut().push(admitted));
+            let (evaluated, slot) = {
+                let _pop = WitnessFramePop;
+                let evaluated = apply_closure(&subject, &[Value::Bool(true)], env, ctx);
+                let slot = MODELED_REALIZATION_SLOTS
+                    .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
+                (evaluated, slot)
+            };
+            let (route, state, interrupted, clock) = match slot {
+                Some(slot) => (
+                    list_value(slot.route),
+                    Some(slot.state),
+                    slot.interrupted,
+                    Some(slot.now),
+                ),
+                None => (empty_route(), None, None, None),
+            };
+            let present = |v: Value| variant_value(ctx, "Optional", "Present", vec![("value", v)]);
+            Some(Ok(match (evaluated, interrupted, state, clock) {
+                (
+                    Err(InterpError::ModeledWorkerKilled { .. }),
+                    Some(at),
+                    Some(state),
+                    Some(now),
+                ) => variant_value(
                     ctx,
+                    "WitnessEvaluation",
+                    "WitnessInterrupted",
+                    vec![("at", at), ("route", route), ("state", state), ("now", now)],
+                ),
+                (Ok(value), _, state, _) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
+                    "WitnessReturned",
+                    vec![
+                        ("value", value),
+                        ("route", route),
+                        ("state", state.map(present).unwrap_or_else(absent_state)),
+                    ],
+                ),
+                (Err(error), _, state, _) => variant_value(
+                    ctx,
+                    "WitnessEvaluation",
                     "WitnessRefused",
-                    "diagnostic",
-                    witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                    vec![
+                        (
+                            "diagnostic",
+                            witness_evaluation_diagnostic_value(ctx, call_node, &error),
+                        ),
+                        ("route", route),
+                        ("state", state.map(present).unwrap_or_else(absent_state)),
+                    ],
                 ),
             }))
         }
@@ -8239,8 +8938,8 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
                     crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
-            family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing"
-                lookup_eval_call_bridge_std_compilers_lexing eval_call_bridge__v2_std_compilers_lexing_arm {
+            family STD_NODE_BRIDGE_FNS "v2.std.node"
+                lookup_eval_call_bridge_std_node eval_call_bridge__v2_std_node_arm {
                 arm "v4_bridge.symbol_intern_lexeme" { "symbol_intern_lexeme" } =>
                     crate::coproduct_reflection::eval_symbol_intern_lexeme($ctx, &$args),
                 arm "v4_bridge.symbol_lexeme" { "symbol_lexeme" } =>
@@ -8887,7 +9586,7 @@ fn eval_recompute_str_hash(s: &str) -> u64 {
 }
 
 fn eval_recompute_mix(seed: u64, x: u64) -> u64 {
-    (seed.rotate_left(5) ^ x).wrapping_mul(0x100000001b3)
+    (seed.rotate_left(5) ^ x).wrapping_mul(EVAL_RECOMPUTE_MIX_PRIME)
 }
 
 fn eval_recompute_canon_key_hash(k: &CanonKey) -> u64 {
@@ -8997,7 +9696,7 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             }
         }
         EvalRecomputeFrameKind::Map { rc, .. } => {
-            let vh = eval_recompute_mix(0xA5A5_0090, h);
+            let vh = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, h);
             memo.insert(
                 Rc::as_ptr(&rc) as usize,
                 (CompositeWeak::Map(Rc::downgrade(&rc)), vh),
@@ -9235,6 +9934,80 @@ fn eval_recompute_extend_push_hash(
             eval_recompute_mix(parent_h, item_h),
         ),
     );
+}
+
+/// THE INSERT CONSTRUCTOR CARRIES THE MAP KEY FORWARD, exactly as the push constructor carries the
+/// list key (`eval_recompute_extend_push_hash`, #12066). The map content hash is an order-independent
+/// wrapping sum of `mix(key_hash, value_hash)` over its entries, finalized once by
+/// `mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum)`; `mix` multiplies by an odd constant, so the finalizer
+/// is invertible and the parent's sum is recovered from its memoized hash. An insert of a new key
+/// adds one term; an overwrite also subtracts the replaced entry's term. So
+/// `hash(insert(m, k, v))` is derived in O(1) plus the hash of `v` (and of the replaced value),
+/// never by re-walking `m`. A threaded accumulator map rebuilt per step -- 02_parse's `ParseTable`
+/// memo map, a new `Rc` after every insert -- otherwise missed the identity memo on every call and
+/// was rehashed whole: O(n) per call, O(n^2) per parse. The failing link is key derivation, not
+/// admission (#12066's ruling), so no recurrence criterion is added.
+///
+/// DEMAND-GATED like the push extension: only a parent whose hash a key derivation already paid for
+/// is extended. A Closure key or value bails and leaves the child unmemoized, so the ordinary
+/// derivation refuses it. Serving still verifies argument equality (`eval_call_memo_args_match`), so
+/// a hash collision recomputes rather than serves a wrong value.
+fn eval_recompute_extend_insert_hash(
+    ctx: &InterpContext,
+    parent: &Rc<HamtMap<CanonKey, Value>>,
+    key: &CanonKey,
+    value: &Value,
+    inserted: &Value,
+) {
+    let Value::Map(child) = inserted else { return };
+    let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
+        return;
+    };
+    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
+        Some((w, h)) if w.alive() => *h,
+        _ => return,
+    };
+    let interner = ctx.symbols.borrow();
+    let key_h = eval_recompute_canon_key_hash(key);
+    let mut sum = eval_recompute_map_sum_from_hash(parent_h);
+    if let Some(replaced) = parent.get(key) {
+        let Some(replaced_h) = eval_recompute_value_hash(&mut memo, &interner, replaced) else {
+            return;
+        };
+        sum = sum.wrapping_sub(eval_recompute_mix(key_h, replaced_h));
+    }
+    let Some(value_h) = eval_recompute_value_hash(&mut memo, &interner, value) else {
+        return;
+    };
+    sum = sum.wrapping_add(eval_recompute_mix(key_h, value_h));
+    memo.insert(
+        Rc::as_ptr(child) as usize,
+        (
+            CompositeWeak::Map(Rc::downgrade(child)),
+            eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum),
+        ),
+    );
+}
+
+const EVAL_RECOMPUTE_MIX_PRIME: u64 = 0x100000001b3;
+const EVAL_RECOMPUTE_MAP_FINAL_SEED: u64 = 0xA5A5_0090;
+
+/// The multiplicative inverse of `EVAL_RECOMPUTE_MIX_PRIME` mod 2^64 (Newton iteration; the prime is
+/// odd, so it exists and five doublings of precision reach 64 bits).
+const fn eval_recompute_mix_prime_inverse() -> u64 {
+    let mut inv = EVAL_RECOMPUTE_MIX_PRIME;
+    let mut i = 0;
+    while i < 6 {
+        inv = inv.wrapping_mul(2u64.wrapping_sub(EVAL_RECOMPUTE_MIX_PRIME.wrapping_mul(inv)));
+        i += 1;
+    }
+    inv
+}
+
+/// Inverse of the map finalizer: recovers the entry sum from a finalized map hash.
+fn eval_recompute_map_sum_from_hash(h: u64) -> u64 {
+    h.wrapping_mul(eval_recompute_mix_prime_inverse())
+        ^ EVAL_RECOMPUTE_MAP_FINAL_SEED.rotate_left(5)
 }
 
 fn eval_recompute_arg_key(
@@ -10049,43 +10822,6 @@ pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
     out
 }
 
-// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path lands in the receipt
-// by construction — harvest is not a per-call-site discipline a future site could forget.
-// Sums at the totals grain only: raw ledger keys are address-based and single-ctx.
-static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
-    std::sync::Mutex::new(None);
-
-/// Drain the process-wide ledger totals (e.g. to write a receipt file at the
-/// end of a floor walk). Returns zeroed totals when tracing was disabled.
-pub fn take_process_eval_recompute_totals() -> EvalRecomputeTotals {
-    // A poisoned lock still holds structurally valid totals (absorb is
-    // add-only), so recover the data rather than silently returning zeroes.
-    PROCESS_EVAL_RECOMPUTE_TOTALS
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take()
-        .unwrap_or_default()
-}
-
-impl Drop for InterpContext {
-    fn drop(&mut self) {
-        if !eval_recompute_trace_enabled() {
-            return;
-        }
-        let totals = eval_recompute_totals(self);
-        if totals.keyed_calls == 0 && totals.unkeyed_calls == 0 {
-            return;
-        }
-        // Recover a poisoned lock rather than dropping this ctx's contribution
-        // without a trace — absorb is add-only, so the state stays valid.
-        let mut g = PROCESS_EVAL_RECOMPUTE_TOTALS
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        g.get_or_insert_with(EvalRecomputeTotals::default)
-            .absorb(&totals);
-    }
-}
-
 fn value_rc_identity(v: &Value) -> Option<usize> {
     match v {
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
@@ -10098,15 +10834,62 @@ fn value_rc_identity(v: &Value) -> Option<usize> {
     }
 }
 
-// Same-allocation composites are equal without a walk; everything else takes
-// the full structural equality (Value::eq, the one equality authority).
+// Same-allocation composites are equal without a walk AT EVERY LEVEL; everything else takes the
+// structural equality of Value::eq (the one equality authority), arm for arm.
+//
+// THE SHORTCUT MUST RECURSE, because a persistent value is rebuilt around shared parts. A threaded
+// record (02_parse's ParseTable) is a NEW fields allocation after every rebuild while its large
+// parts -- the memo entries map, the carried grammar analysis -- are the SAME allocations. A
+// top-level-only shortcut missed on the rebuilt record and fell into Value::eq, which walked every
+// shared part in full: verifying one served hit cost O(|table|), and the parse's repeated
+// equal-content calls made verification quadratic in list length (the #12377 blocker). Descending
+// to the first differing allocation keeps the verification O(changed structure).
+//
+// The shortcut agrees with Value::eq except where Value::eq is not reflexive (a NaN inside an
+// allocation): there one allocation is still one value, and a pure call over it has one result,
+// which is the only thing a memo verification decides. The top-level shortcut already made that
+// disposition; recursing does not widen it.
 fn value_fast_eq(a: &Value, b: &Value) -> bool {
     if let (Some(x), Some(y)) = (value_rc_identity(a), value_rc_identity(b)) {
         if x == y {
             return true;
         }
     }
-    a == b
+    match (a, b) {
+        (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
+            value_fields_fast_eq(af, bf)
+        }
+        (
+            Value::Variant {
+                type_name: at,
+                variant_name: av,
+                fields: af,
+            },
+            Value::Variant {
+                type_name: bt,
+                variant_name: bv,
+                fields: bf,
+            },
+        ) => at == bt && av == bv && value_fields_fast_eq(af, bf),
+        (Value::List(xs), Value::List(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys.iter()).all(|(x, y)| value_fast_eq(x, y))
+        }
+        (Value::Map(xm), Value::Map(ym)) => {
+            xm.len() == ym.len()
+                && xm
+                    .iter()
+                    .all(|(k, v)| ym.get(k).is_some_and(|w| value_fast_eq(v, w)))
+        }
+        _ => a == b,
+    }
+}
+
+fn value_fields_fast_eq(af: &[(Symbol, Value)], bf: &[(Symbol, Value)]) -> bool {
+    af.len() == bf.len()
+        && af
+            .iter()
+            .zip(bf.iter())
+            .all(|((an, av), (bn, bv))| an == bn && value_fast_eq(av, bv))
 }
 
 // A stored call matches only when argument NAMES and values both agree —
@@ -11580,7 +12363,9 @@ macro_rules! v1_algebra_method_arms {
                 let mut counters = $ctx.mutation_counters.borrow_mut();
                 counters.map_insert_calls += 1;
                 drop(counters);
-                Ok(map_value(m.update(ck, val)))
+                let inserted = map_value(m.update(ck.clone(), val.clone()));
+                eval_recompute_extend_insert_hash($ctx, &m, &ck, &val, &inserted);
+                Ok(inserted)
             },
 
             arm "method_call.merge" { "merge" } => {
@@ -11974,9 +12759,18 @@ fn eval_service_call(
     declared: ExpectationDeclaration,
 ) -> InterpResult<Value> {
     let expected = declared.resolve(service_name, op_name);
+    let key = format!("{}.{}", service_name, op_name);
+    // A modeled handler is a pure transition over its scenario state: it receives no effect
+    // context, so an operation issued from inside one refuses before anything is counted or
+    // dispatched -- including an operation reached indirectly through a helper it calls.
+    if MODELED_HANDLER_DEPTH.with(|d| d.get()) > 0 {
+        return Err(InterpError::ModeledOperationRefused {
+            operation: key,
+            cause: "a modeled realization handler issued an operation; handlers receive no effect context".to_string(),
+        });
+    }
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
-    let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
         ctx.indexes
             .service_ops
@@ -11994,6 +12788,20 @@ fn eval_service_call(
         })?;
 
     let param_env = build_service_param_env(op_node, args, env, ctx)?;
+    // A modeled operation realization, when one is active, answers EXCLUSIVELY: it is consulted
+    // before the checkout-input carve-out, the recorded fixture store, the published mocks and wet
+    // dispatch, and none of those is reached while it is active (v2.std.operation_realization).
+    if let Some(answered) = dispatch_modeled_operation(
+        service_name,
+        op_name,
+        op_node,
+        transport,
+        &param_env,
+        env,
+        ctx,
+    )? {
+        return Ok(answered);
+    }
     let inputs_hash =
         crate::recorded_fixture::content_hash_service_inputs(op_node, &param_env, ctx);
     let inputs_json =
@@ -12180,40 +12988,11 @@ fn dispatch_service_wet(
         // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
         // spawn failure as a value, with every other declared field absent; one declaring none
         // keeps refusing the evaluation, now with the typed `ShellSpawnRefused` diagnostic.
-        let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
-        return match (
+        return shell_result_projection(
             dispatch_shell(transport, param_env, ctx, intent, expected),
-            outcome_field,
-        ) {
-            (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
-            (Ok(result), Some(field)) => {
-                let mapped = map_shell_outputs(&result, op_node, ctx)?;
-                Ok(attach_transport_outcome(
-                    Some(mapped),
-                    op_node,
-                    &field,
-                    shell_outcome_variant(ctx, "ShellExited", vec![]),
-                    ctx,
-                ))
-            }
-            (Err(InterpError::ShellSpawnRefused { argv0, cause }), Some(field)) => {
-                Ok(attach_transport_outcome(
-                    None,
-                    op_node,
-                    &field,
-                    shell_outcome_variant(
-                        ctx,
-                        "ShellSpawnRefused",
-                        vec![
-                            (ctx.sym("program"), str_value(argv0)),
-                            (ctx.sym("cause"), str_value(cause)),
-                        ],
-                    ),
-                    ctx,
-                ))
-            }
-            (Err(err), _) => Err(err),
-        };
+            op_node,
+            ctx,
+        );
     }
 
     if is_file_transport(transport.clone(), ctx.si()) {
@@ -12222,6 +13001,47 @@ fn dispatch_service_wet(
     }
 
     dispatch_rest(service_node, op_node, transport, param_env, ctx)
+}
+
+/// The ONE projection from a shell transport result to an operation's declared output: the real
+/// process result and a modeled realization's observation both reach it, so a modeled observation
+/// is decoded by exactly the declared-output mapping a spawned process's result is.
+fn shell_result_projection(
+    dispatched: InterpResult<ShellResult>,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "ShellOutcome");
+    match (dispatched, outcome_field) {
+        (Ok(result), None) => map_shell_outputs(&result, op_node, ctx),
+        (Ok(result), Some(field)) => {
+            let mapped = map_shell_outputs(&result, op_node, ctx)?;
+            Ok(attach_transport_outcome(
+                Some(mapped),
+                op_node,
+                &field,
+                shell_outcome_variant(ctx, "ShellExited", vec![]),
+                ctx,
+            ))
+        }
+        (Err(InterpError::ShellSpawnRefused { argv0, cause }), Some(field)) => {
+            Ok(attach_transport_outcome(
+                None,
+                op_node,
+                &field,
+                shell_outcome_variant(
+                    ctx,
+                    "ShellSpawnRefused",
+                    vec![
+                        (ctx.sym("program"), str_value(argv0)),
+                        (ctx.sym("cause"), str_value(cause)),
+                    ],
+                ),
+                ctx,
+            ))
+        }
+        (Err(err), _) => Err(err),
+    }
 }
 
 /// Native realization of `shell.Env.Get` for OnTarget locality — same Absent/Present
@@ -17096,6 +17916,12 @@ fn rest_exchange_selection(
             msg: "REST invocation is not covered by the witness frame; real transport refused"
                 .to_string(),
         }),
+        "RestExchangeModeledRealizationUnsupported" => Err(InterpError::TypeError {
+            msg:
+                "REST invocation is covered by a modeled operation realization, which has no REST \
+                  observation arm yet; real transport refused"
+                    .to_string(),
+        }),
         other => Err(InterpError::TypeError {
             msg: format!("unrecognized REST exchange resolution: {}", other),
         }),
@@ -20473,7 +21299,9 @@ macro_rules! v1_builtin_arms {
                         let mut counters = $ctx.mutation_counters.borrow_mut();
                         counters.map_insert_calls += 1;
                         drop(counters);
-                        Ok(Some(map_value(m.update(ck, (*v).clone()))))
+                        let inserted = map_value(m.update(ck.clone(), (*v).clone()));
+                        eval_recompute_extend_insert_hash($ctx, m, &ck, v, &inserted);
+                        Ok(Some(inserted))
                     }
                     None => Err(InterpError::TypeError {
                         msg: format!(
@@ -20781,6 +21609,10 @@ macro_rules! v1_builtin_arms {
                     expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
                 let exclude_substrings =
                     expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts",
+                    &pool_roots.iter().chain(importer_roots.iter()).cloned().collect::<Vec<_>>(),
+                )?;
                 // Reference-first exact union through the ONE dedup authority, then the
                 // import_module -> target_module rename. Both halves are the host twin of what
                 // `v2.lens.module_graph` composed in the interpreter; moved because it measured
@@ -20788,6 +21620,41 @@ macro_rules! v1_builtin_arms {
                 let facts = crate::cli_run::dependency_resolution_facts(
                     &pool_roots,
                     &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), str_value(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), str_value(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.dependency_resolution_facts_at" { "dependency_resolution_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts_at")?;
+                let importer_path =
+                    expect_value_str($positional.get(1).copied(), "dependency_resolution_facts_at")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts_at")?;
+                // The pool roots are anchored as directories, so they refuse typed here like the
+                // population read's. The importer is a FILE path by contract and is never anchored:
+                // it is a key into the population's importer grouping, not a root to walk.
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts_at",
+                    &pool_roots,
+                )?;
+                // Same row shape as the population read, so a `.dag` consumer switching to the keyed
+                // form changes its source of rows and not its fold.
+                let facts = crate::cli_run::dependency_resolution_facts_at(
+                    &pool_roots,
+                    importer_path.as_str(),
                     &exclude_substrings,
                 );
                 let mut items: Vec<Value> = Vec::new();
@@ -23114,6 +23981,74 @@ fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> 
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a Bytes argument", context),
         }),
+    }
+}
+
+/// A ROOT THAT IS NOT A WALKABLE DIRECTORY REFUSES HERE, TYPED AND LOCATED, before the host anchors
+/// it. `cli_run` `anchor_source_root` panics on a file, which crossed the builtin boundary as a
+/// process abort rather than an answer the caller can read (DESIGN section 5). The classification is
+/// `coproduct_reflection` `pool_root_defects`, the one the parse-only pool walks already refuse with,
+/// so a file root reads `NamesFile` here exactly as it does there.
+fn refuse_roots_that_are_not_walkable_directories(
+    caller: &'static str,
+    roots: &[String],
+) -> InterpResult<()> {
+    let defects = crate::coproduct_reflection::pool_root_defects(roots);
+    if defects.is_empty() {
+        return Ok(());
+    }
+    Err(InterpError::PoolRootContributesNothing {
+        caller,
+        declared: roots.len(),
+        defects,
+    })
+}
+
+#[cfg(test)]
+mod walkable_root_refusal_tests {
+    use super::{refuse_roots_that_are_not_walkable_directories, InterpError};
+    use crate::coproduct_reflection::PoolRootDefect;
+
+    fn repo_path(rel: &str) -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(rel)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    // THE RED: a module FILE handed where a root directory is owed refuses NamesFile, naming it.
+    #[test]
+    fn a_file_path_root_refuses_names_file() {
+        let file = repo_path("dag/gunbc/auth/approval_broker_serve.dag");
+        match refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[file.clone()],
+        ) {
+            Err(InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            }) => {
+                assert_eq!(caller, "dependency_resolution_facts");
+                assert_eq!(declared, 1);
+                assert_eq!(defects.len(), 1);
+                assert_eq!(defects[0].0, file);
+                assert!(matches!(defects[0].1, PoolRootDefect::NamesFile));
+            }
+            other => panic!("expected PoolRootContributesNothing(NamesFile), got {other:?}"),
+        }
+    }
+
+    // THE POSITIVE CONTROL: a directory holding .dag files is admitted, so the red above is the
+    // file-ness of the root and not a refusal of every root.
+    #[test]
+    fn a_directory_root_with_dag_files_is_admitted() {
+        assert!(refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[repo_path("dag/gunbc/auth")]
+        )
+        .is_ok());
     }
 }
 
@@ -26042,6 +26977,185 @@ mod push_hash_extension_tests {
                 .map(|(_, h)| *h)
                 .expect("a keyed lineage is extended on push");
             assert_eq!(served, full_fold_hash(&ctx, &acc));
+        }
+    }
+
+    /// THROUGH THE PRODUCTION ARMS: even `i` is the free `map_insert` (`eval_builtin`), odd is the
+    /// method `insert`, so deleting the extension from either arm turns the property red.
+    fn insert(
+        ctx: &InterpContext,
+        m: &Rc<HamtMap<CanonKey, Value>>,
+        k: Value,
+        v: Value,
+        i: u64,
+    ) -> Value {
+        let receiver = Value::Map(m.clone());
+        if i % 2 == 0 {
+            eval_builtin("map_insert", &[(None, receiver), (None, k), (None, v)], ctx)
+                .expect("free map_insert evaluates")
+                .expect("free map_insert is a builtin")
+        } else {
+            eval_algebra_method_inner("insert", receiver, &[k, v], &Env::empty(), ctx)
+                .expect("method insert evaluates")
+        }
+    }
+
+    /// The derived map key equals the from-scratch fold over a randomized sequence of inserts and
+    /// overwrites (a small key space forces overwrites; values mix scalars, strings and composites),
+    /// and an unkeyed parent is never extended.
+    #[test]
+    fn inserted_map_hash_is_the_full_fold_under_insert_and_overwrite() {
+        let ctx = test_ctx();
+        let empty = Value::Map(Rc::new(HamtMap::new()));
+        let Value::Map(rc0) = empty.clone() else {
+            unreachable!()
+        };
+        let child = insert(&ctx, &rc0, Value::Int(1), Value::Int(1), 0);
+        let Value::Map(child_rc) = &child else {
+            unreachable!()
+        };
+        assert!(ctx
+            .eval_recompute_hash_memo
+            .borrow()
+            .get(&(Rc::as_ptr(child_rc) as usize))
+            .is_none());
+        let mut acc = empty;
+        {
+            let mut m = ctx.eval_recompute_hash_memo.borrow_mut();
+            eval_recompute_value_hash(&mut m, &ctx.symbols.borrow(), &acc).unwrap();
+        }
+        let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut overwrites = 0;
+        for i in 0..256u64 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let r = seed >> 33;
+            let key = if r % 5 == 0 {
+                str_value(format!("k{}", r % 7))
+            } else {
+                Value::Int((r % 16) as i64)
+            };
+            let value = match r % 3 {
+                0 => Value::Int(r as i64),
+                1 => str_value(format!("v{r}")),
+                _ => list_value(vec![Value::Int(i as i64), str_value(format!("c{r}"))]),
+            };
+            let Value::Map(rc) = acc.clone() else {
+                unreachable!()
+            };
+            if rc.contains_key(&CanonKey::new(key.clone()).expect("key")) {
+                overwrites += 1;
+            }
+            acc = insert(&ctx, &rc, key, value, i);
+            let Value::Map(now) = &acc else {
+                unreachable!()
+            };
+            let served = ctx
+                .eval_recompute_hash_memo
+                .borrow()
+                .get(&(Rc::as_ptr(now) as usize))
+                .map(|(_, h)| *h)
+                .expect("a keyed lineage is extended on insert");
+            assert_eq!(served, full_fold_hash(&ctx, &acc), "step {i}");
+        }
+        assert!(
+            overwrites > 32,
+            "the sequence must exercise overwrite: {overwrites}"
+        );
+    }
+
+    fn record(ctx: &InterpContext, fields: Vec<(&str, Value)>) -> Value {
+        Value::Record {
+            type_name: ctx.sym("T"),
+            fields: Rc::new(fields.into_iter().map(|(n, v)| (ctx.sym(n), v)).collect()),
+        }
+    }
+
+    /// The memo's verification equality agrees with Value::eq, the equality authority, on values
+    /// that share nothing, AND on records rebuilt around shared parts -- the ParseTable shape: a
+    /// new fields allocation whose large map field is the same allocation. The shared case must
+    /// decide equality and inequality alike (a differing small field beside a shared large one is
+    /// unequal), so the recursion cannot degrade into "shares a part, therefore equal".
+    #[test]
+    fn memo_verification_equality_agrees_with_value_eq_and_descends_to_sharing() {
+        let ctx = test_ctx();
+        let mut big = HamtMap::new();
+        for i in 0..512 {
+            big.insert(
+                CanonKey::new(Value::Int(i)).expect("key"),
+                list_value(vec![Value::Int(i), str_value(format!("e{i}"))]),
+            );
+        }
+        let shared = Value::Map(Rc::new(big));
+        let t1 = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(1))],
+        );
+        let t1_rebuilt = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(1))],
+        );
+        let t2_rebuilt = record(
+            &ctx,
+            vec![("entries", shared.clone()), ("hits", Value::Int(2))],
+        );
+        // WORK: two records rebuilt around the SAME 512-entry map must be compared in O(changed)
+        // structural-equality calls (the one small field), never by walking the shared map. A
+        // top-level-only shortcut followed by `==` returns the same answer and fails here: the
+        // derived walk recurses into every entry.
+        for other in [&t1_rebuilt, &t2_rebuilt] {
+            let before = value_eq_calls();
+            let _ = value_fast_eq(&t1, other);
+            let work = value_eq_calls() - before;
+            assert!(
+                work <= 4,
+                "verification walked shared structure: {work} Value::eq calls"
+            );
+        }
+        assert!(value_fast_eq(&t1, &t1_rebuilt));
+        assert_eq!(value_fast_eq(&t1, &t1_rebuilt), t1 == t1_rebuilt);
+        assert!(!value_fast_eq(&t1, &t2_rebuilt));
+        assert_eq!(value_fast_eq(&t1, &t2_rebuilt), t1 == t2_rebuilt);
+        // Unshared, deep: a copy equal by content and a copy differing in one nested element.
+        let deep = |last: i64| {
+            let mut m = HamtMap::new();
+            for i in 0..64 {
+                let tail = if i == 63 { last } else { i };
+                m.insert(
+                    CanonKey::new(Value::Int(i)).expect("key"),
+                    list_value(vec![Value::Int(tail), str_value(format!("d{i}"))]),
+                );
+            }
+            record(
+                &ctx,
+                vec![("entries", Value::Map(Rc::new(m))), ("hits", Value::Int(0))],
+            )
+        };
+        let (a, b, c) = (deep(63), deep(63), deep(-1));
+        assert_eq!(value_fast_eq(&a, &b), a == b);
+        assert!(value_fast_eq(&a, &b));
+        assert_eq!(value_fast_eq(&a, &c), a == c);
+        assert!(!value_fast_eq(&a, &c));
+        let v1 = Value::Variant {
+            type_name: ctx.sym("V"),
+            variant_name: ctx.sym("A"),
+            fields: Rc::new(vec![(ctx.sym("x"), shared.clone())]),
+        };
+        let v2 = Value::Variant {
+            type_name: ctx.sym("V"),
+            variant_name: ctx.sym("B"),
+            fields: Rc::new(vec![(ctx.sym("x"), shared)]),
+        };
+        assert_eq!(value_fast_eq(&v1, &v2), v1 == v2);
+        assert!(!value_fast_eq(&v1, &v2));
+    }
+
+    #[test]
+    fn map_finalizer_inverse_recovers_the_sum() {
+        for sum in [0u64, 1, 0xDEAD_BEEF, u64::MAX, 0x1234_5678_9ABC_DEF0] {
+            let h = eval_recompute_mix(EVAL_RECOMPUTE_MAP_FINAL_SEED, sum);
+            assert_eq!(eval_recompute_map_sum_from_hash(h), sum);
         }
     }
 }

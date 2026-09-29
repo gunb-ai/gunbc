@@ -2258,10 +2258,12 @@ fn pair_serving_authority_record_entry_state(store: FabricStorageBinding, group:
   }
 }
 
+data current_authority_unread_marker: String = " authority unread at "
+
 fn current_authority_wire(c: CurrentAuthority) -> String {
   match c {
     CurrentAuthorityRead { authority: a, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => join(["generation ", to_string(g), ": ", authority_wire(a: a)], "")
-    CurrentAuthorityUnread { group: g, step: s, reason: why } => join([fabric_group_wire(g: g) as String, " authority unread at ", s, ": ", why], "")
+    CurrentAuthorityUnread { group: g, step: s, reason: why } => join([fabric_group_wire(g: g) as String, current_authority_unread_marker, s, ": ", why], "")
   }
 }
 

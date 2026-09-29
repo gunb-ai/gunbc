@@ -202,7 +202,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
     let glyph = if emoji { "⏳" } else { "◷" };
     format!("{glyph} {}", mirror_ci_hold_cause_text(hold))
 }
-/// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_runner_slot_desired` — the declared
+/// SEED MIRROR of `gunbc.runner_slot_desired` `gunbc_runner_slot_desired` — the declared
 /// per-slot throttle line (field `memory_high`). A mirror, not an independent value: it may only
 /// move toward its authority row. Joined by `test.claim.seed_mirror_constant_lens_witness_test`.
 ///
@@ -2198,11 +2198,18 @@ mod tests {
             ..public_root()
         };
         let refused = admit(Some(public_peak() * 4), &private_spelling);
-        assert!(matches!(
-            &refused,
-            WholeCorpusCompileAdmission::RefusedDemandsForAnotherRepository { projected_repositories, .. }
-                if projected_repositories == &vec!["gunbc".to_string()]
-        ));
+        // One entry per projected row, as the model's `whole_corpus_compile_demand_repositories`
+        // yields, so the assertion is the witness twin `refuses_as_another_repository`: non-empty
+        // and every entry the public repository -- not a count of today's rows.
+        assert!(
+            matches!(
+                &refused,
+                WholeCorpusCompileAdmission::RefusedDemandsForAnotherRepository { projected_repositories, .. }
+                    if !projected_repositories.is_empty()
+                        && projected_repositories.iter().all(|r| r == "gunbc")
+            ),
+            "{refused:?}"
+        );
         assert!(whole_corpus_compile_refusal_diagnostic(&refused)
             .expect("refusal must diagnose")
             .contains("WholeCorpusCompileDemandsForAnotherRepository"));

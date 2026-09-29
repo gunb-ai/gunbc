@@ -1012,6 +1012,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     let mut edited_test_fns = HashSet::new();
     let mut enrolled_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
+    let mut touched_declarations: HashSet<(String, String)> = HashSet::new();
     // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
     // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
     // handled by the `continue` arm below), so neither flag is needed here.
@@ -1195,8 +1196,10 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                 }
             } else if *is_data {
                 overlapping_data_items.insert((file_norm.clone(), name.clone()));
+                touched_declarations.insert((file_norm.clone(), name.clone()));
             } else {
                 touched_entry_files.insert(file_norm.clone());
+                touched_declarations.insert((file_norm.clone(), name.clone()));
             }
         }
     }
@@ -1210,6 +1213,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
         edited_test_fns,
         enrolled_test_fns,
         touched_entry_files,
+        touched_declarations,
     })
 }
 
@@ -1359,7 +1363,9 @@ fn changed_and_enrolled_witness_identities_with_index(
     // arm (gunbc.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
     // and this one reads as `SeamInterfaceConsumerPlanning` (`floor_seam_tokens`).
     floor_seam("interface-consumer-planning");
-    let interface_consumers = interface_consumer_planning(planning_index)?;
+    let touched_declarations =
+        declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
+    let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
@@ -1414,7 +1420,38 @@ pub(crate) enum InterfaceConsumerPlanning {
         base: String,
         head: String,
         selection: crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
+        /// The EXECUTION-grain peer over the same two indexes: every declaration whose
+        /// evaluation transitively reads a changed one. Observed and printed; no claim is
+        /// planned from it until the enabling switch lands (neat-boar-16 ruling, operator
+        /// ruled 2026-09-27; the enabling step is adhoc-6969b422-bec).
+        body_reach: crate::cli_run::namespace_baseline::BodyReachSelection,
     },
+}
+
+/// `(module_path, declaration)` for every touched non-test declaration, spelled by the
+/// touched file's own `module` header -- the same header rule as
+/// `module_seeds_from_touched_entry_files`, and a file without one refuses for the same reason.
+pub(crate) fn declaration_seeds_from_touched_declarations(
+    base: &Path,
+    touched: &HashSet<(String, String)>,
+) -> Result<std::collections::BTreeSet<(String, String)>, String> {
+    let mut modules: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
+    let mut out = std::collections::BTreeSet::new();
+    for (file, declaration) in touched {
+        if !modules.contains_key(file.as_str()) {
+            let content = std::fs::read_to_string(base.join(file))
+                .map_err(|e| format!("touched-declaration reach seed: read {file}: {e}"))?;
+            let module = extract_module_path(&content).ok_or_else(|| {
+                format!(
+                    "touched-declaration reach seed: {file} has an edited declaration but no \
+                     module header, so its declarations cannot be named"
+                )
+            })?;
+            modules.insert(file.as_str(), module);
+        }
+        out.insert((modules[file.as_str()].clone(), declaration.clone()));
+    }
+    Ok(out)
 }
 
 /// The dependents-direction seeds, derived from the parse phase's `DeclarationIndex` and its
@@ -1430,9 +1467,11 @@ pub(crate) enum InterfaceConsumerPlanning {
 /// blind; a local run without a diff baseline never reaches here.
 fn interface_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
+    touched_declarations: &std::collections::BTreeSet<(String, String)>,
 ) -> Result<InterfaceConsumerPlanning, String> {
     use crate::cli_run::namespace_baseline::{
-        git_stdout, interface_changed_consumers, reconstruct_base_index, BaselineReconstruction,
+        body_reach_from_changed_declarations, git_stdout, interface_changed_consumers,
+        reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
         return Ok(InterfaceConsumerPlanning::NotEvaluated {
@@ -1467,11 +1506,39 @@ fn interface_consumer_planning(
             head,
             base_index,
             ..
-        } => Ok(InterfaceConsumerPlanning::Selected {
-            base,
-            head,
-            selection: interface_changed_consumers(&base_index, head_index),
-        }),
+        } => {
+            let selection = interface_changed_consumers(&base_index, head_index);
+            // An interface change is a behaviour change too, and it is the only seed a
+            // REMOVED declaration has (its file-side attribution is empty by construction).
+            let mut seeds = touched_declarations.clone();
+            seeds.extend(
+                crate::cli_run::namespace_baseline::import_rebound_declarations(
+                    &base_index,
+                    head_index,
+                ),
+            );
+            seeds.extend(
+                selection
+                    .changes
+                    .iter()
+                    .map(|c| (c.module_path.clone(), c.declaration.clone())),
+            );
+            let started = std::time::Instant::now();
+            let body_reach = body_reach_from_changed_declarations(&base_index, head_index, &seeds);
+            eprintln!(
+                "[floor-phase] phase=body-reach-selection state=completed wall_ms={} \
+                 changed_declarations={} reached_declarations={}",
+                started.elapsed().as_millis(),
+                body_reach.changed.len(),
+                body_reach.reached.len()
+            );
+            Ok(InterfaceConsumerPlanning::Selected {
+                base,
+                head,
+                selection,
+                body_reach,
+            })
+        }
     }
 }
 
@@ -3127,6 +3194,83 @@ pub(crate) enum LocalRepoWetExecution {
 /// on this tree, so production reaches only the refusing cell of that arm.
 ///
 /// `LocalRepoWetLaneOutcome` is DERIVED from a join that held, never accepted from the executor.
+/// THE LANE A REFUSED FINALIZATION STANDS FOR, for the one reader that must still run after it:
+/// the changed-witness projection. It admits nothing and carries the refusal, so every wet-joined
+/// arm reads it as a join that did not hold -- the same answer the refusal itself gives.
+pub(crate) fn refused_local_repo_wet_lane_outcome(
+    candidate: &str,
+    refusal: &str,
+) -> LocalRepoWetLaneOutcome {
+    LocalRepoWetLaneOutcome {
+        scheduled: 0,
+        candidate: candidate.to_string(),
+        admitted: HashSet::new(),
+        refusals: vec![refusal.to_string()],
+    }
+}
+
+/// FINALIZE THE LOCAL-REPO WET LANE, BUT RETURN ITS REFUSAL ONLY AFTER THE CHANGED-WITNESS
+/// PROJECTION HAS BEEN EMITTED. The refusal used to be `?`-ed before the projection printed, so a
+/// floor red on an unrelated wet member published no `[changed-witness]` row at all, and two
+/// sessions read that silence as "the changed witnesses never executed" (#12499); they had, only
+/// their report was lost. The projection reads a refused lane as one that admits nothing -- its
+/// `refusals` are non-empty, the arm `changed_witness_projection_rows` already reads as "the join
+/// does not hold" -- so no row's standing changes. `emit` is the floor's
+/// `emit_changed_witness_projection`; it is a parameter so the order is observable by a control.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finalize_wet_lane_after_changed_projection(
+    schedule: &[LocalRepoWetScheduledRow],
+    execution: LocalRepoWetExecution,
+    candidate: &str,
+    changed: Option<&[String]>,
+    disposition_rows: &[RequiredFloorDispositionRow],
+    terminal: &[ClaimTerminalRow],
+    verdict_only: &HashSet<String>,
+    observations: &HashMap<String, ChangedWitnessCostObservation>,
+    emit: &mut dyn FnMut(&[ChangedWitnessProjectionRow]) -> Result<(), String>,
+) -> Result<Option<Vec<ChangedWitnessProjectionRow>>, String> {
+    let finalized = finalize_local_repo_wet_lane(schedule, execution, candidate);
+    let refused_lane;
+    let projection_lane = match &finalized {
+        Ok(lane) => lane,
+        Err(refusal) => {
+            refused_lane = refused_local_repo_wet_lane_outcome(candidate, refusal);
+            &refused_lane
+        }
+    };
+    let rows = match changed {
+        Some(changed) => {
+            let rows = changed_witness_projection_rows(
+                changed,
+                disposition_rows,
+                terminal,
+                verdict_only,
+                observations,
+                projection_lane,
+                candidate,
+            );
+            emit(&rows)?;
+            Some(rows)
+        }
+        None => None,
+    };
+    finalized?;
+    // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather than
+    // travelling as an empty string the receipt would print as nothing at all.
+    if let Some(row) = rows
+        .iter()
+        .flatten()
+        .find(|r| r.blocks && r.cause.is_empty())
+    {
+        return Err(format!(
+            "required-floor: changed witness {} blocks with standing {} and no cause \
+             (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
+            row.identity, row.standing
+        ));
+    }
+    Ok(rows)
+}
+
 pub(crate) fn finalize_local_repo_wet_lane(
     schedule: &[LocalRepoWetScheduledRow],
     execution: LocalRepoWetExecution,
@@ -6681,7 +6825,29 @@ pub fn run_required_floor(
                 base,
                 head,
                 selection,
+                body_reach,
             } => {
+                // OBSERVE-ONLY. The reached witness identities are printed so a replay can
+                // join them against a base-versus-head verdict list; none is planned yet.
+                let mut reached_witness_identities: Vec<String> = Vec::new();
+                for r in &body_reach.reached {
+                    if r.witness_carrier {
+                        reached_witness_identities
+                            .push(format!("{}.{}", r.module_path, r.declaration));
+                        eprintln!(
+                            "[floor-plan] BodyReachWitness identity={}.{} through={}.{} binding={:?}",
+                            r.module_path, r.declaration, r.through.0, r.through.1, r.binding
+                        );
+                    }
+                }
+                for (module_path, declaration) in &body_reach.changed {
+                    eprintln!("[floor-plan] BodyReachSeed declaration={module_path}.{declaration}");
+                }
+                eprintln!(
+                    "[floor-phase] phase=body-reach-selection observe_only=true \
+                     reached_witness_declarations={}",
+                    reached_witness_identities.len()
+                );
                 use crate::cli_run::namespace_baseline::{
                     InterfaceChangeGround, InterfaceConsumerBinding,
                 };
@@ -6735,6 +6901,13 @@ pub fn run_required_floor(
                             module_path,
                             declaration,
                         } => format!("PropagatedThrough through={module_path}.{declaration}"),
+                        InterfaceChangeGround::RefinementPredicatesChanged => {
+                            "RefinementPredicatesChanged".to_string()
+                        }
+                        InterfaceChangeGround::AdmittedThroughInput {
+                            module_path,
+                            declaration,
+                        } => format!("AdmittedThroughInput through={module_path}.{declaration}"),
                     };
                     eprintln!(
                         "[floor-plan] SeedDeclarationInterfaceChangedConsumer declaration={}.{} \
@@ -11014,36 +11187,23 @@ pub fn run_required_floor(
     // unread schedule holds vacuously while `std.witness_admission` goes on claiming the route.
     let wet_execution: LocalRepoWetExecution =
         run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone());
-    let wet_lane = finalize_local_repo_wet_lane(
+    // THE WET LANE'S REFUSAL IS RETURNED ONLY AFTER THE CHANGED-WITNESS PROJECTION IS EMITTED,
+    // and that order lives in one function whose control drives it with a planted refusal
+    // (`finalize_wet_lane_after_changed_projection`).
+    let changed_projection_rows = finalize_wet_lane_after_changed_projection(
         &local_repo_wet_schedule_rows,
         wet_execution,
         &prepared.subject_digest,
+        changed_witnesses.as_deref(),
+        &outcome.required_floor_disposition,
+        &terminal_rows,
+        &cost_debt_verdict_only,
+        &cost_debt_observations,
+        &mut |rows| emit_changed_witness_projection(rows),
     )?;
-    let changed_projection_rows = if let Some(changed_witnesses) = changed_witnesses {
-        let rows = changed_witness_projection_rows(
-            &changed_witnesses,
-            &outcome.required_floor_disposition,
-            &terminal_rows,
-            &cost_debt_verdict_only,
-            &cost_debt_observations,
-            &wet_lane,
-            &prepared.subject_digest,
-        );
-        emit_changed_witness_projection(&rows)?;
+    if let Some(rows) = &changed_projection_rows {
         outcome.changed_witness_rows = rows.len();
-        // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather
-        // than travelling as an empty string the receipt would print as nothing at all.
-        if let Some(row) = rows.iter().find(|r| r.blocks && r.cause.is_empty()) {
-            return Err(format!(
-                "required-floor: changed witness {} blocks with standing {} and no cause \
-                 (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
-                row.identity, row.standing
-            ));
-        }
-        Some(rows)
-    } else {
-        None
-    };
+    }
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -12862,8 +13022,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         // the probe's designed refusal never reaches Strict resolve.
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        // ONE cwd guard for both preparations: the mutex is not reentrant.
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let prepared = prepare_repository_closure(
             &roots,
@@ -12872,7 +13030,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         );
         // THE DISCRIMINATOR: without the exclusion rows the same seed list refuses on the probe.
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let (prepared, views) = prepared.expect("the excluded probe must not refuse preparation");
         let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
         assert!(!modules.contains(&"armset.probe"), "{modules:?}");
@@ -12920,27 +13077,6 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     const REC_USER: &str =
         "module armset.rec_user\n\nimport armset.rec { Box }\n\nfn w(b: Box) -> Int {\n  b.width\n}\n";
 
-    /// Preparation resolves the index's workspace-relative entry paths against the PROCESS
-    /// CWD (`entry_source_from_index_or_disk`), which is the workspace root in production and
-    /// the crate directory under `cargo test`. A test enters the workspace root for one
-    /// preparation and leaves again, serialized because the working directory is process-global.
-    /// Free functions rather than a guard type: an `impl Drop` is an uncitable item under
-    /// `gunbc.seed_growth_admission` (`seed_growth_uncitable_item_keys`).
-    static WORKSPACE_CWD: Mutex<()> = Mutex::new(());
-
-    fn enter_workspace_cwd() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
-        let lock = WORKSPACE_CWD
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let previous = std::env::current_dir().expect("test working directory");
-        std::env::set_current_dir(process_workspace_root()).expect("enter workspace root");
-        (lock, previous)
-    }
-
-    fn leave_workspace_cwd(previous: &Path) {
-        let _ = std::env::set_current_dir(previous);
-    }
-
     /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
     /// made it; a panicking test leaves it for the next run of the same name to replace.
     fn interface_fixture(name: &str, side: &str, files: &[(&str, &str)]) -> PathBuf {
@@ -12986,13 +13122,59 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
                 && crate::cli_run::declaration_index::index_population(&head_index).modules > 0,
             "PLANT MALFORMED: a side indexed no modules"
         );
-        (
-            crate::cli_run::namespace_baseline::interface_changed_consumers(
+        let selection = crate::cli_run::namespace_baseline::interface_changed_consumers(
+            &base_index,
+            &head_index,
+        );
+        // THE INDEXED SELECTOR SELECTS EXACTLY WHAT THE SCAN SELECTS, on every fixture here: the
+        // leaf index changes the cost of planning and never the planned set.
+        assert_eq!(
+            selection,
+            crate::cli_run::namespace_baseline::interface_changed_consumers_by_scan(
                 &base_index,
                 &head_index,
             ),
-            head_fx,
-        )
+            "the indexed selector diverged from the scan it replaced"
+        );
+        (selection, head_fx)
+    }
+
+    /// THE COST RECEIPT, on the real corpus rather than a fixture: the base index is reconstructed
+    /// over `GUNBC_SELECTION_BASE..HEAD` exactly as the floor does, both selectors run on it, their
+    /// selections must be equal, and both times are printed. Run by hand on a wide interface change
+    /// (`cargo test ... -- --ignored --nocapture`); it is not a merge gate.
+    #[test]
+    #[ignore]
+    fn indexed_selection_equals_the_scan_on_a_real_diff_window() {
+        use crate::cli_run::namespace_baseline::{
+            git_stdout, interface_changed_consumers, interface_changed_consumers_by_scan,
+            reconstruct_base_index, BaselineReconstruction,
+        };
+        let workspace = process_workspace_root();
+        let base = std::env::var("GUNBC_SELECTION_BASE").expect("GUNBC_SELECTION_BASE");
+        let base = git_stdout(&workspace, &["rev-parse", &base]).expect("base rev");
+        let head = git_stdout(&workspace, &["rev-parse", "HEAD"]).expect("head rev");
+        let head_index =
+            crate::cli_run::run_dag_parse_sweep(&workspace, &crate::cli_run::DAG_PARSE_SWEEP_ROOTS)
+                .expect("head sweep")
+                .index;
+        let BaselineReconstruction::Reconstructed { base_index, .. } =
+            reconstruct_base_index(&workspace, &base, &head, &head_index).expect("reconstruct")
+        else {
+            panic!("base side not reconstructed");
+        };
+        let t = std::time::Instant::now();
+        let indexed = interface_changed_consumers(&base_index, &head_index);
+        let indexed_ms = t.elapsed().as_millis();
+        let t = std::time::Instant::now();
+        let scanned = interface_changed_consumers_by_scan(&base_index, &head_index);
+        let scanned_ms = t.elapsed().as_millis();
+        eprintln!(
+            "selection receipt: changes={} consumers={} indexed_ms={indexed_ms} scanned_ms={scanned_ms}",
+            indexed.changes.len(),
+            indexed.consumers.len()
+        );
+        assert_eq!(indexed, scanned);
     }
 
     fn consumers_of(
@@ -13076,13 +13258,11 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         // is empty, exactly as a diff-only seed list would be.
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.y".to_string()];
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)))
             .err()
             .expect("Strict preparation of the stale consumer must refuse");
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         assert!(
             refusal.contains("non-exhaustive match") && refusal.contains("Amber"),
@@ -13103,11 +13283,9 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.w"]);
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.w".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         let (prepared, _) = prepared.expect("a wildcard match stays exhaustive under growth");
         assert!(prepared.modules_resolved >= 2, "x and w prepared");
@@ -13219,11 +13397,9 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
     /// Prepare `seeds` over one fixture root under the floor's own Strict path.
     fn prepare_seeds(root: &Path, seeds: &[&str]) -> Result<(), String> {
         let roots = [root.to_string_lossy().into_owned()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         prepared.map(|_| ())
     }
 
@@ -13326,6 +13502,155 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
         assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
     }
 
+    /// A witness two calls from `width_of`, and a witness that reads nothing `width_of` reaches.
+    const REACH_WITNESS: &str = "module iface.reach_test\n\nimport iface.fc { twice }\n\n\
+test fn twice_is_six() -> Bool {\n  twice() == 6\n}\n";
+    const REACH_UNRELATED_WITNESS: &str = "module iface.unrelated_test\n\n\
+test fn one_is_one() -> Bool {\n  1 == 1\n}\n";
+
+    fn reach_of(
+        name: &str,
+        base: &[(&str, &str)],
+        head: &[(&str, &str)],
+        changed: &[(&str, &str)],
+    ) -> (
+        crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
+        crate::cli_run::namespace_baseline::BodyReachSelection,
+    ) {
+        let base_fx = interface_fixture(name, "base", base);
+        let head_fx = interface_fixture(name, "head", head);
+        let base_index = interface_index(&base_fx);
+        let head_index = interface_index(&head_fx);
+        let _ = std::fs::remove_dir_all(&base_fx);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let seeds: BTreeSet<(String, String)> = changed
+            .iter()
+            .map(|(m, d)| (m.to_string(), d.to_string()))
+            .collect();
+        (
+            crate::cli_run::namespace_baseline::interface_changed_consumers(
+                &base_index,
+                &head_index,
+            ),
+            crate::cli_run::namespace_baseline::body_reach_from_changed_declarations(
+                &base_index,
+                &head_index,
+                &seeds,
+            ),
+        )
+    }
+
+    fn reached_witnesses(
+        reach: &crate::cli_run::namespace_baseline::BodyReachSelection,
+    ) -> Vec<String> {
+        let mut out: Vec<String> = reach
+            .reached
+            .iter()
+            .filter(|r| r.witness_carrier)
+            .map(|r| format!("{}.{}", r.module_path, r.declaration))
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// THE RED (gunbc#12361's shape). A body-only edit to `width_of` changes no interface, so the
+    /// compile-grain selector plans nothing -- correctly, nothing can fail to typecheck -- and a
+    /// witness two calls away in an untouched file is exactly the claim whose VERDICT the edit
+    /// can change. Execution-grain reach selects it, through the caller.
+    #[test]
+    fn a_body_only_change_reaches_the_witness_two_calls_away() {
+        let files_base = [
+            ("f.dag", IFACE_F_BASE),
+            ("fc.dag", IFACE_F_CALLER),
+            ("fi.dag", IFACE_F_IDLE),
+            ("reach_test.dag", REACH_WITNESS),
+            ("unrelated_test.dag", REACH_UNRELATED_WITNESS),
+        ];
+        let mut files_head = files_base;
+        files_head[0] = ("f.dag", IFACE_F_BODY_ONLY);
+        let (selection, reach) = reach_of(
+            "reach_body",
+            &files_base,
+            &files_head,
+            &[("iface.f", "width_of")],
+        );
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+        assert_eq!(
+            reached_witnesses(&reach),
+            vec!["iface.reach_test.twice_is_six".to_string()],
+            "{:?}",
+            reach.reached
+        );
+        let twice = reach
+            .reached
+            .iter()
+            .find(|r| r.declaration == "twice")
+            .expect("the caller is reached");
+        assert_eq!(
+            twice.through,
+            ("iface.f".to_string(), "width_of".to_string())
+        );
+        // CONTROL: the idle importer is not a reader, and the unrelated witness reads nothing
+        // the edit reaches -- the selection is bounded by the reads, not by importers or files.
+        assert!(
+            !reach
+                .reached
+                .iter()
+                .any(|r| r.module_path == "iface.fi" || r.module_path == "iface.unrelated_test"),
+            "{:?}",
+            reach.reached
+        );
+    }
+
+    const FLATR_A_BASE: &str = "module flatr.a\n\nfn root() -> Int {\n  1\n}\n";
+    const FLATR_A_HEAD: &str = "module flatr.a\n\nfn root() -> Int {\n  2\n}\n";
+    const FLATR_OTHER: &str = "module flatr.other\n\nfn root() -> Int {\n  3\n}\n";
+    const FLATR_FIELD_TEST: &str = "module flatr.field_test\n\ntype Cfg { root: Int }\n\n\
+fn field_of(cfg: Cfg) -> Int {\n  cfg.root\n}\n\ntest fn field_is_one() -> Bool {\n  field_of(cfg: Cfg { root: 1 }) == 1\n}\n";
+    const FLATR_BARE_TEST: &str = "module flatr.bare_test\n\n\
+test fn bare_root_is_one() -> Bool {\n  root() == 1\n}\n";
+    const FLATR_IMPORTED_TEST: &str = "module flatr.imported_test\n\nimport flatr.a { root }\n\n\
+test fn imported_root_is_one() -> Bool {\n  root() == 1\n}\n";
+
+    /// THE RED FOR THE MEASURED FAN-OUT (gunbc#12353 control: 13147 witnesses). `root` is
+    /// declared by two modules, so a bare `root()` with no import is an ambiguous global-bare
+    /// lookup and names neither; `cfg.root` is a field access, not a read of top-level `root`.
+    /// Neither witness is reached. The POSITIVE CONTROL is the witness that imports `root` from
+    /// the changed module: it is reached, so the exclusion narrowed the flat channel and not the
+    /// resolved one.
+    #[test]
+    fn a_field_access_and_an_ambiguous_bare_name_do_not_reach_but_an_import_does() {
+        let base = [
+            ("a.dag", FLATR_A_BASE),
+            ("other.dag", FLATR_OTHER),
+            ("field_test.dag", FLATR_FIELD_TEST),
+            ("bare_test.dag", FLATR_BARE_TEST),
+            ("imported_test.dag", FLATR_IMPORTED_TEST),
+        ];
+        let mut head = base;
+        head[0] = ("a.dag", FLATR_A_HEAD);
+        let (_, reach) = reach_of("reach_flat", &base, &head, &[("flatr.a", "root")]);
+        assert_eq!(
+            reached_witnesses(&reach),
+            vec!["flatr.imported_test.imported_root_is_one".to_string()],
+            "{:?}",
+            reach.reached
+        );
+    }
+
+    /// CONTROL: no changed declaration, no reach. The empty seed set is an answer, not an
+    /// absorbing "everything" (DESIGN 5).
+    #[test]
+    fn no_changed_declaration_reaches_nothing() {
+        let files = [
+            ("f.dag", IFACE_F_BASE),
+            ("fc.dag", IFACE_F_CALLER),
+            ("reach_test.dag", REACH_WITNESS),
+        ];
+        let (_, reach) = reach_of("reach_none", &files, &files, &[]);
+        assert!(reach.reached.is_empty(), "{:?}", reach.reached);
+    }
+
     /// A sealed constructor whose `admit_callers:` roster names two callers, the roster widened
     /// by a third, and the roster narrowed by one.
     const ADM_M_BASE: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
@@ -13415,6 +13740,156 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
             selection.changes
         );
         assert!(planned.is_err(), "C must refuse under Strict preparation");
+    }
+
+    /// A REFINEMENT-ONLY CHANGE. `Tag`'s predicate is respelled and nothing else moves. `make`
+    /// mentions `Tag` only as its RESULT, so `rf.z`, which reaches `Tag` only by calling `make`, is
+    /// not a site that admits a value into `Tag`. `Holder.tag` is an INPUT position, so `rf.w`,
+    /// which constructs a `Holder` without ever naming `Tag`, does admit one.
+    const RF_A_BASE: &str = "module rf.a\n\ntype Tag = String where alpha_pred\n";
+    const RF_A_HEAD: &str = "module rf.a\n\ntype Tag = String where beta_pred\n";
+    const RF_A_CARRIER: &str = "module rf.a\n\ntype Tag = Int where alpha_pred\n";
+    const RF_B: &str =
+        "module rf.b\n\nimport rf.a { Tag }\n\nfn make() -> Tag {\n  \"x\" as Tag\n}\n";
+    const RF_Z: &str =
+        "module rf.z\n\nimport rf.b { make }\n\nfn use_it() -> Int {\n  let t = make()\n  1\n}\n";
+    const RF_R: &str = "module rf.r\n\nimport rf.a { Tag }\n\ntype Holder {\n  tag: Tag\n}\n";
+    const RF_W: &str = "module rf.w\n\nimport rf.r { Holder }\n\nfn holder() -> Holder {\n  Holder { tag: \"t\" }\n}\n";
+
+    const RF_K: &str = "module rf.k\n\nimport rf.a { Tag }\n\nfn mk() -> fn(Tag) -> Int {\n  fn(t) {\n    1\n  }\n}\n";
+    const RF_C: &str =
+        "module rf.c\n\nimport rf.k { mk }\n\nfn run() -> Int {\n  let f = mk()\n  1\n}\n";
+
+    fn refinement_selection(
+        name: &str,
+        head_a: &str,
+    ) -> crate::cli_run::namespace_baseline::InterfaceConsumerSelection {
+        let rest = [
+            ("b.dag", RF_B),
+            ("z.dag", RF_Z),
+            ("r.dag", RF_R),
+            ("w.dag", RF_W),
+            ("k.dag", RF_K),
+            ("c.dag", RF_C),
+        ];
+        let mut base = vec![("a.dag", RF_A_BASE)];
+        base.extend(rest);
+        let mut head = vec![("a.dag", head_a)];
+        head.extend(rest);
+        let (selection, head_fx) = interface_selection(name, &base, &head);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        selection
+    }
+
+    #[test]
+    fn a_where_only_change_is_classified_as_a_refinement_change() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_classify", RF_A_HEAD);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| (c.declaration.as_str(), c.ground.clone()))
+                .collect::<Vec<_>>(),
+            vec![("Tag", InterfaceChangeGround::RefinementPredicatesChanged)]
+        );
+    }
+
+    /// THE RED: `rf.z` reaches `Tag` only through `make`'s result, so it is no longer planned;
+    /// `make`'s own module still is, as a direct reader of `Tag`.
+    #[test]
+    fn a_refinement_change_does_not_propagate_through_an_output_position() {
+        let selection = refinement_selection("rf_output", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            !consumers.contains(&"rf.z"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.b"), "{consumers:?}");
+    }
+
+    /// ADMISSION THROUGH B: `rf.w` never names `Tag`, but constructing `Holder` supplies a value
+    /// to an input position typed `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_an_input_position() {
+        let selection = refinement_selection("rf_input", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.w"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.r"), "{consumers:?}");
+    }
+
+    /// A RETURNED CLOSURE'S PARAMETER IS AN INPUT (review 71772): `rf.c` never names `Tag`, but
+    /// calling the `fn(Tag) -> Int` that `mk` returns admits a value into `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_a_returned_function_parameter() {
+        let selection = refinement_selection("rf_closure", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.c"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
+    /// BOTH RULES REACH ONE DECLARATION (review 71782). `Pair` has a field typed through a
+    /// where-only change (`Tag`) and one typed through a carrier change (`Other`). The refinement
+    /// reaches `Pair` first -- `rf.a` sorts before `rf.m` -- and must not stop the signature change
+    /// from propagating through `pair_of`'s RESULT to `rf.py`, which only calls it.
+    const RF_M_BASE: &str = "module rf.m\n\ntype Other = Int\n";
+    const RF_M_HEAD: &str = "module rf.m\n\ntype Other = String\n";
+    const RF_P: &str = "module rf.p\n\nimport rf.a { Tag }\nimport rf.m { Other }\n\ntype Pair {\n  t: Tag\n  o: Other\n}\n";
+    const RF_PZ: &str =
+        "module rf.pz\n\nimport rf.p { Pair }\n\nfn pair_of() -> Pair {\n  pair_of()\n}\n";
+    const RF_PY: &str = "module rf.py\n\nimport rf.pz { pair_of }\n\nfn use_pair() -> Int {\n  let p = pair_of()\n  1\n}\n";
+
+    #[test]
+    fn a_signature_change_still_propagates_where_a_refinement_change_arrived_first() {
+        let (selection, head_fx) = interface_selection(
+            "rf_both",
+            &[
+                ("a.dag", RF_A_BASE),
+                ("m.dag", RF_M_BASE),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+            &[
+                ("a.dag", RF_A_HEAD),
+                ("m.dag", RF_M_HEAD),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.py"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
+    /// THE CONTROL: a CARRIER change on `Tag` is an ordinary signature change and still
+    /// propagates through `make`'s result to `rf.z`.
+    #[test]
+    fn a_carrier_change_still_propagates_through_every_mention() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_carrier", RF_A_CARRIER);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| c.ground.clone())
+                .collect::<Vec<_>>(),
+            vec![InterfaceChangeGround::SignatureChanged]
+        );
+        let consumers = consumers_of(&selection);
+        assert!(consumers.contains(&"rf.z"), "{consumers:?}");
+        assert!(consumers.contains(&"rf.w"), "{consumers:?}");
     }
 
     /// WALL 2: an added arm WITH a generic arity change is not pure growth.
@@ -13898,11 +14373,9 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.yz".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&fx);
         let (prepared, views) =
             prepared.expect("yz alone prepares clean: it never reaches the stale match in y");
@@ -14278,6 +14751,72 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         assert!(
             refused[0].blocks,
             "an admission under a refused lane join must not green this run"
+        );
+    }
+
+    /// A REFUSED WET LANE STILL EMITS THE CHANGED-WITNESS PROJECTION BEFORE ITS REFUSAL
+    /// PROPAGATES (#12499). Driven through the function the floor calls, with a planted refusal
+    /// (a scheduled wet member whose executor produced no terminal) and an emitter that records
+    /// what it was handed. Restoring the old order -- `finalized?` ahead of `emit` -- leaves the
+    /// recorder empty and this reds. The rows keep their standing: the passed one is still
+    /// planned-and-passed and a route gap stays blocking, because a refused lane admits nothing.
+    #[test]
+    fn a_refused_wet_lane_emits_the_changed_projection_before_its_refusal() {
+        let mut emitted: Vec<(String, &'static str, bool)> = Vec::new();
+        let result = finalize_wet_lane_after_changed_projection(
+            &[scheduled_row("test.claim.x.w_holds")],
+            LocalRepoWetExecution::Ran {
+                candidate: TEST_CANDIDATE.to_string(),
+                terminals: Vec::new(),
+            },
+            TEST_CANDIDATE,
+            Some(&["m.passed".to_string(), "m.gap".to_string()]),
+            &[
+                disposition(
+                    "m.passed",
+                    RequiredFloorDisposition::PlannedAsChangedWitness,
+                ),
+                disposition("m.gap", RequiredFloorDisposition::PlannedAsChangedWitness),
+            ],
+            &[
+                terminal("m.passed", ClaimOutcome::Pass),
+                terminal(
+                    "m.gap",
+                    ClaimOutcome::HostEffectRefused {
+                        operation: "Dir".to_string(),
+                        ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
+                    },
+                ),
+            ],
+            &HashSet::new(),
+            &HashMap::new(),
+            &mut |rows| {
+                emitted.extend(
+                    rows.iter()
+                        .map(|r| (r.identity.clone(), r.standing, r.blocks)),
+                );
+                Ok(())
+            },
+        );
+        let Err(refusal) = result else {
+            panic!("the planted wet refusal must still red the floor");
+        };
+        assert!(
+            refusal.contains("WetTerminalMissing"),
+            "the lane's own refusal propagates, got: {refusal}"
+        );
+        assert_eq!(
+            emitted.len(),
+            2,
+            "both changed rows must be emitted before the refusal returns"
+        );
+        assert_eq!(
+            emitted[0],
+            ("m.passed".to_string(), "planned-and-passed", false)
+        );
+        assert!(
+            emitted[1].2,
+            "a refused lane admits nothing, so a route gap stays blocking"
         );
     }
 
@@ -15139,7 +15678,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn a_refused_row_that_measured_no_effect_transfers_nothing_through_its_carriers() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
@@ -15161,7 +15700,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn the_same_overlap_under_a_measured_cost_verdict_still_stops_the_line() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
@@ -15193,7 +15732,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn a_different_producer_merely_sharing_a_carrier_module_does_not_refuse() {
         install(
-            &["v2.compiler.translate.grammar_relation_row_for_emitted"],
+            &["v2.compiler.target_serialize.grammar_relation_row_for_emitted"],
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),

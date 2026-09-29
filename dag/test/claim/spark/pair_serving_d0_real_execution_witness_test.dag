@@ -911,7 +911,7 @@ test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_sub
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
-      let text = d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr)
+      let text = (match d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
       let esc = "esc-d0-filing" as NonEmptyStr
       let absent_before = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
       let frozen_text = d0_frozen_filing_text(intent_text: text, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr)
@@ -964,30 +964,44 @@ test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_exec
   })
 }
 
-// THE DOOR DECIDES WHICH RUN THIS IS FROM THE STORE, BY REAL EXECUTION: with nothing frozen and the
-// live candidate unkeyed (the row-store digest is still owed) a first run refuses before filing --
-// and freezes nothing; once a filing is frozen under the escalation, the same call is a rerun
-// carrying the frozen request, with no live subject consulted; and the frozen filing under another
-// transaction's name refuses, and so does a rerun executing another revision than the one that filed.
+// THE DOOR DECIDES WHICH RUN THIS IS FROM THE STORE, BY REAL EXECUTION. With nothing frozen, a first
+// run either refuses before filing and freezes nothing (no live subject yet), or -- the live V4.1
+// candidate is keyed since 2026-09-24 (test.claim.spark.v41_runtime_candidate
+// the_live_candidate_is_keyed_end_to_end) -- freezes exactly the filing it asks the operator over.
+// The claim holds in both worlds rather than assuming the one it was written in: an earlier revision
+// asserted the refusal, went stale when the candidate was keyed, and was not noticed because it had
+// never executed. Whatever was frozen, the same call is then a rerun carrying the frozen request with
+// no live subject consulted; the filing under another transaction's name refuses, and so does a rerun
+// executing another revision than the one that filed.
+fn d0r_after_frozen(store: FabricStorageBinding, esc: NonEmptyStr, successor: ContentHash) -> Bool {
+  let other_revision = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("filed by revision aaaa")  _ => false }
+  let rerun = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
+    D0Rerun { request: r } => content_hash_equal(left: r.subject.successor, right: successor) && (r.escalation_id as String) == (esc as String)
+    _ => false
+  }
+  let other = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("tx-d0")  _ => false }
+  other_revision && rerun && other
+}
+
 test fn the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution() -> Bool {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
       let esc = "esc-d0-door" as NonEmptyStr
-      let first = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
-        D0RunRefused { reason: r } => r.contains("row-store") || r.contains("refused")
-        D0FirstRun { request: _ } => false
+      match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
         D0Rerun { request: _ } => false
+        D0FirstRun { request: live } =>
+          (match d0_read_filing(store: store, escalation_id: esc) { D0FilingAt { text: _ } => true  _ => false })
+            && d0r_after_frozen(store: store, esc: esc, successor: live.subject.successor)
+        D0RunRefused { reason: _ } => {
+          let nothing_frozen = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
+          let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+          let frozen = match d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr) {
+            Absent => false
+            Present { value: text } => match d0_freeze_filing(store: store, escalation_id: esc, intent_text: text, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FilingFrozen => true  _ => false }
+          }
+          nothing_frozen && frozen && d0r_after_frozen(store: store, esc: esc, successor: h)
+        }
       }
-      let nothing_frozen = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
-      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
-      let frozen = match d0_freeze_filing(store: store, escalation_id: esc, intent_text: d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr), execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FilingFrozen => true  _ => false }
-      let other_revision = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("filed by revision aaaa")  _ => false }
-      let rerun = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
-        D0Rerun { request: r } => content_hash_equal(left: r.subject.successor, right: h) && (r.escalation_id as String) == "esc-d0-door"
-        _ => false
-      }
-      let other = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("tx-d0")  _ => false }
-      first && nothing_frozen && frozen && other_revision && rerun && other
     })
   })
 }

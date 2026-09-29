@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
-import v2.compiler.translate { target_bundle_child }
+import v2.compiler.target_serialize { target_bundle_child }
 import v2.std.node_query { find_named_child }
 import v2.std.orchestration_emit {
   OrchestrationEmitMedium,
