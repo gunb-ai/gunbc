@@ -88,32 +88,56 @@ fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<Dec
   })
 }
 
-// The host's shape is exactly [domain Conj, return]; anything else REFUSES at the Arrow's locus rather
-// than passing through, so a host that regresses to positional types cannot reach a fingerprint.
+// The host's shape is exactly an Arrow whose OUTER children are two Positional edges, [domain, return],
+// with the domain a Conj of Named edges. Anything else REFUSES at the node's locus rather than passing
+// through: a node of another connective is never relabelled an Arrow, an extra outer edge (Named or
+// Positional) is never dropped, and a host that regresses to positional types never reaches a
+// fingerprint.
 fn export_signature_declared_arrow(arrow: Node) -> Outcome<Node> {
-  let targets = node_positional_child_targets(node: arrow)
-  match list_at_optional(xs: targets, index: 0) {
-    Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
-    Present { value: domain } =>
-      match domain.kind {
-        TypeNode { connective: Conj } =>
-          match list_at_optional(xs: targets, index: 1) {
-            Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
-            Present { value: ret } =>
-              if (count(targets) != 2) || !all_edges_named(children: domain.children) {
-                outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
-              } else {
-                let signature = declared_signature(params: domain.children, source: domain)
-                outcome_accepted(value: Node {
-                  kind: TypeNode { connective: Arrow },
-                  children: [signature.domain, Edge { label: Positional, target: ret }, signature.order],
-                  occurrence_id: arrow.occurrence_id
-                })
-              }
-          }
-        _ => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      if (count(arrow.children) != 2) || !all_edges_positional_outer(children: arrow.children) {
+        outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+      } else {
+        let targets = node_positional_child_targets(node: arrow)
+        match list_at_optional(xs: targets, index: 0) {
+          Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+          Present { value: domain } =>
+            match list_at_optional(xs: targets, index: 1) {
+              Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+              Present { value: ret } =>
+                match domain.kind {
+                  TypeNode { connective: Conj } =>
+                    if all_edges_named(children: domain.children) {
+                      export_signature_declared_from(arrow: arrow, domain: domain, ret: ret)
+                    } else {
+                      outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+                    }
+                  _ => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+                }
+            }
+        }
       }
+    _ => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
   }
+}
+
+fn export_signature_declared_from(arrow: Node, domain: Node, ret: Node) -> Outcome<Node> {
+  let signature = declared_signature(params: domain.children, source: domain)
+  outcome_accepted(value: Node {
+    kind: TypeNode { connective: Arrow },
+    children: [signature.domain, Edge { label: Positional, target: ret }, signature.order],
+    occurrence_id: arrow.occurrence_id
+  })
+}
+
+fn all_edges_positional_outer(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: _ } => false
+    }
+  })
 }
 
 fn all_edges_named(children: List<Edge>) -> Bool {

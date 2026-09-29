@@ -21,7 +21,7 @@ import v2.std.decl_index {
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, arrow_declared_parameter_order }
 import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Arrow, Atom, Edge, Node, Positional, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, TypeNode, symbol_intern_lexeme }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -173,6 +173,64 @@ test fn export_signature_positional_types_arrow_refuses() -> Bool {
     occurrence_id: OccurrenceSynthetic
   }
   match export_signature_declared_arrow(arrow: positional) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// A WELL-SHAPED HOST DOMAIN [Conj of Named, return], so each refusal below is caused by the one
+// defect it names and not by the domain.
+fn export_signature_host_int_atom() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: "Int") } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn export_signature_host_named_domain() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: symbol_intern_lexeme(lexeme: "x") }, target: export_signature_host_int_atom() }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// POSITIVE CONTROL: the same two outer edges on an Arrow are accepted, so the two refusals below
+// discriminate the connective and the extra edge rather than refusing everything.
+test fn export_signature_well_shaped_host_arrow_accepts() -> Bool {
+  let arrow = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: export_signature_host_named_domain() }, Edge { label: Positional, target: export_signature_host_int_atom() }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: arrow) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A NODE OF ANOTHER CONNECTIVE carrying [named domain, return] is never relabelled an Arrow.
+test fn export_signature_wrong_connective_refuses() -> Bool {
+  let not_arrow = Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: export_signature_host_named_domain() }, Edge { label: Positional, target: export_signature_host_int_atom() }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: not_arrow) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// AN EXTRA NAMED OUTER EDGE beside [named domain, return] refuses rather than being dropped.
+test fn export_signature_extra_named_outer_edge_refuses() -> Bool {
+  let arrow = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: export_signature_host_named_domain() },
+      Edge { label: Positional, target: export_signature_host_int_atom() },
+      Edge { label: Named { name: symbol_intern_lexeme(lexeme: "extra") }, target: export_signature_host_int_atom() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: arrow) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
