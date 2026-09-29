@@ -768,36 +768,9 @@ fn diagnose_os_install_actuation(
 
   match router {
     Srv3OsLeasePresent => OsInstalledVerdict
-    Srv3OsLeaseAbsent =>
-      diagnose_when_router_not_installed(
-        intent: intent,
-        observations: observations,
-        serve: serve,
-        redfish: redfish,
-        virtual_media: virtual_media,
-        sol: sol,
-        router: router,
-      )
-    WrongHostnameLeasePresent =>
-      diagnose_when_router_not_installed(
-        intent: intent,
-        observations: observations,
-        serve: serve,
-        redfish: redfish,
-        virtual_media: virtual_media,
-        sol: sol,
-        router: router,
-      )
-    OnlyBmcLeasePresent =>
-      diagnose_when_router_not_installed(
-        intent: intent,
-        observations: observations,
-        serve: serve,
-        redfish: redfish,
-        virtual_media: virtual_media,
-        sol: sol,
-        router: router,
-      )
+    Srv3OsLeaseAbsent => diagnose_when_router_not_installed(intent: intent, observations: observations, serve: serve, redfish: redfish, virtual_media: virtual_media, sol: sol, router: router)
+    WrongHostnameLeasePresent => diagnose_when_router_not_installed(intent: intent, observations: observations, serve: serve, redfish: redfish, virtual_media: virtual_media, sol: sol, router: router)
+    OnlyBmcLeasePresent => diagnose_when_router_not_installed(intent: intent, observations: observations, serve: serve, redfish: redfish, virtual_media: virtual_media, sol: sol, router: router)
   }
 }
 
