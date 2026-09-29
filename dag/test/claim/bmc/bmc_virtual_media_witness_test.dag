@@ -124,6 +124,14 @@ test fn srv4_gadget_teardown_detaches_first_then_removes_under_the_gadget_root()
             )
           ConfigfsOpWritesAttr { path: _, value: _ } => false
         })
+        && any(cs, cmd => match cmd {
+          ConfigfsOpRunsArgv { command: c } =>
+            string_contains(
+              s: shell_command_render(command: c),
+              pattern: "'rmdir' '/sys/kernel/config/usb_gadget/gunbcvm'",
+            )
+          ConfigfsOpWritesAttr { path: _, value: _ } => false
+        })
         && all(cs, cmd => match cmd {
           ConfigfsOpWritesAttr { path: p, value: _ } =>
             string_contains(s: p as String, pattern: "/sys/kernel/config/usb_gadget/gunbcvm")

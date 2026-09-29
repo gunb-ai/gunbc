@@ -66,6 +66,7 @@ test fn usb_gadget_teardown_emits_no_shell_control_word() -> Bool {
 //      arguments, not about staging itself.
 test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool {
   let alone = configfs_staging_of(ops: [ConfigfsMkdir { path: "/etc" }])
+  let attr_alone = configfs_staging_of(ops: [ConfigfsWriteAttr { path: "/etc/passwd", value: "x" }])
   let mixed = configfs_staging_of(ops: [
     ConfigfsMkdir { path: "/sys/kernel/config/usb_gadget/gunbcvm" },
     ConfigfsMkdir { path: "/etc" },
@@ -73,6 +74,10 @@ test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool
   let good = configfs_staging_of(ops: [ConfigfsMkdir { path: "/sys/kernel/config/usb_gadget/gunbcvm" }])
   let alone_refuses_naming_the_path = match alone {
     ConfigfsStagingRefused { reason: r } => string_contains(s: r as String, pattern: "/etc")
+    ConfigfsStagingRan { commands: _ } => false
+  }
+  let attr_alone_refuses_naming_the_path = match attr_alone {
+    ConfigfsStagingRefused { reason: r } => string_contains(s: r as String, pattern: "/etc/passwd")
     ConfigfsStagingRan { commands: _ } => false
   }
   let mixed_refuses_as_a_whole = match mixed {
@@ -83,7 +88,8 @@ test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool
     ConfigfsStagingRan { commands: cs } => list_length(items: cs) == 1
     ConfigfsStagingRefused { reason: _ } => false
   }
-  alone_refuses_naming_the_path && mixed_refuses_as_a_whole && good_mints_one_command
+  alone_refuses_naming_the_path && attr_alone_refuses_naming_the_path
+    && mixed_refuses_as_a_whole && good_mints_one_command
 }
 
 // THE SYMLINK ARM'S DIRECTORY-SPELLED GUARD, BOTH WAYS (review 38602, finding 1): a link under the
