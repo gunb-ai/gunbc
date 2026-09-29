@@ -148,8 +148,8 @@ import v2.std.node_query {
   node_labeled_child_edges,
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
-  pattern_wildcard_name,
-  wildcard_pattern_identity
+  is_wildcard_pattern_identity,
+  pattern_wildcard_name
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -1127,7 +1127,7 @@ fn bound_spelling_from_map(
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
       Absent =>
-        if is_anonymous_param_label(sym: binding) || (binding == wildcard_pattern_identity()) {
+        if is_anonymous_param_label(sym: binding) || is_wildcard_pattern_identity(sym: binding) {
           symbol_interned_spelling(binding: pattern_wildcard_name())
         } else {
           symbol_interned_spelling(binding: binding)

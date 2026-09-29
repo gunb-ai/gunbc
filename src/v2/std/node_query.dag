@@ -218,10 +218,18 @@ fn wildcard_pattern_identity() -> Symbol {
   symbol_intern_lexeme(lexeme: "<wildcard-pattern>")
 }
 
+// THE ONE RECOGNISER, AT TWO GRAINS. A reader holding a Symbol (a conserved atom's identity, an
+// emitted binding) asks is_wildcard_pattern_identity; a reader holding a pattern Node asks
+// is_wildcard_pattern, which is that same question plus the form's structure (an Atom with no
+// children). No reader compares against wildcard_pattern_identity() itself.
+fn is_wildcard_pattern_identity(sym: Symbol) -> Bool {
+  sym == wildcard_pattern_identity()
+}
+
 fn is_wildcard_pattern(pattern: Node) -> Bool {
   match pattern.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      (id == wildcard_pattern_identity()) && (count(pattern.children) == 0)
+      is_wildcard_pattern_identity(sym: id) && (count(pattern.children) == 0)
     _ => false
   }
 }

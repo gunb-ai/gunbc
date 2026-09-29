@@ -65,7 +65,7 @@ import v2.compiler.occurrence_role {
   occurrence_role_index
 }
 import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label }
-import v2.std.node_query { pattern_wildcard_name, wildcard_pattern_identity }
+import v2.std.node_query { is_wildcard_pattern_identity, pattern_wildcard_name }
 
 // REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
 //
@@ -840,11 +840,11 @@ fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
 // below already consults, so it is asked here too: the locus is held and the spelling is the one
 // the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
 // An authored `_` pattern is conserved by the wildcard pattern form lowering mints at its occurrence
-// (v2.std.node_query wildcard_pattern_identity); the form is the `_`'s lowering, not a different atom.
+// (v2.std.node_query is_wildcard_pattern_identity); the form is the `_`'s lowering, not a different atom.
 fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
   found == identity
     || found == body_lower_resolved_type_binding(sym: identity)
-    || ((identity == pattern_wildcard_name()) && (found == wildcard_pattern_identity()))
+    || ((identity == pattern_wildcard_name()) && is_wildcard_pattern_identity(sym: found))
 }
 
 // WHERE AN ERASED ATOM IS COUNTED. The module header first (its item is -1), then an atom whose
