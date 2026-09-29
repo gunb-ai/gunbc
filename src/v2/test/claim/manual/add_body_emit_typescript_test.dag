@@ -23,7 +23,6 @@ import v2.extdeps.languages.typescript {
   ts_binding_spellings,
   ts_add_declared_inhabitants_root,
   ts_selection_policy_node,
-  ts_serialize_source_node,
   ts_source_text,
   ts_source_text_authority,
   ts_target_model,
@@ -139,10 +138,6 @@ fn add_body_ts_target_model_bundle(operator_catalog: Node) -> Node {
       add_body_ts_named_edge(
         name: ^target_model_edge_translation_rules,
         target: ts_translation_rules_node()
-      ),
-      add_body_ts_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: ts_serialize_source_node()
       ),
       add_body_ts_named_edge(
         name: ^target_model_edge_value_expression_projection,

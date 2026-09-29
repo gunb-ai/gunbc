@@ -3194,6 +3194,83 @@ pub(crate) enum LocalRepoWetExecution {
 /// on this tree, so production reaches only the refusing cell of that arm.
 ///
 /// `LocalRepoWetLaneOutcome` is DERIVED from a join that held, never accepted from the executor.
+/// THE LANE A REFUSED FINALIZATION STANDS FOR, for the one reader that must still run after it:
+/// the changed-witness projection. It admits nothing and carries the refusal, so every wet-joined
+/// arm reads it as a join that did not hold -- the same answer the refusal itself gives.
+pub(crate) fn refused_local_repo_wet_lane_outcome(
+    candidate: &str,
+    refusal: &str,
+) -> LocalRepoWetLaneOutcome {
+    LocalRepoWetLaneOutcome {
+        scheduled: 0,
+        candidate: candidate.to_string(),
+        admitted: HashSet::new(),
+        refusals: vec![refusal.to_string()],
+    }
+}
+
+/// FINALIZE THE LOCAL-REPO WET LANE, BUT RETURN ITS REFUSAL ONLY AFTER THE CHANGED-WITNESS
+/// PROJECTION HAS BEEN EMITTED. The refusal used to be `?`-ed before the projection printed, so a
+/// floor red on an unrelated wet member published no `[changed-witness]` row at all, and two
+/// sessions read that silence as "the changed witnesses never executed" (#12499); they had, only
+/// their report was lost. The projection reads a refused lane as one that admits nothing -- its
+/// `refusals` are non-empty, the arm `changed_witness_projection_rows` already reads as "the join
+/// does not hold" -- so no row's standing changes. `emit` is the floor's
+/// `emit_changed_witness_projection`; it is a parameter so the order is observable by a control.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finalize_wet_lane_after_changed_projection(
+    schedule: &[LocalRepoWetScheduledRow],
+    execution: LocalRepoWetExecution,
+    candidate: &str,
+    changed: Option<&[String]>,
+    disposition_rows: &[RequiredFloorDispositionRow],
+    terminal: &[ClaimTerminalRow],
+    verdict_only: &HashSet<String>,
+    observations: &HashMap<String, ChangedWitnessCostObservation>,
+    emit: &mut dyn FnMut(&[ChangedWitnessProjectionRow]) -> Result<(), String>,
+) -> Result<Option<Vec<ChangedWitnessProjectionRow>>, String> {
+    let finalized = finalize_local_repo_wet_lane(schedule, execution, candidate);
+    let refused_lane;
+    let projection_lane = match &finalized {
+        Ok(lane) => lane,
+        Err(refusal) => {
+            refused_lane = refused_local_repo_wet_lane_outcome(candidate, refusal);
+            &refused_lane
+        }
+    };
+    let rows = match changed {
+        Some(changed) => {
+            let rows = changed_witness_projection_rows(
+                changed,
+                disposition_rows,
+                terminal,
+                verdict_only,
+                observations,
+                projection_lane,
+                candidate,
+            );
+            emit(&rows)?;
+            Some(rows)
+        }
+        None => None,
+    };
+    finalized?;
+    // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather than
+    // travelling as an empty string the receipt would print as nothing at all.
+    if let Some(row) = rows
+        .iter()
+        .flatten()
+        .find(|r| r.blocks && r.cause.is_empty())
+    {
+        return Err(format!(
+            "required-floor: changed witness {} blocks with standing {} and no cause \
+             (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
+            row.identity, row.standing
+        ));
+    }
+    Ok(rows)
+}
+
 pub(crate) fn finalize_local_repo_wet_lane(
     schedule: &[LocalRepoWetScheduledRow],
     execution: LocalRepoWetExecution,
@@ -6824,6 +6901,13 @@ pub fn run_required_floor(
                             module_path,
                             declaration,
                         } => format!("PropagatedThrough through={module_path}.{declaration}"),
+                        InterfaceChangeGround::RefinementPredicatesChanged => {
+                            "RefinementPredicatesChanged".to_string()
+                        }
+                        InterfaceChangeGround::AdmittedThroughInput {
+                            module_path,
+                            declaration,
+                        } => format!("AdmittedThroughInput through={module_path}.{declaration}"),
                     };
                     eprintln!(
                         "[floor-plan] SeedDeclarationInterfaceChangedConsumer declaration={}.{} \
@@ -11103,36 +11187,23 @@ pub fn run_required_floor(
     // unread schedule holds vacuously while `std.witness_admission` goes on claiming the route.
     let wet_execution: LocalRepoWetExecution =
         run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone());
-    let wet_lane = finalize_local_repo_wet_lane(
+    // THE WET LANE'S REFUSAL IS RETURNED ONLY AFTER THE CHANGED-WITNESS PROJECTION IS EMITTED,
+    // and that order lives in one function whose control drives it with a planted refusal
+    // (`finalize_wet_lane_after_changed_projection`).
+    let changed_projection_rows = finalize_wet_lane_after_changed_projection(
         &local_repo_wet_schedule_rows,
         wet_execution,
         &prepared.subject_digest,
+        changed_witnesses.as_deref(),
+        &outcome.required_floor_disposition,
+        &terminal_rows,
+        &cost_debt_verdict_only,
+        &cost_debt_observations,
+        &mut |rows| emit_changed_witness_projection(rows),
     )?;
-    let changed_projection_rows = if let Some(changed_witnesses) = changed_witnesses {
-        let rows = changed_witness_projection_rows(
-            &changed_witnesses,
-            &outcome.required_floor_disposition,
-            &terminal_rows,
-            &cost_debt_verdict_only,
-            &cost_debt_observations,
-            &wet_lane,
-            &prepared.subject_digest,
-        );
-        emit_changed_witness_projection(&rows)?;
+    if let Some(rows) = &changed_projection_rows {
         outcome.changed_witness_rows = rows.len();
-        // A BLOCKING ROW WITH NO CAUSE IS THE DEFECT REINTRODUCED, so it refuses here rather
-        // than travelling as an empty string the receipt would print as nothing at all.
-        if let Some(row) = rows.iter().find(|r| r.blocks && r.cause.is_empty()) {
-            return Err(format!(
-                "required-floor: changed witness {} blocks with standing {} and no cause \
-                 (v2.workflow.floor_changed_witness changed_witness_blocking_cause is total)",
-                row.identity, row.standing
-            ));
-        }
-        Some(rows)
-    } else {
-        None
-    };
+    }
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -11345,14 +11416,15 @@ mod pure_producer_share_tests {
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let roster = |rows: &str| {
-            std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let roster = |rows: &str| {
+                std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
                 .expect("roster source")
                 .split("data unimported_bare_provider_dispositions:")
                 .next()
@@ -11361,56 +11433,58 @@ mod pure_producer_share_tests {
                 + "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n"
                 + rows
                 + "]\n"
-        };
-        let row = |file: &str, name: &str, standing: &str| {
-            format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
-        };
-        let a_active = row("dag/a.dag", "f", "ActiveDebt");
-        let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
-        let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
-        let b_active = row("dag/b.dag", "g", "ActiveDebt");
-        let read = |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
-        let base = read(roster(&a_active));
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&a_active)))
-                .expect("verdict"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
-                .expect("verdict"),
-            vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
-        );
-        // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
-        // under either cause is a typed disposition and admits; dropping the row instead refuses.
-        for retired in [&a_fixed, &a_deleted] {
+            };
+            let row = |file: &str, name: &str, standing: &str| {
+                format!("  UnimportedBareProviderDisposition {{ file: \"{file}\", name: \"{name}\", standing: {standing} }},\n")
+            };
+            let a_active = row("dag/a.dag", "f", "ActiveDebt");
+            let a_fixed = row("dag/a.dag", "f", "Retired { cause: ImportsFixed }");
+            let a_deleted = row("dag/a.dag", "f", "Retired { cause: FileDeleted }");
+            let b_active = row("dag/b.dag", "g", "ActiveDebt");
+            let read =
+                |src: String| unimported_bare_provider_base_reading(&src).expect("lone roster");
+            let base = read(roster(&a_active));
             assert_eq!(
                 judge
-                    .judge_edit(&base, &read(roster(retired)))
+                    .judge_edit(&base, &read(roster(&a_active)))
                     .expect("verdict"),
                 Vec::<String>::new()
             );
-        }
-        assert_eq!(
-            judge
-                .judge_edit(
-                    &read(roster(&format!("{a_active}{b_active}"))),
-                    &read(roster(&a_active))
-                )
-                .expect("verdict"),
-            vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
-        );
-        assert_eq!(
-            judge
-                .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
-                .expect("verdict"),
-            vec![
+            assert_eq!(
+                judge
+                    .judge_edit(&base, &read(roster(&format!("{a_active}{b_active}"))))
+                    .expect("verdict"),
+                vec!["RosterGainedIdentity dag/b.dag#g".to_string()]
+            );
+            // THE RETIREMENT PATH (never executed before gunbc#12278): ActiveDebt -> Retired { cause }
+            // under either cause is a typed disposition and admits; dropping the row instead refuses.
+            for retired in [&a_fixed, &a_deleted] {
+                assert_eq!(
+                    judge
+                        .judge_edit(&base, &read(roster(retired)))
+                        .expect("verdict"),
+                    Vec::<String>::new()
+                );
+            }
+            assert_eq!(
+                judge
+                    .judge_edit(
+                        &read(roster(&format!("{a_active}{b_active}"))),
+                        &read(roster(&a_active))
+                    )
+                    .expect("verdict"),
+                vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
+                    .expect("verdict"),
+                vec![
                 "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
                     .to_string()
             ]
-        );
+            );
+        });
     }
 
     /// THE REAL BASE READ, END TO END: the roster at `HEAD` is read through the `.dag`
@@ -11420,44 +11494,46 @@ mod pure_producer_share_tests {
     /// roster-editing change; the fixture-coproduct control beside it cannot fail for that reason.
     #[test]
     fn a_retirement_against_the_real_base_read_admits_and_a_growth_refuses() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().to_string())
-            .collect();
-        let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
-        let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
-            .expect("the roster exists at HEAD and decodes as BaseRosterShown");
-        let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
-        let base = read(&base_source);
-        let active = "standing: ActiveDebt }";
-        assert!(
-            base_source.contains(active),
-            "the base roster carries active debt"
-        );
-        let retired =
-            base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
-        assert_eq!(
-            judge.judge_edit(&base, &read(&retired)).expect("verdict"),
-            Vec::<String>::new()
-        );
-        let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
-        assert!(
-            base_source.contains(marker),
-            "the roster's data row opens as expected"
-        );
-        let grown = base_source.replacen(
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let base_source = unimported_bare_provider_roster_source_at_base(&roots, "HEAD")
+                .expect("the roster exists at HEAD and decodes as BaseRosterShown");
+            let read = |src: &str| unimported_bare_provider_base_reading(src).expect("lone roster");
+            let base = read(&base_source);
+            let active = "standing: ActiveDebt }";
+            assert!(
+                base_source.contains(active),
+                "the base roster carries active debt"
+            );
+            let retired =
+                base_source.replacen(active, "standing: Retired { cause: ImportsFixed } }", 1);
+            assert_eq!(
+                judge.judge_edit(&base, &read(&retired)).expect("verdict"),
+                Vec::<String>::new()
+            );
+            let marker = "data unimported_bare_provider_dispositions: List<UnimportedBareProviderDisposition> = [\n";
+            assert!(
+                base_source.contains(marker),
+                "the roster's data row opens as expected"
+            );
+            let grown = base_source.replacen(
             marker,
             &format!("{marker}  UnimportedBareProviderDisposition {{ file: \"dag/zz_new.dag\", name: \"g\", standing: ActiveDebt }},\n"),
             1,
         );
-        let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
-        assert!(
-            refused
-                .iter()
-                .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
-            "{refused:?}"
-        );
+            let refused = judge.judge_edit(&base, &read(&grown)).expect("verdict");
+            assert!(
+                refused
+                    .iter()
+                    .any(|r| r.starts_with("RosterGainedIdentity dag/zz_new.dag")),
+                "{refused:?}"
+            );
+        });
     }
 
     /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
@@ -12951,8 +13027,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         // the probe's designed refusal never reaches Strict resolve.
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        // ONE cwd guard for both preparations: the mutex is not reentrant.
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let prepared = prepare_repository_closure(
             &roots,
@@ -12961,7 +13035,6 @@ fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
         );
         // THE DISCRIMINATOR: without the exclusion rows the same seed list refuses on the probe.
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let (prepared, views) = prepared.expect("the excluded probe must not refuse preparation");
         let modules: Vec<&str> = views.iter().map(|v| v.module_path.as_str()).collect();
         assert!(!modules.contains(&"armset.probe"), "{modules:?}");
@@ -13008,27 +13081,6 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     const REC_HEAD: &str = "module armset.rec\n\ntype Box {\n  width: Int\n  height: Int\n}\n";
     const REC_USER: &str =
         "module armset.rec_user\n\nimport armset.rec { Box }\n\nfn w(b: Box) -> Int {\n  b.width\n}\n";
-
-    /// Preparation resolves the index's workspace-relative entry paths against the PROCESS
-    /// CWD (`entry_source_from_index_or_disk`), which is the workspace root in production and
-    /// the crate directory under `cargo test`. A test enters the workspace root for one
-    /// preparation and leaves again, serialized because the working directory is process-global.
-    /// Free functions rather than a guard type: an `impl Drop` is an uncitable item under
-    /// `gunbc.seed_growth_admission` (`seed_growth_uncitable_item_keys`).
-    static WORKSPACE_CWD: Mutex<()> = Mutex::new(());
-
-    fn enter_workspace_cwd() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
-        let lock = WORKSPACE_CWD
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let previous = std::env::current_dir().expect("test working directory");
-        std::env::set_current_dir(process_workspace_root()).expect("enter workspace root");
-        (lock, previous)
-    }
-
-    fn leave_workspace_cwd(previous: &Path) {
-        let _ = std::env::set_current_dir(previous);
-    }
 
     /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
     /// made it; a panicking test leaves it for the next run of the same name to replace.
@@ -13211,13 +13263,11 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         // is empty, exactly as a diff-only seed list would be.
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.y".to_string()];
         let refusal = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)))
             .err()
             .expect("Strict preparation of the stale consumer must refuse");
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         assert!(
             refusal.contains("non-exhaustive match") && refusal.contains("Amber"),
@@ -13238,11 +13288,9 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.w"]);
         let root = head_fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.w".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&head_fx);
         let (prepared, _) = prepared.expect("a wildcard match stays exhaustive under growth");
         assert!(prepared.modules_resolved >= 2, "x and w prepared");
@@ -13354,11 +13402,9 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
     /// Prepare `seeds` over one fixture root under the floor's own Strict path.
     fn prepare_seeds(root: &Path, seeds: &[&str]) -> Result<(), String> {
         let roots = [root.to_string_lossy().into_owned()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         prepared.map(|_| ())
     }
 
@@ -13699,6 +13745,156 @@ fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
             selection.changes
         );
         assert!(planned.is_err(), "C must refuse under Strict preparation");
+    }
+
+    /// A REFINEMENT-ONLY CHANGE. `Tag`'s predicate is respelled and nothing else moves. `make`
+    /// mentions `Tag` only as its RESULT, so `rf.z`, which reaches `Tag` only by calling `make`, is
+    /// not a site that admits a value into `Tag`. `Holder.tag` is an INPUT position, so `rf.w`,
+    /// which constructs a `Holder` without ever naming `Tag`, does admit one.
+    const RF_A_BASE: &str = "module rf.a\n\ntype Tag = String where alpha_pred\n";
+    const RF_A_HEAD: &str = "module rf.a\n\ntype Tag = String where beta_pred\n";
+    const RF_A_CARRIER: &str = "module rf.a\n\ntype Tag = Int where alpha_pred\n";
+    const RF_B: &str =
+        "module rf.b\n\nimport rf.a { Tag }\n\nfn make() -> Tag {\n  \"x\" as Tag\n}\n";
+    const RF_Z: &str =
+        "module rf.z\n\nimport rf.b { make }\n\nfn use_it() -> Int {\n  let t = make()\n  1\n}\n";
+    const RF_R: &str = "module rf.r\n\nimport rf.a { Tag }\n\ntype Holder {\n  tag: Tag\n}\n";
+    const RF_W: &str = "module rf.w\n\nimport rf.r { Holder }\n\nfn holder() -> Holder {\n  Holder { tag: \"t\" }\n}\n";
+
+    const RF_K: &str = "module rf.k\n\nimport rf.a { Tag }\n\nfn mk() -> fn(Tag) -> Int {\n  fn(t) {\n    1\n  }\n}\n";
+    const RF_C: &str =
+        "module rf.c\n\nimport rf.k { mk }\n\nfn run() -> Int {\n  let f = mk()\n  1\n}\n";
+
+    fn refinement_selection(
+        name: &str,
+        head_a: &str,
+    ) -> crate::cli_run::namespace_baseline::InterfaceConsumerSelection {
+        let rest = [
+            ("b.dag", RF_B),
+            ("z.dag", RF_Z),
+            ("r.dag", RF_R),
+            ("w.dag", RF_W),
+            ("k.dag", RF_K),
+            ("c.dag", RF_C),
+        ];
+        let mut base = vec![("a.dag", RF_A_BASE)];
+        base.extend(rest);
+        let mut head = vec![("a.dag", head_a)];
+        head.extend(rest);
+        let (selection, head_fx) = interface_selection(name, &base, &head);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        selection
+    }
+
+    #[test]
+    fn a_where_only_change_is_classified_as_a_refinement_change() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_classify", RF_A_HEAD);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| (c.declaration.as_str(), c.ground.clone()))
+                .collect::<Vec<_>>(),
+            vec![("Tag", InterfaceChangeGround::RefinementPredicatesChanged)]
+        );
+    }
+
+    /// THE RED: `rf.z` reaches `Tag` only through `make`'s result, so it is no longer planned;
+    /// `make`'s own module still is, as a direct reader of `Tag`.
+    #[test]
+    fn a_refinement_change_does_not_propagate_through_an_output_position() {
+        let selection = refinement_selection("rf_output", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            !consumers.contains(&"rf.z"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.b"), "{consumers:?}");
+    }
+
+    /// ADMISSION THROUGH B: `rf.w` never names `Tag`, but constructing `Holder` supplies a value
+    /// to an input position typed `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_an_input_position() {
+        let selection = refinement_selection("rf_input", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.w"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(consumers.contains(&"rf.r"), "{consumers:?}");
+    }
+
+    /// A RETURNED CLOSURE'S PARAMETER IS AN INPUT (review 71772): `rf.c` never names `Tag`, but
+    /// calling the `fn(Tag) -> Int` that `mk` returns admits a value into `Tag`, so it is planned.
+    #[test]
+    fn a_refinement_change_propagates_through_a_returned_function_parameter() {
+        let selection = refinement_selection("rf_closure", RF_A_HEAD);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.c"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
+    /// BOTH RULES REACH ONE DECLARATION (review 71782). `Pair` has a field typed through a
+    /// where-only change (`Tag`) and one typed through a carrier change (`Other`). The refinement
+    /// reaches `Pair` first -- `rf.a` sorts before `rf.m` -- and must not stop the signature change
+    /// from propagating through `pair_of`'s RESULT to `rf.py`, which only calls it.
+    const RF_M_BASE: &str = "module rf.m\n\ntype Other = Int\n";
+    const RF_M_HEAD: &str = "module rf.m\n\ntype Other = String\n";
+    const RF_P: &str = "module rf.p\n\nimport rf.a { Tag }\nimport rf.m { Other }\n\ntype Pair {\n  t: Tag\n  o: Other\n}\n";
+    const RF_PZ: &str =
+        "module rf.pz\n\nimport rf.p { Pair }\n\nfn pair_of() -> Pair {\n  pair_of()\n}\n";
+    const RF_PY: &str = "module rf.py\n\nimport rf.pz { pair_of }\n\nfn use_pair() -> Int {\n  let p = pair_of()\n  1\n}\n";
+
+    #[test]
+    fn a_signature_change_still_propagates_where_a_refinement_change_arrived_first() {
+        let (selection, head_fx) = interface_selection(
+            "rf_both",
+            &[
+                ("a.dag", RF_A_BASE),
+                ("m.dag", RF_M_BASE),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+            &[
+                ("a.dag", RF_A_HEAD),
+                ("m.dag", RF_M_HEAD),
+                ("p.dag", RF_P),
+                ("pz.dag", RF_PZ),
+                ("py.dag", RF_PY),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let consumers = consumers_of(&selection);
+        assert!(
+            consumers.contains(&"rf.py"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+    }
+
+    /// THE CONTROL: a CARRIER change on `Tag` is an ordinary signature change and still
+    /// propagates through `make`'s result to `rf.z`.
+    #[test]
+    fn a_carrier_change_still_propagates_through_every_mention() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let selection = refinement_selection("rf_carrier", RF_A_CARRIER);
+        assert_eq!(
+            direct_changes_in(&selection, "rf.a")
+                .iter()
+                .map(|c| c.ground.clone())
+                .collect::<Vec<_>>(),
+            vec![InterfaceChangeGround::SignatureChanged]
+        );
+        let consumers = consumers_of(&selection);
+        assert!(consumers.contains(&"rf.z"), "{consumers:?}");
+        assert!(consumers.contains(&"rf.w"), "{consumers:?}");
     }
 
     /// WALL 2: an added arm WITH a generic arity change is not pure growth.
@@ -14182,11 +14378,9 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
         let root = fx.to_string_lossy().into_owned();
         let roots = [root.clone()];
-        let (_lock, previous) = enter_workspace_cwd();
         let index = build_multi_entry_index(&roots);
         let seeds = ["armset.yz".to_string()];
         let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
-        leave_workspace_cwd(&previous);
         let _ = std::fs::remove_dir_all(&fx);
         let (prepared, views) =
             prepared.expect("yz alone prepares clean: it never reaches the stale match in y");
@@ -14562,6 +14756,72 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         assert!(
             refused[0].blocks,
             "an admission under a refused lane join must not green this run"
+        );
+    }
+
+    /// A REFUSED WET LANE STILL EMITS THE CHANGED-WITNESS PROJECTION BEFORE ITS REFUSAL
+    /// PROPAGATES (#12499). Driven through the function the floor calls, with a planted refusal
+    /// (a scheduled wet member whose executor produced no terminal) and an emitter that records
+    /// what it was handed. Restoring the old order -- `finalized?` ahead of `emit` -- leaves the
+    /// recorder empty and this reds. The rows keep their standing: the passed one is still
+    /// planned-and-passed and a route gap stays blocking, because a refused lane admits nothing.
+    #[test]
+    fn a_refused_wet_lane_emits_the_changed_projection_before_its_refusal() {
+        let mut emitted: Vec<(String, &'static str, bool)> = Vec::new();
+        let result = finalize_wet_lane_after_changed_projection(
+            &[scheduled_row("test.claim.x.w_holds")],
+            LocalRepoWetExecution::Ran {
+                candidate: TEST_CANDIDATE.to_string(),
+                terminals: Vec::new(),
+            },
+            TEST_CANDIDATE,
+            Some(&["m.passed".to_string(), "m.gap".to_string()]),
+            &[
+                disposition(
+                    "m.passed",
+                    RequiredFloorDisposition::PlannedAsChangedWitness,
+                ),
+                disposition("m.gap", RequiredFloorDisposition::PlannedAsChangedWitness),
+            ],
+            &[
+                terminal("m.passed", ClaimOutcome::Pass),
+                terminal(
+                    "m.gap",
+                    ClaimOutcome::HostEffectRefused {
+                        operation: "Dir".to_string(),
+                        ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
+                    },
+                ),
+            ],
+            &HashSet::new(),
+            &HashMap::new(),
+            &mut |rows| {
+                emitted.extend(
+                    rows.iter()
+                        .map(|r| (r.identity.clone(), r.standing, r.blocks)),
+                );
+                Ok(())
+            },
+        );
+        let Err(refusal) = result else {
+            panic!("the planted wet refusal must still red the floor");
+        };
+        assert!(
+            refusal.contains("WetTerminalMissing"),
+            "the lane's own refusal propagates, got: {refusal}"
+        );
+        assert_eq!(
+            emitted.len(),
+            2,
+            "both changed rows must be emitted before the refusal returns"
+        );
+        assert_eq!(
+            emitted[0],
+            ("m.passed".to_string(), "planned-and-passed", false)
+        );
+        assert!(
+            emitted[1].2,
+            "a refused lane admits nothing, so a route gap stays blocking"
         );
     }
 

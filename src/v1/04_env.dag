@@ -1530,14 +1530,35 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // operand read), where it was measured to confirm the wrong homonym for an operand; here it fires
 // only after both exact hops decline, and its answer still has to survive the same census join,
 // so a pool-precedence homonym with a non-agreeing span or prefix answers none rather than wrong.
-fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+//
+// v1's ONE type-identity derivation (neat-boar-16 ruling, 2026-09-29). v1 records no identity on
+// the Node (§7: the seed does not grow a field), so the identity of a type node is this join and
+// nothing else. The Optional below is a PROJECTION of the typed reading, so the unidentified
+// population a census counts and the population a classifier sees are one set by construction,
+// and every Absent carries the cause it was declined for.
+type TypeNodeDeclarationReading
+  = TypeNodeNamesDeclaration { declaration: DeclarationRef }
+  | TypeNodeUnidentified { cause: TypeNodeUnidentifiedCause }
+
+// Why the join declined, one arm per hop that can fail. KERNEL AND TYPE-VARIABLE ARE NOT CAUSES
+// HERE: whether a kernel spelling or a binder counts as identified is a question about the
+// REFERENCE (v1.compiler.infer_env type_reference_declaration_reading), not about this join.
+type TypeNodeUnidentifiedCause
+  = TypeNodeAuthoredNameEmpty
+  | TypeNodeNameDeclaredNowhere { name: String }
+  | TypeNodeSpanDeclaresNothing { name: String }
+  | TypeNodeCarriesNoSpan { name: String }
+  | TypeNodeQualifierMatchesNoDeclarer { qualified: String }
+
+fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeNodeDeclarationReading {
   let authored = authored_name_at(source_indices: source_indices, node: rt)
   let decl_name = qualified_last_segment(name: authored)
-  if decl_name == "" { return none }
+  if decl_name == "" { return TypeNodeUnidentified { cause: TypeNodeAuthoredNameEmpty } }
+  let entry = map_get(env.symbol_index.global_bare, decl_name)
   let by_span = match rt.ident_span {
     Absent => none
     Present { value: sp } =>
-      match map_get(env.symbol_index.global_bare, decl_name) {
+      match entry {
         Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
           if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
@@ -1549,12 +1570,63 @@ fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineInd
       }
   }
   match by_span {
-    Present { value: d } => Present { value: d }
+    Present { value: d } => TypeNodeNamesDeclaration { declaration: d }
     Absent =>
       match operand_declaration_from_qualified_name(qualified: authored, env: env) {
-        Present { value: od } => Present { value: od.declaration }
-        Absent => none
+        Present { value: od } => TypeNodeNamesDeclaration { declaration: od.declaration }
+        Absent =>
+          if entry == none { TypeNodeUnidentified { cause: TypeNodeNameDeclaredNowhere { name: decl_name } } }
+          else if qualified_all_but_last(name: authored) != "" { TypeNodeUnidentified { cause: TypeNodeQualifierMatchesNoDeclarer { qualified: authored } } }
+          else if rt.ident_span == none { TypeNodeUnidentified { cause: TypeNodeCarriesNoSpan { name: decl_name } } }
+          else { TypeNodeUnidentified { cause: TypeNodeSpanDeclaresNothing { name: decl_name } } }
       }
+  }
+}
+
+fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match declaration_reading_of_type_node(rt: rt, source_indices: source_indices, env: env) {
+    TypeNodeNamesDeclaration { declaration: d } => Present { value: d }
+    TypeNodeUnidentified { cause: _ } => none
+  }
+}
+
+// THE IDENTITY OF A TYPE-REFERENCE POSITION as the resolver left it: the authored node's own join,
+// then the node resolve bound (`inferred Resolved`). Both hops are the one derivation above; neither
+// consults the caller's env by name. A kernel spelling and a type-variable binder are identified by
+// the kernel and by the binder respectively, and are reported as such rather than counted as
+// unidentified -- they are not corpus declarations and no DeclarationRef names them.
+// v1.tests.claim.carrier_realization_census records it per authored reference position, and
+// text_representation_by_identity reads it at checker text boundaries.
+type TypeReferenceDeclarationReading
+  = TypeReferenceNamesDeclaration { declaration: DeclarationRef }
+  | TypeReferenceIsKernelType { name: String }
+  | TypeReferenceIsTypeVariable { id: String }
+  | TypeReferenceUnidentified { authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause? }
+
+fn type_reference_declaration_reading(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> TypeReferenceDeclarationReading {
+  match declaration_reading_of_type_node(rt: n, source_indices: source_indices, env: env) {
+    TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
+    TypeNodeUnidentified { cause: authored_cause } =>
+      match n.inferred {
+        Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
+        Present { value: Resolved { node: r } } =>
+          match declaration_reading_of_type_node(rt: r, source_indices: source_indices, env: env) {
+            TypeNodeNamesDeclaration { declaration: d } => TypeReferenceNamesDeclaration { declaration: d }
+            TypeNodeUnidentified { cause: resolved_cause } =>
+              kernel_or_unidentified(n: r, source_indices: source_indices, authored: authored_cause, resolved: Present { value: resolved_cause })
+          }
+        _ => kernel_or_unidentified(n: n, source_indices: source_indices, authored: authored_cause, resolved: none)
+      }
+  }
+}
+
+fn kernel_or_unidentified(n: Node, source_indices: Map<String, NewlineIndex>, authored: TypeNodeUnidentifiedCause, resolved: TypeNodeUnidentifiedCause?) -> TypeReferenceDeclarationReading {
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  match n.inferred {
+    Present { value: TypeVariable { id: v } } => TypeReferenceIsTypeVariable { id: v }
+    _ =>
+      if is_kernel_type(name: nm) { TypeReferenceIsKernelType { name: nm } }
+      else { TypeReferenceUnidentified { authored: authored, resolved: resolved } }
   }
 }
 
@@ -1639,17 +1711,6 @@ fn node_is_kernel_mint_named(n: Node, name: String) -> Bool {
   }
 }
 
-fn authored_declaration_of_type_node(n: Node, env: TypeEnv) -> DeclarationRef? {
-  match declaration_ref_of_type_node(rt: n, source_indices: env.source_indices, env: env) {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      match n.inferred {
-        Present { value: Resolved { node: r } } => declaration_ref_of_type_node(rt: r, source_indices: env.source_indices, env: env)
-        _ => none
-      }
-  }
-}
-
 fn declaration_binding_of_ref(d: DeclarationRef, env: TypeEnv) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, d.decl_name as String) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
@@ -1663,66 +1724,32 @@ fn declaration_binding_of_ref(d: DeclarationRef, env: TypeEnv) -> TypeBinding? {
   }
 }
 
-fn text_element_is_char(n: Node, env: TypeEnv, authoring: String?) -> TextRepresentation {
+// THE IDENTITY A TEXT CLASSIFICATION READS is v1's one type-reference derivation
+// (type_reference_declaration_reading, neat-boar-16 ruling), so the unidentified sides this wall
+// declines to judge are exactly the population carrier_realization_census counts at those positions.
+fn text_element_is_char(n: Node, env: TypeEnv) -> TextRepresentation {
   match n.children |> first {
     Absent => TextRepresentationUnidentified
     Present { value: ch } =>
       let el = match ch.inferred { Present { value: Resolved { node: r } } => r  _ => ch }
-      let reading = match authored_declaration_of_type_node(n: el, env: env) {
-        Present { value: e } => AuthoredReferenceIsDeclaration { declaration: e }
-        Absent => match authoring {
-          Present { value: m } => authored_reference_reading(n: el, authoring_module: m, env: env)
-          Absent => AuthoredReferenceUnread
-        }
-      }
-      match reading {
-        AuthoredReferenceIsDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
-        AuthoredReferenceIsKernel { name: _ } => NotText
-        AuthoredReferenceUnread => TextRepresentationUnidentified
+      match type_reference_declaration_reading(n: el, source_indices: env.source_indices, env: env) {
+        TypeReferenceNamesDeclaration { declaration: e } => if declaration_ref_eq(a: e, b: text_identity_std_types_char()) { CodePointSequence } else { NotText }
+        TypeReferenceIsKernelType { name: _ } => NotText
+        TypeReferenceIsTypeVariable { id: _ } => NotText
+        TypeReferenceUnidentified { authored: _, resolved: _ } => TextRepresentationUnidentified
       }
   }
 }
 
 fn text_representation_by_identity(n: Node, env: TypeEnv) -> TextRepresentation {
-  text_representation_by_identity_bounded(n: n, env: env, fuel: 16, visited: [], authoring: none)
-}
-
-// A BARE REFERENCE INSIDE A DECLARATION'S BODY IS READ IN ITS AUTHORING MODULE'S TERMS -- the
-// module the chase entered through (the declaration binding's module path), never the consumer's
-// scope. With only corpus-wide facts: the authoring module's OWN declaration of the name if it has
-// one; otherwise the kernel, if the spelling is a kernel type (imports never override a kernel
-// name); otherwise the corpus's one declaration of the name when it has exactly one; otherwise
-// unidentified.
-type AuthoredReferenceReading
-  = AuthoredReferenceIsKernel { name: String }
-  | AuthoredReferenceIsDeclaration { declaration: DeclarationRef }
-  | AuthoredReferenceUnread
-
-fn authored_reference_reading(n: Node, authoring_module: String, env: TypeEnv) -> AuthoredReferenceReading {
-  let nm = qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: n))
-  if nm == "" { AuthoredReferenceUnread }
-  else {
-    let local = match map_get(env.symbol_index.global_bare, nm) {
-      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => mp == authoring_module
-      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => cands |> any(c => c.module_path == authoring_module)
-      Absent => false
-    }
-    if local { AuthoredReferenceIsDeclaration { declaration: decl_ref(module_path: authoring_module, decl_name: nm) } }
-    else if is_kernel_type(name: nm) { AuthoredReferenceIsKernel { name: nm } }
-    else {
-      match map_get(env.symbol_index.global_bare, nm) {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => AuthoredReferenceIsDeclaration { declaration: decl_ref(module_path: mp, decl_name: nm) }
-        _ => AuthoredReferenceUnread
-      }
-    }
-  }
+  text_representation_by_identity_bounded(n: n, env: env, fuel: 16, visited: [])
 }
 
 // A declaration with no body, or whose resolved form is itself, is opaque: a type of its own
 // (v2.std.node Symbol), and not text. A generic type variable is a slot, not a declaration, and a
 // compiler-error type already carries its own diagnostic, so neither is text and neither is refused
 // here a second time.
-fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, visited: List<String>, authoring: String?) -> TextRepresentation {
+fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, visited: List<String>) -> TextRepresentation {
   let resolved = match n.inferred { Present { value: Resolved { node: r } } => Present { value: r }  _ => none }
   let kernel_string = node_is_kernel_mint_named(n: n, name: "String") || match resolved {
     Present { value: r } => node_is_kernel_mint_named(n: r, name: "String")
@@ -1741,29 +1768,19 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
   else if generic_or_error { NotText }
   else if fuel <= 0 { TextRepresentationUnidentified }
   else if is_where_refinement_node(n: n) {
-    let base_authoring = match authored_declaration_of_type_node(n: n, env: env) {
-      Present { value: own } => Present { value: own.module_path as String }
-      Absent => authoring
-    }
     match n.children |> first {
-      Present { value: base } => text_representation_by_identity_bounded(n: base, env: env, fuel: fuel - 1, visited: visited, authoring: base_authoring)
+      Present { value: base } => text_representation_by_identity_bounded(n: base, env: env, fuel: fuel - 1, visited: visited)
       Absent => TextRepresentationUnidentified
     }
   }
   else {
-    let identified = match authored_declaration_of_type_node(n: n, env: env) {
-      Present { value: d } => AuthoredReferenceIsDeclaration { declaration: d }
-      Absent => match authoring {
-        Present { value: m } => authored_reference_reading(n: n, authoring_module: m, env: env)
-        Absent => AuthoredReferenceUnread
-      }
-    }
-    match identified {
-      AuthoredReferenceUnread => if kernel_other { NotText } else { TextRepresentationUnidentified }
-      AuthoredReferenceIsKernel { name: k } => if k == "String" { HostText } else { NotText }
-      AuthoredReferenceIsDeclaration { declaration: d } =>
+    match type_reference_declaration_reading(n: n, source_indices: env.source_indices, env: env) {
+      TypeReferenceUnidentified { authored: _, resolved: _ } => if kernel_other { NotText } else { TextRepresentationUnidentified }
+      TypeReferenceIsKernelType { name: k } => if k == "String" { HostText } else { NotText }
+      TypeReferenceIsTypeVariable { id: _ } => NotText
+      TypeReferenceNamesDeclaration { declaration: d } =>
         if declaration_ref_eq(a: d, b: text_identity_std_algebra_free_monoid()) {
-          text_element_is_char(n: n, env: env, authoring: authoring)
+          text_element_is_char(n: n, env: env)
         } else {
           let key = declaration_ref_display_key(ref: d)
           if visited |> any(v => v == key) { TextRepresentationUnidentified }
@@ -1774,18 +1791,18 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
                 let decl = b.resolved
                 let is_alias = decl.connective == NoConnective && (decl.children |> count) == 0
                 if is_where_refinement_node(n: decl) {
-                  text_representation_by_identity_bounded(n: decl, env: env, fuel: fuel - 1, visited: concat(visited, [key]), authoring: Present { value: d.module_path as String })
+                  text_representation_by_identity_bounded(n: decl, env: env, fuel: fuel - 1, visited: concat(visited, [key]))
                 }
                 else if !is_alias { NotText }
                 else {
                   match decl.inferred {
                     Present { value: Resolved { node: target } } =>
-                      let target_is_itself = match authored_declaration_of_type_node(n: target, env: env) {
-                        Present { value: t } => declaration_ref_eq(a: t, b: d)
-                        Absent => false
+                      let target_is_itself = match type_reference_declaration_reading(n: target, source_indices: env.source_indices, env: env) {
+                        TypeReferenceNamesDeclaration { declaration: t } => declaration_ref_eq(a: t, b: d)
+                        _ => false
                       }
                       if target_is_itself { NotText }
-                      else { text_representation_by_identity_bounded(n: target, env: env, fuel: fuel - 1, visited: concat(visited, [key]), authoring: Present { value: d.module_path as String }) }
+                      else { text_representation_by_identity_bounded(n: target, env: env, fuel: fuel - 1, visited: concat(visited, [key])) }
                     _ => NotText
                   }
                 }
