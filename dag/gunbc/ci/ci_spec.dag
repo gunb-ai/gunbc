@@ -2913,8 +2913,9 @@ fn bhold(script_var: String, label: String, record: Node) -> Node {
 // the trap under errexit before they are reported.
 //
 // The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
-// through the same identity-checked release, as its own checked result (kvm): its record sits in this
-// run's attempt directory, and a missing record exits 0.
+// through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
+// not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
+// 1 survived KILL, 2 unobservable -- and reported, never read as released.
 fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
   let watcher_record = bsol(suffix: concat(mtcollins1_sol_notice_file_infix, "watcher"))
   let failed = [bl(text: "(boot command exited "), bv(name: "rc"), bl(text: "; watcher result "), bv(name: "obs"), bl(text: "; watcher cleanup "), bv(name: "wclean"), bl(text: "; collector release "), bv(name: "col"), bl(text: "; KVM observer release "), bv(name: "kvm"), bl(text: "; credential cleanup "), bv(name: "clean"), bl(text: "; delivery ledger "), bv(name: "SOL_DELIVERY"), bl(text: ")")]
@@ -2954,7 +2955,7 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
         else_stmts: [bset(name: "col", value: "foreign-record-kept")],
       ),
     ]),
-    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])), then_stmts: [bset(name: "kvm", value: "ok")], else_stmts: [bset(name: "kvm", value: "survived-KILL")]),
+    bif_else(cond: bhold(script_var: "SOL_RELEASE", label: "kvm-release", record: bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: concat("/", mtcollins1_kvm_observer_dir(attempt: ""))), bv(name: "GITHUB_RUN_ID"), bl(text: "/observer.pid")])), then_stmts: [bset(name: "kvm", value: "released")], else_stmts: [bash_build_assign(name: "kvm", value: bcat(parts: [bl(text: "unresolved-release-exit-"), bv(name: "?")]))]),
     bset(name: "obs", value: "unstarted"),
     bset(name: "wclean", value: "none"),
     bash_build_if_from_stmts(cond: btest(words: [bl(text: "-n"), bv(name: "SOL_NOTICE_WATCH")]), then_stmts: [
@@ -2983,7 +2984,7 @@ fn gunbc_ci_mtcollins1_boot_trap_body() -> List<Node> {
     ),
     bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "absent")]), right: btest(words: [bv(name: "col"), bl(text: "!="), bl(text: "released")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL collector not released at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(cond: bash_build_and_then(left: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "none")]), right: btest(words: [bv(name: "wclean"), bl(text: "!="), bl(text: "stopped")])), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 SOL notice watcher cleanup unresolved ")].concat(failed)), bset(name: "fail", value: "1")]),
-    bash_build_if_from_stmts(cond: btest(words: [bv(name: "kvm"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 KVM observer survived KILL at step exit ")].concat(failed)), bset(name: "fail", value: "1")]),
+    bash_build_if_from_stmts(cond: btest(words: [bv(name: "kvm"), bl(text: "!="), bl(text: "released")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 KVM observer release did not resolve at step exit (release exit 1 = survived KILL, 2 = unobservable) ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(cond: btest(words: [bv(name: "clean"), bl(text: "!="), bl(text: "ok")]), then_stmts: [becho(parts: [bl(text: "::error::mtcollins1 boot credential cleanup failed ")].concat(failed)), bset(name: "fail", value: "1")]),
     bash_build_if_from_stmts(
       cond: bash_build_and_then(left: btest(words: [bv(name: "rc"), bl(text: "="), bl(text: "0")]), right: btest(words: [bv(name: "fail"), bl(text: "="), bl(text: "1")])),
