@@ -133,10 +133,6 @@ data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading proje
 
 data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unbound_dissolution(description: "BuildCandidate carries its cash and ceiling on a refined Derived-only carrier once candidate_missing_inputs has admitted it (illegal states unrepresentable at the reading), so the readings match totally over the refined carrier and the unreachable arms delete with their rows")
 
-data nfr_reason_connective_payload_encoding: String = "one-special-variant dispatch over Connective: Atom carries an identity payload and encodes two members, and the five nullary connectives share one tag-only member through connective_tag — enumerating them would clone the tag-only arm per variant (the DESIGN §2 redundancy, not the DESIGN §4 totality); same shape as the orchestration-emit row. Landed with the commit_closure_json_v2 format cut (#8965, 2026-08-23) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_connective_payload_encoding: DissolutionCondition = unbound_dissolution(description: "the closure encoding becomes the backward grammar-row fold (DESIGN §4) or Connective carries a derived payload-arity projection from inhabitance, so the payload-bearing arm is a named partition case rather than a wildcard, and the row deletes with that fold")
-
 data nfr_reason_json_natural_projection: String = "one-variant decode over JsonValue: JsonNumber has its lexeme parsed and round-trip checked as a non-negative Int and the wildcard collapses the other five JSON shapes (null, bool, string, array, object) into option-absence, so a shape mismatch and a malformed number are indistinguishable to the caller — the same absence-collapse shape as the binding_outcome_from_resolution row. Landed with the reference-vocabulary keying cut (#9408, 2026-08-27) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_json_natural_projection: DissolutionCondition = unbound_dissolution(description: "typed JSON member decoding lands in the JSON language authority (extdeps.languages.json) with a per-shape refusal carrier, so the envelope reads a natural through a total decode rather than a hand match over JsonValue, and the row deletes with that decoder")
@@ -167,6 +163,9 @@ data nfr_reason_concurrent_divergence_repair_policy: String = "repair-policy dis
 
 data nfr_dissolve_concurrent_divergence_repair_policy: DissolutionCondition = unbound_dissolution(description: "GeneratedArtifact carries a declared concurrent-append property per artifact (the ledger-shaped projections that several lanes extend between merges), concurrent_divergence_repair folds over that property instead of over the variant list, the shared arm becomes a named case rather than a wildcard, and this row deletes.")
 
+// The census these rows answer covers only matches whose scrutinee is a closed-coproduct
+// PARAMETER; its population bound is stated on this roster's registration in
+// gunbc.roster_registry, so an empty delta is not a claim about every closed-coproduct wildcard.
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
@@ -1030,11 +1029,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/product/build_selection.dag::ceiling_reading" },
     reason: nfr_reason_build_axis_reading_unreachable_arm,
     dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/scm/commit_closure_json_v2.dag::encode_connective" },
-    reason: nfr_reason_connective_payload_encoding,
-    dissolution: nfr_dissolve_connective_payload_encoding,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/scm/repository_envelope.dag::repository_natural_from_json" },
