@@ -1,10 +1,7 @@
 module v2.compiler.inferred_tree
 
 import v2.std.cardinality { TerminationProof }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { list_snoc_item }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.collection { List, Map }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
 import v2.std.witness { Witness }
@@ -68,56 +65,4 @@ type ObligatedInferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
   obligations: List<RefinementObligation>
-}
-
-// THE SUBJECT A FACT IS ABOUT (DESIGN section 3b, keys/hashing). Relation: fact-is-about. Scope: one
-// tree infer is handed. Preimage: the node's AUTHORED occurrence (std.occurrence_identity
-// NodeOccurrenceIdentity, minted or projected arm) -- the binder of a reference is a function of that
-// occurrence inside one tree, so it adds no discrimination and is not a component. Equality:
-// OccurrenceId value equality. Collision disposition: a synthetic node has no subject, and two
-// different nodes carrying one authored occurrence in one tree are a collision, never a merge.
-// This walk is the premise's instrument AND the admission's check -- one authority for both.
-fn authored_occurrence_id(n: Node) -> Optional<OccurrenceId> {
-  match n.occurrence_id {
-    OccurrenceMinted { id: id } => Present { value: id }
-    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
-    OccurrenceSynthetic => Absent
-  }
-}
-
-type AuthoredOccurrenceCollision {
-  first: Node
-  second: Node
-}
-
-type AuthoredOccurrenceCensus {
-  seen: Map<Int, Node>
-  collisions: List<AuthoredOccurrenceCollision>
-}
-
-fn authored_occurrence_census_step(acc: AuthoredOccurrenceCensus, n: Node) -> AuthoredOccurrenceCensus {
-  let here = match authored_occurrence_id(n: n) {
-    Absent => acc
-    Present { value: id } =>
-      match map_lookup(m: acc.seen, key: id.value) {
-        Absent => AuthoredOccurrenceCensus { seen: map_insert(m: acc.seen, key: id.value, value: n), collisions: acc.collisions }
-        Present { value: held } =>
-          if held == n {
-            acc
-          } else {
-            AuthoredOccurrenceCensus {
-              seen: acc.seen,
-              collisions: list_snoc_item(xs: acc.collisions, item: AuthoredOccurrenceCollision { first: held, second: n })
-            }
-          }
-      }
-  }
-  fold(n.children, init: here, f: fn(a, e) { authored_occurrence_census_step(acc: a, n: e.target) })
-}
-
-fn authored_occurrence_collisions(root: Node) -> List<AuthoredOccurrenceCollision> {
-  authored_occurrence_census_step(
-    acc: AuthoredOccurrenceCensus { seen: empty_map(), collisions: [] },
-    n: root
-  ).collisions
 }
