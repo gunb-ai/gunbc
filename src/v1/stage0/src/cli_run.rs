@@ -28095,6 +28095,20 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         (src, dest, diff.to_string())
     }
 
+    // The enrolment reads the destination's declarations from the LIVE tree, so the census a
+    // rename carries is derived from that file rather than listed: a listed set goes stale the
+    // moment the file gains a test (#12199 added two) and then reports those as enrolled.
+    fn live_test_names_at(dest: &str) -> HashSet<String> {
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the rename destination is a live file");
+        let names: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
+        assert!(
+            names.contains("gate_green_synthetic_shape_from_catalog_call"),
+            "the fixture's held-out name must still be declared at {dest}"
+        );
+        names
+    }
+
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
     // SOURCE path or every moved fn is gated as new.
     #[test]
@@ -28106,13 +28120,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             "fixture must carry git's rename-from so this control can fail the dest-only lookup"
         );
         let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            src.to_string(),
-            HashSet::from([
-                "gate_green_synthetic_shape_from_catalog_call".to_string(),
-                "gate_red_synthetic_machine_shape_call".to_string(),
-            ]),
-        );
+        at_base.insert(src.to_string(), live_test_names_at(dest));
         let index = build_multi_entry_index(&[]);
         let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
             .expect("a rename-destination diff must attribute, not refuse");
@@ -28134,10 +28142,9 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     fn rename_still_enrols_a_name_absent_from_the_source() {
         let (src, dest, diff) = machine_shape_rename_diff();
         let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            src.to_string(),
-            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
-        );
+        let mut source_names = live_test_names_at(dest);
+        source_names.remove("gate_green_synthetic_shape_from_catalog_call");
+        at_base.insert(src.to_string(), source_names);
         let index = build_multi_entry_index(&[]);
         let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
             .expect("a rename-destination diff must attribute, not refuse");
@@ -31836,11 +31843,15 @@ mod construction_authority_graph_tests {
     // unified kind-agnostic decl-resolution exposed to .dag; see construction_authority_* docs.)
     #[test]
     fn wall_now_authority_graph_is_total() {
+        // A DeclarationRef names a module by its FULL path, and the corpus cites the seed's
+        // modules (`v1.std.core`, `v1.compiler.*`) as authorities, so the table spans every root
+        // a module lives in. Full-path keying is why the last-segment collision that keeps
+        // `src/v1` out of the floor's roots cannot reach this walk.
         let ws = workspace_root();
-        let roots = vec![
-            ws.join("dag").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ];
+        let roots: Vec<String> = super::DAG_PARSE_SWEEP_ROOTS
+            .iter()
+            .map(|r| ws.join(r).to_string_lossy().into_owned())
+            .collect();
         let unresolved =
             construction_authority_graph_unresolved(&roots).expect("corpus walk must succeed");
         assert!(
