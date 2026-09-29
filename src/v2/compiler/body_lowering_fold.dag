@@ -66,7 +66,17 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { declared_signature, lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_bind_annotated, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering {
+  lower_binary_infix,
+  lower_branch,
+  lower_bind,
+  lower_bind_annotated,
+  lower_loop,
+  lower_match,
+  lower_unary_prefix
+}
+import v2.std.list_introduction { lower_list_introduction }
+import v2.std.arrow_signature { declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -3373,7 +3383,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 }
 
 // THE DECLARED ORDER, CARRIED ON THE ARROW. Every Arrow built from a declared signature carries one
-// ^arrow_signature_order_edge (v2.std.compilers.body_lowering signature_order_edge) whose target is
+// ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge) whose target is
 // the language's canonical FreeMonoid introduction (lower_list_introduction) of the parameter labels as childless
 // Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
@@ -5386,22 +5396,29 @@ fn body_lower_match_arm_navigation_reject(arm_capture: Node) -> Outcome<Node> {
   )
 }
 
+// THE ARM BODY IS READ FROM ITS GRAMMAR POSITION: match_arm is seq(pattern, seq(`=>`, body)), so the
+// body is the right of the `=>`. It was the first dag_surface_expr, then primary_expr, then
+// postfix_expr found anywhere in the arm (body_lower_find_captured, a pre-order first match). For
+// an arm whose body is a statement sequence -- `X => let t = v` then `e` -- the first expr is the
+// let's value, so the arm lowered to `v`, and the binder and every later statement were gone with no
+// diagnostic (gunbc.recurring_failure_mode
+// match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering). An arm whose `=>`
+// is not at its position answers Absent, and its caller refuses the arm's navigation.
 fn body_lower_match_arm_body_capture_optional(stripped: Node) -> Optional<Node> {
-  match body_lower_find_captured(root: stripped, emitted: ^dag_surface_expr) {
-    ParseSubtreeFound { captured: expr } => optional_present(value: expr)
-    ParseSubtreeAbsent =>
-      match body_lower_find_captured(
-        root: stripped,
-        emitted: ^dag_surface_primary_expr
-      ) {
-        ParseSubtreeFound { captured: primary } => optional_present(value: primary)
-        ParseSubtreeAbsent =>
-          match body_lower_find_captured(
-            root: stripped,
-            emitted: ^dag_surface_postfix_expr
-          ) {
-            ParseSubtreeFound { captured: postfix } => optional_present(value: postfix)
-            ParseSubtreeAbsent => optional_absent()
+  match body_lower_match_spine_right(spine: stripped) {
+    Absent => optional_absent()
+    Present { value: after_pattern } =>
+      match body_lower_match_spine_left(spine: after_pattern) {
+        Absent => optional_absent()
+        Present { value: arrow_node } =>
+          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: arrow_node)) {
+            Absent => optional_absent()
+            Present { value: arrow } =>
+              if arrow == ^dag_token_fat_arrow {
+                body_lower_match_spine_right(spine: after_pattern)
+              } else {
+                optional_absent()
+              }
           }
       }
   }
@@ -5572,11 +5589,47 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
 // its inner match -- and then kept as the FALLBACK for what the value reader declined, where its own
 // Absent was reported as match_arm_navigation_refused. That relabel is how an unlowered fn literal in
 // an arm body (a fold call's `f: fn(acc, x) { .. }`) surfaced as a navigation failure of the arm.
-// An arm body now lowers through body_lower_value_read on both routes -- the pattern-capture route
-// and the spine route below -- so its refusal is the value's, located at the value; the navigation
-// refusal is left to exactly what it names: an arm whose pattern or `=>` cannot be found.
+// An arm body now lowers through body_lower_match_arm_body_lowered on both routes -- the
+// pattern-capture route and the spine route below -- which is the value reader for an expression
+// body and the statement authority for a statement body, so its refusal is the value's or the
+// statement's, located there; the navigation refusal is left to exactly what it names: an arm whose
+// pattern or `=>` cannot be found.
+// AN ARM BODY THAT IS A STATEMENT SEQUENCE LOWERS THROUGH THE STATEMENT AUTHORITY. The grammar's
+// match_arm_stmt_body is seq(stmt, repeat(stmt)) (v2.extdeps.languages.dag
+// dag_grammar_match_arm_stmt_body_expr), and the parser realizes it UNWRAPPED:
+// v2.compiler.parse parse_match_arm_stmt_body answers the statements' repeat spine itself, with no
+// production shell (measured on a parsed arm: `A =>` is followed directly by two `stmt` productions).
+// So a statement body is recognized by what it is -- a spine whose head is a `stmt` production and
+// which has a successor -- and lowers through body_lower_stmt_spine, the reader a fn body and an if
+// arm use: a let binds the rest, the last statement is the value, and any other statement that
+// precedes another refuses located. An expression body sits under its own expr production and is
+// read by the value reader, as before.
+fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional<Node> {
+  let spine = body_lower_deep_unwrap_optional(node: body_capture)
+  match body_lower_stmt_spine_head_optional(spine: spine) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: head)) {
+        Absent => optional_absent()
+        Present { value: emitted } =>
+          if (emitted == ^dag_surface_stmt) && body_lower_stmt_spine_has_successor(spine: spine) {
+            optional_present(value: spine)
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+fn body_lower_match_arm_body_lowered(body_capture: Node) -> Outcome<Node> {
+  match body_lower_match_arm_statement_spine_optional(body_capture: body_capture) {
+    Present { value: spine } => body_lower_stmt_spine(spine: spine)
+    Absent => body_lower_value_read(value: body_capture)
+  }
+}
+
 fn body_lower_match_arm_wire_read(pat_node: Node, body_capture: Node) -> Outcome<Node> {
-  match body_lower_value_read(value: body_capture) {
+  match body_lower_match_arm_body_lowered(body_capture: body_capture) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: body, diagnostics: d } =>
       outcome_with_diagnostics(value: body_lower_match_arm_wire(pat_node: pat_node, body: body), diagnostics: d)
@@ -5729,25 +5782,14 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
   }
 }
 
-// AN ARROW WHOSE BODY IS ITSELF A FUNCTION VALUE HAS NO BODY FORM YET. `fn f() -> fn(A) -> B {
-// fn(a) { .. } }` and `x => y => ..` lower their inner function value to an Arrow, and
-// v2.std.node classify_arrow_body_form admits an Atom, a record Conj or a computation as a body --
-// not an Arrow. Passing it through handed normalize an Arrow its well-formedness gate refused with
-// no cause (post_normalize_not_well_formed). It refuses HERE instead, located at the inner function
-// value, with its own reason. A function value under a Bind (`let ..; fn(a) { .. }`) is a Bind body
-// and is unaffected. THE ONE REFUSAL SITE for the class: both the named-fn Arrow
-// (body_lower_fn_decl_to_arrow_admitted) and every function-value Arrow
-// (body_lower_function_value_arrow) reify their body through this function. DISSOLVE-ON: the
-// substrate's function-valued body arm (v2.std.node ArrowBodyForm FunctionValueBody, zesty-stag-363)
-// lands; this arm is then deleted, not widened.
+// A BODY THAT IS ITSELF A FUNCTION VALUE (`fn f() -> fn(A) -> B { fn(a) { .. } }`, `x => y => ..`)
+// passes through as its lowered Arrow: v2.std.node classify_arrow_body_form admits it as the
+// v2.std.node ArrowBodyForm arm (not the grammar-level body sum of v2.compiler.fold_lowering), and
+// the inner Arrow is well-formed by its own Arrow arm.
 fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
     ComputationNode { behavior: Branch } => body_lower_reify_branch_body(body: body)
-    TypeNode { connective: Arrow } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_arrow_body_is_function_value_unmodeled, n: body)
-      )
     _ => outcome_accepted(value: body)
   }
 }
@@ -7071,45 +7113,6 @@ fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_scrutinee_on_token(id: Symbol, left: Node, right: Node) -> Optional<Node> {
-  match id == ^dag_token_lbrace {
-    true => Absent
-    false =>
-      match id == ^dag_token_kw_match {
-        true => body_lower_match_scrutinee_from_spine(spine: right)
-        false =>
-          match body_lower_operand_ref_optional(node: left) {
-            Present { value: op } => Present { value: op }
-            Absent => body_lower_match_scrutinee_from_spine(spine: right)
-          }
-      }
-  }
-}
-
-fn body_lower_match_scrutinee_from_spine(spine: Node) -> Optional<Node> {
-  if is_empty_conj_root(n: spine) {
-    Absent
-  } else {
-    match body_lower_match_spine_left(spine: spine) {
-      Present { value: left } =>
-        match body_lower_match_spine_right(spine: spine) {
-          Present { value: right } =>
-            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
-              Present { value: id } =>
-                body_lower_match_scrutinee_on_token(id: id, left: left, right: right)
-              Absent =>
-                match body_lower_operand_ref_optional(node: left) {
-                  Present { value: op } => Present { value: op }
-                  Absent => body_lower_match_scrutinee_from_spine(spine: right)
-                }
-            }
-          Absent => Absent
-        }
-      Absent => Absent
-    }
-  }
-}
-
 // THE SCRUTINEE IS A VALUE, READ AS ONE. It was read by the operand reader alone, which before
 // gunbc#12145 narrowed a call scrutinee `match nat_compare(a: x, b: y) {..}` to `nat_compare`,
 // dropping its arguments, and after it answered Absent, so the whole match refused as
@@ -7126,18 +7129,38 @@ fn body_lower_match_scrutinee_value(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
+// THE SCRUTINEE IS READ FROM ITS GRAMMAR POSITION: match_expr is seq(`match`, seq(binary_expr,
+// seq(`{`, ..))), so it is the left of the spine's right, after the `match` keyword. It was found by
+// searching the whole match subtree for the first binary_expr, then postfix_expr. On a fn body that
+// is the scrutinee, because the parse is unfolded. A data initializer is folded bottom-up before its
+// declaration is dispatched (body_lower_data_initializer_body), so its scrutinee's shell is already
+// reduced, and the search found the next binary_expr, inside the first arm's body: `data d: Bool =
+// match h(a) { X => true .. }` lowered to a match on `true` with `h` and `a` gone and the module
+// accepted (gunbc.recurring_failure_mode
+// data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering). The position holds on
+// both routes, and body_lower_match_scrutinee_value reads an unfolded shell and an already-lowered
+// node alike (body_lower_value_lowered peels a lowered node first). A match whose spine is not headed
+// by `match` answers Absent, which its caller refuses as match_arm_navigation_refused.
 fn body_lower_match_scrutinee_optional(captured: Node) -> Outcome<Optional<Node>> {
-  match body_lower_find_captured(root: captured, emitted: ^dag_surface_binary_expr) {
-    ParseSubtreeFound { captured: binary } => body_lower_match_scrutinee_value(node: binary)
-    ParseSubtreeAbsent =>
-      match body_lower_find_captured(root: captured, emitted: ^dag_surface_postfix_expr) {
-        ParseSubtreeFound { captured: postfix } => body_lower_match_scrutinee_value(node: postfix)
-        ParseSubtreeAbsent =>
-          outcome_accepted(
-            value: body_lower_match_scrutinee_from_spine(
-              spine: body_lower_unwrap_surface_shell(node: captured)
-            )
-          )
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_match_spine_left(spine: spine) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: head } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: head)) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: id } =>
+          if id == ^dag_token_kw_match {
+            match body_lower_match_spine_right(spine: spine) {
+              Absent => outcome_accepted(value: optional_absent())
+              Present { value: after_keyword } =>
+                match body_lower_match_spine_left(spine: after_keyword) {
+                  Absent => outcome_accepted(value: optional_absent())
+                  Present { value: scrutinee } => body_lower_match_scrutinee_value(node: scrutinee)
+                }
+            }
+          } else {
+            outcome_accepted(value: optional_absent())
+          }
       }
   }
 }
@@ -8347,7 +8370,7 @@ fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
 // domain's place. A payload Conj at domain position reads, to every domain reader (v2.std.node
 // arrow_domain_binder_labels, v2.compiler.resolve add_arrow_domain_named_params), as one parameter
 // per field -- bound by name, with no declared order, and scoped as locals of an Arrow that has no
-// body. Built through v2.std.compilers.body_lowering declared_signature like every other signature,
+// body. Built through v2.std.arrow_signature declared_signature like every other signature,
 // so the operation's domain and its order come from one mint. An operation with no input block has
 // an empty parameter list, not an empty payload argument.
 fn body_lower_operation_params(input: Optional<Node>) -> List<Edge> {

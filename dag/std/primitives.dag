@@ -700,6 +700,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "compile_dag_multi_module_fixture",
     "compile_dag_reference_occurrence_binding_census",
     "dependency_resolution_facts",
+    "dependency_resolution_facts_at",
     "observe_declared_import_closure_symbol_binding",
     "parse_roadmap_acceptance_event_history_jsonl",
     "parse_stage0_cargo_manifest_bins",
