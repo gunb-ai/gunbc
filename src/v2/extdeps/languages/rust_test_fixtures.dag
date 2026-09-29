@@ -2732,6 +2732,52 @@ fn rust_logic_family_target_model_meet_zero_staging() -> TargetModel {
   }
 }
 
+// SCAFFOLD, ADMITTED BY OPERATOR DEFAULT-APPROVAL on a 15-minute timeout, 2026-09-28 (escalation
+// msg_a5787a77, decision msg_0787e379; DESIGN section 5, docs/plans/scaffold-admission-doctrine.md):
+// the ONE host invocation row the identity-cast native control needs, reusing the family argv
+// dispatcher above rather than minting a second one. The population is exactly
+// rust_identity_cast_member_apply, rust_identity_cast_runtime_row, rust_identity_cast_target_model
+// and rust_identity_cast_run_args. The driver's whole job is I/O: read the second argument, parse it
+// as the target's Int spelling, call the EMITTED `f`, frame its actual return value. It does not
+// implement the cast, return its input, or define any type the emitted code lacks. A missing or
+// malformed argument panics, so the invocation fails rather than defaulting to a value.
+// dissolve-on: the same trigger as the selected-bundle wrapper above -- the Rust TargetModel
+// grammar-row inverse represents host entrypoints and byte-framed stdout, so a runtime row consumes
+// that structure instead of a result_expression string.
+data rust_identity_cast_member_apply: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "apply",
+  result_expression: "f(std::env::args().nth(2).unwrap().parse::<i32>().unwrap())"
+}
+
+fn rust_identity_cast_runtime_row() -> TargetEmitHostRuntimeRow {
+  rust_bool_fn_host_runtime_row(
+    host_identity_sym: ^rust_host_transport_identity_cast_identity,
+    main_suffix: rust_family_main_suffix(prelude: "", members: [rust_identity_cast_member_apply])
+  )
+}
+
+// A RUNNER-ONLY model: the emitted text under test was produced by rust_target_model on the source
+// route, and this model only runs it. v2.compiler.emit_host reads a model's runtime row to build and
+// run, and copies the model into the receipt; it translates nothing, so the minimal model carries
+// every field but the row. Deriving it from rust_target_model instead measured ~75k eval steps of
+// grammar-bundle construction per claim for fields the run never reads.
+fn rust_identity_cast_target_model() -> TargetModel {
+  let base = rust_minimal_target_model_staging()
+  TargetModel {
+    produced_decl_support: base.produced_decl_support,
+    bundle: base.bundle,
+    lex: base.lex,
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: rust_identity_cast_runtime_row()
+  }
+}
+
+fn rust_identity_cast_run_args(value: String) -> List<String> {
+  ["--", "apply", value]
+}
+
 data rust_match_loop_fold_family_prelude: String = "\n\nfn fold_call_callee(xs: i32, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { f(xs, z) }"
 
 data rust_match_loop_fold_family_member_match: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
