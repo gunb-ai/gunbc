@@ -585,8 +585,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_conj_conforms(t: Node) -> Bool {
   match t.kind {
     TypeNode { connective: Conj } =>
-      (count(t.children) >= 1)
-        && all_names_distinct(children: t.children)
+      all_names_distinct(children: t.children)
         && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_conforms(e: e) })
     _ => false
   }
