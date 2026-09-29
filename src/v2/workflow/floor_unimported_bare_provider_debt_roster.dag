@@ -59,10 +59,10 @@ type UnimportedBareProviderRowView {
   name: String
   identity: String
   label: String
+  standing: UnimportedBareProviderStanding
   active: Bool
   imports_fixed: Bool
   file_deleted: Bool
-  relocated: Bool
   not_a_reference: Bool
 }
 
@@ -72,6 +72,7 @@ fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> 
     name: row.name,
     identity: unimported_bare_provider_identity(file: row.file, name: row.name),
     label: unimported_bare_provider_standing_label(standing: row.standing),
+    standing: row.standing,
     active: match row.standing {
       ActiveDebt => true
       Retired { cause: _ } => false
@@ -82,10 +83,6 @@ fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> 
     },
     file_deleted: match row.standing {
       Retired { cause: FileDeleted } => true
-      _ => false
-    },
-    relocated: match row.standing {
-      Retired { cause: RelocatedOutOfSourceRoots { to: _ } } => true
       _ => false
     },
     not_a_reference: match row.standing {

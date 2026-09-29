@@ -8,6 +8,8 @@ import std.types { GitRef, FilePath }
 import extdeps.git
 import v2.workflow.floor_unimported_bare_provider_debt_roster {
   UnimportedBareProviderRowView,
+  Retired,
+  RelocatedOutOfSourceRoots,
   unimported_bare_provider_roster_rows,
 }
 
@@ -119,13 +121,17 @@ fn unimported_bare_provider_row_standing(
   is_checked: Bool,
   is_carried: Bool,
 ) -> List<String> {
+  let relocation_not_done = match r.standing {
+    Retired { cause: RelocatedOutOfSourceRoots { to: _ } } => exists
+    _ => false
+  }
   if r.active && !exists {
     ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
   } else {
     if r.file_deleted && exists {
       ["RetiredFileDeletedButPresent " + r.identity]
     } else {
-      if r.relocated && exists {
+      if relocation_not_done {
         ["RetiredRelocatedButPresent " + r.identity + " -- the file still sits under a source root; the relocation did not happen"]
       } else {
         if r.imports_fixed && !exists {
