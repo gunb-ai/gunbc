@@ -25,4 +25,4 @@ data seeded_install_media_pinned_dates: SeededInstallMediaPinnedDates = SeededIn
 // gunbc.recurring_failure_mode.a_hand_bumped_builder_revision_keys_a_derivation, not a wall. NEXT-RUNG
 // TRIGGER: an evaluation-time content hash of a named declaration closure, at which point this row
 // is deleted and the key reads the builder closure's hash instead.
-data seeded_install_media_builder_revision: NonEmptyStr = "xorriso-replay-pinned-dates/1"
+data seeded_install_media_builder_revision: NonEmptyStr = "xorriso-replay-pinned-dates-and-attributes/2"
