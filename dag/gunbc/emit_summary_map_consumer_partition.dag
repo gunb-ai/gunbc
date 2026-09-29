@@ -226,11 +226,18 @@ data emit_summary_map_consumers: List<SummaryMapConsumer> = [
     lookup_expression_count: 1,
   },
   {
+    site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "record_lit_struct_head"),
+    keys_on: "the resolved type's authored name as a membership test, then the chosen head leaf as a second membership test",
+    ask: NodeHeldAtAsk { holder_expression: "resolved_type -- held throughout, and already gated on resolved_type.ident_span != none" },
+    use: SpellingEscapesToCaller { escapes_as: "ctor_name, the struct the literal's head renders as, returned to the renderer and to the use-line collector (record_lit_resolved_ctor_import_names)", consumed_by: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit") },
+    lookup_expression_count: 2,
+  },
+  {
     site: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_record_lit"),
-    keys_on: "the resolved type's authored name as a membership test, the chosen head name as a second membership test, and variant_summary_name for the defaults pass",
+    keys_on: "variant_summary_name for the defaults pass; the head's two membership tests are record_lit_struct_head's row",
     ask: NodeHeldAtAsk { holder_expression: "resolved_type -- held throughout, and already gated on resolved_type.ident_span != none" },
     use: ReKeyedIntoForeignNameTable { table: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "rust_zero_value"), why_a_rekey_cannot_reach_it: "the field type spelling from field_type_map is passed to a name-keyed zero-value table that takes no identity parameter, so an identity-keyed summary map changes nothing at this hop until that table is keyed too" },
-    lookup_expression_count: 3,
+    lookup_expression_count: 1,
   },
 ]
 

@@ -1,0 +1,84 @@
+module test.claim.record_lit_alias_head_use_line_witness_test
+
+// A record literal headed by an alias of a struct renders as the struct (emit_typed_record_lit through
+// record_lit_struct_head), so a module that imports only the alias needs a synthesized use-line for the
+// struct, proposed by record_lit_resolved_ctor_import_names from that same head decision. Every witness
+// asserts the ROUTE, not only the import: the emitted head is the struct and the alias spelling is never
+// a head. The collector used to guess the head from the literal's FIELD NAMES, which misses the rendered
+// head whenever the field set is not uniquely one struct, so three witnesses are discriminators, RED
+// against the field-name guess (use-line absent, rustc E0422) and GREEN when the collector asks the
+// renderer:
+//   omitted_field -- a plain alias literal leaving an optional field out matches no struct;
+//   twin_full_fields -- a TWIN struct with the same field set makes the guess ambiguous with every field
+//     present;
+//   generic_omitted_field -- the same omission through an alias of an APPLIED generic (the
+//     MoneyPerHour = MoneyRate<PerHour> shape every cross-module alias literal in the corpus has), which
+//     reaches the head decision by a different branch.
+// The two full-field witnesses without a twin are the positive controls, GREEN under both. The generic
+// alias WITH a twin is not here: the renderer itself spells the alias there (an Rc-wrapped type alias
+// rustc cannot construct), before and after this change -- recorded under
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target, not witnessed as green.
+fn w_alias_head_full_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliashead_full_fixture\n\nimport test.fixture.aliashead_provider \{ AliasheadQuote, aliashead_amount \}\n\nfn aliashead_full_probe() -> Int \{\n  aliashead_amount(r: AliasheadQuote \{ amount: 1, note: \"n\" \})\n\}\n",
+    "src/aliashead_full_fixture.rs",
+    ["use crate::test_fixture_aliashead_provider::\{AliasheadRate\};", "AliasheadRate \{"],
+    ["AliasheadQuote \{"]
+  )
+}
+
+fn w_alias_head_omitted_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliashead_omitted_fixture\n\nimport test.fixture.aliashead_provider \{ AliasheadQuote, aliashead_amount \}\n\nfn aliashead_omitted_probe() -> Int \{\n  aliashead_amount(r: AliasheadQuote \{ amount: 2 \})\n\}\n",
+    "src/aliashead_omitted_fixture.rs",
+    ["use crate::test_fixture_aliashead_provider::\{AliasheadRate\};", "AliasheadRate \{"],
+    ["AliasheadQuote \{"]
+  )
+}
+
+test fn record_lit_alias_head_use_line_full_fields() -> Bool {
+  w_alias_head_full_fields()
+}
+
+test fn record_lit_alias_head_use_line_omitted_field() -> Bool {
+  w_alias_head_omitted_field()
+}
+
+fn w_alias_head_twin_full_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliastwin_full_fixture\n\nimport test.fixture.aliashead_twin_provider \{ AliastwinQuote, aliastwin_amount \}\n\nfn aliastwin_full_probe() -> Int \{\n  aliastwin_amount(r: AliastwinQuote \{ amount: 1, note: \"n\" \})\n\}\n",
+    "src/aliastwin_full_fixture.rs",
+    ["use crate::test_fixture_aliashead_twin_provider::\{AliastwinRate\};", "AliastwinRate \{"],
+    ["AliastwinQuote \{", "AliastwinOther \{"]
+  )
+}
+
+fn w_alias_head_generic_full_fields() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliasgen_full_fixture\n\nimport test.fixture.aliashead_generic_provider \{ AliasgenQuote, aliasgen_amount \}\n\nfn aliasgen_full_probe() -> Int \{\n  aliasgen_amount(r: AliasgenQuote \{ amount: 1, note: \"n\" \})\n\}\n",
+    "src/aliasgen_full_fixture.rs",
+    ["use crate::test_fixture_aliashead_generic_provider::\{AliasgenRate\};", "AliasgenRate \{"],
+    ["AliasgenQuote \{"]
+  )
+}
+
+fn w_alias_head_generic_omitted_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliasgen_omitted_fixture\n\nimport test.fixture.aliashead_generic_provider \{ AliasgenQuote, aliasgen_amount \}\n\nfn aliasgen_omitted_probe() -> Int \{\n  aliasgen_amount(r: AliasgenQuote \{ amount: 2 \})\n\}\n",
+    "src/aliasgen_omitted_fixture.rs",
+    ["use crate::test_fixture_aliashead_generic_provider::\{AliasgenRate\};", "AliasgenRate \{"],
+    ["AliasgenQuote \{"]
+  )
+}
+
+test fn record_lit_alias_head_use_line_twin_full_fields() -> Bool {
+  w_alias_head_twin_full_fields()
+}
+
+test fn record_lit_alias_head_use_line_generic_full_fields() -> Bool {
+  w_alias_head_generic_full_fields()
+}
+
+test fn record_lit_alias_head_use_line_generic_omitted_field() -> Bool {
+  w_alias_head_generic_omitted_field()
+}

@@ -1,0 +1,18 @@
+module test.fixture.aliashead_generic_provider
+
+// Provider for test.claim.record_lit_alias_head_use_line_witness_test, shaped like std.measure's
+// MoneyPerHour = MoneyRate<PerHour>: an alias of an APPLIED generic struct whose parameter is a phantom
+// marker. That is the shape of every cross-module alias literal in the corpus, and it reaches the
+// renderer's head decision by a different branch than a plain alias does.
+type AliasgenPerDay
+
+type AliasgenRate<P> {
+  amount: Int
+  note: String?
+}
+
+type AliasgenQuote = AliasgenRate<AliasgenPerDay>
+
+fn aliasgen_amount(r: AliasgenQuote) -> Int {
+  r.amount
+}

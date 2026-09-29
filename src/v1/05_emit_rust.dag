@@ -3702,8 +3702,9 @@ fn module_reference_candidate_names(typed_module: TypedModule, ctx: EmitRustCont
   let emit_info = ctx.emit_info
   let this_module_name = authored_name_at(source_indices: source_indices, node: typed_module.module)
   let items = typed_module.items
-  let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
-  let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
+  let head_scope = module_emit_scope(typed_module: typed_module)
+  let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, emit_info: emit_info, scope: head_scope)))
+  let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info, scope: head_scope))
   let type_surface_names = unique_strings(items: item_emit_surface_names)
   let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
   let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
@@ -4082,6 +4083,10 @@ fn emit_inferred_type_leaf_name(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
+// find_struct_name_by_fields is Absent only when the literal's shape matches no struct or an
+// ambiguity the type hints do not narrow to one: anonymous_record_struct_candidates hands a
+// candidate set of one back unchanged. So a unique unrefined shape match can never stand behind its
+// Absent arm, and the find_unique_struct_name_by_fields retry that stood there answered nothing.
 fn anonymous_record_lit_surface_name(n: Node, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> String {
   let lit_field_names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: source_indices))
   let field_type_hints = fold(n.children, init: empty_map(), f: (acc, f) =>
@@ -4096,13 +4101,9 @@ fn anonymous_record_lit_surface_name(n: Node, source_indices: Map<String, Newlin
   match find_struct_name_by_fields(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: type_summaries) {
     Present { value: sn } => sn
     Absent =>
-      match find_unique_struct_name_by_fields(field_names: lit_field_names, type_summaries: type_summaries) {
-        Present { value: sn } => sn
-        Absent =>
-          let rt = resolved_type(n: n)
-          let rt_name = authored_name_at(source_indices: source_indices, node: rt)
-          if rt.ident_span != none && map_contains_key(type_summaries, rt_name) { rt_name } else { "" }
-      }
+      let rt = resolved_type(n: n)
+      let rt_name = authored_name_at(source_indices: source_indices, node: rt)
+      if rt.ident_span != none && map_contains_key(type_summaries, rt_name) { rt_name } else { "" }
   }
 }
 
@@ -4147,27 +4148,46 @@ fn record_lit_field_type_hints(n: Node, source_indices: Map<String, NewlineIndex
   )
 }
 
-fn record_lit_resolved_ctor_import_names(type_name: String, n: Node, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+// THE HEAD A RECORD LITERAL NEEDS IMPORTED IS THE ONE THE RENDERER SPELLS, ASKED OF THE RENDERER.
+// A literal whose authored head is a type alias of a struct renders as that struct:
+// `MoneyPerHour { .. }` emits `MoneyRate { .. }`, and a module that imports only the alias owes a
+// use-line for MoneyRate. That head is decided by record_lit_struct_head from the literal's resolved
+// type, expanded exactly as both record-literal renderers expand it, so this proposes the name the
+// emitted text will carry and nothing else. What stood here instead guessed the head from the
+// literal's FIELD NAMES, which is a different question: it scanned every summary for every named
+// literal, answered Enum::Variant summary keys for ordinary variant literals (a spelling that is
+// never an emitted identifier), matched unrelated structs that share a field set, and missed an
+// alias literal that leaves a defaultable field out, whose head the renderer still canonicalizes.
+// A literal with a parent enum is skipped without asking: the renderer's effective parent falls
+// back to that parent, so its head is always Parent::Variant and never a bare struct.
+// A head equal to the authored spelling or its qualified leaf is not proposed; the authored name is
+// already in the literal's surface, and a qualified head's leaf is the qualified-reference route's.
+fn record_lit_resolved_ctor_import_names(type_name: String, n: Node, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
   let from_template = match container_template_algebra(name: type_name) {
     Present { value: algebra } => if algebra != "" && algebra != type_name { [algebra] } else { [] }
     Absent => []
   }
-  let from_fields = if type_name != "" {
-    let lit_field_names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: source_indices))
-    let field_type_hints = record_lit_field_type_hints(n: n, source_indices: source_indices)
-    match find_struct_name_by_fields(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: type_summaries) {
-      Present { value: sn } => if sn != "" && sn != type_name { [sn] } else { [] }
-      Absent =>
-        match find_unique_struct_name_by_fields(field_names: lit_field_names, type_summaries: type_summaries) {
-          Present { value: sn } => if sn != "" && sn != type_name { [sn] } else { [] }
-          Absent => []
-        }
-    }
-  } else { [] }
-  unique_strings(items: concat(from_template, from_fields))
+  let from_rendered_head = match n.expr_data {
+    ExprRecordLit { parent_enum: pe } =>
+      match pe {
+        Present { value: _ } => []
+        Absent =>
+          let expanded_rt = expand_type_for_field_access(n: resolved_type(n: n), env: scope.type_env, module_name: scope.module_name).resolved
+          let authored = record_lit_type_name_at(texpr: n, source_indices: scope.type_env.source_indices)
+          match record_lit_struct_head(type_name: authored, resolved_type: expanded_rt, shared_types: emit_info.shared_types, scope: scope, emit_info: emit_info) {
+            NominalStructHead { bare_name: _, ctor_name: c } =>
+              if c != "" && c != type_name && c != qualified_last_segment(name: type_name) { [c] } else { [] }
+            ShapeStructHead => []
+          }
+      }
+    _ => []
+  }
+  unique_strings(items: concat(from_template, from_rendered_head))
 }
 
-fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
+fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
+  let type_summaries = emit_info.type_summaries
+  let variant_to_enum = emit_info.variant_to_enum
   match n.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       let tn_list = match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
@@ -4179,7 +4199,7 @@ fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, type
             if anon != "" { [anon] } else { [] }
           }
       }
-      let ctor_names = tn_list |> flat_map(t => record_lit_resolved_ctor_import_names(type_name: t, n: n, type_summaries: type_summaries, source_indices: source_indices))
+      let ctor_names = tn_list |> flat_map(t => record_lit_resolved_ctor_import_names(type_name: t, n: n, emit_info: emit_info, scope: scope))
       let pe_list = match pe {
         Present { value: p } => if p != "" { [p] } else { [] }
         Absent => []
@@ -4305,7 +4325,7 @@ fn collect_pattern_ref_names(pattern: MatchPattern, type_summaries: Map<String, 
   }
 }
 
-fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
+fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
   let self_name = match n.expr_data {
     ExprVar { binding_kind: bk } =>
       match bk {
@@ -4318,28 +4338,28 @@ fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, t
       let nm = authored_name_at(source_indices: source_indices, node: n)
       if nm != "" { [nm] } else { [] }
     ExprRecordLit { parent_enum: _ } =>
-      record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
+      record_lit_ref_names(n: n, source_indices: source_indices, emit_info: emit_info, scope: scope)
     _ => []
   }
   let list_fields = concat(
     concat(
-      n.children |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)),
-      n.params |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum))
+      n.children |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope)),
+      n.params |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope))
     ),
     concat(
-      n.uses |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)),
-      n.properties |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum))
+      n.uses |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope)),
+      n.properties |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope))
     )
   )
   let opt_fields = concat(
-    match n.body { Present { value: b } => collect_value_ref_names(n: b, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] },
+    match n.body { Present { value: b } => collect_value_ref_names(n: b, source_indices: source_indices, emit_info: emit_info, scope: scope)  Absent => [] },
     concat(
-      match n.transport { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] },
-      match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)  Absent => [] }
+      match n.transport { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, emit_info: emit_info, scope: scope)  Absent => [] },
+      match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices, emit_info: emit_info, scope: scope)  Absent => [] }
     )
   )
   let pattern_names = match n.match_pattern {
-    Present { value: p } => collect_pattern_ref_names(pattern: p, type_summaries: type_summaries)
+    Present { value: p } => collect_pattern_ref_names(pattern: p, type_summaries: emit_info.type_summaries)
     Absent => []
   }
   concat(self_name, concat(pattern_names, concat(list_fields, opt_fields)))
@@ -4497,12 +4517,12 @@ fn collect_record_lit_field_struct_surfaces(parent: Node, field_init: Node, sour
   }
 }
 
-fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
+fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
   let variant_to_enum = emit_info.variant_to_enum
   let type_summaries = emit_info.type_summaries
   let self_names = match n.expr_data {
     ExprRecordLit { parent_enum: _ } =>
-      record_lit_ref_names(n: n, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
+      record_lit_ref_names(n: n, source_indices: source_indices, emit_info: emit_info, scope: scope)
     ExprMatch => collect_match_pattern_parent_enums(expr: n, source_indices: source_indices, emit_info: emit_info)
     _ =>
       let from_inferred_list = match n.inferred {
@@ -4523,34 +4543,34 @@ fn collect_value_emit_type_surface_names(n: Node, source_indices: Map<String, Ne
     ExprRecordLit { parent_enum: _ } =>
       concat(
         n.children |> flat_map(c => collect_record_lit_field_struct_surfaces(parent: n, field_init: c, source_indices: source_indices, type_summaries: type_summaries, variant_to_enum: variant_to_enum)),
-        n.children |> flat_map(c => collect_value_emit_type_surface_names(n: field_init_node_value(n: c), source_indices: source_indices, emit_info: emit_info))
+        n.children |> flat_map(c => collect_value_emit_type_surface_names(n: field_init_node_value(n: c), source_indices: source_indices, emit_info: emit_info, scope: scope))
       )
     _ =>
       concat(
         concat(
-          n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info)),
-          n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info))
+          n.children |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope)),
+          n.params |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope))
         ),
         concat(
-          n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info)),
-          n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info))
+          n.uses |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope)),
+          n.properties |> flat_map(c => collect_value_emit_type_surface_names(n: c, source_indices: source_indices, emit_info: emit_info, scope: scope))
         )
       )
   }
   let opt_names = concat(
-    match n.body { Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, emit_info: emit_info)  Absent => [] },
+    match n.body { Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, emit_info: emit_info, scope: scope)  Absent => [] },
     concat(
-      match n.transport { Present { value: t } => collect_value_emit_type_surface_names(n: t, source_indices: source_indices, emit_info: emit_info)  Absent => [] },
+      match n.transport { Present { value: t } => collect_value_emit_type_surface_names(n: t, source_indices: source_indices, emit_info: emit_info, scope: scope)  Absent => [] },
       match n.type_annotation { Present { value: t } => collect_type_node_import_surface_names(n: t, source_indices: source_indices)  Absent => [] }
     )
   )
   unique_strings(items: concat(self_names, concat(child_names, opt_names)))
 }
 
-fn collect_item_emit_surface_names(item: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
+fn collect_item_emit_surface_names(item: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, scope: InferScope) -> List<String> {
   let from_signature = collect_item_type_surface_names(item: item, source_indices: source_indices)
   let from_body = match item.body {
-    Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, emit_info: emit_info)
+    Present { value: b } => collect_value_emit_type_surface_names(n: b, source_indices: source_indices, emit_info: emit_info, scope: scope)
     Absent => []
   }
   unique_strings(items: concat(from_signature, from_body))
@@ -5250,14 +5270,14 @@ fn canonical_string_set(items: List<String>) -> List<String> {
   sorted_map_keys(presence)
 }
 
-fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String, module_scope: InferScope) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
       Absent => ""
     }
-    let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
-    let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
+    let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, emit_info: emit_info, scope: module_scope)))
+    let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info, scope: module_scope))
     let type_surface_names = unique_strings(items: item_emit_surface_names)
     let applied_type_argument_names = unique_strings(items: items
       |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: source_indices))
@@ -5438,8 +5458,8 @@ fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, 
   )
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
-  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String, module_scope: InferScope) -> List<String> {
+  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source, module_scope: module_scope)
   plan.lines
 }
 
@@ -5562,7 +5582,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       source_indices: scope.type_env.source_indices,
       module_index: module_index,
       shared_types: shared_types,
-      emitted_source: items_str
+      emitted_source: items_str,
+      module_scope: scope
     )
   let reference_use_lines = reference_plan.lines
   let merged_import_lines = dedupe_rust_import_lines(lines: concat(dag_import_lines, reference_use_lines))
@@ -14305,19 +14326,53 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
   } else { none }
 }
 
-fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+// WHICH STRUCT A RECORD LITERAL'S HEAD NAMES, DECIDED ONCE FOR THE RENDERER AND THE IMPORT COLLECTOR.
+// A nominal head is the literal's explicit or resolved struct name reduced to its leaf (bare_name);
+// ctor_name is the struct the literal is constructed as, which differs from bare_name only when the
+// leaf is no summary key and the resolved product's declared fields name exactly one struct -- the
+// alias case, where `UsdWholeDollars { .. }` constructs Measure. ShapeStructHead is the anonymous
+// literal with no nominal type, whose struct only the field shape can name.
+// emit_typed_record_lit renders from this answer, and record_lit_resolved_ctor_import_names proposes
+// ctor_name from it, so the import a head needs and the head itself cannot be decided twice.
+type RecordLitStructHead
+  = NominalStructHead { bare_name: String, ctor_name: String }
+  | ShapeStructHead
+
+fn record_lit_struct_head(type_name: String?, resolved_type: Node, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo) -> RecordLitStructHead {
+  let si = scope.type_env.source_indices
+  let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: si)
   let qualified_name = match struct_name {
     Present { value: sn } => Present { value: sn }
     Absent =>
-      let rt_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type)
+      let rt_name = authored_name_at(source_indices: si, node: resolved_type)
       if resolved_type.ident_span != none && map_contains_key(emit_info.type_summaries, rt_name) {
         Present { value: rt_name }
       } else { none }
   }
-  let bare_qualified_name = match qualified_name {
-    Present { value: qn } => Present { value: qualified_last_segment(name: qn) }
-    Absent => none
+  match qualified_name {
+    Absent => ShapeStructHead
+    Present { value: qn } =>
+      let tn = qualified_last_segment(name: qn)
+      let ctor_name = if map_contains_key(emit_info.type_summaries, tn) { tn }
+        else {
+          let resolved_struct = resolve_node(n: resolved_type, env: scope.type_env, module_name: scope.module_name).resolved
+          if (resolved_struct.connective == Conj) {
+            let resolved_field_names = resolved_struct.children |> map(c => authored_name_at(source_indices: si, node: c))
+            match find_unique_struct_name_by_fields(field_names: resolved_field_names, type_summaries: emit_info.type_summaries) {
+              Present { value: canonical } => if (canonical != tn) { canonical } else { tn }
+              Absent => tn
+            }
+          } else { tn }
+        }
+      NominalStructHead { bare_name: tn, ctor_name: ctor_name }
+  }
+}
+
+fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let head = record_lit_struct_head(type_name: type_name, resolved_type: resolved_type, shared_types: shared_types, scope: scope, emit_info: emit_info)
+  let bare_qualified_name = match head {
+    NominalStructHead { bare_name: b, ctor_name: _ } => Present { value: b }
+    ShapeStructHead => none
   }
   let bare_parent_enum = match parent_enum {
     Present { value: pe } => Present { value: qualified_last_segment(name: pe) }
@@ -14327,8 +14382,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
     Present { value: n } => n
     Absent => match bare_qualified_name { Present { value: qn } => qn  Absent => "" }
   }
-  match bare_qualified_name {
-    Absent =>
+  match head {
+    ShapeStructHead =>
       let is_product = is_product_type(n: resolved_type)
       if is_product && resolved_type.ident_span == none {
         if fields |> count == 1 {
@@ -14388,23 +14443,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       } else {
         "compile_error!(\"cannot resolve anonymous record type in emitter\")"
       }
-    Present { value: tn } =>
+    NominalStructHead { bare_name: tn, ctor_name: ctor_name } =>
       let si = scope.type_env.source_indices
       if keyed_container_has_target_inhabitant(container_name: tn, target: Rust) {
         return "panic!(\"record-shaped carrier has no realization in the selected Rust target inhabitant\")"
       }
-      let tn_is_known_struct = map_contains_key(emit_info.type_summaries, tn)
-      let ctor_name = if tn_is_known_struct { tn }
-        else {
-          let resolved_struct = resolve_node(n: resolved_type, env: scope.type_env, module_name: scope.module_name).resolved
-          if (resolved_struct.connective == Conj) {
-            let resolved_field_names = resolved_struct.children |> map(c => authored_name_at(source_indices: si, node: c))
-            match find_unique_struct_name_by_fields(field_names: resolved_field_names, type_summaries: emit_info.type_summaries) {
-              Present { value: canonical } => if (canonical != tn) { canonical } else { tn }
-              Absent => tn
-            }
-          } else { tn }
-        }
       let ctor_alias_resolved = ctor_name != tn
       let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
