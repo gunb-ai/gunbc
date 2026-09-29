@@ -75,7 +75,8 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
-import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal }
+import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
+import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused }
 import gunbc.roadmap_belt_actuate {
   BeltAlignmentBinding, BeltAlignmentBindingOk, BeltAlignmentBindingRefused,
   BeltAlignmentBindingText, BeltAlignmentBindingAbsent, BeltAlignmentBindingRead, BeltAlignmentBindingUnreadable,
@@ -3036,4 +3037,8 @@ test fn the_worker_process_terminal_read_settles_only_a_recorded_exit() -> Bool 
     && !belt_worker_process_terminal(evidence: WorkerProcessRunning { command: "x" as NonEmptyStr })
     && !belt_worker_process_terminal(evidence: WorkerProcessAbsent)
     && !belt_worker_process_terminal(evidence: WorkerProcessUnobserved { reason: "x" as NonEmptyStr })
+    && belt_attempt_worker_terminal(provider: ProviderEventsRefused { activity: "x", detail: "y" }, evidence: WorkerProcessAbsent)
+    && belt_attempt_worker_terminal(provider: ProviderRunning { activity: "x" }, evidence: WorkerProcessExited { exit_code: 1, last_command: "x" })
+    && !belt_attempt_worker_terminal(provider: ProviderEventsRefused { activity: "x", detail: "y" }, evidence: WorkerProcessRunning { command: "x" as NonEmptyStr })
+    && !belt_attempt_worker_terminal(provider: ProviderRunning { activity: "x" }, evidence: WorkerProcessAbsent)
 }
