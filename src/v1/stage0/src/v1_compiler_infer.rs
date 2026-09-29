@@ -30,6 +30,7 @@ pub use crate::std_content_hash::{
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
@@ -76,7 +77,8 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::{
-    container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
+    container_param_name, container_template_algebra, container_template_alias_algebra,
+    is_container_type, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_coercion::provenance_realizes_natively;
@@ -292,7 +294,7 @@ pub use crate::v1_std_core::{
     foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
     if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
     index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
-    is_compiler_error, is_container_type, is_error_diagnostic, is_interpreter_blocking_diagnostic,
+    is_compiler_error, is_error_diagnostic, is_interpreter_blocking_diagnostic,
     is_property_contraction, is_tree_size_reducing, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, local_transport_node, make_arg_node, make_arm_node,
     make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
@@ -4872,6 +4874,38 @@ pub fn application_type_name_identity(
     }
 }
 
+pub fn application_type_name_declaration(
+    type_name: String,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<DeclarationRef>> {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), type_name.clone()) {
+        Some(decl) => {
+            let peeled = match decl.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                        target.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                    )
+                }
+                _ => crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    decl.clone(),
+                    type_env.clone(),
+                    module_name.clone(),
+                ),
+            };
+            crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                peeled.clone(),
+                source_indices.clone(),
+                type_env.clone(),
+            )
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn structured_application_structural_type_name(
     type_name: String,
     scope: Rc<InferScope>,
@@ -4948,7 +4982,29 @@ pub fn application_type_names_compatible(
                     module_name.clone(),
                     source_indices.clone(),
                 );
-                if (formal_identity.clone() == lit_identity.clone()) {
+                let same_identity = match application_type_name_declaration(
+                    formal_name.clone(),
+                    type_env.clone(),
+                    module_name.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(formal_decl) => match application_type_name_declaration(
+                        lit_name.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Some(lit_decl) => crate::std_decl_ref::declaration_ref_eq(
+                            formal_decl.clone(),
+                            lit_decl.clone(),
+                        ),
+                        std::option::Option::None => {
+                            (formal_identity.clone() == lit_identity.clone())
+                        }
+                    },
+                    std::option::Option::None => (formal_identity.clone() == lit_identity.clone()),
+                };
+                if same_identity.clone() {
                     true
                 } else {
                     if crate::std_coercion::dag_can_cast(lit_name.clone(), formal_name.clone()) {
@@ -6255,6 +6311,111 @@ pub fn structured_application_site_type_mismatch(
     }
 }
 
+pub fn kernel_container_carrier_module() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "std.algebra".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn structured_formal_carrier_declaration(
+    formal_peeled: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), formal_peeled.clone());
+        if crate::std_types::is_container_type(name.clone()) {
+            match crate::std_types::container_template_alias_algebra(name.clone()) {
+                Some(carrier) => Some(crate::std_decl_ref::decl_ref(
+                    kernel_container_carrier_module(),
+                    carrier.clone(),
+                )),
+                std::option::Option::None => std::option::Option::None,
+            }
+        } else {
+            application_type_name_declaration(
+                name.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+                source_indices.clone(),
+            )
+        }
+    }
+}
+
+pub fn structured_literal_owner_declaration(
+    lit_name: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let owner = match variant_owner_node(scope.clone(), lit_name.clone()) {
+            Some(o) => Some(o.clone()),
+            std::option::Option::None => crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                lit_name.clone(),
+            ),
+        };
+        match owner.clone() {
+            Some(o) => crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+                o.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                scope.type_env.clone(),
+            ),
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
+pub fn structured_literal_constructs_formal_carrier(
+    formal_peeled: Rc<Node>,
+    lit_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    match structured_formal_carrier_declaration(formal_peeled.clone(), scope.clone()) {
+        Some(formal_decl) => {
+            match structured_literal_owner_declaration(lit_name.clone(), scope.clone()) {
+                Some(owner_decl) => {
+                    crate::std_decl_ref::declaration_ref_eq(formal_decl.clone(), owner_decl.clone())
+                }
+                std::option::Option::None => false,
+            }
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn structured_kernel_container_identity_verdict(
+    formal_peeled: Rc<Node>,
+    lit_name: String,
+    scope: Rc<InferScope>,
+) -> Option<bool> {
+    {
+        let name = crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            formal_peeled.clone(),
+        );
+        if !crate::std_types::is_container_type(name.clone()) {
+            return std::option::Option::None;
+        }
+        match structured_formal_carrier_declaration(formal_peeled.clone(), scope.clone()) {
+            Some(carrier) => {
+                match structured_literal_owner_declaration(lit_name.clone(), scope.clone()) {
+                    Some(owner) => Some(crate::std_decl_ref::declaration_ref_eq(
+                        carrier.clone(),
+                        owner.clone(),
+                    )),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
 pub fn structured_application_site_type_mismatch_with_peeled(
     formal: Rc<Node>,
     formal_peeled: Rc<Node>,
@@ -6283,22 +6444,25 @@ pub fn structured_application_site_type_mismatch_with_peeled(
                                 source_indices.clone(),
                             ) {
                                 Some(lit_name) => {
-                                    if application_type_names_compatible(
-                                        formal_name.clone(),
+                                    match structured_kernel_container_identity_verdict(
+                                        formal_peeled.clone(),
                                         lit_name.clone(),
-                                        scope.type_env.clone(),
-                                        scope.module_name.clone(),
-                                        source_indices.clone(),
+                                        scope.clone(),
                                     ) {
-                                        false
-                                    } else {
-                                        {
-                                            let lit_nominal =
-                                                structured_application_record_lit_nominal_name(
-                                                    lit_name.clone(),
-                                                    scope.clone(),
-                                                );
-                                            if ((lit_name.clone() == "".to_string()) || structured_application_lit_is_declared_optional_variant(formal.clone(), lit_name.clone(), scope.clone())) {
+                                        Some(admitted) => !admitted.clone(),
+                                        std::option::Option::None => {
+                                            if application_type_names_compatible(
+                                                formal_name.clone(),
+                                                lit_name.clone(),
+                                                scope.type_env.clone(),
+                                                scope.module_name.clone(),
+                                                source_indices.clone(),
+                                            ) {
+                                                false
+                                            } else {
+                                                {
+                                                    let lit_nominal = structured_application_record_lit_nominal_name(lit_name.clone(), scope.clone());
+                                                    if ((lit_name.clone() == "".to_string()) || structured_application_lit_is_declared_optional_variant(formal.clone(), lit_name.clone(), scope.clone())) {
                                     false
                                 } else {
                                     if match record_lit_alias_struct_expansion(lit_name.clone(), scope.clone()) {
@@ -6341,19 +6505,23 @@ match formal_decl.clone() {
 },
     _ => false,
 },
-    std::option::Option::None => if crate::std_types::is_kernel_type(formal_name.clone()) {
-                                                        match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) {
+    std::option::Option::None => if structured_literal_constructs_formal_carrier(formal_peeled.clone(), lit_name.clone(), scope.clone()) {
+                                                        false
+                                                    } else {
+                                                        if crate::std_types::is_kernel_type(formal_name.clone()) {
+                                                            match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) {
     Some(lit_decl) => ((lit_decl.connective.clone() == Connective::Conj) || (lit_decl.connective.clone() == Connective::Disj)),
     std::option::Option::None => match variant_owner_node(scope.clone(), lit_name.clone()) {
     Some(_) => true,
     std::option::Option::None => false,
 },
 }
-                                                    } else {
-                                                        if ((crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) != std::option::Option::None) && (crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), formal_name.clone()) != std::option::Option::None)) {
-                                                            true
                                                         } else {
-                                                            false
+                                                            if ((crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) != std::option::Option::None) && (crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), formal_name.clone()) != std::option::Option::None)) {
+                                                                true
+                                                            } else {
+                                                                false
+                                                            }
                                                         }
                                                     },
 }
@@ -6362,6 +6530,8 @@ match formal_decl.clone() {
                                         }
                                     }
                                 }
+                                                }
+                                            }
                                         }
                                     }
                                 }
