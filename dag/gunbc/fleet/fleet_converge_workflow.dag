@@ -33,7 +33,8 @@ import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_re
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
-import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability }
+import gunbc.fleet_release_bins_key { release_bins_key_job_output, release_bins_key_expression, release_bins_scripts_admitted }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
   WorkflowToolchainHomesAdmitted,
@@ -53,6 +54,15 @@ import gunbc.fleet_workflow_steps {
   ci_prelude_annotations,
   ci_release_build_step,
   ci_release_bins_pack_step,
+  ci_release_bins_key_step,
+  ci_release_bins_lookup_step,
+  release_bins_key_step_name,
+  release_bins_lookup_step_name,
+  release_bins_cache_step_name,
+  release_bins_outcome_step_name,
+  ci_release_bins_cache_step,
+  ci_release_bins_outcome_step,
+  ci_cache_cargo_step,
   ci_release_bins_upload_step,
   ci_release_bins_download_step,
   ci_release_bins_unpack_verify_step,
@@ -717,7 +727,7 @@ data fleet_converge_host_reset_return_step_if: String = fleet_converge_mode_step
 // cost on every dispatch of every other mode.
 fn fleet_converge_host_reset_return_job() -> Job {
   Job {
-    id: "host-reset-return",
+    id: fleet_converge_mode_job_id(mode: HostResetReturn) as String,
     name: none,
     runner: fleet_converge_reset_observer_runner_spec(),
     environment: none,
@@ -728,7 +738,7 @@ fn fleet_converge_host_reset_return_job() -> Job {
       ),
       [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
     ),
-    needs: fleet_converge_job_needs(id: "host-reset-return" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: HostResetReturn)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_host_reset_return_step_if },
@@ -809,6 +819,11 @@ fn fleet_converge_build_job_steps() -> List<Step> {
 
 fn fleet_converge_build_job_own_steps() -> List<Step> {
   [
+    ci_release_bins_key_step(),
+    ci_release_bins_lookup_step(),
+    ci_release_bins_cache_step(),
+    ci_release_bins_outcome_step(),
+    ci_cache_cargo_step(),
     ci_release_build_step(),
     fleet_converge_reset_observer_dispatch_admission_step(),
     ci_release_bins_pack_step(),
@@ -841,6 +856,14 @@ fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
   concat(
     ci_prelude_annotations(),
     [
+      CapabilityAnnotatedStep {
+        step_name: release_bins_key_step_name,
+        role: consumes_only(capabilities: [RustcCapability, CargoCapability]),
+      },
+      CapabilityAnnotatedStep { step_name: release_bins_lookup_step_name, role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: release_bins_cache_step_name, role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: release_bins_outcome_step_name, role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Cache Cargo", role: capability_neutral },
       CapabilityAnnotatedStep {
         step_name: "Build release binaries",
         role: consumes_only(capabilities: [CargoCapability]),
@@ -922,14 +945,24 @@ fn fleet_converge_build_job() -> Job {
     runner: gunbc_ci_runner_spec(),
     environment: none,
     steps: fleet_converge_build_job_steps(),
-    needs: fleet_converge_job_needs(id: "build" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_release_bins_job_id),
     env: none,
-    outputs: none,
+    outputs: Present {
+      value: [kv(key: release_bins_key_job_output, value: yaml_string(s: release_bins_key_expression()))]
+    },
     if_condition: none,
     timeout_minutes: Present { value: gunbc_fleet_converge_build_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
-    permissions: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: none,
+      }
+    },
   }
 }
 
@@ -2316,7 +2349,7 @@ fn fleet_converge_approval_device_enrolment_code_issue_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_approval_device_enrolment_code_issue_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
   }
 }
 
@@ -2598,7 +2631,7 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // half-applied cutover.
 fn fleet_converge_dashboard_deploy_job() -> Job {
   Job {
-    id: "dashboard-deploy",
+    id: fleet_converge_mode_job_id(mode: DashboardDeploy) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2631,7 +2664,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         ),
       ]
     ),
-    needs: fleet_converge_job_needs(id: "dashboard-deploy" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: DashboardDeploy)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
@@ -2714,7 +2747,7 @@ fn fleet_converge_microvm_controller_install_step() -> Step {
 
 fn fleet_converge_microvm_controller_install_job() -> Job {
   Job {
-    id: "microvm-controller-install",
+    id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2726,7 +2759,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         fleet_converge_microvm_controller_install_step(),
       ]
     ),
-    needs: fleet_converge_job_needs(id: "microvm-controller-install" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_microvm_controller_install_step_if },
@@ -2745,7 +2778,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
 
 fn fleet_converge_approval_broker_dark_install_job() -> Job {
   Job {
-    id: "approval-broker-dark-install",
+    id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2757,7 +2790,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
         fleet_converge_approval_broker_dark_install_step(),
       ]
     ),
-    needs: fleet_converge_job_needs(id: "approval-broker-dark-install" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_approval_broker_dark_install_step_if },
@@ -3224,12 +3257,12 @@ fn fleet_converge_mtcollins1_boot_steps() -> List<Step> {
 
 fn fleet_converge_mtcollins1_boot_job() -> Job {
   Job {
-    id: "mtcollins1-boot",
+    id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
     name: none,
     runner: fleet_converge_mtcollins1_boot_runner(),
     environment: Present { value: mtcollins1_boot_environment as String },
     steps: fleet_converge_mtcollins1_boot_steps(),
-    needs: fleet_converge_job_needs(id: "mtcollins1-boot" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_job_if },
@@ -3270,7 +3303,7 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
 
 fn fleet_converge_job() -> Job {
   Job {
-    id: "fleet-converge",
+    id: fleet_converge_shared_job_id as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -3356,7 +3389,7 @@ fn fleet_converge_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: fleet_converge_job_needs(id: "fleet-converge" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_shared_job_id),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_shared_job_if },
@@ -3410,7 +3443,7 @@ fn fleet_converge_rlm_receipt_step() -> Step {
 
 fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
   Job {
-    id: "rlm-launch-deployment-receipt",
+    id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -3457,7 +3490,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: fleet_converge_job_needs(id: "rlm-launch-deployment-receipt" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_rlm_receipt_step_if },
@@ -3479,6 +3512,74 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     }
+  }
+}
+
+// WHICH JOB CARRIES A MODE'S OWN WORK IS ONE AUTHORITY, AND THE JOB BUILDERS READ THEIR ID FROM IT.
+//
+// A mode either runs inside the shared `fleet-converge` job or has a job of its own (it federates
+// as its own identity, or it installs onto a host the shared job does not hold). That fact was
+// authored nowhere: each builder spelled its own id, so a witness over the job roster could only
+// compare it to a copied literal, which went red on every added mode while establishing nothing
+// (DESIGN section 5). The match is exhaustive, so a new mode cannot be rostered without naming its
+// job, and each dedicated builder takes its id from its mode's arm here.
+data fleet_converge_shared_job_id: NonEmptyStr = "fleet-converge" as NonEmptyStr
+
+fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
+  match mode {
+    FullHostPlan => fleet_converge_shared_job_id
+    LaunchEnvironmentPlan => fleet_converge_shared_job_id
+    AllocationStorePlan => fleet_converge_shared_job_id
+    FleetApply => fleet_converge_shared_job_id
+    OrgActionsObserve => fleet_converge_shared_job_id
+    AppControlPlaneObserve => fleet_converge_shared_job_id
+    MicrovmHostConverge => fleet_converge_shared_job_id
+    MicrovmNetworkObserve => fleet_converge_shared_job_id
+    MicrovmNetworkApply => fleet_converge_shared_job_id
+    GuestImageObserve => fleet_converge_shared_job_id
+    GuestImageConverge => fleet_converge_shared_job_id
+    MicrovmBootProbe => fleet_converge_shared_job_id
+    SparkGrants => fleet_converge_shared_job_id
+    SparkBootstrap => fleet_converge_shared_job_id
+    SparkServingApply => fleet_converge_shared_job_id
+    SparkNativeServingApply => fleet_converge_shared_job_id
+    SparkRuntimeImageProbe => fleet_converge_shared_job_id
+    SparkV41CheckpointMaterialize => fleet_converge_shared_job_id
+    SparkV41RowStoreEncode => fleet_converge_shared_job_id
+    SparkV41RowStoreReadback => fleet_converge_shared_job_id
+    SparkV41EngramDifferential => fleet_converge_shared_job_id
+    SparkV41RuntimeImageBuild => fleet_converge_shared_job_id
+    SparkV41RuntimeImageDistribute => fleet_converge_shared_job_id
+    SparkV41GroupALaunch => fleet_converge_shared_job_id
+    DashboardDeploy => "dashboard-deploy" as NonEmptyStr
+    ApprovalBrokerDarkInstall => "approval-broker-dark-install" as NonEmptyStr
+    MicrovmControllerInstall => "microvm-controller-install" as NonEmptyStr
+    MicrovmSlotStart => fleet_converge_shared_job_id
+    RlmLaunchDeploymentReceipt => "rlm-launch-deployment-receipt" as NonEmptyStr
+    HostResetReturn => "host-reset-return" as NonEmptyStr
+    RunnerHostFileObserve => fleet_converge_shared_job_id
+    RunnerHostFileConverge => fleet_converge_shared_job_id
+    SitePxeEdgeObserve => fleet_converge_shared_job_id
+    SitePxeEdgeConverge => fleet_converge_shared_job_id
+    RunnerPasswordSessionToolConverge => fleet_converge_shared_job_id
+    R2MintPreflight => fleet_converge_shared_job_id
+    R2ObjectWriteMint => fleet_converge_shared_job_id
+    OrgRunnerRosterObserve => fleet_converge_shared_job_id
+    ApprovalKeyringConverge => fleet_converge_shared_job_id
+    ApprovalDeviceEnrolmentCodeIssue => fleet_converge_shared_job_id
+    MtCollins1Boot => "mtcollins1-boot" as NonEmptyStr
+    MtCollins1FanObserve => fleet_converge_shared_job_id
+    MtCollins1CensusImagePublish => fleet_converge_shared_job_id
+    MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
+    HostCredentialCustodyConverge => fleet_converge_shared_job_id
+    AppKeyVersionVerify => fleet_converge_shared_job_id
+    R2BucketEnsure => fleet_converge_shared_job_id
+    R2BucketAdminMint => fleet_converge_shared_job_id
+    FabricWriterIdentityObserve => fleet_converge_shared_job_id
+    PairServingD0 => fleet_converge_shared_job_id
+    MicrovmRunnerGroupEnsure => fleet_converge_shared_job_id
+    GcpIamConverge => "gcp-iam-converge" as NonEmptyStr
+    NamecheapObserve => "namecheap-observe" as NonEmptyStr
   }
 }
 
@@ -3505,15 +3606,15 @@ data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 // visible as exactly that rather than buried in a builder.
 data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [] },
-  FleetConvergeJobEdge { id: "fleet-converge" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "mtcollins1-boot" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "host-reset-return" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "dashboard-deploy" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "approval-broker-dark-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "microvm-controller-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "rlm-launch-deployment-receipt" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "namecheap-observe" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: "gcp-iam-converge" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: DashboardDeploy), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: NamecheapObserve), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: GcpIamConverge), needs: [fleet_converge_release_bins_job_id as String] },
 ]
 
 // A BUILDER ASKS THE ROSTER FOR ITS OWN EDGE BY ID AND THE LOOKUP REFUSES RATHER THAN INVENTS. An
@@ -3628,7 +3729,7 @@ fn fleet_converge_gcp_iam_apply_step() -> Step {
 
 fn fleet_converge_gcp_iam_converge_job() -> Job {
   Job {
-    id: "gcp-iam-converge",
+    id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
     name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", approval_broker_host_identity() as String] },
     environment: Present { value: gcp_iam_converge_environment as String },
@@ -3645,7 +3746,7 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
       fleet_converge_gcp_iam_actuate_auth_step(),
       fleet_converge_gcp_iam_apply_step(),
     ],
-    needs: fleet_converge_job_needs(id: "gcp-iam-converge" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: GcpIamConverge)),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
@@ -3861,6 +3962,10 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
+      } else if !release_bins_scripts_admitted() {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused a release-bins runner (gunbc.fleet_release_bins_key), so no workflow is emitted rather than a step with no script",
+        }
       } else {
         fleet_converge_yml_after_reset_assignment()
       }
@@ -3886,7 +3991,7 @@ fn fleet_converge_yml_after_reset_assignment() -> FleetConvergeYamlGenerationOut
 
 fn fleet_converge_namecheap_observe_job() -> Job {
   Job {
-    id: "namecheap-observe", name: none,
+    id: fleet_converge_mode_job_id(mode: NamecheapObserve) as String, name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: Present { value: namecheap_environment as String },
     steps: [
@@ -3912,7 +4017,7 @@ fn fleet_converge_namecheap_observe_job() -> Job {
         if_condition: "success()",
       ),
     ],
-    needs: fleet_converge_job_needs(id: "namecheap-observe" as NonEmptyStr),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: NamecheapObserve)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: NamecheapObserve) },
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },

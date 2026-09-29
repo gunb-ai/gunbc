@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # This realizes the ordered typed rows emitted by fabric_ci_calibration_write_plan.
-# SCAFFOLD - dissolve-on: this runner is emitted from v2.extdeps.languages.bash_build nodes by
-# v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (set -euo pipefail, trap, export
-# and every argv here are ordinary commands on it), so the migration is unauthored, not blocked --
-# or it becomes typed host_effect_apply.
-# That capability -- .dag-to-bash emission for a foreign executor -- is what replaces a hand-shell
-# carrier; modeled lifecycle actuation alone would
-# sequence the gate and still leave this transport hand-authored.
+# SCAFFOLD - dissolve-on: the bash target grammar (v2.extdeps.languages.bash rows, built by
+# v2.extdeps.languages.bash_build, serialized by v2.workflow.bash_emit) gains the constructs this
+# runner needs: [[ ]] conditional expressions with glob matching, shell function definitions, ${var: -1} substring expansion, and an a && b || c list rendered without a subshell (a known serializer limit). It then becomes emitted from those nodes, or typed host_effect_apply.
+# CORRECTED 2026-09-28: #12430 classed this runner (c), "route AVAILABLE today, migration unauthored".
+# That was wrong. The grammar has no production for any construct listed above, so the class is (b),
+# a missing target-language capability. The earlier text was quoted in #12430's census.
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || { echo 'CalibrationRefused: derived repo_root is not a git checkout' >&2; exit 2; }
 cd "$repo_root" || { echo 'CalibrationRefused: cannot enter derived repo_root' >&2; exit 2; }
