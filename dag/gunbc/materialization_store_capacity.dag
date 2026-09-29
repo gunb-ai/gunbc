@@ -43,8 +43,9 @@ import std.materialization_store_grant {
 //                         only the user-cache and witness roots.
 //
 // StoreCeiling is sole_constructor: no consumer can mint a ceiling this module did not answer, and
-// std.artifact_store store_over_provider_resolved takes the ceiling ONLY as a StoreCeiling, so a store
-// built through it is sized by a number this module answered for some root. The one root whose
+// std.artifact_store artifact_store_for_ceiling, the one construction of a store from a ceiling, takes
+// it ONLY as a StoreCeiling, so a store built there is sized by a number this module answered for some
+// root. The one root whose
 // ceiling is a caller's choice is WitnessScratchRoot, by design, and its store is admitted only under
 // the /tmp/gunbc_* scratch grant (std.materialization_store_grant). Which root's ceiling sizes which
 // store is joined by the caller: the commit derives both from the one root value it opened.
@@ -76,10 +77,10 @@ data materialization_store_byte_ceiling_authority: DeclarationRef = DeclarationR
 
 // DECLARED FRONTIER (DESIGN section 3c). Today's consumers are
 // test.claim.materialization_store_capacity_witness, which executes every arm, and
-// test.claim.artifact_store_witness, which sizes a store through std.artifact_store
-// store_over_provider_resolved with the ceiling this answers. The production consumers land in M1.c
-// landing unit L5b -- the commit resolves the ceiling of the root it opened, builds the store through
-// store_over_provider_resolved over the local store catalog's provider row, seeds it with
+// test.claim.artifact_store_witness, which sizes stores with std.artifact_store
+// artifact_store_for_ceiling and std.artifact_store store_over_provider_resolved from the ceiling this
+// answers. The production consumers land in M1.c landing unit L5b -- the commit resolves the ceiling
+// of the root it opened, builds the store with artifact_store_for_ceiling, seeds it with
 // artifact_store_with_occupancy and makes one store_put -- and in L8, whose store root is a
 // UserCacheRoot. TRIGGER: L5b's local_store_commit calls materialization_store_byte_ceiling.
 fn materialization_store_byte_ceiling(root: MaterializationStoreRoot) -> StoreCeilingResolution {

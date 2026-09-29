@@ -56,7 +56,9 @@ import gunbc.materialization_store_capacity { StoreCeiling, materialization_stor
 // row would silently have evicted. Each way the derivation can fail now has its own cause rather
 // than one StoreRefusedRetention the caller must re-interpret. store_over_provider_resolved
 // extends the same derivation to a RuntimeDerivedLimit: the value then arrives as the ceiling home's
-// sole_constructor StoreCeiling, for the one authority that home is, never as a caller's ByteSize.
+// sole_constructor StoreCeiling, for the one authority that home is, never as a caller's ByteSize,
+// and the store is built by artifact_store_for_ceiling, the one construction of a store from that
+// ceiling.
 
 type ArtifactKey {
   closure_digest: Fnv1a64Structural
@@ -118,6 +120,44 @@ type ArtifactStore {
   rows: List<ArtifactRow>
 }
 
+// THE ONE CONSTRUCTION OF A STORE FROM A CEILING (M1.c, spec gunbc#12581 revision 3, section 7.2).
+// The store is empty, counts from ordinal 1, and its budget is the ceiling's apparent file bytes. The
+// argument is gunbc.materialization_store_capacity's StoreCeiling, which is sole_constructor and
+// minted only by materialization_store_byte_ceiling, never a ByteSize, so a store built here is sized
+// by a number that home answered. It needs no CacheProvider and no ProviderRetention, so the commit
+// can build its store without the provider door. The door, store_over_provider_resolved, makes its
+// checks and then answers exactly this construction; it does not build a store of its own. The
+// ExactLimit arm of store_from_limit builds from a provider's stated number, which is not a
+// StoreCeiling, and is not a construction from this ceiling.
+//
+// WHY THE COMMIT MAY SKIP THE DOOR, AND THE ONE CHECK IT RELIES ON. The policy a store built here
+// is realized under belongs on the local store's catalog row, extdeps.realization.materialization_store_local
+// materialization_store_local_facts (spec section 2.6 moves the row to
+// materialization_store_local_catalog): a RuntimeDerivedLimit whose authority is
+// materialization_store_byte_ceiling_authority, least-recently-used replacement, and a release policy
+// that outlives the provider's scope. The row is constant data, so it is judged once, by a witness,
+// and not by every commit. The witness runs the constant row through store_over_provider_resolved and
+// asserts StoreReady with exactly this function's store for the same ceiling. If the row's authority,
+// replacement or release policy changed, the door would refuse the row and the witness would go red,
+// so the commit's direct call stays equivalent to the door's answer. That witness is the check the
+// commit path relies on: test.claim.artifact_store_witness
+// the_store_catalog_row_admits_exactly_the_ceiling_store.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Today's consumers are store_from_limit's resolved arm and
+// test.claim.artifact_store_witness, which executes this function directly and through the door. The
+// production consumer is M1.c landing unit L5b's local store commit: the ceiling of the root it
+// opened, this construction, artifact_store_with_occupancy, and one store_put. The catalog-row
+// witness named above does not exist yet. It lands in L5b together with the row's retention (spec
+// section 8, L5b "catalog retention"), because until then the row declares CapacityUnobserved, and
+// that is true: nothing applies a ceiling to that store or evicts from it yet, and the row's own
+// retention evidence says it stays unobserved until this accounting binds to the store. Declaring the
+// bounded policy before the commit enforces it would overstate the store. TRIGGER: L5b's catalog
+// retention row names materialization_store_byte_ceiling_authority and L5b's local_store_commit calls
+// artifact_store_for_ceiling; the commit does not land without that witness green.
+fn artifact_store_for_ceiling(ceiling: StoreCeiling) -> ArtifactStore {
+  ArtifactStore { budget: ceiling.apparent_file_bytes, next_ordinal: 1, rows: [] }
+}
+
 // EXACT CAUSES, not one carrier the caller must re-read. The remedies differ:
 // a wrong UNIT means this provider is the wrong cache for a byte-budgeted
 // store; an unresolved value means the deriving authority has to run first; an
@@ -161,17 +201,23 @@ fn store_over_provider(provider: CacheProvider) -> StoreConstruction {
 // it as CapacityValueUnresolved because no value is in hand. This door accepts the value -- but only
 // as a gunbc.materialization_store_capacity StoreCeiling, which is sole_constructor and minted only
 // by materialization_store_byte_ceiling, and only for a provider whose authority IS that function
-// (materialization_store_byte_ceiling_authority). It is the same construction path, not a second
-// one: release policy, capacity unit and at-capacity action are judged exactly as store_over_provider
-// judges them, so a scope-released provider, an entry-count ceiling and a non-LRU at_capacity still
-// refuse with their own causes, and only the value step differs. No ByteSize is accepted here, so a
-// caller cannot size eviction by a number the ceiling's home did not answer.
+// (materialization_store_byte_ceiling_authority). Release policy, capacity unit and at-capacity action
+// are judged exactly as store_over_provider judges them, so a scope-released provider, an entry-count
+// ceiling and a non-LRU at_capacity still refuse with their own causes. Then, and only then, the
+// store is artifact_store_for_ceiling's: this door checks and does not build a store of its own. No
+// ByteSize is accepted here, so a caller cannot size eviction by a number the ceiling's home did not
+// answer.
 //
-// DECLARED FRONTIER (DESIGN section 3c). Today's consumer is test.claim.artifact_store_witness. The
-// production consumer is M1.c landing unit L5b's local store commit, which resolves the ceiling of the
-// root it opened and passes it here with the store catalog's provider row, whose retention names
-// materialization_store_byte_ceiling_authority as its RuntimeDerivedLimit authority.
-// TRIGGER: L5b's local_store_commit calls store_over_provider_resolved.
+// WHAT THIS DOOR IS FOR. The commit does not call it: the commit builds its store with
+// artifact_store_for_ceiling and needs no CacheProvider (spec gunbc#12581 revision 3, sections 2.6 and
+// 9.1 Q11). This door is where a provider row's policy is judged against that construction, and the
+// row it exists to judge is the local store's catalog row, whose policy is constant.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Today's consumer is test.claim.artifact_store_witness, whose
+// fixture providers execute every arm. The consumer the commit path relies on is the witness named in
+// artifact_store_for_ceiling's leading comment, which runs the constant catalog row through this door.
+// TRIGGER: M1.c landing unit L5b's catalog retention row names
+// materialization_store_byte_ceiling_authority.
 fn store_over_provider_resolved(provider: CacheProvider, resolved: StoreCeiling) -> StoreConstruction {
   store_over_provider_with(provider: provider, resolved: Present { value: resolved })
 }
@@ -223,14 +269,14 @@ fn store_from_limit(provider: CacheProvider, l: CapacityLimit, resolved: StoreCe
     EntryCountCapacity { limit: _ } => store_refused(provider: provider, cause: CapacityUnitMismatch)
     ByteCapacity { limit: v } => match v {
       ExactLimit { value: bytes } => match resolved {
-        Absent => store_ready_empty(budget: bytes)
+        Absent => StoreReady { store: ArtifactStore { budget: bytes, next_ordinal: 1, rows: [] } }
         Present { value: _ } => store_refused(provider: provider, cause: ResolvedCeilingBesideExactLimit)
       }
       RuntimeDerivedLimit { authority: a } => match resolved {
         Absent => store_refused(provider: provider, cause: CapacityValueUnresolved)
         Present { value: ceiling } =>
           if declaration_ref_eq(a: a, b: materialization_store_byte_ceiling_authority) {
-            store_ready_empty(budget: ceiling.apparent_file_bytes)
+            StoreReady { store: artifact_store_for_ceiling(ceiling: ceiling) }
           } else {
             store_refused(provider: provider, cause: CapacityAuthorityMismatch)
           }
@@ -239,10 +285,6 @@ fn store_from_limit(provider: CacheProvider, l: CapacityLimit, resolved: StoreCe
         store_refused(provider: provider, cause: CapacityValueUnobserved)
     }
   }
-}
-
-fn store_ready_empty(budget: ByteSize) -> StoreConstruction {
-  StoreReady { store: ArtifactStore { budget: budget, next_ordinal: 1, rows: [] } }
 }
 
 // ONE OBSERVED ROW PER STORED ENTRY: its key and its size in APPARENT FILE BYTES, the unit
@@ -257,14 +299,13 @@ type ArtifactOccupancyRow {
 // section 7.2). A persistent store's accounting does not survive the process: each commit re-reads
 // the entries that exist and must rebuild this fold's state from them before its one store_put.
 //
-// THE STORE IS BUILT THROUGH THE PROVIDER PATH FIRST, AND THIS ONLY SEEDS IT. The argument is the
-// ArtifactStore a StoreReady carried -- for the local store, store_over_provider_resolved over the
-// catalog's provider row and the StoreCeiling of the root the commit opened -- and its budget is kept
-// as it is. There is no budget parameter: the budget is the one the store carries, which on the
-// commit's route the provider path derived. The seal is on this ROUTE, not on the type: ArtifactStore
-// is an open record that gunbc.spark.v41_runtime_realized and several witness fixtures construct
-// directly, and sealing it is not this unit's change (the spec's std.artifact_store_provider carve
-// constructs it from a second module).
+// THE STORE IS BUILT FIRST, AND THIS ONLY SEEDS IT. The argument is an ArtifactStore that was
+// already built -- for the local store, artifact_store_for_ceiling over the StoreCeiling of the root
+// the commit opened -- and its budget is kept as it is. There is no budget parameter: the budget is
+// the one the store carries, which on the commit's route is the ceiling's. The seal is on this ROUTE,
+// not on the type: ArtifactStore is an open record that gunbc.spark.v41_runtime_realized and several
+// witness fixtures construct directly, and sealing it is not this unit's change (the spec's
+// std.artifact_store_provider carve constructs it from a second module).
 //
 // The observed rows are listed in RECENCY ORDER, LEAST RECENTLY USED FIRST; row i (from 0) takes
 // last_use_ordinal store.next_ordinal + i, and next_ordinal moves one past the last. So the order the
@@ -288,7 +329,7 @@ type ArtifactOccupancyRow {
 // DECLARED FRONTIER (DESIGN section 3c). Today's consumer is test.claim.artifact_store_witness. The
 // production consumer is the local store commit in M1.c landing unit L5b
 // (extdeps.realization.materialization_store_local: census, reclaim dead classes, the ceiling of the
-// opened root, store_over_provider_resolved, this seed, one store_put).
+// opened root, artifact_store_for_ceiling, this seed, one store_put).
 // TRIGGER: L5b's local_store_commit calls artifact_store_with_occupancy.
 fn artifact_store_with_occupancy(store: ArtifactStore, occupancy: List<ArtifactOccupancyRow>) -> ArtifactStore {
   ArtifactStore {
