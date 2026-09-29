@@ -2030,7 +2030,7 @@ fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricStorageBind
                 PlacementCleanupStillFencing { preparation: _, cause: why } => exit_failure(reason: why)
                 PlacementFinalizedAt { preparation: _, id: _ } => ExitSuccess
                 PlacementAbortedAt { preparation: _, id: _ } => ExitSuccess
-                PlacementCleanupUnread { cause: _ } => ExitSuccess
+                PlacementCleanupUnread { cause: why } => exit_failure(reason: why)
               }
           }
       }
