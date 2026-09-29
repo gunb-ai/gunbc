@@ -1,5 +1,6 @@
 module gunbc.live_deploy.emit
 
+import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -27,6 +28,7 @@ import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
 import gunbc.managed_directory {
   ManagedDirectory,
+  managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_mode_octal,
   attempt_state_directory_at,
@@ -3133,8 +3135,11 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // rather than rendering the whole orchestrated script (DESIGN section 3).
 fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   concat(
-    approval_broker_tree_copy_steps(spec: spec, revision: revision),
-    approval_broker_helper_grant_steps(spec: spec, revision: revision),
+    [deploy_raw(command: ensure_managed_directory_command(admission: managed_directory_admit(d: approval_device_store_directory())))],
+    concat(
+      approval_broker_tree_copy_steps(spec: spec, revision: revision),
+      approval_broker_helper_grant_steps(spec: spec, revision: revision),
+    ),
   )
 }
 
