@@ -6,6 +6,9 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.sudo.elevation { sudo_elevate_as }
+import extdeps.tools.env { env_prefixed_argv }
+import v2.std.orchestration { EnvSet }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
@@ -52,11 +55,26 @@ fn enrolment_code_issue_ssh_target() -> SshTarget {
   }
 }
 
-// The remote argv: as the operator's user, the release's own binary over the release's own tree.
+// The remote argv: as the operator's user, the release's own binary over the release's own tree,
+// WITH THE RELEASE DIRECTORY AS ITS CHECKOUT ROOT. The seed resolves its workspace root before
+// any verb runs, from gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name when set
+// and otherwise by walking up from the working directory. Over SSH the working directory is the login
+// principal's home, which is no checkout, so the first run of this mode refused before minting
+// (fleet-converge run 36415852659: "no workspace root: none of the current directory /home/ubuntu's
+// ancestors is a git checkout"). Absolute --source-root paths did not help, because the root is
+// resolved first. The release locus is not a checkout either. Every other process that execs a
+// gunbc binary from a release locus receives that root at spawn from the same row
+// (gunbc.live_deploy.emit release_locus_workspace_root_environment, for the broker's serve unit and
+// the microVM slot unit), and this verb is one more such process. The binding rides inside the
+// elevation through env(1), because sudo's env_reset would drop a variable set outside it.
+// The elevated principal is the operator's POSIX user as modeled; /home/ubuntu in that refusal was
+// the SSH login's working directory, which sudo keeps, not the account the verb ran as.
 fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<String> {
   let root = srv1_gunbc_approval_broker_root as String
   let release_dir = approval_broker_release_dir(root: root, revision: revision)
-  let inv = sudo_elevate_as(user: fleet_posix_operator_user.name, command: [
+  let inv = sudo_elevate_as(user: fleet_posix_operator_user.name, command: env_prefixed_argv(bindings: [
+    EnvSet { name: gunbc_workspace_root_env_name, value: release_dir },
+  ], command_argv: [
     approval_broker_release_binary_path(root: root, revision: revision),
     "run",
     "--source-root", release_dir + "/dag",
@@ -64,7 +82,7 @@ fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<St
     "--entry", release_dir + "/dag/gunbc/auth/approval_device_routes.dag",
     "--function", "issue_device_enrolment_code",
     "--arg", "revision=" + release_revision_execstart_text(binding: revision),
-  ])
+  ]))
   concat([inv.bin_path], inv.args)
 }
 
