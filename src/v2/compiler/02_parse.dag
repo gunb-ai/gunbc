@@ -407,15 +407,17 @@ fn parse_g0_tokens_remain_diagnostic_at(tokens: List<Token>, furthest: ParseFurt
 fn parse_token_before(tokens: List<Token>, start: Int) -> Optional<Token> {
   fold_list(
     xs: tokens,
-    empty: Absent,
-    cons: fn(acc, tok) {
-      if tok.end <= start {
-        Present { value: tok }
-      } else {
-        acc
-      }
-    }
+    empty: optional_absent(),
+    cons: fn(acc, tok) { parse_token_before_step(acc: acc, tok: tok, start: start) }
   )
+}
+
+fn parse_token_before_step(acc: Optional<Token>, tok: Token, start: Int) -> Optional<Token> {
+  if tok.end <= start {
+    optional_present(value: tok)
+  } else {
+    acc
+  }
 }
 
 // THE GRAMMAR-AUTHORED REFUSAL. `reason` is a member of the grammar's declared
