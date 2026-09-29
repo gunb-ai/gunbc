@@ -92,15 +92,17 @@ fn the_shape_is_one_demand_feeding_two_actuators() -> Bool {
 fn the_actuators_carry_the_offsets_that_made_it_quiet() -> Bool {
   match srv3_programs().first() {
     Absent => false
-    Present { value: program } =>
-      match actuator_named(program: program, name: "FAN1").first() {
+    Present { value: program } => {
+      let fan1s = actuator_named(program: program, name: "FAN1")
+      let chassiss = actuator_named(program: program, name: "CHASSIS")
+      match fan1s.first() {
         Absent => false
         Present { value: fan1 } =>
-          match actuator_named(program: program, name: "CHASSIS").first() {
+          match chassiss.first() {
             Absent => false
             Present { value: chassis } =>
-              actuator_named(program: program, name: "FAN1").length() == 1
-                && actuator_named(program: program, name: "CHASSIS").length() == 1
+              fan1s.length() == 1
+                && chassiss.length() == 1
                 && exact_decimal_wire(d: fan1.feed_forward.offset.magnitude) == "-8"
                 && exact_decimal_wire(d: fan1.output_limits.minimum.magnitude) == "3"
                 && exact_decimal_wire(d: chassis.feed_forward.offset.magnitude) == "35"
@@ -108,6 +110,7 @@ fn the_actuators_carry_the_offsets_that_made_it_quiet() -> Bool {
                 && exact_decimal_wire(d: chassis.slew.negative_coefficient) == "-3"
           }
       }
+    }
   }
 }
 
