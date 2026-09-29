@@ -502,9 +502,10 @@ fn base64_decode_step_optional(st: Base64DecodeState?, v: Int) -> Base64DecodeSt
 // second sextet when one octet remains, the low 2 bits of the third when two do -- which a conforming
 // encoder sets to zero. They are discarded, so a decoder that ignores them admits several spellings of
 // one octet string ("Zg==" and "Zh==" both read as "f"), and every consumer that needs one spelling
-// per value had to re-encode to find out which it was handed (gunbc.auth.approval_capability
-// capability_tag_hex did exactly that). Non-zero pad bits are therefore refused here, once, for every
-// consumer: the spelling is canonical by construction rather than by a second encoding.
+// per value has to re-encode to find out which it was handed (gunbc.auth.approval_capability
+// capability_tag_hex does, until d0_store_operation_wall PR 4 deletes that re-encode on top of this).
+// Non-zero pad bits are therefore refused here, once, for every consumer: the spelling is canonical by
+// construction rather than by a second encoding.
 fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
   match st.buf {
     DecEmpty => Present { value: st.out }
