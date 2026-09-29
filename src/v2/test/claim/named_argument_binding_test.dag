@@ -3,6 +3,7 @@ module v2.test.claim.named_argument_binding
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.eval { AwaitingChildren, eval_edge_is_runtime_argument }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -67,7 +68,7 @@ data nab_artifact: Artifact = Artifact {
   file_path: "src/v2/pilot/named_argument_binding_pilot.dag"
 }
 
-fn nab_assemble(src: String) -> Outcome<Node> {
+fn nab_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness {
@@ -83,31 +84,31 @@ fn nab_assemble(src: String) -> Outcome<Node> {
   )
 }
 
-fn nab_reordered() -> Outcome<Node> {
+fn nab_reordered() -> Outcome<ResolvedTree> {
   nab_assemble(src: "module p\n\nfn f(a: Int, b: Bool) -> Int { a }\n\nfn g() -> Int { f(b: true, a: 1) }\n")
 }
 
-fn nab_in_order() -> Outcome<Node> {
+fn nab_in_order() -> Outcome<ResolvedTree> {
   nab_assemble(src: "module p\n\nfn f(a: Int, b: Bool) -> Int { a }\n\nfn g() -> Int { f(a: 1, b: true) }\n")
 }
 
-fn nab_positional_after_named() -> Outcome<Node> {
+fn nab_positional_after_named() -> Outcome<ResolvedTree> {
   nab_assemble(src: "module p\n\nfn f(a: Int, b: Int) -> Int { a }\n\nfn g() -> Int { f(a: 1, 2) }\n")
 }
 
-fn nab_label_repeated() -> Outcome<Node> {
+fn nab_label_repeated() -> Outcome<ResolvedTree> {
   nab_assemble(src: "module p\n\nfn f(a: Int, b: Int) -> Int { a }\n\nfn g() -> Int { f(a: 1, a: 2) }\n")
 }
 
-fn nab_nodes(o: Outcome<Node>) -> List<Node> {
+fn nab_nodes(o: Outcome<ResolvedTree>) -> List<Node> {
   match o {
     Rejected { diagnostics: _ } => []
-    Accepted { value: n, diagnostics: _ } => node_subtree_nodes(root: n)
+    Accepted { value: n, diagnostics: _ } => node_subtree_nodes(root: n.root)
   }
 }
 
 // The applications carrying at least one named actual.
-fn nab_named_applications(o: Outcome<Node>) -> List<Node> {
+fn nab_named_applications(o: Outcome<ResolvedTree>) -> List<Node> {
   fold(nab_nodes(o: o), init: [], f: fn(acc, m) {
     match m.kind {
       ComputationNode { behavior: Transform } => if !all_edges_positional(children: m.children) { concat(acc, [m]) } else { acc }
@@ -117,7 +118,7 @@ fn nab_named_applications(o: Outcome<Node>) -> List<Node> {
 }
 
 // The declared Arrow of `f`: the one with two declared parameters.
-fn nab_callee_arrows(o: Outcome<Node>) -> List<Node> {
+fn nab_callee_arrows(o: Outcome<ResolvedTree>) -> List<Node> {
   fold(nab_nodes(o: o), init: [], f: fn(acc, m) {
     match m.kind {
       TypeNode { connective: Arrow } =>
@@ -151,7 +152,7 @@ fn nab_plan(arrow: Node, app: Node) -> List<Symbol> {
   }
 }
 
-fn nab_refused_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+fn nab_refused_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
