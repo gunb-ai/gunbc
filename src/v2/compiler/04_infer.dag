@@ -48,7 +48,10 @@ import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_
 import v2.std.collection {
   List,
   Map,
-  list_at_optional
+  empty_map,
+  list_at_optional,
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -864,10 +867,11 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
-// ONE KEY, ONE FACT. The table is admitted here and nowhere else, so this is where a key carrying two
-// DIFFERENT facts refuses. Lookup returns the first entry under a key; without this refusal a second,
-// differing fact was dropped silently and every consumer read whichever gather produced first. Equal
-// facts under one key are one fact and merge.
+// ONE KEY, ONE FACT. The facts map is a node-keyed Map built once per run (DESIGN section 6, bare
+// minimum cost: a scan per entry made admission quadratic), and it is admitted here and nowhere else,
+// so this is where a key carrying two DIFFERENT facts refuses. The first-entry-wins rule it replaces
+// dropped a second, differing fact silently, and every consumer read whichever gather produced first.
+// Equal facts under one key are one fact and merge.
 fn infer_facts_key_conflict_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_facts_key_conflict,
@@ -876,22 +880,27 @@ fn infer_facts_key_conflict_diagnostic(key: Node) -> Diagnostic {
   }
 }
 
+fn inferred_facts_map_enter(facts: Map<Node, InferredFacts>, entry: InferredFactsEntry) -> Outcome<Map<Node, InferredFacts>> {
+  match map_lookup(m: facts, key: entry.node) {
+    Absent => Accepted { value: map_insert(m: facts, key: entry.node, value: entry.facts), diagnostics: None }
+    Present { value: held } =>
+      if held == entry.facts {
+        Accepted { value: facts, diagnostics: None }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: infer_facts_key_conflict_diagnostic(key: entry.node)) }
+      }
+  }
+}
+
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialFunction<Node, InferredFacts>> {
-  match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
+  match fold(entries, init: Accepted { value: empty_map(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: ok_entries, diagnostics: d } =>
+      Accepted { value: admitted, diagnostics: d } =>
         if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
-          match lookup_inferred_facts_in_entries(entries: ok_entries, key: entry.node) {
-            Absent => Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
-            Present { value: held } =>
-              if held == entry.facts {
-                acc
-              } else {
-                Rejected {
-                  diagnostics: diagnostics_singleton(d: infer_facts_key_conflict_diagnostic(key: entry.node))
-                }
-              }
+          match inferred_facts_map_enter(facts: admitted, entry: entry) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: entered, diagnostics: _ } => Accepted { value: entered, diagnostics: d }
           }
         } else {
           Rejected {
@@ -907,7 +916,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialF
       Accepted {
         value: PartialFunction {
           lookup: fn(key) {
-            lookup_inferred_facts_in_entries(entries: admitted, key: key)
+            map_lookup(m: admitted, key: key)
           }
         },
         diagnostics: d
