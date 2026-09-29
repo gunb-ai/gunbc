@@ -98,7 +98,12 @@ fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
     match curl_exit_outcome(code: read.exit_code) {
       CurlCouldNotConnect => HarnessConnectFailed { url: url, curl_exit: read.exit_code }
       CurlOperationTimedOut => HarnessDeadline { url: url }
-      _ => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlTransferCompleted => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlCouldNotResolveHost => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlTlsHandshakeFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlEmptyReply => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlReceiveFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlExitUnnamed { code: _ } => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
     }
   }
 }
@@ -281,7 +286,27 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
             declined: acc.declined,
             unresolved: acc.unresolved,
           }
-        _ =>
+        HarnessBackendModelNotAdmitted { advertised: _ } =>
+          HarnessRosterFold {
+            serving: acc.serving,
+            declined: concat(acc.declined, [HarnessRouteDecline {
+              endpoint: serving_route_endpoint_wire(e: e),
+              group_wire: fabric_group_wire(g: e.group),
+              standing: standing,
+            }]),
+            unresolved: acc.unresolved,
+          }
+        HarnessBackendUnreachable { url: _ } =>
+          HarnessRosterFold {
+            serving: acc.serving,
+            declined: concat(acc.declined, [HarnessRouteDecline {
+              endpoint: serving_route_endpoint_wire(e: e),
+              group_wire: fabric_group_wire(g: e.group),
+              standing: standing,
+            }]),
+            unresolved: acc.unresolved,
+          }
+        HarnessBackendUnreadable { cause: _ } =>
           HarnessRosterFold {
             serving: acc.serving,
             declined: concat(acc.declined, [HarnessRouteDecline {

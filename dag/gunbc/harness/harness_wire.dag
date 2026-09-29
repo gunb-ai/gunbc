@@ -174,7 +174,10 @@ fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
       match v {
         JsonString { value: s } => StringRead { value: s }
         JsonNull => StringNull
-        _ => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
+        JsonBool { value: _ } => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
+        JsonNumber { lexeme: _ } => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
+        JsonArray { elements: _ } => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
+        JsonObject { members: _ } => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
       }
     JsonMemberAbsent => StringAbsent
     JsonMemberDuplicated =>
@@ -221,7 +224,11 @@ fn harness_member_int(doc: JsonValue, key: String) -> HarnessIntRead {
             Present { value: n } => IntRead { value: n }
             Absent => IntNotAnInteger { lexeme: lex as String }
           }
-        _ => IntNotANumber
+        JsonNull => IntNotANumber
+        JsonBool { value: _ } => IntNotANumber
+        JsonString { value: _ } => IntNotANumber
+        JsonArray { elements: _ } => IntNotANumber
+        JsonObject { members: _ } => IntNotANumber
       }
     JsonMemberAbsent => IntAbsent
     JsonMemberDuplicated => IntDuplicated
@@ -290,9 +297,17 @@ fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> 
                   output_tokens: harness_token_count_of(n: ov),
                 }
               }
-            _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+            IntAbsent => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+            IntDuplicated => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+            IntNotAnObject => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+            IntNotANumber => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+            IntNotAnInteger { lexeme: _ } => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
           }
-        _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+        IntAbsent => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+        IntDuplicated => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+        IntNotAnObject => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+        IntNotANumber => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+        IntNotAnInteger { lexeme: _ } => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
       }
     }
     JsonMemberAbsent => UsageUnreadable {
@@ -924,7 +939,11 @@ fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
       match tc {
         JsonArray { elements: es } =>
           harness_decode_each(els: es, decode: e => harness_chat_tool_call_block(v: e))
-        _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
+        JsonNull => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
+        JsonBool { value: _ } => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
+        JsonNumber { lexeme: _ } => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
+        JsonString { value: _ } => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
+        JsonObject { members: _ } => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
     JsonMemberAbsent => BlocksRead { blocks: [] }
     JsonMemberDuplicated => BlocksUnreadable {

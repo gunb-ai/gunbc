@@ -1560,7 +1560,11 @@ fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> Ev
             match env.event.payload {
               PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
                 if (r as String) == (reference as String) { Present { value: env.id } } else { none }
-              _ => none
+              PoolSettled { reference: _, actual: _ } => none
+              PoolReleased { reference: _, reason: _ } => none
+              PoolLapsed => none
+              PoolUpstreamObserved { remaining: _, term_seconds: _ } => none
+              PoolResetObserved { reset_at: _ } => none
             }
         })
   }

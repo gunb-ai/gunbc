@@ -125,7 +125,19 @@ fn throughput_is_usage_row(doc: JsonValue) -> UsageRowRead {
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: s } => if s == "round.usage" { UsageRowIsOurs } else { UsageRowIsAnotherEvent }
-        _ => UsageRowUnreadable {
+        JsonNull => UsageRowUnreadable {
+          cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
+        }
+        JsonBool { value: _ } => UsageRowUnreadable {
+          cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
+        }
+        JsonNumber { lexeme: _ } => UsageRowUnreadable {
+          cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
+        }
+        JsonArray { elements: _ } => UsageRowUnreadable {
+          cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
+        }
+        JsonObject { members: _ } => UsageRowUnreadable {
           cause: "an event line carries a 'type' member that is not a string; whether it is a round.usage row is unknowable",
         }
       }
