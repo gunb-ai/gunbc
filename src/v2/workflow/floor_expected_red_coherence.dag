@@ -184,6 +184,7 @@ fn floor_expected_red_chunk_coherence_check(
     DeclFactResolvedMissing { qualified_name: _ } => Cons {
       head: AggregatorDeclarationUnresolved { qualified_name: aggregator_qualified_name, resolution: aggregator_resolution },
       tail: Empty
+    }
     DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Cons {
       head: AggregatorDeclarationUnresolved { qualified_name: aggregator_qualified_name, resolution: aggregator_resolution },
       tail: Empty

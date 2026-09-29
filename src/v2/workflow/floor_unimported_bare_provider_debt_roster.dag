@@ -76,17 +76,20 @@ fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> 
     imports_fixed: match row.standing {
       Retired { cause: ImportsFixed } => true
       ActiveDebt => false
-      Retired { cause: _ } => false
+      Retired { cause: FileDeleted } => false
+      Retired { cause: NotAReference } => false
     },
     file_deleted: match row.standing {
       Retired { cause: FileDeleted } => true
       ActiveDebt => false
-      Retired { cause: _ } => false
+      Retired { cause: ImportsFixed } => false
+      Retired { cause: NotAReference } => false
     },
     not_a_reference: match row.standing {
       Retired { cause: NotAReference } => true
       ActiveDebt => false
-      Retired { cause: _ } => false
+      Retired { cause: ImportsFixed } => false
+      Retired { cause: FileDeleted } => false
     },
   }
 }
