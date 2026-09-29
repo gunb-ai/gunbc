@@ -23,3 +23,8 @@ ledger-row-coherence import from ci_spec reduced the copied witness closure from
 1,842 to 1,265 unchanged modules, but both that reduced witness and the canonical
 workflow emitter still exceeded 6 GiB. No local pass or emitted workflow is claimed.
 CI must qualify the source and generate its workflow; no ceiling was increased.
+
+The checked-in workflow now contains the one-line projection candidate asserted
+by the source witness. This was staged without a successful local canonical
+emission. Required CI must compare it against expected_fleet_converge_yml before
+it is qualified; this note deliberately does not call it a generated pass.
