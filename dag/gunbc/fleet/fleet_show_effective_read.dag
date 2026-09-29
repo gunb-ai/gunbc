@@ -307,7 +307,13 @@ fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> Sho
   match read.memory_max {
     MemoryLimitAbsent =>
       ReadAbsent { reason: "systemctl show MemoryMax returned empty (typed Absent); fail-closed, no fabricated cap" }
-    _ =>
+    MemoryLimitUnbounded =>
+      match runner_slice_cap_to_effectiveness(read: read) {
+        Present { value: eff } => ReadObserved { value: eff }
+        Absent =>
+          ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
+      }
+    MemoryLimitBytes { bytes: _ } =>
       match runner_slice_cap_to_effectiveness(read: read) {
         Present { value: eff } => ReadObserved { value: eff }
         Absent =>

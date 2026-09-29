@@ -129,7 +129,14 @@ fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonString { value } } =>
       if value == "" { none } else { Present { value: value as NonEmptyStr } }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -161,7 +168,25 @@ fn decode_hook_url(raw: NonEmptyStr) -> HookUrlDecode {
     Present { value: url } => match url.scheme {
       Https => HookUrlDecoded { url: url }
       Http => HookUrlDecoded { url: url }
-      _ => HookUrlRefused {
+      Tftp => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+      }
+      File => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+      }
+      Ftp => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+      }
+      Javascript => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+      }
+      Data => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+      }
+      Vbscript => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+      }
+      Mailto => HookUrlRefused {
         reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
       }
     }
@@ -276,7 +301,14 @@ fn render_registration_read_refusal(cause: RegistrationReadRefusal) -> String {
 fn json_member_int(v: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -319,7 +351,13 @@ fn decode_registration_permissions(doc: JsonValue) -> List<ObservedGitHubPermiss
         }) }
       }
     }
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 

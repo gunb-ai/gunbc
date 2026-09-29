@@ -443,11 +443,20 @@ fn merge_group_run_carries_verdict(run: WorkflowRun) -> Bool {
           match c {
             Cancelled => false
             Skipped => false
-            _ => true
+            Success => true
+            Failure => true
+            Neutral => true
+            TimedOut => true
+            ActionRequired => true
+            StartupFailure => true
           }
         none => false
       }
-    _ => false
+    Queued => false
+    InProgress => false
+    Waiting => false
+    Requested => false
+    Pending => false
   }
 }
 
@@ -456,7 +465,13 @@ fn merge_group_run_succeeded(run: WorkflowRun) -> Bool {
     Present { value: c } =>
       match c {
         Success => true
-        _ => false
+        Failure => false
+        Cancelled => false
+        Neutral => false
+        Skipped => false
+        TimedOut => false
+        ActionRequired => false
+        StartupFailure => false
       }
     none => false
   }
