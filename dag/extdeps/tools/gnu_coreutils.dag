@@ -197,12 +197,18 @@ fn ln_symbolic_force_into_directory_command(target: String, directory: String) -
 // rmdir(1) -- GNU coreutils, "rmdir: remove directories if they are empty". configfs teardown
 // removes the directories it created, innermost first, and rmdir REFUSES a non-empty directory,
 // which is the fail-closed half: a teardown that would empty a directory holding something it did
-// not create stops instead of destroying it. Tolerance for an ALREADY-ABSENT directory is the
-// consumer's modeled outcome (nonzero mapped to already-gone), never re-appended as `|| true` --
-// the absorbing-fallback rule the shell-to-dag census names for exactly this spelling.
+// not create stops instead of destroying it. Tolerance for an ALREADY-ABSENT directory is NOT
+// re-appended here as `|| true` -- the absorbing-fallback rule the shell-to-dag census names for
+// exactly this spelling -- and the consumer that models the absence is NAMED in the declared
+// frontier beside this declaration (review 38602, finding 3).
 //
 // PATH-RESOLVED spelling for the same unobserved-OpenBMC reason the ln sibling above carries.
 data coreutils_rmdir_binary_name: NonEmptyStr = "rmdir"
+
+// DECLARED FRONTIER (DESIGN §3c), stated beside the declaration it fronts: an already-removed
+// directory is a MODELED outcome, not a suppressed error, and this builder mints the plain
+// command only.
+data rmdir_already_absent_realization_frontier: String = "The old teardown text carried `2>/dev/null || true`, which is absorbing-fallback shell (DESIGN §5) and was deleted with the script; the plain rmdir stays the instruction and its nonzero on an absent directory is not swallowed here. THE NAMED LATER CONSUMER: the host-effect lane's configfs teardown realization, which observes the target's state and records an absent directory as already-converged instead of re-running a suppressed command. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md). THE TRIGGER, stated beside the declaration: when that node's effect family binds typed execution it takes over the absent-directory outcome and this frontier dissolves; until then the described teardown is what the witnesses gate, and no `|| true` re-enters."
 
 fn rmdir_command(path: String) -> ArgvCommand {
   argv_command(program: coreutils_rmdir_binary_name, arguments: [path])

@@ -3,11 +3,13 @@ module test.claim.bmc_virtual_media
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsOpCommand, ConfigfsWriteAttr, ConfigfsMkdir, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
+import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsOpCommand, ConfigfsWriteAttr, ConfigfsMkdir, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir, ConfigfsStaging, ConfigfsStagingRan, ConfigfsStagingRefused }
 import gunbc.bmc_virtual_media {
   srv4_nbd_server_config_text,
   srv4_nbd_client_attach_command_text,
-  srv4_vm_gadget_setup_commands,
+  srv4_vm_gadget_setup_staging,
+  srv4_vm_gadget_teardown_staging,
+  srv4_vm_gadget_teardown_display,
   srv4_vm_gadget_setup_ops,
 }
 import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
@@ -30,8 +32,17 @@ fn configfs_command_write_value_for(cmds: List<ConfigfsOpCommand>, path_suffix: 
     ConfigfsOpWritesAttr { path: p, value: v } =>
       if string_contains(s: p as String, pattern: path_suffix) { v } else { acc }
     ConfigfsOpRunsArgv { command: _ } => acc
-    ConfigfsOpRefused { reason: _ } => acc
   })
+}
+
+// The detach is the teardown's first act: the UDC attribute written EMPTY, which unregisters the
+// gadget before anything under its tree is removed.
+fn command_writes_empty_udc(cmd: ConfigfsOpCommand) -> Bool {
+  match cmd {
+    ConfigfsOpWritesAttr { path: p, value: v } =>
+      string_contains(s: p as String, pattern: "gunbcvm/UDC") && v == ""
+    ConfigfsOpRunsArgv { command: _ } => false
+  }
 }
 
 fn configfs_command_renders_quoted(cmds: List<ConfigfsOpCommand>, quoted_word: String) -> Bool {
@@ -63,15 +74,20 @@ test fn srv4_nbd_client_attaches_named_export() -> Bool {
 }
 
 // MIGRATED TO THE DESCRIBED FORM (was: substrings of the assembled shell script). The same facts,
-// read off the typed commands: the gadget root is ensured as one argv command, and the attribute
-// writes carry the values the srv4 fixture states. The quoted-word check matches the display's
-// single-quoted spelling, the same form the nbd client test above matches.
+// read off the typed staging: the setup stages as a whole (a refusal here would be the typed
+// ConfigfsStagingRefused, not a refused op sitting beside runnable ones), the gadget root is
+// ensured as one argv command, and the attribute writes carry the values the srv4 fixture states.
+// The quoted-word check matches the display's single-quoted spelling, the same form the nbd client
+// test above matches.
 test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
-  let cmds = srv4_vm_gadget_setup_commands()
-  configfs_command_renders_quoted(cmds: cmds, quoted_word: "'/sys/kernel/config/usb_gadget/gunbcvm'")
-    && configfs_command_write_value_for(cmds: cmds, path_suffix: "/lun.0/file") == "/dev/nbd0"
-    && configfs_command_write_value_for(cmds: cmds, path_suffix: "/lun.0/cdrom") == "0"
-    && configfs_command_write_value_for(cmds: cmds, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
+  match srv4_vm_gadget_setup_staging() {
+    ConfigfsStagingRan { commands: cmds } =>
+      configfs_command_renders_quoted(cmds: cmds, quoted_word: "'/sys/kernel/config/usb_gadget/gunbcvm'")
+        && configfs_command_write_value_for(cmds: cmds, path_suffix: "/lun.0/file") == "/dev/nbd0"
+        && configfs_command_write_value_for(cmds: cmds, path_suffix: "/lun.0/cdrom") == "0"
+        && configfs_command_write_value_for(cmds: cmds, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
+    ConfigfsStagingRefused { reason: _ } => false
+  }
 }
 
 test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
@@ -81,4 +97,39 @@ test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
     && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
     && configfs_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
     && list_length(items: ops) == 16
+}
+
+// THE TEARDOWN'S DESCRIBED FORM (review 38602, findings 1 and 3): the teardown stages as commands
+// too -- the typed staging, not a shell string. The facts read here: seven commands, the FIRST one
+// the empty UDC write (the display's first line pins the order -- detach before anything under the
+// gadget tree is removed), the mass-storage link unlinked with `rm -f`, and every command a UDC
+// write or a rendering that names the gadget's own configfs directory. The rmdir absence frontier
+// in extdeps.tools.gnu_coreutils names the host-effect lane as the consumer that will model an
+// already-removed directory as done; until that lands this staging is the described teardown and
+// nothing suppresses its failures.
+test fn srv4_gadget_teardown_detaches_first_then_removes_under_the_gadget_root() -> Bool {
+  match srv4_vm_gadget_teardown_staging() {
+    ConfigfsStagingRan { commands: cs } =>
+      list_length(items: cs) == 7
+        && any(cs, cmd => command_writes_empty_udc(cmd: cmd))
+        && starts_with(
+          s: srv4_vm_gadget_teardown_display(),
+          prefix: "write-attr /sys/kernel/config/usb_gadget/gunbcvm/UDC = \n",
+        )
+        && any(cs, cmd => match cmd {
+          ConfigfsOpRunsArgv { command: c } =>
+            string_contains(
+              s: shell_command_render(command: c),
+              pattern: "'rm' '-f' '/sys/kernel/config/usb_gadget/gunbcvm/configs/c.1/mass_storage.0'",
+            )
+          ConfigfsOpWritesAttr { path: _, value: _ } => false
+        })
+        && all(cs, cmd => match cmd {
+          ConfigfsOpWritesAttr { path: p, value: _ } =>
+            string_contains(s: p as String, pattern: "/sys/kernel/config/usb_gadget/gunbcvm")
+          ConfigfsOpRunsArgv { command: c } =>
+            string_contains(s: shell_command_render(command: c), pattern: "/sys/kernel/config/usb_gadget/gunbcvm")
+        })
+    ConfigfsStagingRefused { reason: _ } => false
+  }
 }

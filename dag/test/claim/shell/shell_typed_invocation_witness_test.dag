@@ -1,17 +1,34 @@
 module test.claim.shell.shell_typed_invocation_witness_test
 
-import std.types { Bool, String, List }
-import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsMkdir, ConfigfsWriteAttr, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
-import gunbc.bmc_virtual_media { srv4_vm_gadget_setup_ops, srv4_vm_gadget_setup_display }
+import std.types { Bool, String, List, Int, list_length }
+import extdeps.linux.usb_gadget {
+  ConfigfsOp,
+  ConfigfsOpCommand,
+  ConfigfsMkdir,
+  ConfigfsWriteAttr,
+  ConfigfsSymlink,
+  ConfigfsRemoveLink,
+  ConfigfsRmdir,
+  ConfigfsStaging,
+  ConfigfsStagingRan,
+  ConfigfsStagingRefused,
+  configfs_staging_of,
+  configfs_staging_display,
+}
+import gunbc.bmc_virtual_media {
+  srv4_vm_gadget_setup_ops,
+  srv4_vm_gadget_setup_display,
+  srv4_vm_gadget_teardown_display,
+}
 
 // THE ACCEPTANCE ORACLE FOR shell-typed-invocation, GREEN SINCE THE NODE'S SLICE LANDED. The node's
 // bar is that callers say which operation and which arguments and nobody hands over shell text; the
 // specimen the node's own note names is the USB gadget setup, whose script once prefixed `set -e`
-// and joined rendered lines carrying `2>/dev/null || true`. The setup now acts through typed
-// commands (each ConfigfsOp maps to an ArgvCommand through a cited builder, or to a typed
-// attribute write, or refuses typed), so this witness reads the described form's DISPLAY of the
-// srv4 virtual-media gadget fixture (an authored fixture, not a live observation) and refuses
-// while any shell control word is present.
+// and joined rendered lines carrying `2>/dev/null || true`. The setup now acts through a staged
+// result (the ops fold into one typed staging: the commands to run, or the WHOLE setup refused --
+// review 38602, finding 1), so this witness reads the described form's DISPLAY of the srv4
+// virtual-media gadget fixture (an authored fixture, not a live observation), gates the refusal at
+// the staging grain, and refuses while any shell control word is present.
 //
 // PER DESIGN SECTION 4b(4) THE GREENED PROBE DOES NOT RETIRE: the enrollment row left
 // v2.workflow.floor_expected_red by the roster's own removal path in the same change, and this
@@ -27,6 +44,73 @@ data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/nul
 test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
   let rendered = srv4_vm_gadget_setup_display()
   rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+}
+
+// THE TEARDOWN RENDERS UNDER THE SAME DISCIPLINE (review 38602, findings 1 and 3): the teardown
+// stages as commands too, and its display -- read off the same srv4 fixture -- carries no shell
+// control word either. This is the consumer the rmdir absence frontier in
+// extdeps.tools.gnu_coreutils fronts: the described teardown exists and is gated here until the
+// host-effect lane's transport realization takes over the already-removed outcome.
+test fn usb_gadget_teardown_emits_no_shell_control_word() -> Bool {
+  let rendered = srv4_vm_gadget_teardown_display()
+  rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
+}
+
+// THE DISCRIMINATING REFUSAL FIXTURE (review 38602, finding 1): the staged setup refuses AS A
+// WHOLE, and a refusal mints nothing runnable. Three probes, each of which goes red if the refusal
+// stops being typed or stops being a stop:
+//   1. an op outside the gadget tree refuses, and the reason names the offending path;
+//   2. the same bad op mixed into an otherwise-good staging refuses the WHOLE staging -- the good
+//      op's command is not observable beside a refusal;
+//   3. the good staging alone mints its one command, so the refusals above are about the
+//      arguments, not about staging itself.
+test fn bad_arguments_refuse_the_whole_staging_before_any_command_acts() -> Bool {
+  let alone = configfs_staging_of(ops: [ConfigfsMkdir { path: "/etc" }])
+  let mixed = configfs_staging_of(ops: [
+    ConfigfsMkdir { path: "/sys/kernel/config/usb_gadget/gunbcvm" },
+    ConfigfsMkdir { path: "/etc" },
+  ])
+  let good = configfs_staging_of(ops: [ConfigfsMkdir { path: "/sys/kernel/config/usb_gadget/gunbcvm" }])
+  let alone_refuses_naming_the_path = match alone {
+    ConfigfsStagingRefused { reason: r } => string_contains(s: r as String, pattern: "/etc")
+    ConfigfsStagingRan { commands: _ } => false
+  }
+  let mixed_refuses_as_a_whole = match mixed {
+    ConfigfsStagingRefused { reason: _ } => true
+    ConfigfsStagingRan { commands: _ } => false
+  }
+  let good_mints_one_command = match good {
+    ConfigfsStagingRan { commands: cs } => list_length(items: cs) == 1
+    ConfigfsStagingRefused { reason: _ } => false
+  }
+  alone_refuses_naming_the_path && mixed_refuses_as_a_whole && good_mints_one_command
+}
+
+// THE SYMLINK ARM'S DIRECTORY-SPELLED GUARD, BOTH WAYS (review 38602, finding 1): a link under the
+// gadget root WITHOUT the trailing slash refuses; the SAME link directory-spelled mints its
+// `ln -sf` command through the cited builder and renders it.
+test fn symlink_refuses_until_its_link_is_directory_spelled() -> Bool {
+  let bare = configfs_staging_of(ops: [ConfigfsSymlink {
+    target: "/dev/nbd0",
+    link: "/sys/kernel/config/usb_gadget/gunbcvm/configs/c.1/mass_storage.0",
+  }])
+  let spelled = configfs_staging_of(ops: [ConfigfsSymlink {
+    target: "/dev/nbd0",
+    link: "/sys/kernel/config/usb_gadget/gunbcvm/configs/c.1/mass_storage.0/",
+  }])
+  match bare {
+    ConfigfsStagingRefused { reason: _ } =>
+      match spelled {
+        ConfigfsStagingRan { commands: cs } =>
+          list_length(items: cs) == 1
+            && string_contains(
+              s: configfs_staging_display(staging: spelled),
+              pattern: "'ln' '-sf' '/dev/nbd0'",
+            )
+        ConfigfsStagingRefused { reason: _ } => false
+      }
+    ConfigfsStagingRan { commands: _ } => false
+  }
 }
 
 // POSITIVE CONTROL, green today and after: the setup is a list of typed configfs operations over the

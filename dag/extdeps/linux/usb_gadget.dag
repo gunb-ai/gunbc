@@ -117,21 +117,33 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
 //     shell redirect (the old `printf '%s' ... > path` WAS the shell dependence). Its transport
 //     is a native file write over the target's transport; modeling that realization is the
 //     host-effect lane's work, and this node's bar is only that no shell text is produced.
-//   - `ConfigfsOpRefused` is the typed refusal arm: a configfs op that names a path outside the
-//     gadget's configfs tree (or a symlink destination that is not directory-spelled) refuses
-//     BEFORE any command is minted -- bad arguments refuse before any shell could be produced.
+//   - `ConfigfsWriteAttr`'s named later consumer and trigger are stated in the declared frontier
+//     beside this declaration (its realization is a native write, owed to the host-effect lane).
 type ConfigfsOpCommand
   = ConfigfsOpRunsArgv { command: ArgvCommand }
   | ConfigfsOpWritesAttr { path: NonEmptyStr, value: String }
-  | ConfigfsOpRefused { reason: NonEmptyStr }
+
+// DECLARED FRONTIER (DESIGN §3c) for the attribute-write arm, stated beside the declaration it
+// fronts (review 38602, finding 3): the arm is a typed write, not an argv command -- no argv
+// program carries a file write without a shell redirect, which is the exact text this migration
+// deletes -- so its realization is owed to a named later consumer rather than minted here.
+data configfs_attr_write_realization_frontier: String = "ConfigfsOpWritesAttr realizes as a native write(2) over the target's transport; no argv command carries it without a shell redirect, so this change mints no realization for it. THE NAMED LATER CONSUMER: the host-effect lane's configfs effect family, the lane that owns host_effect_apply binding typed execution over machine transports. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md). THE TRIGGER, stated beside the declaration: when that node's configfs effect family lands it consumes this typed write as its requirement and this frontier dissolves; until then the typed write stays the instruction, the witness gates it as a description, and nothing degrades it to a shell redirect."
+
+// THE STAGED RESULT of turning described ops into commands (review 38602, finding 1): either the
+// commands to run, or the WHOLE staging refused. There is no state in which a refused op sits in
+// a list beside runnable commands, so a bad argument cannot act while the ops around it are
+// skipped past -- the refusal is a stop at the grain a caller consumes, not a mixed-in arm.
+type ConfigfsStaging
+  = ConfigfsStagingRan { commands: List<ConfigfsOpCommand> }
+  | ConfigfsStagingRefused { reason: NonEmptyStr }
 
 // The gadget's configfs tree root -- the prefix extdeps_external_authority_anchor's cited
 // procedure operates on, and the same string the acceptance oracle's positive control asserts
 // every op path carries.
 data gadget_configfs_root: NonEmptyStr = "/sys/kernel/config/usb_gadget/"
 
-fn configfs_op_refused_outside_tree(op_path: String) -> ConfigfsOpCommand {
-  ConfigfsOpRefused {
+fn configfs_staging_refused_outside_tree(op_path: String) -> ConfigfsStaging {
+  ConfigfsStagingRefused {
     reason: join(
       ["configfs op names a path outside the gadget configfs tree: ", op_path],
       "",
@@ -139,74 +151,113 @@ fn configfs_op_refused_outside_tree(op_path: String) -> ConfigfsOpCommand {
   }
 }
 
-fn configfs_op_command(op: ConfigfsOp) -> ConfigfsOpCommand {
+// One op staged alone: the command its cited builder mints, the typed attribute write, or the
+// refusal of the staging it would have joined. The guards are the same per-variant prefix checks
+// (and the symlink's directory-spelled suffix) as before the staging climb; what changed is the
+// GRAIN the refusal lives at -- see configfs_staging_of.
+fn configfs_op_staging(op: ConfigfsOp) -> ConfigfsStaging {
   match op {
     ConfigfsMkdir { path: p } =>
       if starts_with(s: p as String, prefix: gadget_configfs_root as String) {
-        ConfigfsOpRunsArgv {
-          command: mkdir_parents_command_at(
-            mkdir_binary: mkdir_path_resolved_program,
-            path: p as String,
-          ),
+        ConfigfsStagingRan {
+          commands: [ConfigfsOpRunsArgv {
+            command: mkdir_parents_command_at(
+              mkdir_binary: mkdir_path_resolved_program,
+              path: p as String,
+            ),
+          }],
         }
       } else {
-        configfs_op_refused_outside_tree(op_path: p as String)
+        configfs_staging_refused_outside_tree(op_path: p as String)
       }
     ConfigfsWriteAttr { path: p, value: v } =>
       if starts_with(s: p as String, prefix: gadget_configfs_root as String) {
-        ConfigfsOpWritesAttr { path: p, value: v }
+        ConfigfsStagingRan { commands: [ConfigfsOpWritesAttr { path: p, value: v }] }
       } else {
-        configfs_op_refused_outside_tree(op_path: p as String)
+        configfs_staging_refused_outside_tree(op_path: p as String)
       }
     ConfigfsSymlink { target: t, link: l } =>
       if starts_with(s: l as String, prefix: gadget_configfs_root as String)
         && ends_with(s: l as String, suffix: "/") {
-        ConfigfsOpRunsArgv {
-          command: ln_symbolic_force_into_directory_command(target: t as String, directory: l as String),
+        ConfigfsStagingRan {
+          commands: [ConfigfsOpRunsArgv {
+            command: ln_symbolic_force_into_directory_command(target: t as String, directory: l as String),
+          }],
         }
       } else {
-        configfs_op_refused_outside_tree(op_path: l as String)
+        configfs_staging_refused_outside_tree(op_path: l as String)
       }
     ConfigfsRemoveLink { link: l } =>
       if starts_with(s: l as String, prefix: gadget_configfs_root as String) {
-        ConfigfsOpRunsArgv { command: rm_force_command(path: l as String) }
+        ConfigfsStagingRan {
+          commands: [ConfigfsOpRunsArgv { command: rm_force_command(path: l as String) }],
+        }
       } else {
-        configfs_op_refused_outside_tree(op_path: l as String)
+        configfs_staging_refused_outside_tree(op_path: l as String)
       }
     ConfigfsRmdir { path: p } =>
       if starts_with(s: p as String, prefix: gadget_configfs_root as String) {
-        ConfigfsOpRunsArgv { command: rmdir_command(path: p as String) }
+        ConfigfsStagingRan { commands: [ConfigfsOpRunsArgv { command: rmdir_command(path: p as String) }] }
       } else {
-        configfs_op_refused_outside_tree(op_path: p as String)
+        configfs_staging_refused_outside_tree(op_path: p as String)
       }
   }
 }
 
-fn usb_gadget_setup_commands(gadget: UsbGadget) -> List<ConfigfsOpCommand> {
-  map(usb_gadget_setup_ops(gadget: gadget), op => configfs_op_command(op: op))
+// The staged setup or teardown: fold the ops, refusing the WHOLE staging at the first op that
+// does not resolve. Ops before a refusal never become observable -- a refused staging carries no
+// command list at all, so a caller cannot act on the good prefix and skip the bad op past it.
+fn configfs_staging_of(ops: List<ConfigfsOp>) -> ConfigfsStaging {
+  fold(
+    ops,
+    init: ConfigfsStagingRan { commands: [] },
+    f: (acc, op) =>
+      match acc {
+        ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
+        ConfigfsStagingRan { commands: cs } =>
+          match configfs_op_staging(op: op) {
+            ConfigfsStagingRefused { reason: r } => ConfigfsStagingRefused { reason: r },
+            ConfigfsStagingRan { commands: minted } =>
+              ConfigfsStagingRan { commands: append(cs, items: minted) },
+          },
+      },
+  )
 }
 
-fn usb_gadget_teardown_commands(gadget: UsbGadget) -> List<ConfigfsOpCommand> {
-  map(usb_gadget_teardown_ops(gadget: gadget), op => configfs_op_command(op: op))
+fn usb_gadget_setup_staging(gadget: UsbGadget) -> ConfigfsStaging {
+  configfs_staging_of(ops: usb_gadget_setup_ops(gadget: gadget))
 }
 
-// One display line per described command. NOT an instruction: the instruction is the typed
-// command above; this is what a log or a witness reads when it asks what the setup renders to.
-// The argv arm goes through the one quoting fact (extdeps.exec.command shell_command_render); the
-// attribute-write arm renders as a key/value description, which is not shell and carries no shell
-// control word.
+fn usb_gadget_teardown_staging(gadget: UsbGadget) -> ConfigfsStaging {
+  configfs_staging_of(ops: usb_gadget_teardown_ops(gadget: gadget))
+}
+
+// One display line per described command. The argv arm goes through the one quoting fact
+// (extdeps.exec.command shell_command_render); the attribute-write arm renders as a key/value
+// description, which is not shell and carries no shell control word.
 fn configfs_op_command_display(cmd: ConfigfsOpCommand) -> String {
   match cmd {
     ConfigfsOpRunsArgv { command: c } => shell_command_render(command: c)
     ConfigfsOpWritesAttr { path: p, value: v } => join(["write-attr ", p as String, " = ", v], "")
-    ConfigfsOpRefused { reason: r } => join(["refused: ", r as String], "")
+  }
+}
+
+// What a staging renders to: one line per command, or the refusal with its reason. The DISPLAY
+// FOLD IS MODELED ONCE, here, and every caller's display surface derives from this one (review
+// 38602, finding 2). Still NOT an instruction: the instruction is the typed staging; this is what
+// a log or a witness reads when it asks what the staging renders to.
+fn configfs_staging_display(staging: ConfigfsStaging) -> String {
+  match staging {
+    ConfigfsStagingRan { commands: cs } =>
+      fold(cs, init: "", f: (acc, cmd) => join([acc, configfs_op_command_display(cmd: cmd), "\n"], "")),
+    ConfigfsStagingRefused { reason: r } => join(["refused: ", r as String, "\n"], ""),
   }
 }
 
 fn usb_gadget_setup_display(gadget: UsbGadget) -> String {
-  fold(
-    usb_gadget_setup_commands(gadget: gadget),
-    init: "",
-    f: (acc, cmd) => join([acc, configfs_op_command_display(cmd: cmd), "\n"], ""),
-  )
+  configfs_staging_display(staging: usb_gadget_setup_staging(gadget: gadget))
+}
+
+fn usb_gadget_teardown_display(gadget: UsbGadget) -> String {
+  configfs_staging_display(staging: usb_gadget_teardown_staging(gadget: gadget))
 }

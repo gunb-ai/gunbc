@@ -15,10 +15,12 @@ import extdeps.linux.usb_gadget {
   MassStorageLun,
   ConfigfsOp,
   ConfigfsOpCommand,
+  ConfigfsStaging,
   usb_gadget_setup_ops,
-  usb_gadget_setup_commands,
-  usb_gadget_teardown_commands,
-  configfs_op_command_display,
+  usb_gadget_setup_staging,
+  usb_gadget_teardown_staging,
+  usb_gadget_setup_display,
+  usb_gadget_teardown_display,
 }
 import extdeps.bmc.virtual_media {
   VirtualMediaIntent,
@@ -137,23 +139,27 @@ fn srv4_vm_gadget_setup_ops() -> List<ConfigfsOp> {
   usb_gadget_setup_ops(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
-// THE DESCRIBED FORM of the srv4 gadget setup: one typed command per configfs op. The previous
-// surface here was the assembled shell script (`srv4_vm_gadget_setup_script`, `set -e` prefix and
-// `2>/dev/null || true` joins included); that surface is deleted — the instruction is now the
-// typed command, not a shell string — and the two witnesses that read the setup read these.
-fn srv4_vm_gadget_setup_commands() -> List<ConfigfsOpCommand> {
-  usb_gadget_setup_commands(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+// THE DESCRIBED FORM of the srv4 gadget setup and teardown: the staged commands, or the typed
+// refusal of the whole staging (review 38602, finding 1 -- the refusal is a stop at this grain,
+// never a refused op mixed beside runnable ones). The previous surface here was the assembled
+// shell script (`srv4_vm_gadget_setup_script`, `set -e` prefix and `2>/dev/null || true` joins
+// included); that surface is deleted — the instruction is now the typed staging, not a shell
+// string — and the witnesses that read the setup and the teardown read these.
+fn srv4_vm_gadget_setup_staging() -> ConfigfsStaging {
+  usb_gadget_setup_staging(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
-fn srv4_vm_gadget_teardown_commands() -> List<ConfigfsOpCommand> {
-  usb_gadget_teardown_commands(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+fn srv4_vm_gadget_teardown_staging() -> ConfigfsStaging {
+  usb_gadget_teardown_staging(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
 
-// What the setup renders to, one line per command — the display the acceptance oracle reads.
+// What the setup and teardown render to, one line per command — the display the acceptance oracle
+// reads. The fold is modeled ONCE, in extdeps.linux.usb_gadget (configfs_staging_display); these
+// surfaces call it instead of repeating the fold beside it (review 38602, finding 2).
 fn srv4_vm_gadget_setup_display() -> String {
-  fold(
-    srv4_vm_gadget_setup_commands(),
-    init: "",
-    f: (acc, cmd) => join([acc, configfs_op_command_display(cmd: cmd), "\n"], ""),
-  )
+  usb_gadget_setup_display(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
+}
+
+fn srv4_vm_gadget_teardown_display() -> String {
+  usb_gadget_teardown_display(gadget: plan_vm_gadget(plan: srv4_bmc_virtual_media_plan))
 }
