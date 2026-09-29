@@ -51,6 +51,8 @@ import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_access_url,
   approval_submission_mac_key_path_env,
   approval_capability_mac_key_path_env,
+  approval_store_receipt_mac_access_url,
+  approval_store_receipt_mac_key_path_env,
 }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix,
@@ -2840,14 +2842,18 @@ fn gunbc_ci_approval_keyring_converge_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/approval-keyring-sm.json\"") },
     Do { run: ci_retry_body_run(command: "CAP_FILE=\"$RUNNER_TEMP/approval-capability-mac-key\"") },
     Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: "RCPT_FILE=\"$RUNNER_TEMP/approval-store-receipt-mac-key\"") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$CAP_FILE\" \"$SUB_FILE\" \"$RCPT_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
     Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$CAP_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_capability_mac_access_url()))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$CAP_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
+    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$RCPT_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_store_receipt_mac_access_url()))) },
+    Do { run: ci_retry_body_run(command: "chmod 600 \"$RCPT_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_capability_mac_key_path_env as String, "=\"$CAP_FILE\""))) },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_store_receipt_mac_key_path_env as String, "=\"$RCPT_FILE\""))) },
   ]
 }
 

@@ -1024,14 +1024,18 @@ jobs:
           RESP_FILE="$RUNNER_TEMP/approval-keyring-sm.json"
           CAP_FILE="$RUNNER_TEMP/approval-capability-mac-key"
           SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
-          trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$CAP_FILE" "$SUB_FILE"' EXIT
+          RCPT_FILE="$RUNNER_TEMP/approval-store-receipt-mac-key"
+          trap 'rm -f "$HDR_FILE" "$RESP_FILE" "$CAP_FILE" "$SUB_FILE" "$RCPT_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
           DEST_FILE="$CAP_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-capability-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$CAP_FILE"
           DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
           chmod 600 "$SUB_FILE"
+          DEST_FILE="$RCPT_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-store-receipt-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          chmod 600 "$RCPT_FILE"
           export GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE="$CAP_FILE"
           export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
+          export GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE="$RCPT_FILE"
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/approval_keyring_converge.dag --function approval_keyring_converge_wet
         env:
@@ -1767,7 +1771,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: mtcollins1-boot
-    timeout-minutes: 129
+    timeout-minutes: 111
     if: github.event.inputs.mode == 'mtcollins1_boot'
     permissions:
       contents: read
@@ -1908,96 +1912,31 @@ jobs:
         timeout-minutes: 5
       - name: Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)
         id: mtcollins1_boot
-        run: |
-          # 🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — a bash -c script held as a string: it starts `ipmitool sol activate` in the background (stdin from an unlinked read-write fifo on fd 3, stdout line-buffered and appended to the capture, stderr appended to the client file) inside a background supervisor subshell whose body -- start-time read, publication, stop on failure, wait, exit record -- is already bash_build nodes (sol_hold_supervisor_body); and the one line of the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_watcher_background_line) that starts the SOL notice watcher with `&` and captures its pid from $!, the step being otherwise bash_build nodes. Paths are positional data (`$1`…`$7`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) and [C8 fd-redirection] (no bash grammar rows for opening a file read-write on a numbered fd, duplicating it onto stdin, closing it, or >>/2>> appends) land, or a typed process-hold realization provides the WHOLE lifecycle -- start a streaming session with a held-open silent input and redirected output, publish an instance-bound identity, and supervise and record the exit -- without a medium-as-string script; the release by identity is already bash_build nodes (mtcollins1_sol_hold_release_script)
-          set -e
-          'set' '-uo' 'pipefail'
-          'umask' '077'
-          HDR_FILE="$RUNNER_TEMP"'/mtcollins1-boot-auth-header'
-          RESP_FILE="$RUNNER_TEMP"'/mtcollins1-boot-sm.json'
-          DEST_FILE="$RUNNER_TEMP"'/mtcollins1-bmc-credential'
-          SOL_PID_FILE="$RUNNER_TEMP"'/mtcollins1-sol.pid'
-          SOL_OUT="$GITHUB_WORKSPACE"'/artifacts/mtcollins1-boot-sol.capture'
-          SOL_RELEASE='f="$1"
-          if ! '\''['\'' '\''-e'\'' "$f" '\'']'\''; then exit 0; fi
-          if ! '\''['\'' '\''-r'\'' "$f" '\'']'\''; then exit 2; fi
-          p=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f1'\'' "$f")
-          s=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f2'\'' "$f")
-          if ! ('\''['\'' '\''-n'\'' "$p" '\'']'\'' && '\''['\'' '\''-n'\'' "$s" '\'']'\''); then exit 2; fi
-          if '\''['\'' '\''-e'\'' '\''/proc/'\''"$p" '\'']'\'' && ost=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') && '\''['\'' '\''-z'\'' "$ost" '\'']'\''; then exit 2; fi
-          if ! (ost=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') && ostate=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') && '\''['\'' "$ost" '\''='\'' "$s" '\'']'\'' && '\''['\'' "$ostate" '\''!='\'' '\''Z'\'' '\'']'\''); then exit 0; fi
-          '\''kill'\'' "$p" 2>/dev/null || '\''true'\''
-          '\''timeout'\'' '\''2'\'' '\''tail'\'' '\''--pid='\''"$p" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''
-          if ! (ost=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') && ostate=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') && '\''['\'' "$ost" '\''='\'' "$s" '\'']'\'' && '\''['\'' "$ostate" '\''!='\'' '\''Z'\'' '\'']'\''); then exit 0; fi
-          '\''kill'\'' '\''-9'\'' "$p" 2>/dev/null || '\''true'\''
-          '\''timeout'\'' '\''1'\'' '\''tail'\'' '\''--pid='\''"$p" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''
-          if ! (ost=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') && ostate=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') && '\''['\'' "$ost" '\''='\'' "$s" '\'']'\'' && '\''['\'' "$ostate" '\''!='\'' '\''Z'\'' '\'']'\''); then exit 0; fi
-          exit 1
-          '
-          SOL_OWNED='f="$1"
-          if ! '\''['\'' '\''-e'\'' "$f" '\'']'\''; then exit 1; fi
-          if ! '\''['\'' '\''-r'\'' "$f" '\'']'\''; then exit 2; fi
-          p=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f1'\'' "$f")
-          s=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f2'\'' "$f")
-          if ! ('\''['\'' '\''-n'\'' "$p" '\'']'\'' && '\''['\'' '\''-n'\'' "$s" '\'']'\''); then exit 2; fi
-          if ! '\''['\'' '\''-e'\'' '\''/proc/'\''"$p" '\'']'\''; then exit 1; fi
-          ost=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'')
-          if '\''['\'' '\''-z'\'' "$ost" '\'']'\''; then exit 2; fi
-          if ost=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''20'\'') && ostate=$('\''sed'\'' '\''s/^.*) //'\'' '\''/proc/'\''"$p"'\''/stat'\'' 2>/dev/null | '\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f'\'' '\''1'\'') && '\''['\'' "$ost" '\''='\'' "$s" '\'']'\'' && '\''['\'' "$ostate" '\''!='\'' '\''Z'\'' '\'']'\''; then exit 0; fi
-          exit 1
-          '
-          fail='0'
-          SOL_WORKFLOW=''
-          SOL_DELIVERY=''
-          SOL_NOTICE_WATCH=''
-          'trap' 'rc="$?"
-          if '\''['\'' '\''-n'\'' "$SOL_WORKFLOW" '\'']'\''; then '\''echo'\'' '\''gunbc-workflow: collector release requested by the step exit trap at='\''$('\''date'\'' '\''-u'\'' '\''+%Y-%m-%dT%H:%M:%SZ'\'') | '\''dd'\'' '\''of='\''"$SOL_WORKFLOW" '\''oflag=append'\'' '\''conv=notrunc'\'' '\''status=none'\'' || '\''true'\''; fi
-          col='\''absent'\''
-          if '\''['\'' '\''-e'\'' "$SOL_PID_FILE" '\'']'\''; then if crec=$('\''cat'\'' "$SOL_PID_FILE" 2>/dev/null) && crcpt=$('\''cut'\'' '\''-d'\'' '\'' '\'' '\''-f1,2'\'' "$SOL_PID_FILE"'\''.activated'\'' 2>/dev/null) && '\''['\'' '\''-n'\'' "$crec" '\'']'\'' && '\''['\'' "$crcpt" '\''='\'' "$crec" '\'']'\''; then '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_PID_FILE" || '\''true'\''; if '\''bash'\'' '\''-c'\'' "$SOL_OWNED" '\''sol-owned'\'' "$SOL_PID_FILE"; then co='\''0'\''; else co="$?"; fi; if '\''['\'' "$co" '\''='\'' '\''1'\'' '\'']'\''; then if '\''rm'\'' '\''-f'\'' "$SOL_PID_FILE" "$SOL_PID_FILE"'\''.activated'\''; then col='\''released'\''; else col='\''ended-but-record-not-retired'\''; fi; else col='\''unresolved-owned-check-'\''"$co"; fi; else col='\''foreign-record-kept'\''; fi; fi
-          if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''kvm-release'\'' "$GITHUB_WORKSPACE"'\''/artifacts/mtcollins1-boot-kvm-'\''"$GITHUB_RUN_ID"'\''/observer.pid'\''; then kvm='\''released'\''; else kvm='\''unresolved-release-exit-'\''"$?"; fi
-          obs='\''unstarted'\''
-          wclean='\''none'\''
-          if '\''['\'' '\''-n'\'' "$SOL_NOTICE_WATCH" '\'']'\''; then '\'':'\'' > "$SOL_OUT"'\''.notice.stop'\'' || '\''true'\''; '\''timeout'\'' '\''10'\'' '\''tail'\'' '\''--pid='\''"$SOL_NOTICE_WATCH" '\''-f'\'' '\''/dev/null'\'' || '\''true'\''; if '\''bash'\'' '\''-c'\'' "$SOL_OWNED" '\''sol-owned'\'' "$SOL_OUT"'\''.notice.watcher'\''; then wo='\''0'\''; else wo="$?"; fi; if '\''jobs'\'' '\''-rp'\'' | '\''grep'\'' '\''-qx'\'' "$SOL_NOTICE_WATCH"; then obs='\''unfinished'\''; if '\''['\'' "$wo" '\''='\'' '\''0'\'' '\'']'\''; then if '\''bash'\'' '\''-c'\'' "$SOL_RELEASE" '\''sol-release'\'' "$SOL_OUT"'\''.notice.watcher'\''; then wclean='\''stopped'\''; else wclean='\''unresolved-survived-KILL'\''; fi; else wclean='\''unresolved-identity-not-confirmed-'\''"$wo"; fi; else if '\''wait'\'' "$SOL_NOTICE_WATCH"; then obs='\''0'\''; else obs="$?"; fi; fi; fi
-          if '\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE"; then clean='\''ok'\''; else clean='\''failed'\''; fi
-          if '\''['\'' "$obs" '\''!='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$obs" '\''!='\'' '\''unstarted'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher did not succeed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$col" '\''!='\'' '\''absent'\'' '\'']'\'' && '\''['\'' "$col" '\''!='\'' '\''released'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL collector not released at step exit '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$wclean" '\''!='\'' '\''none'\'' '\'']'\'' && '\''['\'' "$wclean" '\''!='\'' '\''stopped'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 SOL notice watcher cleanup unresolved '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$kvm" '\''!='\'' '\''released'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 KVM observer release did not resolve at step exit (release exit 1 = survived KILL, 2 = unobservable) '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$clean" '\''!='\'' '\''ok'\'' '\'']'\''; then '\''echo'\'' '\''::error::mtcollins1 boot credential cleanup failed '\'''\''(boot command exited '\''"$rc"'\''; watcher result '\''"$obs"'\''; watcher cleanup '\''"$wclean"'\''; collector release '\''"$col"'\''; KVM observer release '\''"$kvm"'\''; credential cleanup '\''"$clean"'\''; delivery ledger '\''"$SOL_DELIVERY"'\'')'\''; fail='\''1'\''; fi
-          if '\''['\'' "$rc" '\''='\'' '\''0'\'' '\'']'\'' && '\''['\'' "$fail" '\''='\'' '\''1'\'' '\'']'\''; then rc='\''1'\''; fi
-          '\''exit'\'' "$rc"
-          ' 'EXIT'
-          'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
-          'chmod' '600' "$DEST_FILE"
-          'export' 'GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE='"$DEST_FILE"
-          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
-          ':' > "$SOL_OUT"
-          'export' 'GUNBC_MTCOLLINS1_SOL_CAPTURE='"$SOL_OUT"
-          'export' 'GUNBC_MTCOLLINS1_SOL_PID_FILE='"$SOL_PID_FILE"
-          SOL_LOSS="$SOL_OUT"'.loss'
-          SOL_CLIENT="$SOL_OUT"'.client'
-          SOL_WORKFLOW="$SOL_OUT"'.workflow'
-          SOL_DELIVERY="$SOL_OUT"'.delivery'
-          ':' > "$SOL_LOSS"
-          ':' > "$SOL_CLIENT"
-          ':' > "$SOL_WORKFLOW"
-          ':' > "$SOL_DELIVERY"
-          'find' $('dirname' "$SOL_OUT") '-maxdepth' '1' '-name' $('basename' "$SOL_OUT")'.notice.*' '-delete'
-          SOL_NOTICE_TOKEN=$('od' '-An' '-N8' '-tx8' '/dev/urandom' | 'tr' '-d' ' \n')
-          '[' '-n' "$SOL_NOTICE_TOKEN" ']'
-          'export' 'GUNBC_MTCOLLINS1_SOL_NOTICE_TOKEN='"$SOL_NOTICE_TOKEN"
-          ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
-
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_sol_notice.dag --function mtcollins1_sol_notice_wet & SOL_NOTICE_WATCH=$!
-          if ! (WSTART=$('sed' 's/^.*) //' '/proc/'"$SOL_NOTICE_WATCH"'/stat' | 'cut' '-d' ' ' '-f' '20') && '[' '-n' "$WSTART" ']' && 'printf' '%s %s\n' "$SOL_NOTICE_WATCH" "$WSTART" > "$SOL_OUT"'.notice.watcher.tmp' && 'mv' '-T' "$SOL_OUT"'.notice.watcher.tmp' "$SOL_OUT"'.notice.watcher'); then 'echo' '::error::mtcollins1 SOL notice watcher could not be recorded; refusing the boot before any BMC contact'; exit 1; fi
-
+        run: |-
+          # 🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite
+          set -euo pipefail
+          umask 077
+          HDR_FILE="$RUNNER_TEMP/mtcollins1-boot-auth-header"
+          RESP_FILE="$RUNNER_TEMP/mtcollins1-boot-sm.json"
+          DEST_FILE="$RUNNER_TEMP/mtcollins1-bmc-credential"
+          SOL_PID_FILE="$RUNNER_TEMP/mtcollins1-sol.pid"
+          SOL_OUT="$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture"
+          trap 'if [ -f "$SOL_PID_FILE" ]; then kill "$(cat "$SOL_PID_FILE")" 2>/dev/null || true; fi; rm -f "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$SOL_PID_FILE"' EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          chmod 600 "$DEST_FILE"
+          export GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE="$DEST_FILE"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          : > "$SOL_OUT"
+          export GUNBC_MTCOLLINS1_SOL_CAPTURE="$SOL_OUT"
+          export GUNBC_MTCOLLINS1_SOL_PID_FILE="$SOL_PID_FILE"
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_wet
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'mtcollins1_boot'
-        timeout-minutes: 79
+        timeout-minutes: 61
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
         id: mtcollins1_boot_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

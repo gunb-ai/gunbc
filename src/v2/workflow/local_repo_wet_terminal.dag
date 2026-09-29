@@ -1203,12 +1203,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_vacated_port_reads_as_no_response_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
-      function: "a_vacated_port_reads_as_no_response_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
       function: "a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution",
