@@ -148,12 +148,17 @@ import v2.std.witness {
 }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
   find_named_child,
+  named_child_lookup,
   node_labeled_child_edges,
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
+  is_wildcard_pattern_identity,
   pattern_wildcard_name
 }
 import v2.std.qualified_name {
@@ -677,6 +682,72 @@ fn produced_decl_signature_segments_tokens(
   )
 }
 
+// A FUNCTION ITEM'S PARAMETERS, IN DECLARED ORDER. The item is called positionally, so its emitted
+// parameter list is the Arrow's declared order (v2.std.arrow_signature arrow_declared_parameter_order,
+// the one reader of ^arrow_signature_order_edge) -- never the domain Conj's stored sequence, which is
+// a set's storage and which canonicalization sorts by label. The domain is read only for MEMBERSHIP:
+// each declared label selects its binder edge, so the parameter's type still comes from the domain.
+// A domain that binds named parameters but carries no readable order refuses typed; there is no
+// domain-order fallback. A domain that binds no name -- a function TYPE's positional product, or a
+// lone parameter type (produced_decl_function_type_domain_edges) -- has no labels to order: its
+// positional edges are the sequence, so its children pass through. A domain mixing named and
+// positional edges is neither and refuses as malformed rather than dropping the positional ones.
+fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>> {
+  match arrow_domain_binder_names(arrow: arrow) {
+    Empty => outcome_accepted(value: domain.children)
+    Cons { head: _, tail: _ } =>
+      match arrow_declared_parameter_order(arrow: arrow) {
+        ArrowParameterOrderDeclared { labels: labels } =>
+          if length(xs: labels) != length(xs: domain.children) {
+            outcome_rejected(
+              d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+            )
+          } else {
+            fold_list(
+              xs: labels,
+              empty: outcome_accepted(value: Empty),
+              cons: fn(acc, label) {
+                bind_outcome(
+                  o: acc,
+                  f: fn(so_far) {
+                    bind_outcome(
+                      o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
+                      f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        ArrowParameterOrderAbsent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
+          )
+        ArrowParameterOrderMalformed =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+          )
+      }
+  }
+}
+
+// The membership read: the one domain binder a declared label names. arrow_declared_parameter_order
+// admits only an order that is a permutation of the domain's binders, so a missing or repeated
+// binder here is a wall the reader already holds; it still refuses typed rather than dropping one.
+fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outcome<Edge> {
+  match named_child_lookup(root: domain, name: label) {
+    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Named { name: label }, target: t })
+    NamedChildMissing =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
+    NamedChildAmbiguous =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
+  }
+}
+
 fn produced_decl_subject_from_name_and_arrow(
   fn_name: Symbol,
   arrow: Node
@@ -685,11 +756,16 @@ fn produced_decl_subject_from_name_and_arrow(
     Present { value: domain } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
         Present { value: codomain } =>
-          outcome_accepted(
-            value: ProducedDeclSignatureSubject {
-              fn_name: fn_name,
-              params: domain.children,
-              codomain: codomain
+          bind_outcome(
+            o: produced_decl_ordered_params(arrow: arrow, domain: domain),
+            f: fn(params) {
+              outcome_accepted(
+                value: ProducedDeclSignatureSubject {
+                  fn_name: fn_name,
+                  params: params,
+                  codomain: codomain
+                }
+              )
             }
           )
         Absent =>
@@ -1158,6 +1234,8 @@ fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String
 // (v2.std.anonymous_binder anonymous_binder_mint_parameter_list). A target that admits only one `_` per
 // signature receives two and its own compiler refuses them; no target row carries a per-target
 // anonymous-parameter spelling yet.
+// The minted wildcard pattern (v2.std.node_query wildcard_pattern_identity) is spelled `_` the same way,
+// the inverse of its own mint in pattern lowering.
 fn bound_spelling_from_map(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
@@ -1166,7 +1244,7 @@ fn bound_spelling_from_map(
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
       Absent =>
-        if is_anonymous_param_label(sym: binding) {
+        if is_anonymous_param_label(sym: binding) || is_wildcard_pattern_identity(sym: binding) {
           symbol_interned_spelling(binding: pattern_wildcard_name())
         } else {
           symbol_interned_spelling(binding: binding)
@@ -14976,9 +15054,19 @@ fn target_value_expr_loop_gate(node: Node) -> Bool {
 // (target_value_expr_bind_let_gate) admits it by shape, and projecting it as a plain let would drop its v2.std.type_binder
 // <type-annotation> -- a target whose let spells a type would lose what the source wrote. So it
 // refuses, located at the Bind, until a target realization row carries the annotation.
+//
+// THE TAIL IS AN EXPRESSION, NOT A BINDING. The statement-let lowering
+// (v2.compiler.body_lowering_fold, lower_bind) puts the REST OF THE BLOCK at positional 2, so a
+// tail is whatever the block ends in -- a name, another let, a record, a call, a function value --
+// and eval and the bind_let carrier both take it as one. A plain name stays a binding reference;
+// any other tail projects as a body subexpression. `tail_return` is the function-typed position the
+// tail occupies when this Bind IS the function's body (or the tail of one that is): a function
+// value there is the returned closure and renders through target_project_realized_closure, exactly
+// as a FunctionValueBody does; a Bind in any other position passes Absent.
 fn target_project_bind_let(
   arrow: Node,
   body: Node,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -15004,8 +15092,15 @@ fn target_project_bind_let(
           o: target_transform_positional_operand_binding(node: body, index: 0),
           f: fn(key_binding) {
             bind_outcome(
-              o: target_transform_positional_operand_binding(node: body, index: 2),
-              f: fn(body_binding) {
+              o: target_project_bind_tail(
+                arrow: arrow,
+                bind: body,
+                tail_return: tail_return,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(projected_tail) {
                 match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
                   Absent =>
                     outcome_rejected(
@@ -15028,7 +15123,7 @@ fn target_project_bind_let(
                           target_value_expression_bind_let(
                             bind_key: target_value_expression_binding_ref(binding: key_binding),
                             bind_value: projected_value,
-                            bind_body: target_value_expression_binding_ref(binding: body_binding)
+                            bind_body: projected_tail
                           )
                         )
                       }
@@ -15039,6 +15134,67 @@ fn target_project_bind_let(
           }
         )
     }
+  }
+}
+
+fn target_project_bind_tail(
+  arrow: Node,
+  bind: Node,
+  tail_return: Optional<FunctionTypePosition>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: node_positional_child_targets(node: bind), index: 2) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: bind
+        )
+      )
+    Present { value: tail } =>
+      match tail.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          outcome_accepted(target_value_expression_binding_ref(binding: id))
+        TypeNode { connective: Arrow } =>
+          match tail_return {
+            Present { value: position } =>
+              target_project_realized_closure(
+                closure: tail,
+                position: position,
+                enclosing: arrow_domain_binder_names(arrow: arrow),
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+            Absent =>
+              target_value_expr_project_body_subexpression(
+                arrow: arrow,
+                node: tail,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+          }
+        ComputationNode { behavior: Bind } =>
+          target_project_bind_let(
+            arrow: arrow,
+            body: tail,
+            tail_return: tail_return,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+        _ =>
+          target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: tail,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+      }
   }
 }
 
@@ -15115,6 +15271,7 @@ fn target_value_expr_project_body_subexpression(
       target_project_bind_let(
         arrow: arrow,
         body: node,
+        tail_return: optional_absent(),
         target: target,
         source_bool_form: source_bool_form,
         handle_transform: handle_transform
@@ -15245,7 +15402,7 @@ fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
 // A RETURNED CLOSURE'S PARAMETERS, IN DECLARED ORDER. The emitted closure is applied positionally,
 // so its parameter list is the Arrow's declared order (v2.std.compilers.body_lowering
 // arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
-// Conj's stored sequence, which is sorted by label and is not the signature (#12361). Scope
+// Conj's stored sequence, which canonicalization sorts by label and is not the signature (#12361). Scope
 // MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
 // binds names but carries no readable order refuses typed, exactly as eval's
 // eval_param_labels_in_declared_order does: there is no domain-order fallback. A domain that binds
@@ -15457,6 +15614,7 @@ fn target_project_arrow_body_by_kind(
         target_project_bind_let(
           arrow: arrow,
           body: body,
+          tail_return: optional_present(value: FunctionTypeAtItemReturn),
           target: target,
           source_bool_form: source_bool_form,
           handle_transform: handle_transform

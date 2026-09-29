@@ -1077,6 +1077,7 @@ pub(crate) fn new_multi_entry_index_shell(
         both_closure_edges: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
+        pool_module_names: std::cell::OnceCell::new(),
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -2556,14 +2557,7 @@ pub(crate) fn import_resolution_facts_with_observation(
                     continue;
                 }
             };
-            for import_module in extract_import_paths(&content) {
-                let target_declared = declared.contains(&import_module);
-                out.push(ImportResolutionFactRaw {
-                    path: rel.clone(),
-                    import_module,
-                    target_declared,
-                });
-            }
+            out.extend(import_facts_for_file(&rel, &content, &declared));
         }
     }
     ImportResolutionObservation {
@@ -2571,6 +2565,25 @@ pub(crate) fn import_resolution_facts_with_observation(
         observed_paths,
         read_refusals,
     }
+}
+
+/// THE PER-FILE HALF of `import_resolution_facts`: one importer's `import` lines, each marked
+/// declared or not against the pool's module index. One authority for both demands on it -- the
+/// population walk above maps it over every importer file, and
+/// `cli_run` `dependency_resolution_facts_at` asks it for one.
+pub(crate) fn import_facts_for_file(
+    rel: &str,
+    content: &str,
+    declared: &HashSet<String>,
+) -> Vec<ImportResolutionFactRaw> {
+    extract_import_paths(content)
+        .into_iter()
+        .map(|import_module| ImportResolutionFactRaw {
+            path: rel.to_string(),
+            target_declared: declared.contains(&import_module),
+            import_module,
+        })
+        .collect()
 }
 
 pub fn import_resolution_facts(
@@ -2967,6 +2980,150 @@ pub(crate) enum FileReferenceEdges {
     Unaccounted(&'static str),
 }
 
+/// ONE FILE'S FREE NAMES, read from its FULL parse by the one structural walk
+/// (`collect_node_refs`). Two consumers: the reference-edge producer below, and the bare-provider
+/// gate (`cli_run::parsed_bare_candidates`), which before this read the same file with a byte
+/// scanner that had no grammar -- `response {` in a service operation read as a reference to any
+/// top-level `fn response` in the pool.
+pub(crate) struct ParsedFileReferences {
+    pub(crate) bare: std::collections::HashSet<String>,
+    pub(crate) chains: Vec<Vec<String>>,
+    pub(crate) positions: super::BarePositions,
+    /// Type names at the AUTHORED type positions of the raw parse, which `collect_node_refs`
+    /// does not read because it was written for the prepared tree: there a parameter's type is
+    /// its `type_annotation`, while the parser puts it in the parameter's children and puts a
+    /// return or field type in `inferred: Resolved`. Kept apart from `bare` so the reference-edge
+    /// producer's population is unchanged by this reader.
+    pub(crate) authored_types: std::collections::HashSet<String>,
+}
+
+/// The authored type positions of a RAW parse (see `ParsedFileReferences::authored_types`),
+/// over every slot of every node.
+fn raw_parse_authored_type_names(
+    node: &Rc<crate::v1_std_core::Node>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    if let Some(ty) = raw_declared_type(node) {
+        raw_type_names(&ty, out);
+    }
+    if let Some(ty) = &node.type_annotation {
+        raw_type_names(ty, out);
+    }
+    for param in node.params.iter() {
+        for ty in param.children.iter() {
+            raw_type_names(ty, out);
+        }
+    }
+    let slots = node
+        .children
+        .iter()
+        .chain(node.params.iter())
+        .chain(node.properties.iter())
+        .chain(node.uses.iter())
+        .chain(node.body.iter())
+        .chain(node.transport.iter());
+    for child in slots {
+        raw_parse_authored_type_names(child, out);
+    }
+}
+
+/// The type the parser recorded as `inferred: Resolved` on a declaration, field or operation.
+fn raw_declared_type(node: &Rc<crate::v1_std_core::Node>) -> Option<Rc<crate::v1_std_core::Node>> {
+    match node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node: ty }) => Some(ty.clone()),
+        _ => None,
+    }
+}
+
+/// The type names of one raw type node. Only expression-free nodes are types: a parameter's
+/// children also carry its default VALUE, which is an expression, not a type. A child carrying its
+/// own declared type is a FIELD of a record type (an operation's `output { context: T }`, a
+/// variant's payload): its name is a label and only its type is read.
+fn raw_type_names(ty: &Rc<crate::v1_std_core::Node>, out: &mut std::collections::HashSet<String>) {
+    use crate::v1_std_core::ExprData;
+    if !matches!(&*ty.expr_data, ExprData::NoExprData) {
+        return;
+    }
+    if !ty.name.is_empty() {
+        out.insert(ty.name.clone());
+    }
+    for child in ty.children.iter().chain(ty.params.iter()) {
+        match raw_declared_type(child) {
+            Some(field_type) => raw_type_names(&field_type, out),
+            None => raw_type_names(child, out),
+        }
+    }
+    if let Some(annotation) = &ty.type_annotation {
+        raw_type_names(annotation, out);
+    }
+}
+
+/// The walk behind `ParsedFileReferences`, or the located cause it could not answer. A binder
+/// form the collector cannot name, or an occurrence count that does not reconcile, is a refusal
+/// rather than a smaller answer: either would publish a binder set that is known incomplete.
+pub(crate) fn parsed_file_references(
+    rel: &str,
+    content: &str,
+    self_module: &str,
+    module_names: &HashSet<String>,
+) -> Result<ParsedFileReferences, &'static str> {
+    let Some(tree) = parse_module_node_tolerant(rel, content) else {
+        return Err("parse-failed");
+    };
+    let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut chains: Vec<Vec<String>> = Vec::new();
+    // `collect_node_refs` recovers a lambda parameter's name from its authored span, so the
+    // file's newline index rides beside the tree; a missing index would leave those names unbound
+    // and let them resolve as references.
+    let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    file_indices.insert(
+        rel.to_string(),
+        super::pool_acquire::newline_index_for(rel, content),
+    );
+    let file_indices = Rc::new(file_indices);
+    // THIS PRODUCER ANSWERS BEFORE ANY SUBJECT IS PREPARED, so it has no declaration index to
+    // classify against and cannot decide DeclaredElsewhere / NamesNothingKnown: every unbound
+    // name classifies as a reference, and the consumer's census decides what it names.
+    let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
+    let mut scratch_unclassified: Vec<String> = Vec::new();
+    let mut classify = ExprVarClassification {
+        decl_index: None,
+        module_names: Some(module_names),
+        module_path_heads: std::collections::HashSet::new(),
+        tally: &mut scratch_tally,
+        unclassified: &mut scratch_unclassified,
+        module: self_module.to_string(),
+        value_refs: std::collections::BTreeSet::new(),
+        occurrences: 0,
+        free_reference_edges: 0,
+        bound_occurrences_suppressed: 0,
+        chain_head_occurrences: 0,
+        refusals: Vec::new(),
+        bare_positions: Default::default(),
+    };
+    for item in tree.children.iter() {
+        collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
+    }
+    // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
+    // syntax the collector must learn, and a reconciliation miss names an accounting defect in
+    // the collector itself (review 55667).
+    if !classify.refusals.is_empty() {
+        return Err("binder-refusal");
+    }
+    if !classify.reconciles() {
+        return Err("occurrence-accounting-mismatch");
+    }
+    let positions = std::mem::take(&mut classify.bare_positions);
+    let mut authored_types = std::collections::HashSet::new();
+    raw_parse_authored_type_names(&tree, &mut authored_types);
+    Ok(ParsedFileReferences {
+        bare,
+        chains,
+        positions,
+        authored_types,
+    })
+}
+
 /// THE PER-FILE HALF: one file's reference edges, from that file's own full parse and the pool
 /// name index. ONE authority for both demands on it -- the whole-pool producer below maps it over
 /// every importer file for the affected-set consumers, and the resolve path asks it only for the
@@ -2977,82 +3134,36 @@ pub(crate) fn reference_edges_for_file(
     content: Option<&str>,
     names: &ReferencePoolNames,
 ) -> FileReferenceEdges {
+    reference_edges_for_file_on_demand(rel, content, || names)
+}
+
+/// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
+/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
+/// never builds the whole-pool heads index; only an import-less file, whose references must be
+/// resolved against pool names, forces it.
+pub(crate) fn reference_edges_for_file_on_demand<
+    R: std::ops::Deref<Target = ReferencePoolNames>,
+>(
+    rel: &str,
+    content: Option<&str>,
+    names: impl FnOnce() -> R,
+) -> FileReferenceEdges {
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
     if !extract_import_paths(content).is_empty() {
         return FileReferenceEdges::ImportBearing;
     }
+    let names = names();
+    let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
         return FileReferenceEdges::Unaccounted("no-module-line");
     };
-    let Some(tree) = parse_module_node_tolerant(rel, content) else {
-        return FileReferenceEdges::Unaccounted("parse-failed");
+    let refs = match parsed_file_references(rel, content, &self_module, &names.module_names) {
+        Ok(refs) => refs,
+        Err(cause) => return FileReferenceEdges::Unaccounted(cause),
     };
-    let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut chains: Vec<Vec<String>> = Vec::new();
-    // THE INDEX IS BUILT FROM THE BYTES THIS PRODUCER ALREADY READ, not fetched from a
-    // prepared subject that does not exist at this point: `collect_node_refs` recovers a
-    // lambda parameter's name from its authored span, and a missing index would leave
-    // those names unbound and let them resolve as references.
-    let mut file_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
-    file_indices.insert(
-        rel.to_string(),
-        crate::v1_std_core::build_newline_index(rel.to_string(), content.to_string()),
-    );
-    let file_indices = Rc::new(file_indices);
-    // THIS PRODUCER ANSWERS A CORPUS-WIDE QUESTION BEFORE ANY SUBJECT IS PREPARED, so it
-    // has no declaration index to classify against and cannot decide
-    // DeclaredElsewhere / NamesNothingKnown. It supplies an EMPTY index, under which
-    // every unbound name classifies as a reference — the behaviour this producer already
-    // had, preserved deliberately rather than by omission. The totality guarantee is
-    // therefore scoped to the floor's index build, which is the consumer that has the
-    // declarations; this one keeps its own looser contract and its own counters.
-    let mut scratch_tally: BTreeMap<ExprVarClass, usize> = BTreeMap::new();
-    let mut scratch_unclassified: Vec<String> = Vec::new();
-    let mut classify = ExprVarClassification {
-        decl_index: None,
-        module_names: Some(&names.module_names),
-        module_path_heads: std::collections::HashSet::new(),
-        tally: &mut scratch_tally,
-        unclassified: &mut scratch_unclassified,
-        module: self_module.clone(),
-        value_refs: std::collections::BTreeSet::new(),
-        occurrences: 0,
-        free_reference_edges: 0,
-        bound_occurrences_suppressed: 0,
-        chain_head_occurrences: 0,
-        refusals: Vec::new(),
-    };
-    for item in tree.children.iter() {
-        collect_node_refs(item, &mut bare, &mut chains, &file_indices, &mut classify);
-    }
-    // THE SECOND CONSUMER ENFORCES THE SAME REFUSAL THE FIRST ONE DOES. `classify` reports
-    // two failure states and neither is survivable for a graph that is about to be
-    // published: an unsupported binder form means the binder set is incomplete, so a name
-    // that IS bound can be recorded as a free reference (or the reverse); a reconciliation
-    // miss means the occurrences do not add up, which is the same statement arrived at by
-    // counting. Reading them and proceeding anyway would publish an under-bound, possibly
-    // widened graph while the refusal sat unread in a field — the fail-open this
-    // classification exists to remove, one consumer away from the floor path that checks
-    // it correctly (review 55667).
-    //
-    // TWO CAUSES, NOT ONE, because they have different remedies: a binder refusal names a
-    // syntax the collector must learn, and a reconciliation miss names an accounting
-    // defect in the collector itself. Collapsing them would send both to whichever
-    // remedy the shared symbol happened to suggest.
-    //
-    // The file is SKIPPED rather than published, matching this producer's three existing
-    // refusal arms above (`unreadable`, `no-module-line`, `parse-failed`), which also skip
-    // and record. The narrowing is therefore typed, located and countable through
-    // `reference_accounting_refusals`, not silent — a skipped file is visible in that
-    // channel, which is what separates it from the empty-observation narrow.
-    if !classify.refusals.is_empty() {
-        return FileReferenceEdges::Unaccounted("binder-refusal");
-    }
-    if !classify.reconciles() {
-        return FileReferenceEdges::Unaccounted("occurrence-accounting-mismatch");
-    }
+    let ParsedFileReferences { bare, chains, .. } = refs;
     // Resolve to per-file (target_module → strongest confidence).
     let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
         std::collections::BTreeMap::new();
