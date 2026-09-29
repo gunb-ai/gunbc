@@ -1199,7 +1199,7 @@ fn devboot_serve_built(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: env_path_resolved_program as String,
+    bin_path: env_path_resolved_program().invocation as String,
     args: env_prefixed_args(
       bindings: [
         EnvSet {

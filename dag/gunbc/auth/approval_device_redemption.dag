@@ -1,7 +1,11 @@
 module gunbc.auth.approval_device_redemption
 
 import std.decl_ref { decl_ref }
-import std.types { NonEmptyStr, String, Timestamp, Int, List }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import std.types { NonEmptyStr, String, Timestamp, Int, List, FilePath }
 import std.logic { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey, SignatureVerification, SignatureVerified }
@@ -504,6 +508,26 @@ fn redeem_device_over_store(
 // this module: the only bytes it trusts are this store's own, written only by commit_enrolment from
 // an EnrolmentAdmitted value, under a root no other principal can write.
 data approval_device_store_root: NonEmptyStr = "/var/lib/gunbc/approval-devices"
+
+// THE STORE DIRECTORY IS CONVERGED BY THE BROKER INSTALL, and until this row nothing in the model
+// created it. The first issued enrolment code (srv1, 2026-09-29) needed proud-deer-538 to create it by
+// hand as briansrls:briansrls 0700. That hand step is closed by this row: the broker's dark install
+// ensures it (gunbc.live_deploy.emit approval_broker_dark_install_release_steps). The owner is the
+// operator's account, because the verbs that read and write it (approval_device_routes, the
+// enrolment code issue) run as that account and nothing else needs it, so the derived mode is
+// owner-only. Ownership is Ensured, not Owned: the directory holds enrolled devices, which must
+// survive a retract of the deployment that created it.
+fn approval_device_store_directory() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "approval-device-store" as NonEmptyStr,
+    path: approval_device_store_root as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
 
 type DeviceStoreWrite
   = DeviceStoreWritten

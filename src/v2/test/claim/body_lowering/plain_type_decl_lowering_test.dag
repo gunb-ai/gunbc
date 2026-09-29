@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.plain_type_decl_lowering
 
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.symbol_index_fill { symbol_index_declared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -27,11 +28,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // separately, and nothing here asserts it or suppresses it.
 
 // The target the assembled tree declares under `name`: the first Named edge carrying that label.
-fn ptd_declared_target(o: Outcome<Node>, name: Symbol) -> Optional<Node> {
+fn ptd_declared_target(o: Outcome<ResolvedTree>, name: Symbol) -> Optional<Node> {
   match o {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: root, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+      fold(node_subtree_nodes(root: root.root), init: optional_absent(), f: fn(acc, n) {
         match acc {
           Present { value: _ } => acc
           Absent =>
@@ -90,7 +91,7 @@ fn ptd_members_declared(t: Node) -> Bool {
   }
 }
 
-fn ptd_verdict_of(o: Outcome<Node>, name: Symbol) -> PtdVerdict {
+fn ptd_verdict_of(o: Outcome<ResolvedTree>, name: Symbol) -> PtdVerdict {
   match ptd_declared_target(o: o, name: name) {
     Absent => PtdNotDeclared
     Present { value: t } =>
