@@ -371,30 +371,21 @@ fn produced_decl_render_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 // A type reference renders as one bound token in the target's identifier class, bound to what the
-// caller's type_binding resolves the atom to: the target's realization of a kernel carrier, an explicit
-// target spelling, or a program-declared type's own name (v2.compiler.emit_produced
-// produced_type_binding). The token is never bound to an atom nothing resolved, so the serializer's
-// interned-name fallback cannot fabricate a type spelling. Any other type shape REFUSES, typed and
-// located.
+// caller's type_binding resolves the type to: a declared type's reference spelled by the target's
+// declaration-reference form, a kernel carrier's atom realization, or an explicit target spelling
+// (v2.compiler.emit_produced
+// produced_type_binding). EVERY type shape is handed to the resolver, which is the one place that
+// decides a spelling or refuses, typed and located; the token is never bound to a type nothing resolved,
+// so the serializer's interned-name fallback cannot fabricate a type spelling.
 fn produced_decl_type_ref_tokens(
   token_class: Symbol,
   type_node: Node,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match type_node.kind {
-    TypeNode { connective: Atom { identity: _ } } =>
-      bind_outcome(
-        o: type_binding(type_node),
-        f: fn(binding) { outcome_accepted(value: [BoundToken { token_class: token_class, binding: binding }]) }
-      )
-    _ =>
-      outcome_rejected(
-        d: produced_decl_render_diagnostic(
-          reason: ^produced_decl_render_type_shape_unsupported,
-          node: type_node
-        )
-      )
-  }
+  bind_outcome(
+    o: type_binding(type_node),
+    f: fn(binding) { outcome_accepted(value: [BoundToken { token_class: token_class, binding: binding }]) }
+  )
 }
 
 fn produced_decl_param_segment_tokens(

@@ -445,8 +445,7 @@ fn closure_member_emission(
                   boundary: partition_boundary_fail_closed(),
                   kinds: ModuleDeclarationKinds {
                     records: visit.member.payload.record_declarations,
-                    refinements: visit.member.payload.refinement_declarations,
-                    declared_types: Empty
+                    refinements: visit.member.payload.refinement_declarations
                   }
                 )
               }

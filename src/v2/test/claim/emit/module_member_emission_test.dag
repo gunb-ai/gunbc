@@ -200,12 +200,16 @@ test fn a_bool_signature_is_spelled_by_its_realization_holds() -> Bool {
   }
 }
 
-// A type the module declares keeps its own name in a signature, and the enum it declares is emitted beside
-// the function that uses it.
+// A REFERENCE TO A DECLARED TYPE IS SPELLED BY THE TARGET'S DECLARATION-REFERENCE FORM -- the rule the
+// type-expression translate applies (v2.std.compilers.target_model
+// target_type_expr_declaration_reference_emitted): Rust's is crate-rooted, `crate::<module>::<Name>`,
+// the same for this module's types and another's, and never a bare leaf name. The enum it declares is
+// emitted beside the function that uses it.
 test fn a_declared_type_in_a_signature_keeps_its_name_holds() -> Bool {
   match member_emission_declared_type_signature_verdict() {
     MemberEmitted { text: t } =>
-      string_contains(s: t, pattern: "enum Decision") && string_contains(s: t, pattern: "fn f(d: Decision) -> Decision")
+      string_contains(s: t, pattern: "enum Decision")
+        && string_contains(s: t, pattern: "fn f(d: crate::v2_test_member_emission::Decision) -> crate::v2_test_member_emission::Decision")
     MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
