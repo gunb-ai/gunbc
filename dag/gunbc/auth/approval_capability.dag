@@ -210,7 +210,7 @@ fn signing_field(fields: List<String>, i: Int) -> String {
 // The tag travels as base64url (RFC 4648 §5, std.encoding UrlSafe, padded as that encoder emits)
 // because it rides in a URL path; the bound implementation speaks hex. The transcoding is the
 // existing codecs composed, and capability_tag_hex below is its only inverse, so a link has one tag
-// spelling: a b64url string that does not re-encode to itself is refused rather than normalized.
+// spelling: a non-canonical b64url string is refused rather than normalized.
 //
 // Issuance refuses rather than minting something that cannot verify:
 //   key id disagreement -- claims naming key A signed under key B is a link verify_capability
@@ -262,21 +262,35 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
 // tag is not the one canonical base64url spelling of some octet string. Absent is the verifier's
 // MacTagMismatch -- a malformed tag authenticates nothing, and saying which malformation would help
 // only a prober.
+//
+// ONE SPELLING, BY CONSTRUCTION RATHER THAN A SECOND ENCODING. This used to decode and then re-encode
+// the octets to compare against what was presented -- a second encoding standing where the decoder's
+// own canonicality should have been. std.encoding base64_decode now refuses non-zero pad bits (RFC
+// 4648 §3.5), which settles every spelling but the padding; the decoder deliberately still accepts
+// missing or extra padding, so the one fact left is checked here directly: the trailing "=" count is
+// exactly the one the encoder emits for this length.
 fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   let presented = capability.tag_b64url as String
-  match base64_decode(s: presented, variant: UrlSafe) {
-    Absent => none
-    Present { value: octets } =>
-      match base64_octets(values: octets) {
-        QualifiedOctetsRefused { observed: _ } => none
-        QualifiedOctetsReady { value: qualified } =>
-          if base64_encode(octets: qualified, variant: UrlSafe) != presented || octets == [] {
-            none
-          } else {
-            Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr }
-          }
-      }
+  if !base64_padding_is_canonical(s: presented) { none } else {
+    match base64_decode(s: presented, variant: UrlSafe) {
+      Absent => none
+      Present { value: octets } =>
+        match base64_octets(values: octets) {
+          QualifiedOctetsRefused { observed: _ } => none
+          QualifiedOctetsReady { value: qualified } =>
+            if octets == [] { none } else { Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr } }
+        }
+    }
   }
+}
+
+// The padding the std.encoding encoder emits: the total length a multiple of four, and exactly two
+// "=" after a two-sextet tail, one after a three-sextet tail, none otherwise -- never three.
+fn base64_padding_is_canonical(s: String) -> Bool {
+  let total = string_length(s)
+  let pads = if ends_with(s: s, suffix: "===") { 3 } else if ends_with(s: s, suffix: "==") { 2 } else if ends_with(s: s, suffix: "=") { 1 } else { 0 }
+  let tail = (total - pads) % 4
+  total % 4 == 0 && ((tail == 0 && pads == 0) || (tail == 2 && pads == 2) || (tail == 3 && pads == 1))
 }
 
 // ── The timestamp comparison contract ────────────────────────────────────────────────────────
@@ -438,8 +452,24 @@ fn verify_capability(
   mac_result: MacVerification,
   observed_at: Timestamp,
 ) -> CapabilityVerification {
+  verify_capability_presented(capability: capability, presented: approval_capability_signing_input(c: capability.claims), expectation: expectation, mac_result: mac_result, observed_at: observed_at)
+}
+
+// The same verification for a caller that already holds the signing input -- the one it computed the
+// MAC over -- so the input is projected once per verification, not once for the MAC and again here.
+// THE CALLER'S OBLIGATION, stated because this function cannot check it: `presented` MUST be
+// approval_capability_signing_input of this capability's claims. The MAC is compared against
+// `presented`, not re-derived from the claims, so a `presented` that matched some other message would
+// authenticate claims nobody signed. Its one caller (gunbc.auth.approval_store_receipt
+// verify_store_receipt) computes it from the claims it passes, in the same expression.
+fn verify_capability_presented(
+  capability: ApprovalCapability,
+  presented: NonEmptyStr,
+  expectation: CapabilityExpectation,
+  mac_result: MacVerification,
+  observed_at: Timestamp,
+) -> CapabilityVerification {
   let c = capability.claims
-  let presented = approval_capability_signing_input(c: c)
   match mac_result {
     MacVerified { verified: v } =>
       if v.message != presented {
