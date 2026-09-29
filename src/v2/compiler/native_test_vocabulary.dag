@@ -173,13 +173,13 @@ type NativeTestObservation {
 // ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
 // classifier asks both questions of every row.
 // `module` is the module the refused file DECLARES, read from its header line
-// (v2.compiler.compile native_lane_declared_module_name), because a refused file never produced a
+// (v2.compiler.compile native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
 // parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
 // told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
 // told only that a name is unbound. Absent means the file declares no module line.
 type NativeTestFileRefusal {
   path: Symbol
-  module: Optional<String>
+  module: Optional<QualifiedName>
   head_reason: Symbol
   fatal_reason: Symbol
 }
