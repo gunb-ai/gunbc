@@ -1,0 +1,72 @@
+module v2.test.execution.infer_gather_cost
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, infer }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Edge, Named, Node, TypeNode }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the v2.compiler.infer gather fold's cost in the depth of the tree it folds. The
+// gather used to carry each subtree's facts as an entries LIST: every parent joined its children's
+// lists and answered each lookup by scanning, so a spine of depth n paid a superlinear term in n.
+// It now threads one facts Map through fold_node (infer_gather_step_run), so each node enters its
+// facts once and each lookup is a map lookup.
+//
+// THE INSTRUMENT IS THE FLOOR'S EVAL-STEP COUNT FOR THIS CLAIM: the per-claim cost TSV the required
+// floor writes (GUNBC_REQUIRED_FLOOR_CLAIM_COST, uploaded as required_floor_claim_cost.tsv, column
+// eval_steps) and the new-witness ceiling it is admitted under
+// (v2.workflow.required_floor required_floor_new_witness_eval_step_budget). A claim cannot read its
+// own eval steps, so the claim cannot state the growth law as a ratio of two depths; it states it
+// as ADMISSION: the depth is chosen so the threaded gather fits the ceiling and the list gather it
+// replaced does not. The PR that landed this records both runs.
+//
+// THE SPECIMEN IS SUPPLIED, NOT PRODUCED (DESIGN section 3, a witness discriminates at one
+// interface): a right-nested product spine, each level a Conj of an int literal and the rest, so
+// every level awaits and takes the product row. Its pairing inhabitance claim -- that the real
+// front end emits Conj products the same row derives -- is
+// v2.test.execution.infer_product_introduction product_introduction_derives_fully_evidenced_products_holds, which runs the
+// real ingest and asserts every Conj in it derives.
+
+data infer_gather_cost_spine_depth: Int = 96
+
+fn infer_gather_cost_spine(depth: Int) -> Node {
+  if depth == 0 {
+    dag_int_literal_fixture_one()
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Named { name: ^infer_gather_cost_head }, target: dag_int_literal_fixture_one() },
+        Edge { label: Named { name: ^infer_gather_cost_rest }, target: infer_gather_cost_spine(depth: depth - 1) }
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+// The spine's root derives: every level took the product row over derived children, so the fold
+// reached the root with the facts of every level entered. A gather that dropped or failed to thread
+// a level leaves the root on the frontier.
+test fn infer_gather_deep_product_spine_derives_its_root_holds() -> Bool {
+  let spine = infer_gather_cost_spine(depth: infer_gather_cost_spine_depth)
+  match infer(tree: ResolvedTree { root: spine, symbol_index: empty_symbol_index() }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match t.facts.lookup(spine) {
+        Absent => false
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => false
+            DerivedGrounding { grounding: _ } => true
+          }
+      }
+  }
+}
