@@ -88,10 +88,9 @@ import v2.std.diagnostic {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.grammar {
+  derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -743,20 +742,7 @@ fn bash_fold_translation_rules_budget_for_row(row: Node) -> Int {
 }
 
 fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
-  let productions = bash_fold_formal_production_catalog
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: bash_fold_formal_production_catalog, lhs: lhs, emitted: emitted)
 }
 
 fn bash_fold_serialize_source_for_row(
