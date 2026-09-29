@@ -1,0 +1,42 @@
+{
+  "source": "3cc1de171",
+  "command": "gunbc compile --source-root target/reconcile-uri-producer --entry target/reconcile-uri-producer/extdeps.uri.dag --target rust --output-dir target/reconcile-uri-emitted",
+  "format": "rustfmt --edition 2021 target/reconcile-uri-emitted/src/extdeps_uri.rs",
+  "binary_sha256": "6a04ba3191b94f6ada6c08873a8d0189cd6d284b7b8979ee299ea4c5c9a4976c",
+  "output_sha256": "98fb349352fa82e2c6d7c90bf203c4a3e74affcbd036f91ae16c8ed486ca78ef",
+  "memory_max": 6442450944,
+  "swap_max": 0,
+  "closure": [
+    {
+      "module": "extdeps.uri",
+      "source": "dag/extdeps/uri.dag",
+      "copy": "target/reconcile-uri-producer/extdeps.uri.dag",
+      "sha256": "97d3c7fcbadb72d3d1ca0875fb0af711bce9edd290ebaa8597a5176a944f80a9"
+    },
+    {
+      "module": "std.algebra",
+      "source": "dag/std/algebra.dag",
+      "copy": "target/reconcile-uri-producer/std.algebra.dag",
+      "sha256": "33a01d4e6bc16487014cd4a651f135973c4951d9fc5aedba436dce9dfd7e3adb"
+    },
+    {
+      "module": "std.error_primitives",
+      "source": "dag/std/error_primitives.dag",
+      "copy": "target/reconcile-uri-producer/std.error_primitives.dag",
+      "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+    },
+    {
+      "module": "std.types",
+      "source": "dag/std/types.dag",
+      "copy": "target/reconcile-uri-producer/std.types.dag",
+      "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+    },
+    {
+      "module": "std.unicode.types",
+      "source": "dag/std/unicode/types.dag",
+      "copy": "target/reconcile-uri-producer/std.unicode.types.dag",
+      "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+    }
+  ],
+  "qualification": "emission succeeds; full stage0 mirror equality remains for CI"
+}
