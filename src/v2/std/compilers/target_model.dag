@@ -858,10 +858,32 @@ fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-// A TARGET'S FIXED-TOKEN SPELLINGS, INDEXED BY CLASS. The one authority for which spelling a class
-// has: the first literal or keyword rule for it; a class with none refuses. A serializer builds the
-// index once and reads it per token; a single lookup (lex_rules_literal_for_class) reads the same
-// index, so there is no second selection rule to drift from this one (DESIGN §3).
+// THE ONE SELECTION RULE FOR A CLASS'S FIXED SPELLING: a token rule for that class whose pattern is
+// a literal or a keyword gives its text; any other rule gives none. The first such rule in the lex
+// wins. Both readers below apply this step and nothing else, so they cannot disagree about which
+// spelling a class has (DESIGN §3): the index, built once when a serializer spells many tokens, and
+// the single lookup, which folds the rules once for one class without building a map.
+fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<String> {
+  match rule {
+    TokenRule { token_class: c, pattern: pattern } =>
+      if c == token_class {
+        lex_pattern_fixed_spelling(pattern: pattern)
+      } else {
+        optional_absent()
+      }
+    TriviaRule { pattern: _ } => optional_absent()
+    AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
+  }
+}
+
+fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
+  match pattern {
+    LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    _ => optional_absent()
+  }
+}
+
 type LexLiteralIndex {
   by_class: Map<Symbol, String>
 }
@@ -876,14 +898,13 @@ fn lex_literal_index(rules: LexRules) -> LexLiteralIndex {
           empty: empty_map(),
           cons: fn(acc, rule) {
             match rule {
-              TokenRule { token_class: c, pattern: pattern } =>
+              TokenRule { token_class: c, pattern: _ } =>
                 match map_lookup(m: acc, key: c) {
                   Present { value: _ } => acc
                   Absent =>
-                    match pattern {
-                      LiteralPattern { text: text } => map_insert(m: acc, key: c, value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-                      KeywordPattern { text: text } => map_insert(m: acc, key: c, value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-                      _ => acc
+                    match lex_rule_fixed_spelling(rule: rule, token_class: c) {
+                      Present { value: text } => map_insert(m: acc, key: c, value: text)
+                      Absent => acc
                     }
                 }
               TriviaRule { pattern: _ } => acc
@@ -902,8 +923,28 @@ fn lex_literal_indexed(index: LexLiteralIndex, token_class: Symbol) -> Outcome<S
   }
 }
 
+fn lex_rules_fixed_spelling(rules: LexRules, token_class: Symbol) -> Optional<String> {
+  match rules {
+    VoidLexRules => optional_absent()
+    ModeledLexRules { root: set } =>
+      fold_list(
+        xs: set.rules,
+        empty: optional_absent(),
+        cons: fn(acc, rule) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => lex_rule_fixed_spelling(rule: rule, token_class: token_class)
+          }
+        }
+      )
+  }
+}
+
 fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
-  lex_literal_indexed(index: lex_literal_index(rules: rules), token_class: token_class)
+  match lex_rules_fixed_spelling(rules: rules, token_class: token_class) {
+    Present { value: literal } => outcome_accepted(value: literal)
+    Absent => outcome_rejected(target_lex_rule_literal_not_found_diagnostic(token_class: token_class))
+  }
 }
 
 fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String> {
