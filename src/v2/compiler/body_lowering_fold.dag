@@ -6258,38 +6258,6 @@ fn body_lower_let_in_body_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_let_in_prefix_before_in_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
-  match body_lower_match_spine_left(spine: spine) {
-    Present { value: left } =>
-      match body_lower_match_spine_right(spine: spine) {
-        Present { value: right } =>
-          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
-            Present { value: id } =>
-              if id == ^dag_token_kw_in {
-                optional_absent()
-              } else {
-                match body_lower_let_in_prefix_before_in_optional(captured: left) {
-                  Present { value: found } => optional_present(value: found)
-                  Absent =>
-                    match body_lower_let_in_prefix_before_in_optional(captured: right) {
-                      Present { value: found } => optional_present(value: found)
-                      Absent => optional_present(value: captured)
-                    }
-                }
-              }
-            Absent =>
-              match body_lower_let_in_prefix_before_in_optional(captured: left) {
-                Present { value: found } => Present { value: found }
-                Absent => body_lower_let_in_prefix_before_in_optional(captured: right)
-              }
-          }
-        Absent => Absent
-      }
-    Absent => Absent
-  }
-}
-
 // THE VALUE IS WHAT PRECEDES `in`, READ OFF THE GRAMMAR'S POSITIONS. `let NAME = value in body`: what
 // follows `=` is sequence(value, sequence(`in`, body)), so the value is the left element when the
 // right one opens with `in`. The reader used to hand back the whole of what follows `=` -- value AND
@@ -6310,28 +6278,15 @@ fn body_lower_let_in_value_before_in(after_eq: Node) -> Node {
   }
 }
 
+// The in-form's value is what follows the let's `=`, read by the one reader of that position
+// (body_lower_let_statement_value_optional), narrowed to what precedes `in`. It used to locate a
+// prefix before `in` by a depth-first search that descended into the value itself and stopped at the
+// first spine not opened by `in` -- inside `i as Int` that was the cast's own `as T` spine, so the
+// value came back Absent and `let x = i as Int in x` refused as let_navigation_refused.
 fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
-  match body_lower_let_in_prefix_before_in_optional(captured: captured) {
+  match body_lower_let_statement_value_optional(captured: captured) {
     Absent => Absent
-    Present { value: prefix } =>
-      let spine = body_lower_unwrap_surface_shell(node: prefix)
-      match body_lower_match_spine_left(spine: spine) {
-        Present { value: left } =>
-          match body_lower_match_spine_right(spine: spine) {
-            Present { value: right } =>
-              match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
-                Present { value: id } =>
-                  if id == ^dag_token_eq {
-                    optional_present(value: body_lower_let_in_value_before_in(after_eq: right))
-                  } else {
-                    body_lower_let_in_value_capture_optional(captured: right)
-                  }
-                Absent => body_lower_let_in_value_capture_optional(captured: right)
-              }
-            Absent => Absent
-          }
-        Absent => Absent
-      }
+    Present { value: after_eq } => optional_present(value: body_lower_let_in_value_before_in(after_eq: after_eq))
   }
 }
 
@@ -6701,12 +6656,9 @@ fn body_lower_statement_let_captured_optional(stmt: Node) -> Optional<Node> {
   }
 }
 
-// The value is whatever follows the FIRST `=` on the let's own spine, which
-// is the same navigation body_lower_let_in_value_capture_optional performs
-// once its `in` prefix search has run. It is written separately rather than
-// reused because that function's first move is to locate the prefix BEFORE
-// the `in`, and there is no `in` here -- reusing it would mean relying on
-// what its search happens to return in a case it was not written for.
+// The value is whatever follows the FIRST `=` on the let's own spine. This is the one reader of
+// that position for both let forms: the in-form narrows its answer to what precedes `in`
+// (body_lower_let_in_value_capture_optional).
 fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
