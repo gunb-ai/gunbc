@@ -248,6 +248,7 @@ pub fn typed_decision_row(
     enclosing: String,
     position_kind: String,
     n: Rc<Node>,
+    decl_identity: Rc<TypeReferenceDeclarationReading>,
     env: Rc<TypeEnv>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedCarrierRow> {
@@ -273,11 +274,7 @@ pub fn typed_decision_row(
                 legacy_key.clone(),
             ),
             split: crate::v1_std_core::type_reference_identity(n.clone()),
-            decl_identity: crate::v1_compiler_infer_env::type_reference_declaration_reading(
-                n.clone(),
-                si.clone(),
-                env.clone(),
-            ),
+            decl_identity: decl_identity.clone(),
             legacy_base: legacy_base_label(n.clone(), si.clone()),
             authority_base: authority_base_of(name.clone(), query_provenance.clone()),
             outcome: outcome_of(
@@ -343,20 +340,18 @@ pub fn typed_occurrence_rows(
                     ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
                     _ => false,
                 };
-                let is_kernel_mint =
-                    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+                let decl_identity =
+                    crate::v1_compiler_infer_env::type_reference_declaration_reading(
                         n.clone(),
                         si.clone(),
                         env.clone(),
-                    ))
-                    .clone()
-                    {
-                        TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
-                            name: _,
-                            ..
-                        } => true,
-                        _ => false,
-                    };
+                    );
+                let is_kernel_mint = match (*decl_identity.clone()).clone() {
+                    TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                        name: _, ..
+                    } => true,
+                    _ => false,
+                };
                 let arg_children = if (is_declaration.clone() || is_kernel_mint.clone()) {
                     Rc::new(vec![])
                 } else {
@@ -385,6 +380,7 @@ pub fn typed_occurrence_rows(
                         enclosing.clone(),
                         position_kind.clone(),
                         n.clone(),
+                        decl_identity.clone(),
                         env.clone(),
                         si.clone(),
                     )]),

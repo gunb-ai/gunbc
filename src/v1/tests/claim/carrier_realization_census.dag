@@ -190,6 +190,7 @@ fn typed_decision_row(
   enclosing: String,
   position_kind: String,
   n: Node,
+  decl_identity: TypeReferenceDeclarationReading,
   env: TypeEnv,
   si: Map<String, NewlineIndex>
 ) -> TypedCarrierRow {
@@ -209,7 +210,7 @@ fn typed_decision_row(
     identity: identity,
     legacy: legacy_observation(had_inference: provenance_reported_file(p: inferred) != "", key: legacy_key),
     split: type_reference_identity(n: n),
-    decl_identity: type_reference_declaration_reading(n: n, source_indices: si, env: env),
+    decl_identity: decl_identity,
     legacy_base: legacy_base_label(n: n, si: si),
     authority_base: authority_base_of(name: name, provenance: query_provenance),
     outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
@@ -286,12 +287,13 @@ fn typed_occurrence_rows(
     concat(param_rows, return_rows)
   } else {
     let is_declaration = match n.module_item_kind { ModuleItemTypeDeclaration => true  _ => false }
-    let is_kernel_mint = match type_reference_declaration_reading(n: n, source_indices: si, env: env) { TypeReferenceIsKernelType { name: _ } => true  _ => false }
+    let decl_identity = type_reference_declaration_reading(n: n, source_indices: si, env: env)
+    let is_kernel_mint = match decl_identity { TypeReferenceIsKernelType { name: _ } => true  _ => false }
     let arg_children = if is_declaration || is_kernel_mint { [] } else { n.children }
     let arg_rows = arg_children |> fold(init: no_typed_rows(), f: (acc, a) => concat(acc, typed_occurrence_rows(
       module_file: module_file, enclosing: enclosing, position_kind: concat(position_kind, "/type_arg"), n: a, env: env, si: si)))
     concat([typed_decision_row(
-      module_file: module_file, enclosing: enclosing, position_kind: position_kind, n: n, env: env, si: si)], arg_rows)
+      module_file: module_file, enclosing: enclosing, position_kind: position_kind, n: n, decl_identity: decl_identity, env: env, si: si)], arg_rows)
   }
 }
 
