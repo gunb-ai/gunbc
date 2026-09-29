@@ -17,3 +17,8 @@ The canonical generator OOM-killed at the local 6 GiB cap. CI 36588368366 comple
 follow-up retires that row as `ImportsFixed`. The generated lane is still
 running. These receipts do not establish integrated-floor qualification.
 No production installation, reservation, or VM acceptance occurred.
+
+Follow-up `6b213577c` includes the roster repair. Its branch-local witness executor
+build passed in 4m48s under 6 GiB/no swap. The full floor run terminated with exit
+143 and scope `Result=oom-kill`, before a measurement receipt or verdict. This
+is not a passing floor result; no repeated same-budget attempt is planned.

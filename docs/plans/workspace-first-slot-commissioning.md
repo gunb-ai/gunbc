@@ -68,3 +68,15 @@ history and uncertain sanitation must refuse. Then record the real authenticated
 request, prepare, reserve, boot, observe SSH and verify resources. Release and
 reuse the same physical slot with the larger profile, and exercise prelaunch and
 running expiry. Custody, installation, and source tests alone are not VM acceptance.
+
+## Concurrent CI reservation lane
+
+Queued PR #12256 (`b1919d468e5449b7357a1e35a8a36e5af48d4712`)
+adds a CI reservation broker for the same srv1-13 slot. Its broker consumes
+`fleet_cell_sanction`; this integration already changes that shared sanction to
+customer-executable capacity for workspace-designated slots, so the compile-floor
+requirements refuse it before reservation. A second purpose gate is unnecessary.
+However, an older installed revision can still have the old designation. Observe
+withdrawal/quiescence of that entry point before initial commissioning, and check
+the shared refusal after integrating the queued source. The operator does not
+know whether another CI live run is planned. No reservation was performed here.

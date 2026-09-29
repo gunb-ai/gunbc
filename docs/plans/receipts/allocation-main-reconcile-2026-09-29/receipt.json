@@ -21,6 +21,13 @@
   "served_unix_storage_passed": true,
   "local_generator": "OOM at 6 GiB; no generated result",
   "ci_run": 36588368366,
-  "ci_status_at_recording": "in_progress",
-  "deployed": false
+  "ci_status_at_recording": "floor failed: stale roadmap_event_cli#step debt; generated pending",
+  "deployed": false,
+  "followup": {
+    "source": "6b213577c",
+    "claim_executor_build": "passed under 6 GiB/no swap",
+    "full_local_floor": "exit 143; scope Result=oom-kill; no verdict",
+    "memory_max_bytes": 6442450944,
+    "swap_max_bytes": 0
+  }
 }
