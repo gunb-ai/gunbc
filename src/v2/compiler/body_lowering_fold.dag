@@ -138,6 +138,8 @@ import v2.std.node_query {
   field_projection_optional,
   find_named_child,
   positional_payload_field_name,
+  pattern_wildcard_name,
+  wildcard_pattern_identity,
   repeated_name_edges,
   variant_declaration_node
 }
@@ -2512,42 +2514,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                           Accepted { value: Present { value: lowered }, diagnostics: _ } =>
                                             outcome_accepted(value: optional_present(value: lowered))
                                           Accepted { value: Absent, diagnostics: _ } =>
-                                                    let stripped = body_lower_unwrap_surface_shell(node: node)
-                                                    match body_lower_try_fold_loop(node: stripped) {
-                                                              Rejected { diagnostics: r } =>
-                                                                Rejected { diagnostics: r }
-                                                              Accepted { value: stripped_fold, diagnostics: sfd } =>
-                                                                match stripped_fold {
-                                                                  Present { value: lowered } =>
-                                                                    outcome_with_diagnostics(
-                                                                      value: optional_present(value: lowered),
-                                                                      diagnostics: sfd
-                                                                    )
-                                                                  Absent =>
-                                                            match body_lower_try_primary_ident_call(node: stripped) {
-                                                              Rejected { diagnostics: r } =>
-                                                                Rejected { diagnostics: r }
-                                                              Accepted { value: stripped_call, diagnostics: scd } =>
-                                                                match stripped_call {
-                                                                  Present { value: lowered } =>
-                                                                    outcome_with_diagnostics(
-                                                                      value: optional_present(value: lowered),
-                                                                      diagnostics: scd
-                                                                    )
-                                                                  Absent =>
-                                                                    match body_lower_try_infix_transform(node: stripped) {
-                                                                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                                                                      Accepted { value: Present { value: lowered }, diagnostics: _ } =>
-                                                                        outcome_accepted(
-                                                                          value: optional_present(value: lowered)
-                                                                        )
-                                                                      Accepted { value: Absent, diagnostics: _ } =>
-                                                                        outcome_accepted(value: optional_absent())
-                                                                    }
-                                                                }
-                                                            }
-                                                            }
-                                                        }
+                                            outcome_accepted(value: optional_absent())
                                         }
                             }
                         }
@@ -5637,7 +5604,7 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
     Present { value: pair } =>
       if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
         match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
-          Present { value: atom } => outcome_accepted(value: atom)
+          Present { value: atom } => outcome_accepted(value: body_lower_pattern_atom_form(atom: atom))
           Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
         }
       } else {
@@ -5649,9 +5616,25 @@ fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
       }
     Absent =>
       match body_lower_pattern_atom_optional(pattern_capture: captured) {
-        Present { value: atom } => outcome_accepted(value: atom)
+        Present { value: atom } => outcome_accepted(value: body_lower_pattern_atom_form(atom: atom))
         Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
       }
+  }
+}
+
+// A BARE PATTERN ATOM IS A NAME OR THE WILDCARD, and only the wildcard changes form here: an authored
+// `_` lowers to the minted wildcard pattern (v2.std.node_query wildcard_pattern_identity) at the `_`'s
+// own occurrence, so no reader downstream sees a name it would look up. A name stays the atom it is,
+// a constructor or a binder for the resolver to decide.
+fn body_lower_pattern_atom_form(atom: Node) -> Node {
+  match node_atom_identity_optional(node: atom) {
+    Present { value: id } =>
+      if id == pattern_wildcard_name() {
+        body_lower_param_ref_atom(source: atom, identity: wildcard_pattern_identity())
+      } else {
+        atom
+      }
+    Absent => atom
   }
 }
 

@@ -85,6 +85,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve {
   ObservationComplete,
+  ObservationIncomplete,
   ObservationCompleteness,
   ResolveNodeWalk,
   ResolveWalkAccepted,
@@ -868,7 +869,7 @@ fn compile_inferred(
 }
 
 fn compile(
-  source: CoreNode,
+  source: ResolvedTree,
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   bind_outcome(
@@ -927,7 +928,7 @@ fn validated_from_compile_output(
 // registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
 // 4b(2), 5).
 fn validate_then_compile(
-  source: CoreNode,
+  source: ResolvedTree,
   lenses: List<CompileLens>,
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
@@ -3119,6 +3120,9 @@ type NativeModuleResolveVerdict
     }
   | NativeModuleResolveAccepted { resolved: ResolvedTree }
 
+// The walk ran under context.resolution's index (resolve_walk_with_admission_context_policy
+// builds the subject namespace over it), so that index is minted beside the root. An
+// accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
 fn native_module_resolve_verdict(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
@@ -3135,7 +3139,16 @@ fn native_module_resolve_verdict(
         ResolveWalkRefused { first: f, rest: r, observation: o } =>
           NativeModuleResolveRefused { first: f, rest: r, observation: o }
         ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
-          NativeModuleResolveAccepted { resolved: resolved }
+          match context.resolution {
+            Accepted { value: shared, diagnostics: _ } =>
+              NativeModuleResolveAccepted { resolved: ResolvedTree { root: resolved, symbol_index: shared.symbol_index } }
+            Rejected { diagnostics: r } =>
+              NativeModuleResolveRefused {
+                first: r,
+                rest: [],
+                observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+              }
+          }
       }
   }
 }

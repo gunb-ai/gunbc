@@ -6127,7 +6127,48 @@ fn namespace_graft_node_is_module_body(node: Node) -> Bool {
   }
 }
 
-fn namespace_graft_spine_segment_edge_optional(node: Node) -> Optional<Edge> {
+// A SPINE SEGMENT IS WHAT THE PRODUCER'S MARK SAYS IT IS, NOT WHAT IT LOOKS LIKE. A single-Named-Conj
+// wrapper is a spine segment only when the chain of such wrappers below it ends at the body the graft
+// stamped (namespace_graft_node_is_module_body). Shape alone was the predicate before
+// (namespace_graft_spine_segment_edge_optional, deleted), and it read a record field whose type is an
+// inline record -- `type R { inner: { a: Int } }` -- as a dotted-name segment, so symbol_index_fill
+// indexed `R.a` and never `R.inner`; the Arrow-domain instance (#12501) was the same guess. No chain
+// inside a declaration reaches the module-body marker, so no declaration can be read as a namespace.
+// Grounded in the existing mark rather than a second one minted per segment: a per-segment Core
+// marker waits on the EdgeLabel coproduct ruling (gunbc#12473).
+fn namespace_graft_spine_chain_reaches_module_body(node: Node) -> Bool {
+  namespace_graft_node_is_module_body(node: namespace_graft_spine_shaped_end(node: node))
+}
+
+// Where the single-Named-Conj chain from `node` stops. The body marker stops it
+// (namespace_graft_spine_shaped_edge_optional refuses a marked body), so for a verified spine this
+// is the module body.
+fn namespace_graft_spine_shaped_end(node: Node) -> Node {
+  match namespace_graft_spine_shaped_edge_optional(node: node) {
+    Present { value: edge } => namespace_graft_spine_shaped_end(node: edge.target)
+    Absent => node
+  }
+}
+
+// THE ONE LINEAR SPINE WALK. Every link below a verified segment is itself a segment -- the chain
+// that verified it passes through them -- so a walker verifies once at its entry and then steps by
+// shape. Re-verifying membership at every level would re-walk the
+// remaining chain per step, a quadratic fold (DESIGN section 6, bare minimum cost). Present only
+// when `node` is a spine segment; the value is the marked module body the spine ends at.
+fn namespace_graft_spine_body_optional(node: Node) -> Optional<Node> {
+  match namespace_graft_spine_shaped_edge_optional(node: node) {
+    Present { value: edge } =>
+      let end = namespace_graft_spine_shaped_end(node: edge.target)
+      if namespace_graft_node_is_module_body(node: end) {
+        optional_present(value: end)
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn namespace_graft_spine_shaped_edge_optional(node: Node) -> Optional<Edge> {
   match node.kind {
     TypeNode { connective: Conj } =>
       if namespace_graft_node_is_module_body(node: node) {
@@ -6171,12 +6212,21 @@ fn qualified_name_from_graft_spine(root: Node) -> Outcome<QualifiedName> {
         correction: Unavailable { reason: ExternalContractUnknown }
       })
     Present { value: captured } =>
-      namespace_graft_qualified_name_from_spine_node(node: captured, acc: Empty)
+      if namespace_graft_spine_chain_reaches_module_body(node: captured) {
+        namespace_graft_qualified_name_from_spine_node(node: captured, acc: Empty)
+      } else {
+        outcome_rejected(Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: captured),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      }
   }
 }
 
+// Entered only once the chain is verified to end at the marked body, so it steps by shape.
 fn namespace_graft_qualified_name_from_spine_node(node: Node, acc: QualifiedName) -> Outcome<QualifiedName> {
-  match namespace_graft_spine_segment_edge_optional(node: node) {
+  match namespace_graft_spine_shaped_edge_optional(node: node) {
     Present { value: edge } =>
       match edge.label {
         Named { name: seg } =>

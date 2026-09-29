@@ -37,6 +37,10 @@ data approval_broker_submit_path: NonEmptyStr = "/approvals"
 
 data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalation_id\}"
 
+// THE STORE RECEIPT ROUTE is a member route of the same escalation (gunbc.auth.approval_store_receipt):
+// a POST authenticated by the submission key, never the public status GET.
+data approval_broker_store_receipt_path_template: NonEmptyStr = join([approval_broker_status_path_template as String, "/store-receipt"], "") as NonEmptyStr
+
 // THE SIX DEVICE ROUTES' TEMPLATES, spelled from gunbc.auth.approval_device_wire's paths (the app's
 // authority) rather than re-typed here: the two suffixed routes take one ParamToken segment, the
 // four fixed routes are the wire's literals. Every device operation is a POST.

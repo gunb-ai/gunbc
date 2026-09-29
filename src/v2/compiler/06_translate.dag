@@ -20,6 +20,7 @@ import v2.compiler.target_carriers {
   target_source_medium
 }
 import v2.std.compilers.target_model {
+  lex_literal_index,
   TargetModel,
   TargetValueExpression,
   target_value_expr_arrow_has_value_expression_body
@@ -510,7 +511,7 @@ fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetText> 
   bind_outcome(
     o: token_item_serialize_measure(item: item, target: target),
     f: fn(measure) {
-      token_item_to_source_bounded(measure, item, target)
+      token_item_to_source_bounded(measure, item, target, lex_literal_index(rules: target.lex))
     }
   )
 }
@@ -519,6 +520,7 @@ fn token_sequence_to_source_bounded(
   tokens: List<Node>,
   target: TargetModel
 ) -> Outcome<TargetText> {
+  let lex = lex_literal_index(rules: target.lex)
   fold_list(
     xs: tokens,
     empty: Accepted { value: target_text_empty, diagnostics: None },
@@ -526,7 +528,7 @@ fn token_sequence_to_source_bounded(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_item_to_source_bounded(remaining - 1, token_node, target) {
+          match token_item_to_source_bounded(remaining - 1, token_node, target, lex) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
                 value: target_text_seq(acc: partial, next: source),

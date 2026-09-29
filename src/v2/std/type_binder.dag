@@ -17,6 +17,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  arrow_signature_order_label,
   node_subtree_nodes,
   node_synthetic,
   type_binder_conj_conforms,
@@ -182,6 +183,39 @@ fn type_decl_view(target: Node) -> TypeDeclView {
   } else {
     PlainTypeDecl { member: target }
   }
+}
+
+// A DECLARATION'S BINDER EDGE: the <type-parameters> edge of a type-declaration wrapper -- a generic
+// member, an alias or an opaque declaration, as type_decl_view classifies the parent -- never the same
+// marker on an Arrow. It carries names the binder authority checks and resolve scopes, not values, so
+// v2.compiler.infer does not derive its subtree (infer_declaration_binder_edge asks THIS predicate).
+fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
+  edge_is_type_params(e: edge)
+    && match type_decl_view(target: parent) {
+      PlainTypeDecl { member: _ } => false
+      GenericTypeDecl { binders: _, member: _ } => true
+      TypeAlias { binders: _, aliased: _ } => true
+      OpaqueTypeDecl { binders: _ } => true
+    }
+}
+
+// THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
+// order edge (arrow_signature_order_label, parameter LABELS) and under a declaration's binder edge
+// (declaration_binder_edge, binder NAMES). v2.compiler.infer declines both subtrees and carries each as
+// its parent's own evidence. Every stage that asks infer for a node's facts --
+// v2.compiler.program_partition's closure, a census over derived products -- walks THIS set, so none
+// demands facts infer was never asked to produce. It lives here, not in v2.std.node, because the binder
+// edge's marker is this module's fact (v2.std.node cannot intern it). Before the binder edge was
+// excluded, a module declaring an alias, a bodyless declaration or a generic declaration refused at the
+// partition closure as partition_facts_miss on its binder nodes.
+fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
+  fold(root.children, init: [root], f: fn(acc, e) {
+    if (e.label == arrow_signature_order_label) || declaration_binder_edge(parent: root, edge: e) {
+      acc
+    } else {
+      concat(acc, node_inferred_subtree_nodes(root: e.target))
+    }
+  })
 }
 
 fn type_decl_wrapper_target(wrapper: Node, pick: fn(Edge) -> Bool) -> Node {
