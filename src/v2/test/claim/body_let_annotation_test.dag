@@ -507,14 +507,6 @@ fn bla_inferred_tree(o: Outcome<Node>) -> Optional<InferredTree> {
   }
 }
 
-fn bla_symbol_literal_as_symbol_tree() -> Optional<InferredTree> {
-  bla_inferred_tree(o: bla_symbol_literal_as_symbol())
-}
-
-fn bla_int_literal_as_int_tree() -> Optional<InferredTree> {
-  bla_inferred_tree(o: bla_int_literal_as_int())
-}
-
 fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
   match t.facts.lookup(n) {
     Absent => false
@@ -559,20 +551,38 @@ type BlaPayloadCheck {
   all: Bool
 }
 
-test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool {
-  match bla_symbol_literal_as_symbol_tree() {
-    Absent => false
+// The verdicts are the share points, not the trees: an InferredTree carries its facts as a closure,
+// which the cross-claim store refuses, so each claim reads Bools computed once from the tree.
+type BlaSymbolPayloadVerdict {
+  typed_symbol: Bool
+  typed_digit: Bool
+}
+
+fn bla_symbol_literal_payload_verdict() -> BlaSymbolPayloadVerdict {
+  match bla_inferred_tree(o: bla_symbol_literal_as_symbol()) {
+    Absent => BlaSymbolPayloadVerdict { typed_symbol: false, typed_digit: false }
     Present { value: t } =>
-      bla_every_symbol_payload_typed(t: t, ty: symbol_type_node())
-        && !bla_every_symbol_payload_typed(t: t, ty: integer_decimal_digit_type_node())
+      BlaSymbolPayloadVerdict {
+        typed_symbol: bla_every_symbol_payload_typed(t: t, ty: symbol_type_node()),
+        typed_digit: bla_every_symbol_payload_typed(t: t, ty: integer_decimal_digit_type_node())
+      }
   }
 }
 
-test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool {
-  match bla_int_literal_as_int_tree() {
+fn bla_int_literal_payload_digit_verdict() -> Bool {
+  match bla_inferred_tree(o: bla_int_literal_as_int()) {
     Absent => false
     Present { value: t } => bla_every_int_digit_typed(t: t, ty: integer_decimal_digit_type_node())
   }
+}
+
+test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool {
+  let v = bla_symbol_literal_payload_verdict()
+  v.typed_symbol && !v.typed_digit
+}
+
+test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool {
+  bla_int_literal_payload_digit_verdict()
 }
 
 test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
