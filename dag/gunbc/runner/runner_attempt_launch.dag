@@ -201,6 +201,7 @@ fn host_mint_admission_is_required() -> Bool {
         AxisDeferred { trigger: _ } => false
         AxisDissolvedInto { into: _ } => false
       }
+    AxisRequired { checker: GitHubMintRequestName } => false
     AxisDeferred { trigger: _ } => false
     AxisDissolvedInto { into: _ } => false
   }
