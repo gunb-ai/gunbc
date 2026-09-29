@@ -2,7 +2,7 @@ module extdeps.provisioning.ubuntu_seeded_install_media_remaster
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.tools.xorriso { xorriso_extract_tree_command, xorriso_replay_build_pinned_dates_command }
+import extdeps.tools.xorriso { xorriso_extract_tree_command, xorriso_replay_build_pinned_dates_command, XorrisoPathListCommand, XorrisoChownRecursive, XorrisoChgrpRecursive, XorrisoChmod }
 import extdeps.tools.gnu_coreutils { mkdir_parents_command, mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.tools.chmod { chmod_recursive_set_mode_command, chmod_path_resolved_program }
 import extdeps.posix.test_utility { test_regular_file_command }
@@ -88,6 +88,50 @@ data install_media_remaster_work_template: NonEmptyStr = concat(install_media_re
 // LocalHost regression (the pinned census image rebuilt byte-identically) is what establishes the
 // equivalence on real bytes.
 data install_media_remaster_tree_mode: NonEmptyStr = "u=rwX,go=rX"
+
+// THE MAPPED MEMBERS' ROCK RIDGE ATTRIBUTES ARE PINNED, NOT INHERITED FROM THE BUILD HOST. xorriso -map
+// records each source file's owner, group and mode, so the same inputs built by two users (or under two
+// umasks) gave different images for one derivation key -- measured 2026-09-29: srv2 as gunbc-fleet
+// 30ca88d4..., srv2 as ubuntu d27d584d..., a container as uid 1000 fb944121...; and one replay as uid
+// 1000 and under fakeroot as uid 0, pinned, byte-identical (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts). Owner and group are root's, as the
+// stock members are; modes are the ones the extracted tree gives them (0755 directories, 0644 files),
+// named per path in octal, which is portable argv.
+data install_media_remaster_pinned_uid: Int = 0
+
+data install_media_remaster_pinned_gid: Int = 0
+
+data install_media_remaster_pinned_directory_mode: NonEmptyStr = "0755"
+
+data install_media_remaster_pinned_file_mode: NonEmptyStr = "0644"
+
+// Each directory level of the seed dir on the ISO: "nocloud/srv3" -> ["/nocloud", "/nocloud/srv3"].
+fn install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: NonEmptyStr) -> List<NonEmptyStr> {
+  let segments = flat_map(split(s: nocloud_dir_on_iso as String, delimiter: "/"), g => if g == "" { [] } else { [g] })
+  map(enumerate(segments), e => concat("/", join(segments.take(n: e.first + 1), "/")) as NonEmptyStr)
+}
+
+// The seed files as the image holds them (grub.cfg is the other mapped file).
+fn install_media_remaster_seed_files(input: UbuntuSeededInstallMediaBuildInput) -> List<NonEmptyStr> {
+  let seed_root = concat("/", input.nocloud_dir_on_iso as String)
+  concat([concat(seed_root, "/user-data") as NonEmptyStr, concat(seed_root, "/meta-data") as NonEmptyStr], map(input.seed_files, f => concat(seed_root, "/", f.name as String) as NonEmptyStr))
+}
+
+fn install_media_remaster_attribute_pins(input: UbuntuSeededInstallMediaBuildInput) -> List<XorrisoPathListCommand> {
+  let seed_top = concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr
+  let directories = install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: input.nocloud_dir_on_iso)
+  concat(
+    [
+      XorrisoPathListCommand { verb: XorrisoChownRecursive { uid: install_media_remaster_pinned_uid }, first_path: seed_top, more_paths: [install_media_remaster_grub_cfg_on_iso] },
+      XorrisoPathListCommand { verb: XorrisoChgrpRecursive { gid: install_media_remaster_pinned_gid }, first_path: seed_top, more_paths: [install_media_remaster_grub_cfg_on_iso] },
+      XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: install_media_remaster_pinned_file_mode }, first_path: install_media_remaster_grub_cfg_on_iso, more_paths: install_media_remaster_seed_files(input: input) },
+    ],
+    match first(directories) {
+      Absent => []
+      Present { value: d } => [XorrisoPathListCommand { verb: XorrisoChmod { octal_mode: install_media_remaster_pinned_directory_mode }, first_path: d, more_paths: directories.skip(n: 1) }]
+    },
+  )
+}
 
 // ---- the grub.cfg kernel cmdline insertion, as a pure fold ----
 //
@@ -263,6 +307,7 @@ fn install_media_remaster_from_tree(
                     map_one_iso_path: concat("/", input.nocloud_dir_on_iso as String) as NonEmptyStr,
                     map_two_source: grub_cfg,
                     map_two_iso_path: install_media_remaster_grub_cfg_on_iso,
+                    attribute_pins: install_media_remaster_attribute_pins(input: input),
                   )) {
                     HostEffectDone { stdout: _ } =>
                       match install_media_remaster_digest(host: host, path: staging_path) {
