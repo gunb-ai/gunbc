@@ -408,6 +408,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -415,10 +416,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -426,7 +427,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -444,14 +445,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -473,7 +474,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -1745,6 +1746,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -1752,10 +1754,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -1763,7 +1765,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -1781,14 +1783,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -1810,7 +1812,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -1924,6 +1926,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -1931,10 +1934,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -1942,7 +1945,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -1960,14 +1963,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -1989,7 +1992,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -2036,6 +2039,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -2043,10 +2047,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -2054,7 +2058,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -2072,14 +2076,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -2101,7 +2105,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -2169,6 +2173,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -2176,10 +2181,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -2187,7 +2192,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -2205,14 +2210,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -2234,7 +2239,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -2267,6 +2272,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -2274,10 +2280,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -2285,7 +2291,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -2303,14 +2309,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -2332,7 +2338,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -2369,6 +2375,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -2376,10 +2383,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -2387,7 +2394,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -2405,14 +2412,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -2434,7 +2441,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -2558,6 +2565,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -2565,10 +2573,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -2576,7 +2584,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -2594,14 +2602,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -2623,7 +2631,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
@@ -2700,6 +2708,7 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
         timeout-minutes: 10
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
@@ -2707,10 +2716,10 @@ jobs:
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
-          '[' '-f' "$ROOT"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
-          'sha256sum' "$ROOT"'/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
           DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
           '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
@@ -2718,7 +2727,7 @@ jobs:
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$ROOT"'/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
           'printf' '%s' 'claim_executor
           gunbc
           discover_source_root_ingest
@@ -2736,14 +2745,14 @@ jobs:
           namespace_structural_root_exposure_generated_witness
           codex_app_server_stdio_session
           ' > "$RUNNER_TEMP"'/release-bins.roster'
-          'tar' '-tzf' "$ROOT"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
-          'cut' '-c' '67-' "$ROOT"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
           'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
-          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$ROOT"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
           'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
           'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
-          'tar' '-xzf' "$ROOT"'/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
           'printf' '%s' 'claim_executor:regular file:1
           gunbc:regular file:1
           discover_source_root_ingest:regular file:1
@@ -2765,7 +2774,7 @@ jobs:
           'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' '.' '-mindepth' '1' '-maxdepth' '1' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
           '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
-          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$ROOT"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
           ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
