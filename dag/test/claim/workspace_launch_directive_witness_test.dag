@@ -13,7 +13,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import product.placement_supply { HostIdentity }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_work, workspace_memory_grant, workspace_reservation_json }
 import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
-import gunbc.workspace_reservation_record { workspace_reservation_plan_from_json }
+import gunbc.workspace_reservation_record { workspace_reservation_plan_from_json, workspace_reservation_plan_json }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRecorded, WorkspaceOwnerSnapshot, workspace_allocation_json, workspace_owner_key }
 import gunbc.workspace_allocation_launch_directive { WorkspaceLaunchDirectiveRead, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused, workspace_launch_directive_from_text, workspace_launch_directive_matches }
 import gunbc.test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
@@ -134,5 +134,40 @@ test fn workspace_release_intent_preserves_money_and_refuses_a_changed_settlemen
         }
       }
     }
+  }
+}
+
+test fn reservation_selection_policy_survives_durable_roundtrip() -> Bool {
+  match launch_fixture_allocation() {
+    Present { value: allocation } => match allocation.plan {
+      Present { value: old_plan } => match workspace_reservation_plan_from_json(value: json_object(members: [
+        json_kv(key: "root", value: json_string(s: old_plan.root as String)),
+        json_kv(key: "reservation", value: workspace_reservation_json(reservation: old_plan.reservation)),
+        json_kv(key: "selection_policy", value: json_string(s: "resource-budget-v1:fixture-policy")),
+      ])) {
+        Present { value: updated } => old_plan.selection_policy == "legacy-price-ranked"
+          && updated.selection_policy == "resource-budget-v1:fixture-policy"
+          && (match workspace_reservation_plan_from_json(value: workspace_reservation_plan_json(plan: updated)) {
+            Present { value: reread } => reread == updated
+            _ => false
+          })
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+test fn malformed_selection_policy_cannot_become_legacy_admission() -> Bool {
+  match launch_fixture_allocation() {
+    Present { value: allocation } => match allocation.plan {
+      Present { value: old_plan } => match workspace_reservation_plan_from_json(value: json_object(members: [
+        json_kv(key: "root", value: json_string(s: old_plan.root as String)),
+        json_kv(key: "reservation", value: workspace_reservation_json(reservation: old_plan.reservation)),
+        json_kv(key: "selection_policy", value: json_int(n: 0)),
+      ])) { Absent => true _ => false }
+      _ => false
+    }
+    _ => false
   }
 }

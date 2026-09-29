@@ -5,10 +5,9 @@ import extdeps.clock { clock_timestamp_to_unix_secs, ClockTimestampObserved, Clo
 
 import std.types { String, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { MoneyAmountMicro, MoneyPerSecond }
-import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import product.fabric.demand { BuyTerms }
+import product.fabric.selection { ResourceBudgetPolicy }
 import product.fabric.supply { GrantDuration }
 import product.fabric.budget { MoneyAccount }
 import product.fabric.provider_route { ProviderRouteFacts, CompliancePostureRevision }
@@ -38,6 +37,7 @@ type WorkspacePreparationEvidence {
   route_facts: ProviderRouteFacts
 }
 type WorkspacePreparationPolicy {
+  resource_budget: ResourceBudgetPolicy<NonEmptyStr>
   sanctions: List<RouteScopeSanction>
   active: CompliancePostureRevision
   scope: ProviderUseScope<NonEmptyStr>
@@ -47,9 +47,6 @@ type WorkspacePreparationPolicy {
   buy: BuyTerms
   initial_account: MoneyAccount
   duration: GrantDuration
-  currency: CurrencyCode
-  maximum_buy_order: MoneyAmountMicro
-  delay_valuation: MoneyPerSecond
 }
 type WorkspaceProducedField { offers: List<FieldRequest<NonEmptyStr>>, routes: List<OfferRouteRow<NonEmptyStr>>, unmet: List<NonEmptyStr> }
 
@@ -81,8 +78,7 @@ fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, 
     let supply = workspace_supply_from_field(root: root, field: field, observations: map(evidence, sample => sample.host), now: now)
     match workspace_prepare_recorded_intent(store: store, root: root, request: request,
       demand: admitted_demand, attempt: attempt,
-      supply: supply.supply, duration: policy.duration, currency: policy.currency, initial_account: policy.initial_account,
-      maximum_buy_order: policy.maximum_buy_order, delay_valuation: policy.delay_valuation) {
+      supply: supply.supply, resource_policy: policy.resource_budget, duration: policy.duration, initial_account: policy.initial_account) {
       WorkspacePreparationUnmet { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
       WorkspacePreparationRecorded { plan: _ } => workspace_convergence_observe(store: store, owner: request.owner, idempotency_key: request.idempotency_key)
     }

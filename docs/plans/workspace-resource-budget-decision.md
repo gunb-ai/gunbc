@@ -1,7 +1,8 @@
-# Decision needed: internally budgeted workspace admission
+# Internally budgeted workspace admission
 
-This is a proposal, not an implemented admission exception or an authorization
-receipt. No capacity has been acquired under it.
+The operator confirmed on 2026-09-29: “cost measurements are not required right
+now.” Resource-budget selection is being implemented under that decision. This
+is not a commissioning receipt; no capacity has been acquired under this policy.
 
 ## Observed blocker
 
@@ -16,7 +17,7 @@ An operator-declared zero user tariff would be a billing policy. It would not
 establish zero physical operating cost or zero opportunity cost. Populating the
 latter with zeros would contradict the existing selector's contract.
 
-## Proposed decision
+## Accepted decision
 
 For the first internal workspace, admit an explicit resource-budget policy in the
 shared fabric path. This admits use of already committed dedicated capacity; it
@@ -52,6 +53,6 @@ external purchases or unaccounted memory are admitted.
 - The same durable acquisition, retirement and same-slot reuse controls apply;
   no separate lifecycle is introduced.
 
-The alternative is to keep the current price-ranked selector mandatory and first
-commission attributable cost observations for this slot. Neither alternative is
-established by the current focused tests or by server readiness.
+The price-ranked selector remains unchanged for callers that require economic
+ranking. Resource-budget selection does not claim price optimality. Live
+commissioning and allocation acceptance remain separate obligations.

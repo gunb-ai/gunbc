@@ -20,7 +20,7 @@ import product.fabric.provider_admission {
   permit_standing, PermitStanding, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
   PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
 }
-import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability, select_supply }
+import product.fabric.selection { ResourceBudgetPolicy, ResourceBudgetSelection, select_resource_budget_supply, CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability, select_supply }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
@@ -981,4 +981,16 @@ fn settle_reserved_cell_at<P>(
         ),
       }
   }
+}
+
+// Resource-budget admission uses the same class/sanction partition as priced selection.
+fn broker_select_resource_budget(
+  demand: Demand<NonEmptyStr>, requirements: ExecutionRequirements, duration: GrantDuration,
+  roster: List<FabricCellCandidate>, sanctions: List<ExecutorSanction>,
+  policy: ResourceBudgetPolicy<NonEmptyStr>,
+) -> ResourceBudgetSelection<NonEmptyStr> {
+  let partition = partition_cell_roster(requirements: requirements, sanctions: sanctions, roster: roster)
+  select_resource_budget_supply(policy: policy, demand: demand.id, work: demand.work,
+    requirements: requirements, duration: duration,
+    candidates: fabric_cell_roster_candidates(roster: partition.admitted))
 }

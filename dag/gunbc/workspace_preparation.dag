@@ -3,10 +3,9 @@ module gunbc.workspace_preparation
 import std.types { NonEmptyStr, String }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
-import std.measure { MoneyAmountMicro, MoneyPerSecond }
-import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
 import product.fabric.demand { Demand }
+import product.fabric.selection { ResourceBudgetPolicy }
 import product.fabric.supply { GrantDuration }
 import product.fabric.budget { MoneyAccount }
 import gunbc.fabric_storage_client { FabricStorageBinding }
@@ -28,8 +27,9 @@ type WorkspacePreparation
 // any hold effect. Retries return that target; this entry never launches, acquires or reselects it.
 fn workspace_prepare_recorded_intent(store: FabricStorageBinding, root: NonEmptyStr, request: WorkspaceRequest,
   demand: Demand<NonEmptyStr>, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
-  supply: WorkspaceDedicatedSupply, duration: GrantDuration, currency: CurrencyCode,
-  initial_account: MoneyAccount, maximum_buy_order: MoneyAmountMicro, delay_valuation: MoneyPerSecond) -> WorkspacePreparation {
+  supply: WorkspaceDedicatedSupply, duration: GrantDuration,
+  resource_policy: ResourceBudgetPolicy<NonEmptyStr>,
+  initial_account: MoneyAccount) -> WorkspacePreparation {
   let clock = clock_now_probed_at()
   let lease_live = match clock {
     Absent => false
@@ -52,8 +52,7 @@ fn workspace_prepare_recorded_intent(store: FabricStorageBinding, root: NonEmpty
           else { match workspace_budget_for_request(store: store, request: request, initial: initial_account) {
             WorkspaceBudgetUnreadable { reason: detail } => WorkspacePreparationUnmet { reason: detail }
             WorkspaceBudgetObserved { account: advanced_account } => match workspace_reservation_prepare(root: root, request: request, demand: demand,
-              attempt: attempt, supply: supply, duration: duration, currency: currency, account: advanced_account,
-              maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation) {
+              attempt: attempt, supply: supply, resource_policy: resource_policy, duration: duration, account: advanced_account) {
               WorkspaceReservationPreparationRefused { reason: detail } => WorkspacePreparationUnmet { reason: detail as String }
               WorkspaceReservationPrepared { plan: selected_plan } => match workspace_record_plan(store: store, plan: selected_plan) {
                 WorkspaceStoreWritten { allocation: saved } => match saved.plan {

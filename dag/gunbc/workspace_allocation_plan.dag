@@ -3,18 +3,18 @@ module gunbc.workspace_allocation_plan
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_seal }
 import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Int }
-import std.measure { MoneyAmountMicro, MoneyPerSecond }
+import std.measure { money_amount_micro }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, cas_generation_successor, CasSuccessorGeneration }
 import std.durable_exclusive_hold { HoldSlotHeld, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable }
-import extdeps.currency.currency { CurrencyCode }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
 import product.fabric.demand { Demand }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import product.fabric.supply { GrantDuration, offer_quote_currency }
-import product.fabric.selection { selection_liability }
+import product.fabric.selection { ResourceBudgetPolicy, ResourceBudgetSelected }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest, reserve_money, AccountAdvanced }
-import gunbc.fabric_control_plane { broker_select_for_requirements, CellSelectedForDemand, fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
+import gunbc.fabric_control_plane { broker_select_resource_budget, fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire_prepare, file_hold_acquire_commit, observe_file_hold,
   FileHoldAcquirePlan, FileHoldAcquirePlanned, FileHoldAcquireNotEligible, FileHoldAcquired, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
@@ -25,6 +25,8 @@ import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
 
 // A prepared target is immutable across retries. Its predicted incarnation is derived from a
 // live absent/free hold observation; persistence of this plan precedes every acquisition effect.
+// Resource-budget policy permits only a zero user tariff. The zero money encumbrance keeps
+// the existing identity/settlement protocol; it does not represent physical operating costs.
 type WorkspaceReservationPreparation
   = WorkspaceReservationPrepared { plan: WorkspaceReservationPlan }
   | WorkspaceReservationPreparationRefused { reason: NonEmptyStr }
@@ -35,26 +37,26 @@ type WorkspaceReservationApply
 fn workspace_reservation_prepare(
   root: NonEmptyStr, request: WorkspaceRequest, demand: Demand<NonEmptyStr>,
   attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>, supply: WorkspaceDedicatedSupply,
-  duration: GrantDuration, currency: CurrencyCode, account: MoneyAccount,
-  maximum_buy_order: MoneyAmountMicro, delay_valuation: MoneyPerSecond,
+  duration: GrantDuration, account: MoneyAccount,
+  resource_policy: ResourceBudgetPolicy<NonEmptyStr>,
 ) -> WorkspaceReservationPreparation {
   if !fabric_identity_eq(left: demand.work, right: workspace_work(request: request).id) {
     WorkspaceReservationPreparationRefused { reason: "demand does not name the admitted workspace Work" }
   } else {
     match workspace_memory_grant(request: request, work: demand.work, attempt: attempt) {
-      MemoryGrantIssued { grant } => match broker_select_for_requirements(
+      MemoryGrantIssued { grant } => match broker_select_resource_budget(
         demand: demand, requirements: workspace_execution_requirements(profile: request.profile),
-        duration: duration, currency: currency, roster: supply.roster, sanctions: supply.sanctions,
-        maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation,
+        duration: duration, roster: supply.roster, sanctions: supply.sanctions, policy: resource_policy,
       ) {
-        CellSelectedForDemand { offer, cost } => {
+        ResourceBudgetSelected { candidate, policy: selected_policy } => {
+          let offer = candidate.offer
           let matches = filter(supply.roster, member => fabric_identity_eq(left: member.candidate.offer.id, right: offer.id))
           if matches.count() != 1 { WorkspaceReservationPreparationRefused { reason: "selected offer has no unique dedicated slot" } }
           else { match matches.first() {
             Absent => WorkspaceReservationPreparationRefused { reason: "selected slot unavailable" }
             Present { value: member } => {
               let reference = fabric_money_reservation_ref(demand: demand.id, offer: offer.id)
-              match reserve_money(a: account, request: MoneyReservationRequest { reference: reference, generation: 0, maximum_liability: selection_liability(c: cost), currency: offer_quote_currency(q: offer.quote) }) {
+              match reserve_money(a: account, request: MoneyReservationRequest { reference: reference, generation: 0, maximum_liability: money_amount_micro(count: 0), currency: offer_quote_currency(q: offer.quote) }) {
                 AccountAdvanced { account: advanced } => match file_hold_acquire_prepare(root: root, slot_key: fabric_cell_allocation_key(slot: member.slot), requested_owner: fabric_hold_owner(reservation: reference)) {
                   FileHoldAcquirePlanned { plan: hold } => {
                     let next = match hold.expected {
@@ -66,7 +68,7 @@ fn workspace_reservation_prepare(
                     }
                     match next {
                       Absent => WorkspaceReservationPreparationRefused { reason: "slot generation exhausted" }
-                      Present { value: generation } => WorkspaceReservationPrepared { plan: workspace_reservation_plan_seal(root: root, reservation: WorkspaceReservation {
+                      Present { value: generation } => WorkspaceReservationPrepared { plan: workspace_reservation_plan_seal(root: root, selection_policy: concat("resource-budget-v1:", serialize_content_hash(hash: content_hash_of_value(value: selected_policy))) as NonEmptyStr, reservation: WorkspaceReservation {
                         request: request, slot: member.slot, generation: generation, grant: grant, work: demand.work,
                         demand: demand.id, offer: offer.id, money_account: advanced, money_generation: 0,
                       }) }
