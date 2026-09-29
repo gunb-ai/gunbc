@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data fos_and_fold_source: String = "module m\n\nfn fos(fos_t: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_t && fold(fos_xs, init: fos_t, f: fn(acc, x) { acc })\n}\n"
 
-data fos_call_fold_source: String = "module m\n\nfn fos_h(a: Bool, b: Bool) -> Bool { a }\n\nfn fos(fos_s: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_h(a: fold(fos_xs, init: fos_s, f: fn(acc, x) { acc }), b: fos_s)\n}\n"
+data fos_call_fold_source: String = "module m\n\nfn fos(fos_s: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_h(a: fold(fos_xs, init: fos_s, f: fn(acc, x) { acc }), b: fos_s)\n}\n\nfn fos_h(a: Bool, b: Bool) -> Bool { a }\n"
 
 fn fos_parsed(source: String) -> Optional<Node> {
   let lm = dag_language_model()
@@ -56,16 +56,6 @@ fn fos_emitted_first_kids(root: Node, production: Symbol) -> Optional<Node> {
   })
 }
 
-fn fos_emitted_last(root: Node, production: Symbol) -> Optional<Node> {
-  let own = match parse_production_emitted_identity_optional(node: root) {
-    Present { value: e } => if e == production { optional_present(value: root) } else { optional_absent() }
-    Absent => optional_absent()
-  }
-  fold(root.children, init: own, f: fn(acc, e) {
-    match fos_emitted_last(root: e.target, production: production) { Present { value: n } => optional_present(value: n)  Absent => acc }
-  })
-}
-
 type FosValue
   = FosNotRead
   | FosRefused { reason: Symbol }
@@ -77,7 +67,7 @@ fn fos_route_value(source: String, route: FosRoute) -> FosValue {
   match fos_parsed(source: source) {
     Absent => FosNotRead
     Present { value: tree } =>
-      match fos_emitted_last(root: tree, production: ^dag_surface_fn_body) {
+      match fos_emitted_first(root: tree, production: ^dag_surface_fn_body) {
         Absent => FosNotRead
         Present { value: body } =>
           match fos_emitted_first(root: body, production: ^dag_surface_expr) {
