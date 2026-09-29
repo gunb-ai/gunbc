@@ -1392,7 +1392,8 @@ data c_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRow
   block_evaluation_mode: StatementSequenced {
     return_token: ^c_token_kw_return,
     statement_terminator: ^c_token_semicolon
-  }
+  },
+  function_type_realizations: []
 }
 
 fn c_produced_decl_support() -> ProducedDeclSupport {

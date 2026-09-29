@@ -886,6 +886,28 @@ fn target_serialize_relation_row_from_model_bounded(
   }
 }
 
+// SERIALIZE A ROW THE CALLER ALREADY DERIVED. A target that derives its program's row
+// (v2.std.grammar derive_grammar_relation_row_for_lhs) holds the row the serializer would otherwise
+// re-select by reverse-parsing the same program against the same productions -- a third resolution of
+// one program for one demand (DESIGN §2). This entry reads the given row's tokens directly.
+fn target_serialize_derived_row_bounded(remaining: Int, target: TargetModel, row: Node) -> Outcome<TargetText> {
+  if remaining <= 0 {
+    outcome_rejected(translate_serialize_recursion_limit_exhausted_diagnostic(emitted: row))
+  } else {
+    bind_outcome(
+      o: grammar_relation_row_tokens_root(row: row),
+      f: fn(tokens_root) {
+        bind_outcome(
+          o: grammar_tokens_node_targets(tokens_node: tokens_root),
+          f: fn(tokens) {
+            serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens)
+          }
+        )
+      }
+    )
+  }
+}
+
 // THE ROW'S TOKEN ITEMS IN ORDER, as one TargetText. A nested block renders its own items through
 // this same fold and is wrapped whole in one nest, spelled by the target (binding_spellings), so a
 // block's contents are indented exactly once and can never be left open.

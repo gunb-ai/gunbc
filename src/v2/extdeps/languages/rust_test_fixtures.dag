@@ -53,6 +53,7 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_emission_bundle_node
 }
 import v2.std.logic { bool_boolean_algebra }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs }
 import v2.std.compilers.target_model { TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
@@ -4063,15 +4064,7 @@ fn rust_lhs_exact_relation_row_witness(
 ) -> Witness<Node> {
   let production = rust_formal_production_from_tokens(lhs: lhs, tokens: tokens)
   let productions = [production]
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
-    Holds { value: selected } =>
-      derive_grammar_relation_row_node(
-        production: selected,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn rust_empty_translation_rules_node() -> Node {
