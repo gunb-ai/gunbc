@@ -322,7 +322,17 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
               match result.kind {
                 TypeNode { connective: Disj } =>
                   Accepted { value: result, diagnostics: d }
-                _ =>
+                TypeNode { connective: Atom { identity: _ } } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Conj } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Arrow } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Cardinality } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Instantiation } =>
+                  Accepted { value: folded, diagnostics: None }
+                ComputationNode { behavior: _ } =>
                   Accepted { value: folded, diagnostics: None }
               }
           }
