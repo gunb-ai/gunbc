@@ -104,6 +104,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "od_program"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_program"),

@@ -1,5 +1,7 @@
 module gunbc.host_effect_realize
 
+import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
+
 import std.algebra { trim, list_snoc_item, list_append }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -365,6 +367,7 @@ import gunbc.seeded_install_media_publish {
   SeededImagePublished,
   SeededImageAlreadyPublished,
   SeededImagePublicationRefused,
+  SeededImagePublishedRecordNotWritten,
 }
 import gunbc.hostname_read {
   hostname_short_read,
@@ -3400,19 +3403,39 @@ fn realize_install_media_remaster_in_process(intent: HostEffectIntent) -> Reconc
           }
         }
       )
-    SeededImagePublished { built: b, path: p } =>
-      reconcile_grounded(
-        apply_effect: intent,
-        show_read: ReadObserved { value: p as String },
-        grounding: Grounds {
-          evidence: ConvergePlanApplied {
-            exit_code: 0,
-            stdout: concat("install-media-remaster: built and published at ", p as String, " sha256 ", b.output_digest as String),
-          }
+    SeededImagePublished { built: b, path: p, work: w, staging_residue: residue } =>
+      if !scratch_removed(o: w) || match residue { Absent => false Present { value: _ } => true } {
+        NotConverged {
+          reason: concat(
+            "install-media-remaster: published at ", p as String, " sha256 ", b.output_digest as String,
+            " but residue remains: ", render_scratch_outcome(label: "work", prefix: "", o: w),
+            match residue { Absent => "" Present { value: r } => concat(" staging not removed: ", r) },
+          ),
+          applied: intent,
         }
-      )
-    SeededImagePublicationRefused { reason: why } =>
-      NotConverged { reason: concat("install-media-remaster: ", why), applied: intent }
+      } else {
+        reconcile_grounded(
+          apply_effect: intent,
+          show_read: ReadObserved { value: p as String },
+          grounding: Grounds {
+            evidence: ConvergePlanApplied {
+              exit_code: 0,
+              stdout: concat("install-media-remaster: built and published at ", p as String, " sha256 ", b.output_digest as String),
+            }
+          }
+        )
+      }
+    SeededImagePublishedRecordNotWritten { built: b, path: p, work: w, staging_residue: residue, record: rec } =>
+      NotConverged {
+        reason: concat(
+          "install-media-remaster: published at ", p as String, " sha256 ", b.output_digest as String,
+          " but its derivation record ", host_file_write_text(w: rec), "; ", render_scratch_outcome(label: "work", prefix: "", o: w),
+          match residue { Absent => "" Present { value: r } => concat(" staging not removed: ", r) },
+        ),
+        applied: intent,
+      }
+    SeededImagePublicationRefused { reason: why, work: w } =>
+      NotConverged { reason: concat("install-media-remaster: ", why, "; ", render_scratch_outcome(label: "work", prefix: "", o: w)), applied: intent }
   }
 }
 

@@ -49,6 +49,7 @@ fn install_program() -> ProgramIdentity = uncataloged_program(invocation: "insta
 data sort_program: NonEmptyStr = "sort"
 data cut_program: NonEmptyStr = "cut"
 fn od_program() -> ProgramIdentity = uncataloged_program(invocation: "od")
+fn mkdir_program() -> ProgramIdentity = uncataloged_program(invocation: "mkdir")
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -70,6 +71,29 @@ fn ls_one_per_line_command(path: String) -> ArgvCommand {
 // operation itself.
 fn mktemp_directory_command(template: NonEmptyStr) -> ArgvCommand {
   argv_command(program: mktemp_program(), arguments: ["-d", template as String])
+}
+
+// mkdir -p: create the directory and any missing parents; an existing directory is success.
+fn mkdir_parents_command(path: String) -> ArgvCommand {
+  argv_command(program: mkdir_program(), arguments: ["-p", "--", path])
+}
+
+// ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
+// "ln invocation"): the create-only publication step. A second name for the same inode, never a
+// replacement of the bytes behind an existing name.
+fn ln_hard_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: ln_program(), arguments: ["--", source, destination])
+}
+
+// ls -ld: ONE long-format line for the path itself, never its contents. The -n form prints numeric
+// uid and gid where the plain form prints names. Both are portable argv, which a printf-format
+// `stat -c %u...` is not under a far-side shell re-parse allowlist that excludes `%`.
+fn ls_long_directory_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-ld", "--", path])
+}
+
+fn ls_long_directory_numeric_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-ldn", "--", path])
 }
 
 fn cat_command(path: String) -> ArgvCommand {
