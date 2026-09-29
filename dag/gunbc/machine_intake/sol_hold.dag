@@ -113,6 +113,11 @@ fn sol_hold_record_line(parts: List<Node>) -> Node {
   )
 }
 
+// A CHILD THAT EXITED BEFORE ITS START TIME COULD BE READ IS NOT A PUBLICATION FAILURE: bash reaps a
+// finished background child asynchronously, so a collector that refuses and exits at once can leave no
+// /proc/<pid> to read. With /proc/<pid> already gone nothing is signalled and no "pid not published"
+// record is written; the ordinary wait returns the saved status and records the exit, so the client's
+// own words (an activation refusal) decide the cause.
 // A PUBLICATION FAILURE ENDS ON WHAT WAS OBSERVED. After TERM, a bounded wait, KILL and a second bounded
 // wait, a child still present is recorded as cleanup residue WITH ITS PID (the only record of it, since
 // its identity was never published) and the supervisor returns at once: no unbounded wait, and no
@@ -146,6 +151,7 @@ fn sol_hold_supervisor_body() -> List<Node> {
       ])),
       then_stmts: [
         bash_build_command_with_words(words: [shl(text: "rm"), shl(text: "-f"), staged]),
+        bash_build_if_from_stmts(cond: sol_hold_proc_present(), then_stmts: [
         bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
         sh_wait_gone(seconds: "2"),
         bash_build_if_from_stmts(cond: sol_hold_child_running(), then_stmts: [
@@ -160,6 +166,7 @@ fn sol_hold_supervisor_body() -> List<Node> {
           ]),
           else_body: bash_build_stmt_list_from_nodes(stmts: [sol_hold_record_line(parts: [shl(text: sol_hold_pid_not_published_line)])]),
         ),
+        ]),
       ],
     ),
     bash_build_if_else(
