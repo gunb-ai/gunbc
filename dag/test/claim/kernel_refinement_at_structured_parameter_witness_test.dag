@@ -1,0 +1,57 @@
+module test.claim.kernel_refinement_at_structured_parameter_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A WHERE-REFINEMENT OF A KERNEL IS STILL THE KERNEL'S REPRESENTATION, so it must refuse where a
+// structured value is declared exactly as the bare kernel does (DESIGN 4b floor: values inhabit
+// declared types; DESIGN 4: host text reaches a structural carrier only through the declared unfold).
+// Class row: gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel.
+// Receipt: v2.std.text string_replace(source: t, needle: "{ x }" as NonEmptyStr, ..) resolved clean
+// and the seed interpreter then threw `cannot access field 'head' on String` inside string_split,
+// because v1.compiler.infer kernel_value_declared_type_mismatch keyed on the produced NAME being a
+// kernel (`NonEmptyStr` is not; `String` is), while it already peeled the declared side through
+// peel_where_refinement_base. The plain literal refused; the cast one name away did not.
+//
+// One RED (the refinement at a record parameter) and two controls: the bare kernel at the same
+// parameter (refused before and after, so the red is not a new blanket rule), and the refinement
+// at a plain String parameter (the peel must not refuse the base it peels to).
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+// THE ORACLE NAMES THE CLASS, NOT THE OUTCOME: -1 on the not-runnable arm keeps could-not-measure
+// out of both >= 1 and == 0.
+fn krs_not_inhabited_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn krs_prelude() -> String {
+  "import std.types { Int, String }\n\ntype KrsNonEmpty = String where non_empty\n\ntype KrsSemi {\n  head: Int\n  tail: List<Int>\n}\n\nfn take_semi(s: KrsSemi) -> Int {\n  s.head\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\n"
+}
+
+test fn a_kernel_refinement_at_a_record_parameter_must_refuse() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.refined\n\n", krs_prelude(), "fn probe() -> Int {\n  take_semi(s: \"ab\" as KrsNonEmpty)\n}\n")
+  ) >= 1
+}
+
+test fn the_bare_kernel_at_a_record_parameter_still_refuses() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.bare\n\n", krs_prelude(), "fn probe() -> Int {\n  take_semi(s: \"ab\")\n}\n")
+  ) >= 1
+}
+
+test fn a_kernel_refinement_at_its_base_parameter_still_compiles() -> Bool {
+  krs_not_inhabited_blocking_count(
+    source: concat("module krs.base\n\n", krs_prelude(), "fn probe() -> String {\n  take_s(s: \"ab\" as KrsNonEmpty)\n}\n")
+  ) == 0
+}

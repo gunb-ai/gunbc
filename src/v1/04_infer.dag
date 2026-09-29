@@ -3008,11 +3008,12 @@ fn kernel_value_declared_type_mismatch_bounded(
   formal_name_override: String,
   depth: Int
 ) -> Bool {
-  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+  let actual_base = peel_where_refinement_base(ty: actual, type_env: type_env)
+  if formal.connective == Arrow || actual.connective == Arrow || (actual_base.children |> count) > 0 {
     false
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
-    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
@@ -3021,7 +3022,7 @@ fn kernel_value_declared_type_mismatch_bounded(
       } else { formal_name_override }
       if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
-      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
+      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual_base, source_indices: source_indices) {
         false
       } else {
         if is_kernel_type(name: formal_name) {
