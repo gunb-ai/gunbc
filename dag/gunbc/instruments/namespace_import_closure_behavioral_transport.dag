@@ -16,7 +16,13 @@ import v2.std.subject_evidence {
   SubjectEvidence,
   subject_evidence_establishes
 }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusal
+}
 
 data nic_doc: String = "Wet cargo-compiling receipt for the Gate-1 emit import-closure derivation (emit_import_closure_root, PR 6960): a NAMESPACE module — zero import statements, the v2 corpus shape after namespace wave-1 — that references cross-module names emits VALID, cargo-COMPILING Rust. The regression it guards: before the reference_derived_use_lines pass in v1.compiler.emit_rust, the seed emitter derived Rust use-lines ONLY from authored import name-lists, so an import-free module referencing a sibling emitted bare unqualified names with no use-line and no inline qualification — unresolvable Rust (E0425/E0433). Regen does NOT guard this class (the seed corpus is import-based, so its emit is unchanged by the pass), which is why this receipt is REQUIRED coverage rather than redundant with the self-host fixed point. Live host effects (real gunbc emit, cargo build), so it is CLASSIFIED onto the falsifier Wet follow-on batch (falsifier_self_host_wet_entries) rather than per-PR hermetic discovery -- and classification is membership, not execution: falsifier.yml was deleted at 611fd02770 (#8283, 2026-08-15) and std.witness_admission witness_cadence_has_scheduled_route answers FalsifierSelfHostWet false, so nothing runs this receipt today (censused in gunbc.deleted_cadence_reference_census)."
 
@@ -238,51 +244,66 @@ fn nic_arm_refuses(evidence: SubjectEvidence<NicNoVerdict, NicEmissionOutcome>) 
   )
 }
 
-fn nic_behavioral_receipt_holds() -> Bool {
+fn nic_behavioral_receipt_evidence() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   let root = git.Inspect.Toplevel()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  match witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: gunbc_bin } => EvidenceSubjectCompleted { outcome: nic_arms_hold(root: root.path, gunbc_bin: gunbc_bin) }
+  }
+}
 
+// The five arms, reached only once the compiler binary is Ready: a missing binary is the
+// EvidenceInstrumentRefused arm above, so a false here is a finding about the emitted crates.
+fn nic_arms_hold(root: String, gunbc_bin: String) -> Bool {
   let green_arm = nic_emitted_crate_evidence(
-    root: root.path,
+    root: root,
     gunbc_bin: gunbc_bin,
     provider_source: nic_provider_source,
     consumer_source: nic_consumer_source,
     consumer_rel: "/witness/pilot/emit_consumer.dag"
   )
   let partial_import_arm = nic_emitted_crate_evidence(
-    root: root.path,
+    root: root,
     gunbc_bin: gunbc_bin,
     provider_source: nic_provider_source,
     consumer_source: nic_consumer_partial_import_source,
     consumer_rel: "/witness/pilot/emit_consumer_partial.dag"
   )
   let partial_import_type_arm = nic_emitted_crate_evidence(
-    root: root.path,
+    root: root,
     gunbc_bin: gunbc_bin,
     provider_source: nic_provider_source,
     consumer_source: nic_consumer_partial_import_type_source,
     consumer_rel: "/witness/pilot/emit_consumer_partial_type.dag"
   )
   let local_homonym_arm = nic_emitted_crate_evidence(
-    root: root.path,
+    root: root,
     gunbc_bin: gunbc_bin,
     provider_source: nic_provider_source,
     consumer_source: nic_consumer_local_homonym_source,
     consumer_rel: "/witness/pilot/emit_consumer_local_homonym.dag"
   )
   let red_arm = nic_emitted_crate_evidence(
-    root: root.path,
+    root: root,
     gunbc_bin: gunbc_bin,
     provider_source: nic_provider_missing_names_source,
     consumer_source: nic_consumer_source,
     consumer_rel: "/witness/pilot/emit_consumer.dag"
   )
 
-  gunbc_built
-    && nic_arm_builds(evidence: green_arm)
+  nic_arm_builds(evidence: green_arm)
     && nic_arm_builds(evidence: partial_import_arm)
     && nic_arm_builds(evidence: partial_import_type_arm)
     && nic_arm_builds(evidence: local_homonym_arm)
     && nic_arm_refuses(evidence: red_arm)
+}
+
+// The per-PR claims over these receipts keep a Bool surface that asserts the
+// EvidenceSubjectCompleted arm through subject_evidence_establishes, so an unready compiler still
+// cannot read as a pass; the typed evidence is each _evidence fn. The claim files are left
+// unedited: their hermetic route gaps on IsExecutable (v2.workflow.floor_route_gap) and they have
+// no wet route, so an edit plans them into a floor that cannot give them a verdict.
+fn nic_behavioral_receipt_holds() -> Bool {
+  subject_evidence_establishes(evidence: nic_behavioral_receipt_evidence(), licenses: fn(held) { held })
 }

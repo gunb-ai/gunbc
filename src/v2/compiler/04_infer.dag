@@ -59,14 +59,8 @@ import v2.std.optional {
 }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.node { arrow_signature_order_label, edge_label_of }
-import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order,
-  list_introduction_elements_optional,
-  list_introduction_head_path
-}
+import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.constraints {
   CanonicalGrounding,
@@ -2407,7 +2401,7 @@ fn infer_gather_transform_frontier_on_entries(
 // THE FREE-MONOID INTRODUCTION: A LIST LITERAL'S ONE INFER CASE. v2 body lowering writes
 // `[e1, .., en]` as ONE flat Transform whose head is the reference to std.algebra FreeMonoid's
 // declaration and whose remaining positional children are the elements in order
-// (v2.std.compilers.body_lowering lower_list_introduction, read back by
+// (v2.std.list_introduction lower_list_introduction, read back by
 // list_introduction_elements_optional) -- the flat canonical introduction
 // std.literal_elaboration UnicodeScalarSequenceUnfold names, never a cons^n nesting. It is not an
 // application: the head is a type, so application-argument inhabitance is not asked of it. Every
@@ -3176,7 +3170,7 @@ fn infer_gather_product_row_on_entries(
 }
 
 // AN ARROW'S DECLARED ORDER IS NOT INFERRED. The ^arrow_signature_order_edge's subtree is a list of
-// the domain's binder LABELS (v2.std.compilers.body_lowering signature_order_edge), not values: there
+// the domain's binder LABELS (v2.std.arrow_signature signature_order_edge), not values: there
 // is no type for a label atom to derive, so walking it left every declared Arrow's order atoms on the
 // frontier (infer_grounding_not_derived) and the Arrow itself NotDerived. The Arrow carries the edge
 // as its own evidence (infer_product_child_evidence_edges), and this step takes nothing from its subtree --

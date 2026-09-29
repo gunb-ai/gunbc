@@ -732,11 +732,9 @@ fn approval_broker_dark_install_wet_with_access(
 // the first attempt and is something else entirely. That distinction is the not-met versus
 // cannot-tell split this module keeps everywhere else.
 //
-// THE BOUND IS THE BROKER'S OWN, and it is a declared policy budget with an unmeasured subject
-// rather than a derivation -- said plainly because DESIGN section 4d forbids dressing an inference
-// as a deduction. The roadmap's 240 s expected startup is not the broker's: the broker compiles and
-// serves four routes that consult no roadmap, no plan, no site bundle. What supports 60 s is that
-// qualitative fact, not a measurement, and stage C is what replaces it with one. The cadence and
+// THE BOUND IS THE BROKER'S OWN, derived from one measured srv1 start (see
+// gunbc.live_deploy.service_ready approval_broker_expected_startup for the reading and its
+// thinness), never from the roadmap's 240 s: the two units load different closures. The cadence and
 // the margin factor are the roadmap's own declarations rather than new numbers, because the
 // uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
 fn approval_broker_readback_poll_attempts() -> Int {
