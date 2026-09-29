@@ -30,3 +30,5 @@ line) in `$KIT_DIR/sample.txt`: for the pinned sample, extract
 at the base. Six of its paths no longer exist. Then run `./drive.sh` from the repo root.
 
 **Status:** the scripts are those that produced the #12383 and #12436 receipts, with the pinned SHAs and the embedded harness turned into env/arguments AFTER those runs. This parameterised form has NOT been executed end to end: run a 3-file smoke wave first.
+
+**Analyser fix (post-#12436):** atom deltas are computed only over modules accepted on BOTH sides. Before this, a module refused on one side (which prints no ABSENT lines) made every atom the other side dropped count as recovered: #12436 reported 285 where 162 was right.

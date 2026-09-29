@@ -22,12 +22,19 @@ refch=[]
 tot=collections.Counter()
 for p in sorted(paired):
     M,H=side['main'][p],side['head'][p]
+    # ATOM DELTAS ONLY WHERE BOTH SIDES ACCEPTED. A module refused on either side prints no ABSENT
+    # lines for its atoms, so comparing its absent set across sides reports every atom the other side
+    # dropped as 'recovered' (or 'newly absent'). Refusal changes are reported separately below.
+    if M['ref'] or H['ref']:
+        if M['ref']!=H['ref']: refch.append((p,sorted(M['ref']),sorted(H['ref'])))
+        for k in ('dropped','conserved','authored'): tot['main_'+k]+=int(M['cons'][k]); tot['head_'+k]+=int(H['cons'][k])
+        continue
     for k in ('dropped','conserved','authored'): tot['main_'+k]+=int(M['cons'][k]); tot['head_'+k]+=int(H['cons'][k])
     if M['ref']!=H['ref']: refch.append((p,sorted(M['ref']),sorted(H['ref'])))
     rec_ += [(p,)+x for x in sorted(M['absent']-H['absent'])]
     new_ += [(p,)+x for x in sorted(H['absent']-M['absent'])]
 print(dict(tot))
-print('recovered atoms (absent on main, present on head):',len(rec_))
+print('recovered atoms (modules accepted on BOTH sides only):',len(rec_))
 print('new absent atoms (present on main, absent on head):',len(new_))
 for x in new_[:40]: print('  NEW',x[1],x[2])
 print('refusal changes:',len(refch))
