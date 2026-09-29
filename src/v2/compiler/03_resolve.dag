@@ -34,6 +34,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -225,20 +226,9 @@ fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
 fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
   NodeFold {
     init: fn(n0) {
-      match n0.kind {
-        TypeNode { connective: Atom { identity: sym } } =>
-          map_insert(base, sym, sym)
-        TypeNode { connective: Conj } => base
-        TypeNode { connective: Disj } => base
-        TypeNode { connective: Arrow } => base
-        TypeNode { connective: Cardinality } => base
-        TypeNode { connective: Instantiation } => base
-        ComputationNode { behavior: Value } => base
-        ComputationNode { behavior: Transform } => base
-        ComputationNode { behavior: Branch } => base
-        ComputationNode { behavior: Loop } => base
-        ComputationNode { behavior: Bind } => base
-        ComputationNode { behavior: Match } => base
+      match node_atom_identity_optional(node: n0) {
+        Present { value: sym } => map_insert(base, sym, sym)
+        Absent => base
       }
     },
     step: fn(acc, _, _) {
@@ -1444,20 +1434,10 @@ fn resolve_transform_operator_child(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } =>
       resolve_walk_of_outcome(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
-    TypeNode { connective: Conj } => resolve_node_walk(ctx: ctx, n: n)
-    TypeNode { connective: Disj } => resolve_node_walk(ctx: ctx, n: n)
-    TypeNode { connective: Arrow } => resolve_node_walk(ctx: ctx, n: n)
-    TypeNode { connective: Cardinality } => resolve_node_walk(ctx: ctx, n: n)
-    TypeNode { connective: Instantiation } => resolve_node_walk(ctx: ctx, n: n)
-    ComputationNode { behavior: Value } => resolve_node_walk(ctx: ctx, n: n)
-    ComputationNode { behavior: Transform } => resolve_node_walk(ctx: ctx, n: n)
-    ComputationNode { behavior: Branch } => resolve_node_walk(ctx: ctx, n: n)
-    ComputationNode { behavior: Loop } => resolve_node_walk(ctx: ctx, n: n)
-    ComputationNode { behavior: Bind } => resolve_node_walk(ctx: ctx, n: n)
-    ComputationNode { behavior: Match } => resolve_node_walk(ctx: ctx, n: n)
+    Absent => resolve_node_walk(ctx: ctx, n: n)
   }
 }
 
@@ -1604,8 +1584,8 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
     Absent => acc
     Present { value: _ } =>
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } =>
+        match node_atom_identity_optional(node: e.target) {
+          Present { value: id } =>
             if is_wildcard_pattern(pattern: e.target) {
               m
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
@@ -1613,17 +1593,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
             } else {
               map_insert(m, id, id)
             }
-          TypeNode { connective: Conj } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          TypeNode { connective: Disj } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          TypeNode { connective: Arrow } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          TypeNode { connective: Cardinality } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          TypeNode { connective: Instantiation } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          ComputationNode { behavior: Value } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          ComputationNode { behavior: Transform } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          ComputationNode { behavior: Branch } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          ComputationNode { behavior: Loop } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          ComputationNode { behavior: Bind } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
-          ComputationNode { behavior: Match } => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
       })
   }
@@ -1916,8 +1886,8 @@ fn type_param_shadows_visible_name_diagnostic(binder: Node) -> Diagnostic {
 // A binder is admitted exactly when its spelling, looked up from the declaration's own scope,
 // is unbound. Any other answer -- a binding, an ambiguity, a test-code wall -- is a visible name.
 fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWalk {
-  match binder.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: binder) {
+    Present { value: id } =>
       match resolve_atom(ctx: ctx, n: binder, identity: id) {
         Rejected { diagnostics: d } =>
           if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
@@ -1928,17 +1898,7 @@ fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWa
         Accepted { value: _, diagnostics: _ } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
       }
-    TypeNode { connective: Conj } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    TypeNode { connective: Disj } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    TypeNode { connective: Arrow } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    TypeNode { connective: Cardinality } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    TypeNode { connective: Instantiation } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    ComputationNode { behavior: Value } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    ComputationNode { behavior: Transform } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    ComputationNode { behavior: Branch } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    ComputationNode { behavior: Loop } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    ComputationNode { behavior: Bind } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
-    ComputationNode { behavior: Match } => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
+    Absent => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
   }
 }
 
@@ -2004,30 +1964,10 @@ fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
-  match t.kind {
-    TypeNode { connective: Atom { identity: id } } =>
+  match node_atom_identity_optional(node: t) {
+    Present { value: id } =>
       ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
-    TypeNode { connective: Conj } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    TypeNode { connective: Disj } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    TypeNode { connective: Arrow } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    TypeNode { connective: Cardinality } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    TypeNode { connective: Instantiation } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    ComputationNode { behavior: Value } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    ComputationNode { behavior: Transform } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    ComputationNode { behavior: Branch } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    ComputationNode { behavior: Loop } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    ComputationNode { behavior: Bind } =>
-      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
-    ComputationNode { behavior: Match } =>
+    Absent =>
       resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
 }

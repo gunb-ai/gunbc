@@ -25,6 +25,7 @@ import v2.std.collection {
   list_nth
 }
 import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -1227,20 +1228,10 @@ fn eval_binding_key_node(sym: Symbol) -> Node {
 }
 
 fn eval_binding_key_from_atom(node: Node) -> Optional<EnvironmentBindingKey> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
       optional_present(value: environment_binding_key_for_symbol(sym: sym))
-    TypeNode { connective: Conj } => optional_absent()
-    TypeNode { connective: Disj } => optional_absent()
-    TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Cardinality } => optional_absent()
-    TypeNode { connective: Instantiation } => optional_absent()
-    ComputationNode { behavior: Value } => optional_absent()
-    ComputationNode { behavior: Transform } => optional_absent()
-    ComputationNode { behavior: Branch } => optional_absent()
-    ComputationNode { behavior: Loop } => optional_absent()
-    ComputationNode { behavior: Bind } => optional_absent()
-    ComputationNode { behavior: Match } => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -2612,29 +2603,17 @@ fn eval_runtime_control_node(
         ComputationNode { behavior: b } =>
           interpretation_behavior_dispatch(interpretation: interpretation, behavior: b)
         TypeNode { connective: Atom { identity: _ } } =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Conj } =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Disj } =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Arrow } =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Cardinality } =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Instantiation } =>
-          TransformRuntimeInterpreter {
-            interpreter: interpretation.transform
-          }
+          TransformRuntimeInterpreter { interpreter: interpretation.transform }
       }
       bind_outcome(
         o: match node.kind {
@@ -3080,6 +3059,32 @@ fn aggregate_verdicts<S, T>(
   )
 }
 
+fn run_test_claim_runtime_evaluated(
+  subject: TestClaimEvalSubject<Node>,
+  at: Node
+) -> TestClaimRun<Node, RuntimeValue> {
+  let actual = eval_with_context(
+    tree: subject.tree,
+    context: subject.context,
+    inputs: inputs_root_only(root: subject.input.evaluator_input)
+  )
+  TestClaimRun {
+    cache: test_claim_cache_receipt_node(subject: subject),
+    verdict: aggregate_verdicts(
+      rs: [
+        run_test_claim_runtime_assert(
+          claim: subject.claim,
+          tree: subject.tree,
+          interpretation: eval_context_interpretation(context: subject.context),
+          actual: actual,
+          at: at
+        )
+      ],
+      at: at
+    )
+  }
+}
+
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>
 ) -> TestClaimRun<Node, RuntimeValue> {
@@ -3107,72 +3112,9 @@ fn run_test_claim(
           at: at
         )
       }
-    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } => {
-      let actual = eval_with_context(
-        tree: subject.tree,
-        context: subject.context,
-        inputs: inputs_root_only(root: subject.input.evaluator_input)
-      )
-      TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: aggregate_verdicts(
-          rs: [
-            run_test_claim_runtime_assert(
-              claim: subject.claim,
-              tree: subject.tree,
-              interpretation: eval_context_interpretation(context: subject.context),
-              actual: actual,
-              at: at
-            )
-          ],
-          at: at
-        )
-      }
-    }
-    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => {
-      let actual = eval_with_context(
-        tree: subject.tree,
-        context: subject.context,
-        inputs: inputs_root_only(root: subject.input.evaluator_input)
-      )
-      TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: aggregate_verdicts(
-          rs: [
-            run_test_claim_runtime_assert(
-              claim: subject.claim,
-              tree: subject.tree,
-              interpretation: eval_context_interpretation(context: subject.context),
-              actual: actual,
-              at: at
-            )
-          ],
-          at: at
-        )
-      }
-    }
-    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => {
-      let actual = eval_with_context(
-        tree: subject.tree,
-        context: subject.context,
-        inputs: inputs_root_only(root: subject.input.evaluator_input)
-      )
-      TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
-        verdict: aggregate_verdicts(
-          rs: [
-            run_test_claim_runtime_assert(
-              claim: subject.claim,
-              tree: subject.tree,
-              interpretation: eval_context_interpretation(context: subject.context),
-              actual: actual,
-              at: at
-            )
-          ],
-          at: at
-        )
-      }
-    }
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim_runtime_evaluated(subject: subject, at: at)
   }
 }
 

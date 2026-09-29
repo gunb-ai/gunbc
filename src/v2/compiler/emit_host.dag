@@ -641,6 +641,13 @@ fn emit_host_no_run_args() -> List<String> {
   []
 }
 
+fn run_test_claim_emit_vs_eval_run_failed(exit: HostExit) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  verdict_run_failed(
+    actual: host_exit_failure_outcome(exit: exit),
+    diagnostic: emit_host_run_failed_diagnostic()
+  )
+}
+
 fn run_test_claim_emit_vs_eval_verdict_from_run(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
@@ -670,16 +677,8 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
                 diagnostic: ds.head
               )
           }
-        Accepted { value: _, diagnostics: _ } =>
-          verdict_run_failed(
-            actual: host_exit_failure_outcome(exit: host_receipt.exit),
-            diagnostic: emit_host_run_failed_diagnostic()
-          )
-        Rejected { diagnostics: _ } =>
-          verdict_run_failed(
-            actual: host_exit_failure_outcome(exit: host_receipt.exit),
-            diagnostic: emit_host_run_failed_diagnostic()
-          )
+        Accepted { value: _, diagnostics: _ } => run_test_claim_emit_vs_eval_run_failed(exit: host_receipt.exit)
+        Rejected { diagnostics: _ } => run_test_claim_emit_vs_eval_run_failed(exit: host_receipt.exit)
       }
     Rejected { diagnostics: ds } =>
       Deferred {

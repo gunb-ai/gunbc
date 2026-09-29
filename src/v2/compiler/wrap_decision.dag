@@ -75,6 +75,16 @@ fn wrap_decision_bundle_child_lookup_step(
   }
 }
 
+fn wrap_decision_bundle_malformed_refusal(bundle: Node) -> Outcome<Optional<Node>> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^wrap_decision_bundle_malformed,
+      at: node_locus(node: bundle),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
 fn wrap_decision_bundle_optional_child(
   target: TargetModel,
   edge_name: Symbol
@@ -113,94 +123,17 @@ fn wrap_decision_bundle_optional_child(
             }
           )
       }
-    TypeNode { connective: Atom { identity: _ } } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    TypeNode { connective: Disj } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    TypeNode { connective: Arrow } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    TypeNode { connective: Cardinality } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    TypeNode { connective: Instantiation } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    ComputationNode { behavior: Value } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    ComputationNode { behavior: Transform } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    ComputationNode { behavior: Branch } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    ComputationNode { behavior: Loop } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    ComputationNode { behavior: Bind } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
-    ComputationNode { behavior: Match } =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^wrap_decision_bundle_malformed,
-          at: node_locus(node: target.bundle),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Atom { identity: _ } } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    TypeNode { connective: Disj } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    TypeNode { connective: Arrow } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    TypeNode { connective: Cardinality } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    TypeNode { connective: Instantiation } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    ComputationNode { behavior: Value } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    ComputationNode { behavior: Transform } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    ComputationNode { behavior: Branch } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    ComputationNode { behavior: Loop } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    ComputationNode { behavior: Bind } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    ComputationNode { behavior: Match } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
   }
 }
 

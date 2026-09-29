@@ -171,17 +171,9 @@ fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
           observed_hash: observed
         }
       ContentHashDifferent =>
-        SourceRefReadHashMismatch {
-          ref: ref,
-          expected: ref.content_hash,
-          observed: observed
-        }
+        SourceRefReadHashMismatch { ref: ref, expected: ref.content_hash, observed: observed }
       ContentHashCrossFamilyIncomparable =>
-        SourceRefReadHashMismatch {
-          ref: ref,
-          expected: ref.content_hash,
-          observed: observed
-        }
+        SourceRefReadHashMismatch { ref: ref, expected: ref.content_hash, observed: observed }
     }
   }
 }
