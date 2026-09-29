@@ -354,6 +354,9 @@ fn emit_produced_module_step(
   )
 }
 
+// A SUPPLIED DECLARATION LIST, NOT A MODULE. This fold renders the arrow declarations its caller hands
+// it (v2.workflow.realization_attempt and the emit-host fixtures build their own lists); what a MODULE
+// emits to is emit_module_body_members, the one module authority both emission paths call.
 // THE JOIN IS `concat` OVER A "" SEED, NOT `list_append` OVER `Empty`, and the difference is not
 // cosmetic. Built by list_append from the FreeMonoid variant, the fold's result carries the
 // CONS-LIST SPELLING of a string rather than the native one: `==` and `concat` still behave, which
