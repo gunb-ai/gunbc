@@ -31,7 +31,7 @@ import extdeps.exec.command { sshpass_authority, sshpass_program }
 data extdeps_external_authority_anchor: ExternalAuthority = sshpass_authority
 
 data sshpass_cli_tool: CliTool = CliTool {
-  name: sshpass_program().invocation,
+  program: sshpass_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_sshpass, bin_dir: apt_bin_dir }],
 }

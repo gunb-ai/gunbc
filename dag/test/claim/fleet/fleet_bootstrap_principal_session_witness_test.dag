@@ -207,7 +207,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
             },
             absence: Present {
               value: HostCliDependencyAbsence {
-                tool: sshpass_cli_tool.name,
+                tool: sshpass_cli_tool.program.invocation,
                 hint: "apt install sshpass",
               },
             },

@@ -17,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data sed_cli_tool: CliTool = CliTool {
-  name: sed_program().invocation,
+  program: sed_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }

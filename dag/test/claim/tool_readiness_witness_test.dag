@@ -117,7 +117,7 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
     ]),
   ) {
     PinnedAdmitted { pin: admitted, plan: plan } =>
-      ((admitted.subject.name as String) == "rustfmt")
+      ((admitted.subject.program.invocation as String) == "rustfmt")
         && membership_write_count(plan: plan) == 0
         && membership_refusal_count(plan: plan) == 0
     PinnedRefused { refusals: _ } => false
@@ -138,7 +138,7 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
       tool_readiness_refusal_count(readiness: readiness) == 1
         && match rows |> first {
           Present { value: refusal } =>
-            ((refusal.tool.name as String) == "rustfmt")
+            ((refusal.tool.program.invocation as String) == "rustfmt")
               && match refusal.cause {
                 ToolMembershipNotConverged { plan: plan, admission: admission } =>
                   membership_write_count(plan: plan) == 1
@@ -288,7 +288,7 @@ test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
     ]),
   ) {
     UnpinnedFrontier { row: row, observed: observation } =>
-      (row.tool.name as String) == "rustfmt"
+      (row.tool.program.invocation as String) == "rustfmt"
         && (observation.tool_name as String) == "rustfmt"
         && row.trigger.decl_name == "witness_unpinned_frontier_row"
     PinnedAdmitted { pin: _, plan: _ } => false
