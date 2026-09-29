@@ -37,8 +37,16 @@ hand-built fixtures.
 The tag edge stops being a nickname and becomes a reference.
 
 - **Construct** = `Conj { <construct_tag_marker>: <reference>, field edges.. }`.
-  - `construct_tag_marker` is one fixed label declared in `v2.std.node` beside
-    `declaration_reference_marker`, and distinct from it. If they were the same, a nullary `Rec {}`
+  - `construct_tag_marker` is a STRUCTURAL CORE MARKER in the typed `EdgeLabel` vocabulary of
+    #12473 (quiet-koi-814, ruling A; review condition from neat-boar-16). It names the edge's role
+    (constructor tag); the target is an ordinary authored reference. It is counted once in the
+    #12473 census. Landing order, agreed with quiet-koi-814: this lane's PR2 lands first, because #12473 is the
+    model document only and its cut has not started. PR2 therefore declares the marker beside
+    `declaration_reference_marker` in `v2.std.node`, in the same form. It also records the marker once, in
+    the Core-marker list of `docs/plans/edge-label-coproduct/README.md` (item 1 under "Who owns the
+    closed set") if #12473 has landed by then, or in #12701 otherwise. The #12473 cut converts it to
+    the Core arm `ConstructTag` together with the other markers. It is distinct from
+    `declaration_reference_marker`. If they were the same, a nullary `Rec {}`
     would read as a declaration reference under `declaration_reference_body_marked`.
   - The label is never the constructor's spelling. That removes the label-as-second-name (§3).
 - **Reference form: one form, a qualified_name spine.** Before resolve, `<reference>` is the
@@ -88,7 +96,7 @@ construct shape. `src/v1/stage0` `coproduct_reflection` emits the unrelated v1
 | v2.compiler.body_lowering_fold | `body_lower_is_core_substrate` | reader | Through the migrated `construct_tag_optional`. Check the order against the `qualified_name_spine_shape_present` test. |
 | v2.compiler.resolve | `resolve_pattern_node_walk`, `resolve_node_walk` Conj arm | rewriter | Resolve the marker edge's spine through the one length-dispatching function above. Field edges walk as today. Check the `resolve_ctx_snoc_position` side effect now that the label is the marker. |
 | v2.compiler.resolve | `resolve_pattern_binders` | reader | Unchanged apart from the gate. |
-| v2.compiler.infer | Conj gather arms (`infer_gather_*`, `infer_product_facts_from_entries`) | reader | The marker edge must not be read as a product field named by the marker. Skip it and type the construct by the referenced declaration where a row exists. Today the tag is `infer_gather_fold_not_derived`. |
+| v2.compiler.infer | Conj gather arms (`infer_gather_*`, `infer_product_facts_from_entries`) | reader | The marker edge must not be read as a product field. Skip it by its TYPED edge role, never by the label's spelling, and type the construct by the referenced declaration where a row exists. Today the tag is `infer_gather_fold_not_derived`. |
 | v2.compiler.eval | `eval_callee_body_refusal_reason` | reader | Refusal only; no change. |
 | v2.std.compilers.target_model | `target_value_expr_record_construct_gate`, `target_project_record_construct` | reader | Gate on the marker. `type_name` comes from the resolved declaration's path, spelled through the target's binding rows, not from an atom identity. This admits resolved constructs the gate refuses today; that is a behaviour change, and it is named. |
 | v2.std.compilers.target_model | `target_value_expr_arrow_has_record_construct_body`, the arm body projection and match-arm slot readers | reader | Follow the gate. |
@@ -102,6 +110,14 @@ Not readers of this shape: `v2.std.data_initializer_identity`, `v2.std.decl_fact
 v1 `record_construction_census` fixtures all read the v1 reflection edge. The orchestration
 `construct_tag:` fields are an unrelated name clash.
 
+## The live defect on main
+
+Filed as `gunbc.recurring_failure_mode`
+`construct_tag_read_by_label_equality_after_resolve_rewrote_the_target`. Confirmed by execution: a
+resolved `PcrA { n: true }` is `Conj { PcrA -> <declaration reference> v2.test.pc_provider.PcrA, n -> true }`,
+and `construct_tag_optional` answers Absent. The well_formed and target_model gate arms are inferred
+from their definitions, and the row labels them that way.
+
 ## PR2 (the cut) and its evidence
 
 All readers migrate in one motion, and no `Symbol`-tag path remains. Controls, fed by production:
@@ -114,6 +130,14 @@ All readers migrate in one motion, and no `Symbol`-tag path remains. Controls, f
 3. Mutations go red: dropping the qualifier binds the other module's variant or refuses as
    ambiguous, and dropping the record body changes the node.
 4. The variant is bound, not its coproduct.
-5. `01_tokenize.dag` is admitted on the native route. A base-vs-head census (the #12550 recipe)
+5. A qualified tag whose last segment names a TYPE rather than a variant, or a variant of a
+   different type, refuses at a located site and never resolves by spelling (neat-boar-16).
+6. The target_model gate is shown by a discriminating pair: a resolved construct is admitted, and
+   an unresolved or wrong-variant construct still refuses at that gate.
+7. The seven's actual form, `v2.std.diagnostic.Rejected { diagnostics: .. }`, is the positive
+   control on the production route.
+8. The live defect below has a control that is RED on main (a resolved user construct read by
+   `construct_tag_optional`), turns green in PR2, and stays enrolled as the regression control.
+9. `01_tokenize.dag` is admitted on the native route. A base-vs-head census (the #12550 recipe)
    shows the newly admitted files and no unexplained new refusal. quiet-hawk-702 runs the native
    seven against the head.
