@@ -14,6 +14,7 @@ import product.placement_supply { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.supply { SupplierOffer }
+import v2.std.collection { empty_map, map_insert, map_lookup }
 import product.capacity.cohort_observation {
   CohortSeal, CohortSealed, CohortRefused, SeatSettledSucceeded, SeatSettledFailed, SeatUnsettled, cohort_refusal_wire,
 }
@@ -717,12 +718,12 @@ fn qualify_concurrency(cohort: RunnerCohortEvidence, runs: List<ObservedRunnerQu
           match seal {
             CohortRefused { refusal: r } => ConcurrencyCohortRefused { cause: cohort_refusal_wire(r: r, seat_key: run_key) as NonEmptyStr }
             CohortSealed { cohort: c } => {
-              let assessed = fold(runs, init: empty_map(), f: fn(m, r) { map_insert(m, r.run as String, true) })
+              let assessed = fold(runs, init: empty_map(), f: fn(m, r) { map_insert(m: m, key: r.run as String, value: true) })
               let seats = fold(c.seats, init: SeatsHold, f: (acc, w) =>
                 match acc {
                   SeatStandingRefused { standing: _ } => acc
                   SeatsHold =>
-                    match map_get(assessed, w.seat as String) {
+                    match map_lookup(m: assessed, key: w.seat as String) {
                       Absent => SeatStandingRefused { standing: ConcurrencySeatNotAnAssessedRun { seat: w.seat } }
                       Present { value: _ } =>
                         match w.settlement {

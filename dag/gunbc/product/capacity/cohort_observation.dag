@@ -6,6 +6,7 @@ import std.measure { ObservationInstant, InstantOrder, InstantBefore, InstantSam
 import std.interval { OrderedClosedInterval, IntervalReady, IntervalRefused, closed_interval, interval_low, interval_high }
 import std.list { first_duplicate_by_key }
 import std.observation { OccurrenceId }
+import v2.std.collection { empty_map, map_insert, map_lookup }
 
 // A CONCURRENT COHORT IS N SEATS SHOWN TO HAVE BEEN ACTIVE AT ONCE, NOT N RUNS THAT HAPPENED NEARBY.
 //
@@ -162,11 +163,11 @@ type RosterJoin<K>
   | RosterJoinRefused { refusal: CohortRefusal<K> }
 
 fn key_set<T>(xs: List<T>, key: fn(T) -> String) -> Map<String, Bool> {
-  fold(xs, init: empty_map(), f: fn(m, x) { map_insert(m, key(x), true) })
+  fold(xs, init: empty_map(), f: fn(m, x) { map_insert(m: m, key: key(x), value: true) })
 }
 
 fn keyed(keys: Map<String, Bool>, k: String) -> Bool {
-  match map_get(keys, k) { Present { value: _ } => true Absent => false }
+  match map_lookup(m: keys, key: k) { Present { value: _ } => true Absent => false }
 }
 
 // ONE PASS OVER THE READINGS catches a seat read twice and a seat the roster does not name; one pass
@@ -186,7 +187,7 @@ fn join_roster<K>(roster: List<K>, seats: List<CohortSeatReading<K>>, seat_key: 
           SeatScanning { seen: seen } =>
             if keyed(keys: seen, k: seat_key(r.seat)) { SeatScanRefused { refusal: CohortSeatReadingDuplicated { seat: r.seat } } }
             else if !keyed(keys: on_roster, k: seat_key(r.seat)) { SeatScanRefused { refusal: CohortSeatOffRoster { seat: r.seat } } }
-            else { SeatScanning { seen: map_insert(seen, seat_key(r.seat), true) } }
+            else { SeatScanning { seen: map_insert(m: seen, key: seat_key(r.seat), value: true) } }
         })
       match scan {
         SeatScanRefused { refusal: x } => RosterJoinRefused { refusal: x }
