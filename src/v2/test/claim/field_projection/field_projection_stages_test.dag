@@ -375,3 +375,47 @@ test fn fps_eval_refuses_a_non_aggregate_receiver_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+
+// THE SEVEN'S ACTUAL RECEIVER IS A MATCH-ARM BINDER, AND THAT SHAPE IS BLOCKED BEFORE PROJECTION EVER
+// APPLIES. In v2.test.parse.expression_bodied_fn_decl_parse the projection is `artifact.tree` where
+// `artifact` is bound by the arm `Accepted { value: artifact, diagnostics: d }` -- a different binder
+// kind from the parameter receiver above, so whether this repair reaches it is its own fact.
+//
+// MEASURED, AND THE ISOLATING CONTROL IS THE ONE THAT MATTERS. The match form RESOLVES -- so resolve's
+// projection arm handles a match binder's head -- and then fails to infer. But the SAME match form with
+// the projection REPLACED BY A LITERAL fails to infer identically, so the blocker is the match construct
+// and not the field access. That is the pre-existing match-arm boundary this lane already recorded as the
+// seven's first refusal (body_lowering_reason_match_arm_navigation_refused), owned elsewhere.
+//
+// AN EARLIER VERSION OF THIS SECTION CLAIMED MORE THAN IT MEASURED. It asserted that an absent field off
+// a match binder is not admitted, and that claim PASSED -- vacuously, because the valid projection off a
+// match binder does not infer either, so both arms refuse and the assertion distinguished nothing. It is
+// replaced by the isolating pair below, which states what is actually established.
+//
+// WHY THE SEVEN ARE NOT RUN AS THE EVIDENCE HERE. Those seven claims pass under the development runner
+// both before and after this change, because that runner resolves them with the SEED compiler; their
+// blocker is v2's OWN front end on the native route. A green from running them would be evidence about
+// the seed, not about this repair -- a green signal that was never about the property claimed.
+fn fps_match_binder_source(field: String) -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Art {\n  tree: Int\n}\n\ntype Holder\n  = Wrapped { value: Art }\n\nfn f(h: Holder) -> Int {\n  match h {\n    Wrapped { value: artifact } => artifact." + field + "\n  }\n}\n")
+}
+
+fn fps_match_no_projection_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Art {\n  tree: Int\n}\n\ntype Holder\n  = Wrapped { value: Art }\n\nfn f(h: Holder) -> Int {\n  match h {\n    Wrapped { value: artifact } => 7\n  }\n}\n")
+}
+
+// RESOLVE REACHES THE MATCH BINDER'S PROJECTION: the head is bound on the chain and the whole path names
+// no declaration, so resolve commits the projection shape exactly as it does for a parameter receiver.
+test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
+  fps_resolves(o: fps_match_binder_source(field: "tree"))
+}
+
+// AND THE BLOCKER IS THE MATCH FORM, NOT THE PROJECTION. Both conjuncts are needed: the projection form
+// refusing alone would be consistent with a projection defect, and it is the SECOND conjunct -- the same
+// match with a literal body refusing too -- that assigns the refusal to the match construct. If a later
+// change makes match arms infer, this claim goes red and the projection claim beside it becomes the live
+// question, which is the transition worth being told about.
+test fn fps_the_match_binder_blocker_is_the_match_form_holds() -> Bool {
+  !fps_infers(o: fps_match_binder_source(field: "tree"))
+    && !fps_infers(o: fps_match_no_projection_source())
+}
