@@ -6076,6 +6076,10 @@ fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
+// NAVIGATION ONLY: this finds the condition's CAPTURE, which body_lower_if_condition_lowered then lowers
+// through the value reader. It used to answer a composite left element through the operand reader,
+// handing back a LOWERED node where a capture is owed (and forgetting any refusal the operand reader
+// made); the lowering belongs to the one value reader downstream, so that branch is deleted.
 fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
@@ -6096,13 +6100,9 @@ fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
                     }
                 }
               Absent =>
-                match body_lower_operand_ref_optional(node: left) {
-                  Present { value: op } => Present { value: op }
-                  Absent =>
-                    match body_lower_if_condition_optional(captured: left) {
-                      Present { value: found } => Present { value: found }
-                      Absent => body_lower_if_condition_optional(captured: right)
-                    }
+                match body_lower_if_condition_optional(captured: left) {
+                  Present { value: found } => Present { value: found }
+                  Absent => body_lower_if_condition_optional(captured: right)
                 }
             }
           Absent => Absent
@@ -7178,7 +7178,7 @@ fn body_lower_match_scrutinee_value(node: Node) -> Outcome<Optional<Node>> {
     Accepted { value: Present { value: lowered }, diagnostics: d } =>
       outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
     Accepted { value: Absent, diagnostics: _ } =>
-      outcome_accepted(value: body_lower_operand_ref_optional(node: node))
+      body_lower_operand_read_outcome(read: body_lower_operand_ref_read(node: node), diagnostics: None)
   }
 }
 
