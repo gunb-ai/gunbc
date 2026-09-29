@@ -1,0 +1,72 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 24 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck gunbc.runner_microvm_slot_controller done in 3 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=19 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=5104 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1767 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1866 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=31 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=49 scale=closure
+[pre-entry] phase=closure_load ms=2272 scale=closure
+[pre-entry] phase=closure_parse ms=9006 scale=closure
+[pre-entry] phase=closure_resolve ms=326 scale=closure
+[pre-entry] phase=closure_normalize ms=1043 scale=closure
+[pre-entry] phase=closure_typecheck ms=87295 scale=closure
+[pre-entry] phase=closure_parent_envs ms=9 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=158 scale=closure
+[pre-entry] phase=closure_ownership ms=1225 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=135281 scale=closure
+[pre-entry] population pool_modules=773 closure_files=749
+[pre-entry] process_cpu user_ms=132601 sys_ms=2280 max_rss_kib=4947460
+◐ started shell.Mktemp.Dir
+✓ shell.Mktemp.Dir done in 2ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 1ms
+◐ started shell.Mkdir.Parents
+✓ shell.Mkdir.Parents done in 2ms
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.0xwOiaaCdz/fabric/heads
+[file] write_create_new /tmp/tmp.0xwOiaaCdz/fabric/objects/231735cc9c4b3ace (2618 bytes)
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/objects/231735cc9c4b3ace
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.0xwOiaaCdz/fabric/heads
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] list /tmp/tmp.0xwOiaaCdz/fabric/heads
+[file] write_create_new /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1 (16 bytes)
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+◐ started Clock.Now
+✓ Clock.Now done in 2ms
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/objects/231735cc9c4b3ace
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/objects/231735cc9c4b3ace
+[file] write_create_new /tmp/tmp.0xwOiaaCdz/fabric/objects/70c4cdd756ac21e8 (2664 bytes)
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/objects/70c4cdd756ac21e8
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] write_create_new /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2 (16 bytes)
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.4
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.3
+[file] read /fixture/holds/srv1-07.1
+[file] list /fixture/holds
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.4
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.3
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/objects/70c4cdd756ac21e8
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.1
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.2
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.4
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/heads/cas-slot-workspace-owner-fa77b59225ec75bf.3
+[file] read /tmp/tmp.0xwOiaaCdz/fabric/objects/70c4cdd756ac21e8
+PASS expired_reserved_controller_retires_even_when_cleanup_is_uncertain
