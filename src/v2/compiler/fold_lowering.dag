@@ -135,12 +135,20 @@ fn fold_realizes_declaration(module_path: String, decl_name: String, slots: Fold
   })
 }
 
+// A template row answers a position as std.algebra's `Int?`; a slot carries this stage's Optional.
+fn fold_row_position(position: Int?) -> Optional<Int> {
+  match position {
+    Present { value: k } => optional_present(value: k)
+    Absent => optional_absent()
+  }
+}
+
 // The collection operation's slots, positions read off its template row.
 fn collection_fold_slots(t: AlgebraFieldTemplate) -> FoldSlots {
   FoldSlots {
-    collection: FoldSlot { name: optional_absent(), position: template_receiver_position(t: t) },
-    init: FoldSlot { name: optional_present(value: ^init), position: template_accumulator_position(t: t) },
-    step: FoldSlot { name: optional_present(value: ^f), position: template_step_position(t: t) }
+    collection: FoldSlot { name: optional_absent(), position: fold_row_position(position: template_receiver_position(t: t)) },
+    init: FoldSlot { name: optional_present(value: ^init), position: fold_row_position(position: template_accumulator_position(t: t)) },
+    step: FoldSlot { name: optional_present(value: ^f), position: fold_row_position(position: template_step_position(t: t)) }
   }
 }
 
