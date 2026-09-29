@@ -1,0 +1,19 @@
+{
+  "schema": "fleet-converge-apply-receipt/v1",
+  "run": {
+    "repository": "gunb-ai/gunbc",
+    "workflow_ref": "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/codex/allocation-store-plan-binding",
+    "run_id": "36635360479",
+    "run_revision": "28861d7d4a491c89a3c0784f5d3c5e1df950ca44"
+  },
+  "plan_run_id": "36621851623",
+  "plan_receipt_identity": "3151a8bcd6185e72",
+  "plan_artifact_hash": "6b0cfb91ef522bcc",
+  "observed_host": "srv1",
+  "prior_generation": "16",
+  "planned_generation": "17",
+  "expected_revision_admitted": "28861d7d4a491c89a3c0784f5d3c5e1df950ca44",
+  "terminal": "fully_applied",
+  "locked_apply_exit_code": "0",
+  "receipt_identity": "d6a2e7593b08dd35"
+}

@@ -10,3 +10,5 @@ These are source qualification, not privileged commissioning, concurrent acquisi
 An earlier manual invocation omitted `--function workspace_commissioning_typecheck`; it completed typechecking but failed with NoSuchFunction main. The corrected composition run above is the successful execution receipt.
 
 The subsequent sanitation run passed all ten claims under the same 6 GiB/no-swap settings, exit zero, max RSS 4,047,092 KiB. Its separate manifest covers late process appearance, unreadable TAP ownership, and an actual mountinfo-shaped old-attempt mount. These remain supplied-boundary controls, not a live sanitation receipt.
+
+Full serve startup at `c2528d9ef3451d53dde3a0a47523e9d712e0016c` reached its own loopback listening announcement and accepted a TCP connection in 240.323 seconds under 12 GiB/no swap. Peak 12,579,467,264 bytes; OOM counters zero. The owned process was stopped after checking. This establishes integrated startup, not HTTP allocation behavior or live deployment. Only documentation/receipt files changed during this check.
