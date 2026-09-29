@@ -25,9 +25,8 @@ import product.fabric.node_qualification {
 }
 import gunbc.host_budget_source { HostBudgetResolved, HostBudgetObserved, BudgetSourceCgroupMemoryHigh }
 import gunbc.required_ci_phase_roster { RequiredCiPhase, ParsePhase, FloorPhase, required_ci_phases, required_ci_phase_is }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired, gunbc_runner_cores_per_slot, CpuQuotaResolved, SlotCpuQuotaUnbounded,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
 }
@@ -72,7 +71,7 @@ import gunbc.runner_throughput_qualification_route {
   route_bmc_writes_are_gated, route_bmc_write_count, route_control_plane_write_count,
   route_effectful_stage_count, route_is_executable,
   route_registers_one_slot, route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
-  mtcollins1_qualification_workspace_backing,
+  mtcollins1_qualification_workspace_backing, mtcollins1_route_legs,
   CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire, qualification_instrument_producer,
 }
 import gunbc.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
@@ -612,6 +611,12 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
 // frontier. This flips to the regression control that the bindings stay when they land.
 test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
   !route_is_executable(route: route()) && !leg_is_bound(leg: qualification_run_producer_frontier)
+}
+
+// THE IMAGE LEG IS BOUND AND THE BOOT LEG IS NOT, and the claim tells the two apart: binding the
+// boot leg to the census-only boot run, or unbinding the image leg, turns this red.
+test fn the_image_leg_is_bound_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
+  leg_is_bound(leg: mtcollins1_route_legs.image) && !leg_is_bound(leg: mtcollins1_route_legs.boot)
 }
 
 test fn the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt() -> Bool {

@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import std.access { Permit, Deny }
 import std.effect_grant {
   Grant, Envelope, NamespacePosition, filesystem_position,
-  Read, Write, RealTransport, Replay,
+  Read, Write, RealTransport, Replay, ModeledRealization,
   LifecycleByConvention,
   CoveringGrant, CoveredBy, NoCoveringGrant, covering_grant,
   admit_effect,
@@ -40,6 +40,7 @@ fn covered_binding_is_real(cg: CoveringGrant) -> Bool {
       match g.binding {
         RealTransport => true
         Replay { fixture_store: s } => false
+        ModeledRealization { realization: r } => false
       }
     NoCoveringGrant { verb: v, target: t, frame: f } => false
   }
@@ -51,6 +52,7 @@ fn covered_binding_replay_store(cg: CoveringGrant, store: String) -> Bool {
       match g.binding {
         Replay { fixture_store: s } => s == store
         RealTransport => false
+        ModeledRealization { realization: r } => false
       }
     NoCoveringGrant { verb: v, target: t, frame: f } => false
   }

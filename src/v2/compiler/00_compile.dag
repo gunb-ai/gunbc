@@ -30,7 +30,6 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes,
   floor_discovery_walk_state_zero
 }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
@@ -126,6 +125,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve {
   ObservationComplete,
+  ObservationIncomplete,
   ObservationCompleteness,
   ResolveNodeWalk,
   ResolveWalkAccepted,
@@ -189,7 +189,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
@@ -909,7 +909,7 @@ fn compile_inferred(
 }
 
 fn compile(
-  source: CoreNode,
+  source: ResolvedTree,
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   bind_outcome(
@@ -968,7 +968,7 @@ fn validated_from_compile_output(
 // registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
 // 4b(2), 5).
 fn validate_then_compile(
-  source: CoreNode,
+  source: ResolvedTree,
   lenses: List<CompileLens>,
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
@@ -3160,6 +3160,9 @@ type NativeModuleResolveVerdict
     }
   | NativeModuleResolveAccepted { resolved: ResolvedTree }
 
+// The walk ran under context.resolution's index (resolve_walk_with_admission_context_policy
+// builds the subject namespace over it), so that index is minted beside the root. An
+// accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
 fn native_module_resolve_verdict(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
@@ -3176,7 +3179,16 @@ fn native_module_resolve_verdict(
         ResolveWalkRefused { first: f, rest: r, observation: o } =>
           NativeModuleResolveRefused { first: f, rest: r, observation: o }
         ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
-          NativeModuleResolveAccepted { resolved: resolved }
+          match context.resolution {
+            Accepted { value: shared, diagnostics: _ } =>
+              NativeModuleResolveAccepted { resolved: ResolvedTree { root: resolved, symbol_index: shared.symbol_index } }
+            Rejected { diagnostics: r } =>
+              NativeModuleResolveRefused {
+                first: r,
+                rest: [],
+                observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+              }
+          }
       }
   }
 }
@@ -3879,10 +3891,22 @@ fn native_demand_cost_class(identity: DemandIdentity) -> NativeDemandCostClass {
   }
 }
 
+// THE ENGINE'S OWN BOOKKEEPING IS MEASURED WHERE IT HAPPENS, which is inside this module and not in
+// the driver. `scheduling_nanos` accumulates the spans around the work the SCHEDULER does -- plan
+// construction, ready selection, demand-binding lookup, settlement, dependent-readiness update and
+// row collection -- and it is disjoint from the demand's own window by construction: that window is
+// exactly `started..finished` around native_demand_execute, and nothing here spans across it.
+//
+// IT IS A SUM OF OBSERVED SPANS AND NEVER A SUBTRACTION. An earlier version of this row was computed
+// in the driver as the whole scheduling call minus the engine's attributed prepare and eval -- which
+// overlaps those spans and, worse, ABSORBS any other unattributed phase into "scheduling", so the
+// partition's remainder could no longer discover a second missing row. A row defined as a residual
+// cannot be the thing that proves the residual is small.
 type NativeDemandRun {
   engine: DemandEngine<NativeDemandValue>
   transitions: List<NativeDemandTransition>
   rows: List<NativeRouteMemberRow>
+  scheduling_nanos: Int
 }
 
 fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String {
@@ -4090,9 +4114,11 @@ fn native_demand_step(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
 ) -> NativeDemandRun {
+  let lookup_started = observed_monotonic_nanos("native-demand-binding-lookup-start")
   match native_demand_binding(plan: plan, id: identity) {
     Absent => run
     Present { value: subject } =>
+      let lookup_finished = observed_monotonic_nanos("native-demand-binding-lookup-finish")
       let started = observed_monotonic_nanos("native-demand-step-start")
       let settled = native_demand_execute(
         run: run,
@@ -4103,8 +4129,12 @@ fn native_demand_step(
       )
       let finished = observed_monotonic_nanos("native-demand-step-finish")
       let elapsed = elapsed_observation(start: started, finish: finished)
+      let settle_started = observed_monotonic_nanos("native-demand-settle-start")
+      let settled_engine = demand_engine_settle(e: run.engine, id: identity, state: settled)
+      let collected_rows = native_demand_collect_rows(rows: run.rows, settled: settled)
+      let settle_finished = observed_monotonic_nanos("native-demand-settle-finish")
       NativeDemandRun {
-        engine: demand_engine_settle(e: run.engine, id: identity, state: settled),
+        engine: settled_engine,
         transitions: list_snoc_item(
           xs: run.transitions,
           item: NativeDemandTransition {
@@ -4112,7 +4142,10 @@ fn native_demand_step(
             elapsed: elapsed
           }
         ),
-        rows: native_demand_collect_rows(rows: run.rows, settled: settled)
+        rows: collected_rows,
+        scheduling_nanos: run.scheduling_nanos
+          + native_demand_bookkeeping_nanos(start: lookup_started, finish: lookup_finished)
+          + native_demand_bookkeeping_nanos(start: settle_started, finish: settle_finished)
       }
   }
 }
@@ -4135,12 +4168,19 @@ fn native_demand_drain(
   if fuel <= 0 {
     run
   } else {
-    match native_demand_next(run: run, seats: 1) {
-      DemandNotAdmitted { cause: _ } => run
+    let select_started = observed_monotonic_nanos("native-demand-select-start")
+    let admission = native_demand_next(run: run, seats: 1)
+    let select_finished = observed_monotonic_nanos("native-demand-select-finish")
+    let selected = native_demand_run_with_scheduling_nanos(
+      run: run,
+      nanos: native_demand_bookkeeping_nanos(start: select_started, finish: select_finished)
+    )
+    match admission {
+      DemandNotAdmitted { cause: _ } => selected
       DemandAdmitted { identity: identity } =>
         native_demand_drain(
           run: native_demand_step(
-            run: run,
+            run: selected,
             plan: plan,
             identity: identity,
             context: context,
@@ -4213,9 +4253,14 @@ fn native_demand_schedule_universe(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
 ) -> NativeDemandRun {
+  let plan_started = observed_monotonic_nanos("native-demand-plan-start")
   let plan = native_demand_plan(modules: modules, compiler: compiler)
+  let plan_finished = observed_monotonic_nanos("native-demand-plan-finish")
   native_demand_drain(
-    run: native_demand_run_empty(plan: plan),
+    run: native_demand_run_with_scheduling_nanos(
+      run: native_demand_run_empty(plan: plan),
+      nanos: native_demand_bookkeeping_nanos(start: plan_started, finish: plan_finished)
+    ),
     plan: plan,
     context: context,
     refusal_index: refusal_index,
@@ -4276,7 +4321,6 @@ type NativeDemandObservationRollup {
   eval_samples: List<Int>
   prepare_ok: Int
   prepare_refused: Int
-  prepare_unrun: Int
   classified: Int
   unclassified: Int
   invalid_elapsed: Int
@@ -4290,7 +4334,6 @@ fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
     eval_samples: [],
     prepare_ok: 0,
     prepare_refused: 0,
-    prepare_unrun: 0,
     classified: 0,
     unclassified: 0,
     invalid_elapsed: 0
@@ -4300,56 +4343,58 @@ fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
 // PREPARATION STANDING IS READ FROM THE ENGINE'S TYPED STATE, not from a settlement word. The run
 // already holds the settled DemandState and its NativeDemandValue, so the standing is matched where
 // it lives rather than re-derived from a rendering of it.
-// A DEMAND THAT NEVER RAN IS NOT A SECOND REFUSAL, and separating the two is what keeps a module's
-// failure counted once. When resolution decides rows, the resolve transition carries those rows as its
-// VALUE and is a preparation refusal; the dependent infer demand is then admitted and settles
-// DemandRefused WITHOUT a value -- it never executed, and there is nothing it refused. Counting both
-// reported prepare_refused = 2 for one failing module where the module-level count before the demand
-// engine was 1 (review of gunbc#12401).
+// PREPARATION IS ONE OUTCOME PER MODULE, DECIDED AT THE INFER DEMAND. A module's preparation concludes
+// when its infer demand settles, and there is exactly one infer demand per module (native_demand_plan
+// binds one per entry), so counting there is independent of how many declarations the module has.
 //
-// PreparationUnrun IS COUNTED, JUST NOT AS A REFUSAL. It gets its own total rather than folding into
-// NotApplicable, because "admitted and never executed" is a fact about the run worth reading: a
-// population where it is large is a population mostly blocked behind earlier failures, and a reader
-// who saw only prepare_ok and prepare_refused could not tell that from a small universe.
+// WHAT THIS CORRECTS, AND IT WAS MINE TWICE OVER. The first version counted every transition whose
+// standing read Refused, so a module failing at resolve was counted on the resolve transition AND again
+// when its infer demand settled DemandRefused -- prepare_refused reported 2 where the module-level count
+// before the engine was 1. My second version fixed the total by excluding the infer settlement instead,
+// which is the WRONG HALF to drop: it left the count on a per-transition basis, so it was still not one
+// outcome per module, and it reported a resolution failure as something other than a refused
+// preparation. The boundary is the infer demand, and the resolve and eval transitions contribute
+// nothing.
 //
-// THE LIMIT, STATED. This reads the settled state and not a cause, so a demand that genuinely refused
-// on its OWN execution without producing rows also lands in Unrun. The engine distinguishes
-// DemandRefused from DemandBlocked { cause } (v2.std.demand_engine), and settling such a dependent as
-// Blocked rather than Refused is the sharper repair -- it belongs to the engine's settlement, not to
-// this rollup, and until it lands the number is visible here rather than silently inside the refusal
-// count.
+// A RESOLUTION FAILURE IS STILL A REFUSED PREPARATION. The infer demand settles DemandRefused because
+// its prerequisite refused; the module's preparation did not succeed, and the old module-level meaning
+// of prepare_refused was exactly that. Naming it anything else would have changed what the receipt's
+// number means in order to make an arithmetic problem go away.
 type NativePreparationStanding
   = PreparationSucceeded
   | PreparationRefused
-  | PreparationUnrun
   | PreparationNotApplicable
+
+fn native_demand_infer_preparation_standing(
+  value: NativeDemandValue
+) -> NativePreparationStanding {
+  match value {
+    NativeInferValue { preparation: p } =>
+      match p {
+        NativeLaneModulePrepared { prepared: _ } => PreparationSucceeded
+        NativeLaneModuleRowsDecided { rows: _ } => PreparationRefused
+      }
+    NativeResolveValue { resolution: _ } => PreparationNotApplicable
+    NativeEvalValue { row: _ } => PreparationNotApplicable
+  }
+}
 
 fn native_demand_preparation_standing(
   run: NativeDemandRun,
   identity: DemandIdentity
 ) -> NativePreparationStanding {
-  match demand_engine_entry(e: run.engine, id: identity) {
-    Absent => PreparationNotApplicable
-    Present { value: entry } =>
-      match entry.state {
-        DemandRefused => PreparationUnrun
-        DemandAvailable { value: v } =>
-          match v {
-            NativeInferValue { preparation: p } =>
-              match p {
-                NativeLaneModulePrepared { prepared: _ } => PreparationSucceeded
-                NativeLaneModuleRowsDecided { rows: _ } => PreparationRefused
-              }
-            NativeResolveValue { resolution: r } =>
-              match r {
-                NativeLaneModuleResolved { resolved: _ } => PreparationNotApplicable
-                NativeLaneModuleContextRowsDecided { rows: _ } => PreparationRefused
-                NativeLaneModuleResolveRowsDecided { rows: _ } => PreparationRefused
-              }
-            NativeEvalValue { row: _ } => PreparationNotApplicable
-          }
-        _ => PreparationNotApplicable
-      }
+  if identity.kind == native_module_infer_artifact_kind {
+    match demand_engine_entry(e: run.engine, id: identity) {
+      Absent => PreparationNotApplicable
+      Present { value: entry } =>
+        match entry.state {
+          DemandRefused => PreparationRefused
+          DemandAvailable { value: v } => native_demand_infer_preparation_standing(value: v)
+          _ => PreparationNotApplicable
+        }
+    }
+  } else {
+    PreparationNotApplicable
   }
 }
 
@@ -4363,7 +4408,6 @@ fn native_demand_rollup_step(
   let invalid_delta = if elapsed_is_valid(e: t.elapsed) { 0 } else { 1 }
   let ok_delta = match standing { PreparationSucceeded => 1  _ => 0 }
   let refused_delta = match standing { PreparationRefused => 1  _ => 0 }
-  let unrun_delta = match standing { PreparationUnrun => 1  _ => 0 }
   match native_demand_cost_class(identity: t.identity) {
     NativeCostPrepare =>
       NativeDemandObservationRollup {
@@ -4373,7 +4417,6 @@ fn native_demand_rollup_step(
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok + ok_delta,
         prepare_refused: acc.prepare_refused + refused_delta,
-        prepare_unrun: acc.prepare_unrun + unrun_delta,
         classified: acc.classified + 1,
         unclassified: acc.unclassified,
         invalid_elapsed: acc.invalid_elapsed + invalid_delta
@@ -4386,7 +4429,6 @@ fn native_demand_rollup_step(
         eval_samples: list_snoc_item(xs: acc.eval_samples, item: nanos),
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
-        prepare_unrun: acc.prepare_unrun,
         classified: acc.classified + 1,
         unclassified: acc.unclassified,
         invalid_elapsed: acc.invalid_elapsed + invalid_delta
@@ -4399,7 +4441,6 @@ fn native_demand_rollup_step(
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
-        prepare_unrun: acc.prepare_unrun,
         classified: acc.classified,
         unclassified: acc.unclassified + 1,
         invalid_elapsed: acc.invalid_elapsed + invalid_delta
@@ -4477,11 +4518,10 @@ fn native_demand_prepare_refused(run: NativeDemandRun) -> Int {
   native_demand_observation_rollup(run: run).prepare_refused
 }
 
-// ADMITTED AND NEVER EXECUTED, exported beside the refusal count so the receipt can carry both. A
-// reader comparing prepare_ok + prepare_refused against the transition count would otherwise find a
-// gap with no name.
-fn native_demand_prepare_unrun(run: NativeDemandRun) -> Int {
-  native_demand_observation_rollup(run: run).prepare_unrun
+// THE SCHEDULER'S MEASURED COST, for the driver's exclusive row. It is the accumulated sum the engine
+// took as it worked, so the driver reports a reading rather than deriving one.
+fn native_demand_scheduling_nanos(run: NativeDemandRun) -> Int {
+  run.scheduling_nanos
 }
 
 fn native_demand_unclassified_transitions(run: NativeDemandRun) -> Int {
@@ -4489,7 +4529,24 @@ fn native_demand_unclassified_transitions(run: NativeDemandRun) -> Int {
 }
 
 fn native_demand_run_empty(plan: NativeDemandPlan) -> NativeDemandRun {
-  NativeDemandRun { engine: plan.engine, transitions: [], rows: [] }
+  NativeDemandRun { engine: plan.engine, transitions: [], rows: [], scheduling_nanos: 0 }
+}
+
+fn native_demand_run_with_scheduling_nanos(run: NativeDemandRun, nanos: Int) -> NativeDemandRun {
+  NativeDemandRun {
+    engine: run.engine,
+    transitions: run.transitions,
+    rows: run.rows,
+    scheduling_nanos: run.scheduling_nanos + nanos
+  }
+}
+
+// THE SPAN OF ONE BOOKKEEPING STRETCH, through the same seam the demand's own window uses. A negative
+// or unreadable observation contributes nothing rather than a fabricated figure: elapsed_observed_nanos
+// answers 0 for an invalid observation, and invalid_elapsed already counts those separately, so the
+// scheduling total stays a sum of readings that were actually taken.
+fn native_demand_bookkeeping_nanos(start: Int, finish: Int) -> Int {
+  elapsed_observed_nanos(e: elapsed_observation(start: start, finish: finish))
 }
 
 fn native_demand_plan_size(plan: NativeDemandPlan) -> Int {

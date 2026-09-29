@@ -1,0 +1,84 @@
+module gunbc.namecheap.observe
+
+import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
+
+import std.types { String, NonEmptyStr, List }
+import std.algebra { trim }
+import std.decimal { decimal_digits_only }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.http.client
+import extdeps.network.ipify { ipv4_echo_url }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
+import extdeps.namecheap.client { namecheap_get_hosts }
+import extdeps.namecheap.read_hosts { NamecheapObservedHost, NamecheapHostsObserved, NamecheapHostsRefused }
+import gunbc.namecheap.credential { namecheap_api_key_secret_ref }
+import gunbc.namecheap.account { namecheap_account_report, namecheap_domain_sld, namecheap_domain_tld }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.access_token_source { WorkloadIdentityToken }
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+}
+
+fn namecheap_host_json(host: NamecheapObservedHost) -> JsonValue {
+  json_object(members: map(host.fields, f => json_kv(key: f.name, value: json_string(s: f.value))))
+}
+
+// Discovery resolves latest once and records the exact returned identity. The
+// execution reader requires that numeric pin. The only provider command is getHosts.
+fn namecheap_observe_at(run_id: String, attempt: String, revision: String, observed_at: String) -> ProcessExit {
+  let echo = http.Client.GetWithin(url: ipv4_echo_url, max_seconds: "15" as NonEmptyStr)
+  let egress = trim(s: echo.body)
+  if !echo.success || egress != namecheap_account_report.api_allowlist_ipv4 {
+    exit_failure(reason: "DNS controller public egress does not match the reported Namecheap allowlist; update the controller admission before retrying")
+  } else {
+    match fetch_secret_ref_credential(secret_ref: namecheap_api_key_secret_ref, token_source: WorkloadIdentityToken) {
+      SecretCredentialReady { credential, resolved_version } =>
+        if (credential as String) == "" { exit_failure(reason: "Namecheap credential version is empty") }
+        else {
+          match namecheap_get_hosts(account: namecheap_account_report.username as NonEmptyStr, credential: credential,
+            client_ipv4: egress as NonEmptyStr, sld: namecheap_domain_sld, tld: namecheap_domain_tld) {
+            NamecheapHostsRefused { reason } => exit_failure(reason: reason)
+            NamecheapHostsObserved { domain: observed_domain, hosts, result_fields } =>
+              let receipt = serialize_json(v: json_object(members: [
+                json_kv(key: "schema", value: json_string(s: "gunbc-namecheap-observation/v1")),
+                json_kv(key: "standing", value: json_string(s: "getHosts-observed")),
+                json_kv(key: "run_id", value: json_string(s: run_id)),
+                json_kv(key: "run_attempt", value: json_string(s: attempt)),
+                json_kv(key: "revision", value: json_string(s: revision)),
+                json_kv(key: "started_at", value: json_string(s: observed_at)),
+                json_kv(key: "exact_credential_version", value: json_string(s: resolved_version as String)),
+                json_kv(key: "account", value: json_string(s: namecheap_account_report.username)),
+                json_kv(key: "public_egress_ipv4", value: json_string(s: egress)),
+                json_kv(key: "domain", value: json_string(s: observed_domain)),
+                json_kv(key: "result_fields", value: json_object(members: map(result_fields, f => json_kv(key: f.name, value: json_string(s: f.value))))),
+                json_kv(key: "hosts", value: json_array(elements: map(hosts, h => namecheap_host_json(host: h)))),
+                json_kv(key: "mail_mode", value: json_string(s: "unobserved")),
+                json_kv(key: "write_authority", value: json_string(s: "withheld")),
+              ]))
+              let written = Filesystem.Write(path: namecheap_observation_receipt_path, content: receipt)
+              if written.success { ExitSuccess } else { exit_failure(reason: "Could not write the Namecheap observation receipt") }
+          }
+        }
+      SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "Workload identity requires provisioning; no operator token fallback")
+      SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => exit_failure(reason: "Secret Manager response did not decode")
+      SecretCredentialFetchRefused { reason } => exit_failure(reason: reason as String)
+      SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => exit_failure(reason: "Secret Manager returned a different resource than requested")
+    }
+  }
+}
+fn namecheap_observe_ci_wet() -> ProcessExit {
+  let run_id = actions_variable_trimmed(name: "GITHUB_RUN_ID" as NonEmptyStr)
+  let attempt = actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT" as NonEmptyStr)
+  let revision = actions_variable_trimmed(name: "GITHUB_SHA" as NonEmptyStr)
+  if run_id == "" || attempt == "" || revision == "" || !decimal_digits_only(s: run_id) || !decimal_digits_only(s: attempt) {
+    exit_failure(reason: "Namecheap observation requires a bound workflow run, attempt and revision")
+  } else {
+    match clock_now_probed_at() {
+      Absent => exit_failure(reason: "Namecheap observation clock could not be read")
+      Present { value: now } => namecheap_observe_at(run_id: run_id, attempt: attempt, revision: revision, observed_at: now as String)
+    }
+  }
+}

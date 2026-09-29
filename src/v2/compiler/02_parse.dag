@@ -1,10 +1,5 @@
 module v2.compiler.parse
 
-import v2.compiler.parse_engine_hooks {
-  parse_engine_expr_production,
-  parse_engine_match_arm_body_production,
-  parse_engine_match_arm_stmt_body_production
-}
 import v2.compiler.parse_diagnostic {
   NonEmptyParseStageDiagnostics,
   non_empty_parse_stage_diagnostics_from_overlap_roster,
@@ -58,6 +53,8 @@ import v2.std.node {
   node_with_occurrence_id,
   symbol_identity_digest,
   well_formed,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
@@ -117,10 +114,8 @@ import v2.std.compilers.lexing {
   Lexeme,
   Token,
   TokenStream,
-  symbol_intern_lexeme,
-  symbol_lexeme,
   token_stream_remaining,
-  token_stream_remaining_count
+  token_stream_remaining_count,
 }
 import v2.std.grammar {
   Choice,

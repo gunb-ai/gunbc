@@ -2,6 +2,7 @@ module v2.workflow.realization_attempt
 
 import v2.compiler.ingested_fixture_arrows { ingested_resolved_module_from_source }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
 import v2.compiler.infer { InferredTree }
@@ -10,11 +11,10 @@ import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
-import v2.std.compilers.lexing { symbol_lexeme }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
@@ -154,7 +154,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
         located: first_located_file(ds: ds)
       )
     Accepted { value: resolved, diagnostics: _ } => {
-      let arrows = collect_arrows(root: resolved, acc: [])
+      let arrows = collect_arrows(root: resolved.root, acc: [])
       if length(xs: arrows) == 0 {
         attempt_refused(entry: entry, phase: PhaseTranslate, cause: ^realization_attempt_no_arrow_declarations)
       } else {
@@ -273,8 +273,9 @@ fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPh
   }
 }
 
-fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
-  let joined = decl_edges_named(root: program, fn_name: fn_name, acc: [])
+// decl is a subtree of the resolved program, resolved under the program's own index.
+fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
+  let joined = decl_edges_named(root: program.root, fn_name: fn_name, acc: [])
   if length(xs: joined) == 0 {
     attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
   } else if length(xs: joined) > 1 {
@@ -283,7 +284,7 @@ fn attempt_joined(program: Node, fn_name: Symbol, entry: String) -> EntryRealiza
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: decl) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>

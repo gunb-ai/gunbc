@@ -120,9 +120,9 @@ fn workspace_bytes_locus(backing: WorkspaceBacking) -> WorkspaceBytesLocus {
 
 fn workspace_locus_eq(a: WorkspaceBytesLocus, b: WorkspaceBytesLocus) -> Bool {
   match a {
-    OnSubjectChargedToSlot => match b { OnSubjectChargedToSlot => true _ => false }
-    OnSubjectUncharged => match b { OnSubjectUncharged => true _ => false }
-    OffSubject { peer: p } => match b { OffSubject { peer: q } => (p as String) == (q as String) _ => false }
+    OnSubjectChargedToSlot => match b { OnSubjectChargedToSlot => true  OnSubjectUncharged => false  OffSubject { peer: _ } => false }
+    OnSubjectUncharged => match b { OnSubjectChargedToSlot => false  OnSubjectUncharged => true  OffSubject { peer: _ } => false }
+    OffSubject { peer: p } => match b { OnSubjectChargedToSlot => false  OnSubjectUncharged => false  OffSubject { peer: q } => (p as String) == (q as String) }
   }
 }
 
@@ -149,7 +149,7 @@ type CgroupMemoryReading
 
 // THE UNIT'S PROPERTIES AS systemd REPORTS THEM AFTER THE RUN STARTED -- what bound the run, as
 // opposed to what was asked for. The join compares them to the selected slot. THE CPU QUOTA IS
-// CARRIED AS A PROJECTION of gunbc.runner_slot_allocation RunnerSlotCpuQuota: a thread count when
+// CARRIED AS A PROJECTION of gunbc.runner_slot_desired RunnerSlotCpuQuota: a thread count when
 // a ceiling is declared, absent when the fleet declares none (SlotCpuQuotaUnbounded), the same
 // projection on both sides of the join; gunbc.runner_throughput_selection performs it for the
 // selected side, and the producer reads CPUQuotaPerSecUSec=infinity as absent for the observed.
@@ -650,21 +650,26 @@ fn sampling_refusal(policy: SamplingPolicy, observed_runs: Int) -> List<Throughp
 fn throughput_refusal(s: ThroughputStanding) -> List<ThroughputRefusal> {
   match s {
     ThroughputMeetsPin { measured: _, pinned: _ } => []
-    _ => [ThroughputDidNotHold { standing: s }]
+    ThroughputBelowPin { measured: _, pinned: _ } => [ThroughputDidNotHold { standing: s }]
+    ThroughputUnread { because: _ } => [ThroughputDidNotHold { standing: s }]
   }
 }
 
 fn memory_refusal(s: MemoryEnvelopeStanding) -> List<ThroughputRefusal> {
   match s {
     PeakWithinSlotHigh { peak: _, high: _ } => []
-    _ => [MemoryEnvelopeDidNotHold { standing: s }]
+    PeakExceedsSlotHigh { peak: _, high: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    SlotHighBelowFloorMinimum { high: _, minimum: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    MemoryUnread { reason: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
   }
 }
 
 fn phase_roster_refusal(s: PhaseRosterStanding) -> List<ThroughputRefusal> {
   match s {
     PhaseRosterComplete => []
-    _ => [PhaseRosterDidNotHold { standing: s }]
+    PhaseMissing { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
+    PhaseDuplicated { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
+    PhaseRosterNotAssessed { because: _ } => [PhaseRosterDidNotHold { standing: s }]
   }
 }
 
@@ -672,7 +677,7 @@ fn phase_wall_refusal(s: PhaseWallStanding) -> List<ThroughputRefusal> {
   match s {
     PhaseWallsNotAssessed => []
     PhaseWallsWithinCeilings => []
-    _ => [PhaseWallDidNotHold { standing: s }]
+    PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => [PhaseWallDidNotHold { standing: s }]
   }
 }
 
@@ -787,7 +792,7 @@ fn leg_is_bound(leg: RouteLegStanding) -> Bool {
 }
 
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "the fleet-converge mode row for the qualification route, landing with #11484 (boot leg) and #11731 (image leg): the collect stage parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, and admit_callers on observed_run names it" as NonEmptyStr,
+  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
   sufficient_for: "minting an ObservedRunnerQualificationRun from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
 }
 

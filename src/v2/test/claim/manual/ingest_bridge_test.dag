@@ -1,5 +1,6 @@
 module v2.test.manual.ingest_bridge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -11,7 +12,8 @@ import v2.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 import v2.compiler.infer { canonical_grounding_for_node }
-import v2.compiler.translate { coerce_grounded_node, target_serialize_source_from_model }
+import v2.compiler.translate { coerce_grounded_node }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.compiler.parse {
   grammar_validate_for_parse,
   parse_production,
@@ -32,7 +34,6 @@ import v2.extdeps.languages.dag {
   dag_fidelity_quotient_node,
   dag_fixture_emitted_add_fn,
   dag_selection_policy_node,
-  dag_serialize_source_node,
   dag_source_text,
   dag_target_model,
   dag_lex
@@ -136,7 +137,6 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
       Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
       Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
       Edge { label: Named { name: ^target_model_edge_translation_rules }, target: rules },
-      Edge { label: Named { name: ^target_model_edge_serialize_source }, target: dag_serialize_source_node() },
       Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -229,7 +229,7 @@ test fn ingest_bridge_to_canonical_holds() -> Bool {
 
 test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> Bool {
   let source = dag_fixture_emitted_add_fn
-  match infer_and_discharge(tree: source) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: inferred, node: source) {
@@ -253,7 +253,7 @@ test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> 
 
 test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool {
   let source = ingest_unstamped_node()
-  match infer_and_discharge(tree: source) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match coerce_grounded_node(

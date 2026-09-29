@@ -65,6 +65,7 @@ import v2.std.diagnostic {
   invariant_port_locus,
   rejected_with_pending
 }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.compilers.lexing {
   AnnotationRule,
   KeywordPattern,
@@ -77,8 +78,6 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   VoidLexRules,
-  symbol_intern_lexeme,
-  symbol_lexeme
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -94,7 +93,20 @@ import v2.std.passing_candidate_fold {
 }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional }
 import v2.std.node {
+  LoopBoundMeasure,
+  LoopCarrierBinder,
+  LoopDomainValue,
+  LoopEdgeUnrecognized,
+  LoopIteratedBody,
+  loop_edge_role,
   Arrow,
+  ComputationBody,
+  DirectAtomBody,
+  FunctionValueBody,
+  RecordConstructBody,
+  DeclarationReferenceBody,
+  UnsupportedArrowBody,
+  classify_arrow_body_form,
   ArrowBodyEdges,
   Atom,
   Branch,
@@ -128,18 +140,25 @@ import v2.std.node {
   match_arm_children_conform_skip_first,
   name_occurrences,
   node_rebuild,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.witness {
   StructuralPropertyWitness
 }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
   arrow_domain_named_param_bindings,
   find_arrow_body_child,
   find_named_child,
+  named_child_lookup,
   node_labeled_child_edges,
   node_positional_child_targets,
   nullary_inhabitant_by_discriminant,
+  is_wildcard_pattern_identity,
   pattern_wildcard_name
 }
 import v2.std.qualified_name {
@@ -260,6 +279,70 @@ type ProducedDeclRenderRows {
   type_ref_token_class: Symbol
   block_close: List<ConcreteSyntaxToken>
   block_evaluation_mode: BlockEvaluationMode
+  function_type_realizations: List<FunctionTypeRealizationRow>
+}
+
+// WHERE A FUNCTION-TYPED VALUE SITS, as the facts a target's function-type realization depends
+// on. A target may admit different realizations at different positions -- Rust admits an opaque
+// `impl Trait` as a function item's return type and refuses it as the return type of an `Fn`
+// bound (E0562) -- so a realization row is keyed by position and a position no row names REFUSES.
+type FunctionTypePosition
+  = FunctionTypeAtItemReturn
+  | FunctionTypeAtFnBoundReturn
+
+// The target's sugar for a function type's parameter list and return: `(A, B) -> R` in Rust's
+// parenthesized `Fn` bound. Shared by every realization row of a target that uses it.
+type FunctionTypeSugarRows {
+  params_open: Symbol
+  param_separator: Symbol
+  params_close: Symbol
+  arrow: Symbol
+}
+
+// ONE REALIZATION OF A FUNCTION-TYPED VALUE AT ONE POSITION, as rows: how its TYPE is spelled
+// around the sugar (type_open / type_close) and how a closure VALUE inhabiting that type is
+// spelled around the closure (value_open / value_close). The two halves are one row because they
+// are one fact: a boxed type demands a boxed value, and a value that escapes its frame must move
+// its captures. `realization` is the identity the target's selection of this row is attributed to
+// (for Rust, gunbc.rust_function_type_selection); the compiler reads it and holds no arm.
+type FunctionTypeRealizationRow {
+  position: FunctionTypePosition
+  realization: Symbol
+  sugar: FunctionTypeSugarRows
+  type_open: List<Symbol>
+  type_close: List<Symbol>
+  value_open: List<Symbol>
+  value_close: List<Symbol>
+}
+
+// The row a target declares for a position. Absent is not a default: the caller refuses.
+fn function_type_realization_at(
+  rows: List<FunctionTypeRealizationRow>,
+  position: FunctionTypePosition
+) -> Optional<FunctionTypeRealizationRow> {
+  fold_list(
+    xs: rows,
+    empty: optional_absent(),
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row.position == position {
+            optional_present(value: row)
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+fn fixed_tokens_of(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: classes,
+    empty: Empty,
+    cons: fn(acc, tc) { list_snoc_item(xs: acc, item: FixedToken { token_class: tc }) }
+  )
 }
 
 type ProducedDeclSupport
@@ -440,11 +523,135 @@ fn produced_decl_signature_segment_tokens(
     ProducedSignatureParams =>
       produced_decl_params_tokens(rows: rows, params: subject.params)
     ProducedSignatureReturnType =>
-      produced_decl_type_ref_tokens(
-        token_class: rows.type_ref_token_class,
+      produced_decl_type_tokens_at(
+        rows: rows,
+        position: FunctionTypeAtItemReturn,
         type_node: subject.codomain
       )
   }
+}
+
+// A type at a position that may hold a function type: an atom renders as before; a function type
+// renders through the target's realization row for that position, its parameter types as type
+// references and its return type at the Fn-bound-return position. A position the target declares
+// no row for refuses typed and located, naming the position -- never a guessed spelling.
+fn produced_decl_type_tokens_at(
+  rows: ProducedDeclRenderRows,
+  position: FunctionTypePosition,
+  type_node: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Arrow } =>
+      match function_type_realization_at(rows: rows.function_type_realizations, position: position) {
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_function_type_position_unrealized,
+              node: type_node
+            )
+          )
+        Present { value: row } =>
+          bind_outcome(
+            o: produced_decl_subject_from_name_and_arrow(fn_name: ^produced_decl_function_type, arrow: type_node),
+            f: fn(shape) {
+              bind_outcome(
+                o: produced_decl_function_type_params_tokens(
+                  rows: rows,
+                  sugar: row.sugar,
+                  params: produced_decl_function_type_domain_edges(arrow: type_node, params: shape.params)
+                ),
+                f: fn(param_tokens) {
+                  bind_outcome(
+                    o: produced_decl_type_tokens_at(
+                      rows: rows,
+                      position: FunctionTypeAtFnBoundReturn,
+                      type_node: shape.codomain
+                    ),
+                    f: fn(return_tokens) {
+                      outcome_accepted(
+                        value: list_append(
+                          left: list_append(
+                            left: list_append(left: fixed_tokens_of(classes: row.type_open), right: param_tokens),
+                            right: Cons { head: FixedToken { token_class: row.sugar.arrow }, tail: return_tokens }
+                          ),
+                          right: fixed_tokens_of(classes: row.type_close)
+                        )
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+      }
+    _ => produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: type_node)
+  }
+}
+
+// A function TYPE's domain is lowered two ways: a single parameter type stands as the domain itself
+// (`fn(Int) -> R` lowers to Arrow(Int, R)), and several stand as a Conj of their edges. The Conj's
+// edges are the parameters; a lone type is one parameter, carried as one positional edge.
+fn produced_decl_function_type_domain_edges(arrow: Node, params: List<Edge>) -> List<Edge> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } => params
+        _ => [Edge { label: Positional, target: domain }]
+      }
+    Absent => params
+  }
+}
+
+fn produced_decl_function_type_param_tokens(
+  rows: ProducedDeclRenderRows,
+  edge: Edge
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  produced_decl_type_ref_tokens(token_class: rows.type_ref_token_class, type_node: edge.target)
+}
+
+fn produced_decl_function_type_params_tokens(
+  rows: ProducedDeclRenderRows,
+  sugar: FunctionTypeSugarRows,
+  params: List<Edge>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold_list(
+      xs: params,
+      empty: outcome_accepted(value: ProducedDeclParamsFold { any_written: false, tokens: Empty }),
+      cons: fn(acc, edge) {
+        bind_outcome(
+          o: acc,
+          f: fn(so_far) {
+            bind_outcome(
+              o: produced_decl_function_type_param_tokens(rows: rows, edge: edge),
+              f: fn(toks) {
+                outcome_accepted(
+                  value: ProducedDeclParamsFold {
+                    any_written: true,
+                    tokens: list_append(
+                      left: so_far.tokens,
+                      right: match so_far.any_written {
+                        true => Cons { head: FixedToken { token_class: sugar.param_separator }, tail: toks }
+                        false => toks
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(folded) {
+      outcome_accepted(
+        value: Cons {
+          head: FixedToken { token_class: sugar.params_open },
+          tail: list_snoc_item(xs: folded.tokens, item: FixedToken { token_class: sugar.params_close })
+        }
+      )
+    }
+  )
 }
 
 fn produced_decl_signature_segments_tokens(
@@ -475,6 +682,72 @@ fn produced_decl_signature_segments_tokens(
   )
 }
 
+// A FUNCTION ITEM'S PARAMETERS, IN DECLARED ORDER. The item is called positionally, so its emitted
+// parameter list is the Arrow's declared order (v2.std.arrow_signature arrow_declared_parameter_order,
+// the one reader of ^arrow_signature_order_edge) -- never the domain Conj's stored sequence, which is
+// a set's storage and which canonicalization sorts by label. The domain is read only for MEMBERSHIP:
+// each declared label selects its binder edge, so the parameter's type still comes from the domain.
+// A domain that binds named parameters but carries no readable order refuses typed; there is no
+// domain-order fallback. A domain that binds no name -- a function TYPE's positional product, or a
+// lone parameter type (produced_decl_function_type_domain_edges) -- has no labels to order: its
+// positional edges are the sequence, so its children pass through. A domain mixing named and
+// positional edges is neither and refuses as malformed rather than dropping the positional ones.
+fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>> {
+  match arrow_domain_binder_names(arrow: arrow) {
+    Empty => outcome_accepted(value: domain.children)
+    Cons { head: _, tail: _ } =>
+      match arrow_declared_parameter_order(arrow: arrow) {
+        ArrowParameterOrderDeclared { labels: labels } =>
+          if length(xs: labels) != length(xs: domain.children) {
+            outcome_rejected(
+              d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+            )
+          } else {
+            fold_list(
+              xs: labels,
+              empty: outcome_accepted(value: Empty),
+              cons: fn(acc, label) {
+                bind_outcome(
+                  o: acc,
+                  f: fn(so_far) {
+                    bind_outcome(
+                      o: produced_decl_domain_binder(arrow: arrow, domain: domain, label: label),
+                      f: fn(edge) { outcome_accepted(value: list_snoc_item(xs: so_far, item: edge)) }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        ArrowParameterOrderAbsent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_absent, node: arrow)
+          )
+        ArrowParameterOrderMalformed =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+          )
+      }
+  }
+}
+
+// The membership read: the one domain binder a declared label names. arrow_declared_parameter_order
+// admits only an order that is a permutation of the domain's binders, so a missing or repeated
+// binder here is a wall the reader already holds; it still refuses typed rather than dropping one.
+fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outcome<Edge> {
+  match named_child_lookup(root: domain, name: label) {
+    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Named { name: label }, target: t })
+    NamedChildMissing =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
+    NamedChildAmbiguous =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
+      )
+  }
+}
+
 fn produced_decl_subject_from_name_and_arrow(
   fn_name: Symbol,
   arrow: Node
@@ -483,11 +756,16 @@ fn produced_decl_subject_from_name_and_arrow(
     Present { value: domain } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
         Present { value: codomain } =>
-          outcome_accepted(
-            value: ProducedDeclSignatureSubject {
-              fn_name: fn_name,
-              params: domain.children,
-              codomain: codomain
+          bind_outcome(
+            o: produced_decl_ordered_params(arrow: arrow, domain: domain),
+            f: fn(params) {
+              outcome_accepted(
+                value: ProducedDeclSignatureSubject {
+                  fn_name: fn_name,
+                  params: params,
+                  codomain: codomain
+                }
+              )
             }
           )
         Absent =>
@@ -858,56 +1136,92 @@ fn target_collection_shape_malformed_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn target_lex_rule_literal_step(
-  acc: Outcome<String>,
-  rule: LexRule,
-  token_class: Symbol
-) -> Outcome<String> {
-  match acc {
-    Accepted { value: _, diagnostics: _ } => acc
-    Rejected { diagnostics: _ } =>
-      match rule {
-        TokenRule { token_class: c, pattern: pattern } =>
-          if c == token_class {
-            match pattern {
-              LiteralPattern { text: text } =>
-                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
-              KeywordPattern { text: text } =>
-                Accepted { value: chars_to_string(chars: text, start: 0, end: length(xs: text)), diagnostics: None }
-              _ =>
-                Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-                  )
+// THE ONE SELECTION RULE FOR A CLASS'S FIXED SPELLING: a token rule for that class whose pattern is
+// a literal or a keyword gives its text; any other rule gives none. The first such rule in the lex
+// wins. Both readers below apply this step and nothing else, so they cannot disagree about which
+// spelling a class has (DESIGN §3): the index, built once when a serializer spells many tokens, and
+// the single lookup, which folds the rules once for one class without building a map.
+fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<String> {
+  match rule {
+    TokenRule { token_class: c, pattern: pattern } =>
+      if c == token_class {
+        lex_pattern_fixed_spelling(pattern: pattern)
+      } else {
+        optional_absent()
+      }
+    TriviaRule { pattern: _ } => optional_absent()
+    AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
+  }
+}
+
+fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
+  match pattern {
+    LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    _ => optional_absent()
+  }
+}
+
+type LexLiteralIndex {
+  by_class: Map<Symbol, String>
+}
+
+fn lex_literal_index(rules: LexRules) -> LexLiteralIndex {
+  match rules {
+    VoidLexRules => LexLiteralIndex { by_class: empty_map() }
+    ModeledLexRules { root: set } =>
+      LexLiteralIndex {
+        by_class: fold_list(
+          xs: set.rules,
+          empty: empty_map(),
+          cons: fn(acc, rule) {
+            match rule {
+              TokenRule { token_class: c, pattern: _ } =>
+                match map_lookup(m: acc, key: c) {
+                  Present { value: _ } => acc
+                  Absent =>
+                    match lex_rule_fixed_spelling(rule: rule, token_class: c) {
+                      Present { value: text } => map_insert(m: acc, key: c, value: text)
+                      Absent => acc
+                    }
                 }
+              TriviaRule { pattern: _ } => acc
+              AnnotationRule { annotation_class: _, pattern: _ } => acc
             }
-          } else {
-            acc
           }
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
+        )
       }
   }
 }
 
-fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+fn lex_literal_indexed(index: LexLiteralIndex, token_class: Symbol) -> Outcome<String> {
+  match map_lookup(m: index.by_class, key: token_class) {
+    Present { value: literal } => outcome_accepted(value: literal)
+    Absent => outcome_rejected(target_lex_rule_literal_not_found_diagnostic(token_class: token_class))
+  }
+}
+
+fn lex_rules_fixed_spelling(rules: LexRules, token_class: Symbol) -> Optional<String> {
   match rules {
-    VoidLexRules =>
-      outcome_rejected(
-        target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-      )
+    VoidLexRules => optional_absent()
     ModeledLexRules { root: set } =>
       fold_list(
         xs: set.rules,
-        empty: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: target_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-          )
-        },
+        empty: optional_absent(),
         cons: fn(acc, rule) {
-          target_lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
+          match acc {
+            Present { value: _ } => acc
+            Absent => lex_rule_fixed_spelling(rule: rule, token_class: token_class)
+          }
         }
       )
+  }
+}
+
+fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+  match lex_rules_fixed_spelling(rules: rules, token_class: token_class) {
+    Present { value: literal } => outcome_accepted(value: literal)
+    Absent => outcome_rejected(target_lex_rule_literal_not_found_diagnostic(token_class: token_class))
   }
 }
 
@@ -917,9 +1231,11 @@ fn lex_rules_literal(target: TargetModel, token_class: Symbol) -> Outcome<String
 
 // A MINTED ANONYMOUS SLOT IS SPELLED AS ITS AUTHORED SOURCE, `_`, never as its marker text: the
 // marker is not an identifier in any target. That is the inverse of the one mint
-// (v2.std.anonymous_binder anonymous_binder_mint_domain). A target that admits only one `_` per
+// (v2.std.anonymous_binder anonymous_binder_mint_parameter_list). A target that admits only one `_` per
 // signature receives two and its own compiler refuses them; no target row carries a per-target
 // anonymous-parameter spelling yet.
+// The minted wildcard pattern (v2.std.node_query wildcard_pattern_identity) is spelled `_` the same way,
+// the inverse of its own mint in pattern lowering.
 fn bound_spelling_from_map(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
@@ -928,7 +1244,7 @@ fn bound_spelling_from_map(
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
       Absent =>
-        if is_anonymous_param_label(sym: binding) {
+        if is_anonymous_param_label(sym: binding) || is_wildcard_pattern_identity(sym: binding) {
           symbol_interned_spelling(binding: pattern_wildcard_name())
         } else {
           symbol_interned_spelling(binding: binding)
@@ -1050,7 +1366,7 @@ fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitS
 }
 
 // A layout token class spelled as a flat String would lose its line breaks and nesting silently, so
-// the flat spelling refuses it; the carrier path (token_text_from_model) is where it belongs.
+// the flat spelling refuses it; the carrier path (token_text_from_decoded) is where it belongs.
 fn target_layout_token_spelled_flat_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^target_layout_token_spelled_flat,
@@ -1156,25 +1472,22 @@ fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) ->
 
 // THE CARRIER-NATIVE TOKEN SPELLING: the lexeme (fixed: the lex literal; bound: the binding's
 // spelling) under the token class's emit transform, as TargetText, so an EmitLineBreaks class keeps
-// its line breaks.
-fn token_text_from_model(target: TargetModel, token: Node) -> Outcome<TargetText> {
-  bind_outcome(
-    o: concrete_syntax_token_from_node(token: token),
-    f: fn(decoded) {
-      match decoded {
-        FixedToken { token_class: token_class } =>
-          bind_outcome(
-            o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
-            f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
-          )
-        BoundToken { token_class: token_class, binding: binding } =>
-          bind_outcome(
-            o: target_binding_spelling_lookup(target: target, binding: binding),
-            f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
-          )
-      }
-    }
-  )
+// its line breaks. It takes the token already decoded: the serializer decodes each token node once to
+// classify it (v2.compiler.target_serialize token_sequence_item_kind) and hands that value here, so a
+// token is not decoded a second time to be spelled.
+fn token_text_from_decoded(target: TargetModel, lex: LexLiteralIndex, decoded: ConcreteSyntaxToken) -> Outcome<TargetText> {
+  match decoded {
+    FixedToken { token_class: token_class } =>
+      bind_outcome(
+        o: lex_literal_indexed(index: lex, token_class: token_class),
+        f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
+      )
+    BoundToken { token_class: token_class, binding: binding } =>
+      bind_outcome(
+        o: target_binding_spelling_lookup(target: target, binding: binding),
+        f: fn(spelling) { layout_or_atom(target: target, token_class: token_class, spelling: spelling) }
+      )
+  }
 }
 
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
@@ -1850,18 +2163,49 @@ fn target_model_canonical_operation_type_node() -> Node {
   target_model_type_atom_node(identity: ^canonical_operation_type_atom)
 }
 
-// A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
-// under it carries the variant field's declared type, Symbol (symbol_kernel_type_node). A predicate
-// atom encodes an OrderingPredicate or EqualityPredicate, and this authority names no type node for
-// either, so it answers Absent rather than fabricating one. Absent derives nothing here: infer
-// falls through to its remaining rules (the arrow-domain binding lookup), which end in the typed
-// GroundingNotDerived frontier unless the tree binds that very symbol.
+// THE DECLARED TYPES OF A COMPARISON'S PREDICATE ATOM. An OrderingComparison wire node's predicate
+// atom renders one OrderingPredicate value (ordering_predicate_wire_symbol) and an
+// EqualityComparison's one EqualityPredicate value (equality_predicate_wire_symbol), so each atom's
+// declared type is the type this authority declares for it, named by the same frame as
+// target_model_canonical_operation_type_node.
 
-fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Optional<Node> {
+fn target_model_ordering_predicate_type_node() -> Node {
+  target_model_type_atom_node(identity: ^ordering_predicate_type_atom)
+}
+
+fn target_model_equality_predicate_type_node() -> Node {
+  target_model_type_atom_node(identity: ^equality_predicate_type_atom)
+}
+
+// The predicate atom's type is read off the wire node that carries it: the comparison variant the
+// wire node renders names which predicate type its predicate field holds. A predicate field under
+// any other variant is not a declared field of that variant, so it answers Absent.
+
+fn target_model_canonical_operation_wire_predicate_type(wire: Node) -> Optional<Node> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: variant } } =>
+      if variant == discriminant(v: OrderingComparison {}) {
+        optional_present(value: target_model_ordering_predicate_type_node())
+      } else {
+        if variant == discriminant(v: EqualityComparison {}) {
+          optional_present(value: target_model_equality_predicate_type_node())
+        } else {
+          optional_absent()
+        }
+      }
+    _ => optional_absent()
+  }
+}
+
+// A roster member's own declared type. A wire node is a CanonicalOperation; a field-reference atom
+// under it carries the variant field's declared type, Symbol (symbol_kernel_type_node); a
+// predicate atom carries its comparison's predicate type (above).
+
+fn target_model_canonical_operation_wire_child_declared_type(wire: Node, edge: Edge) -> Optional<Node> {
   match edge.label {
     Named { name: field } =>
       if field == ^target_canonical_operation_field_predicate {
-        optional_absent()
+        target_model_canonical_operation_wire_predicate_type(wire: wire)
       } else {
         optional_present(value: symbol_kernel_type_node())
       }
@@ -1871,6 +2215,7 @@ fn target_model_canonical_operation_wire_child_declared_type(edge: Edge) -> Opti
 
 fn target_model_canonical_operation_wire_child_member_type(
   acc: Optional<Node>,
+  wire: Node,
   child_edge: Edge,
   n: Node
 ) -> Optional<Node> {
@@ -1878,7 +2223,7 @@ fn target_model_canonical_operation_wire_child_member_type(
     Present { value: _ } => acc
     Absent =>
       if child_edge.target == n {
-        target_model_canonical_operation_wire_child_declared_type(edge: child_edge)
+        target_model_canonical_operation_wire_child_declared_type(wire: wire, edge: child_edge)
       } else {
         acc
       }
@@ -1902,6 +2247,7 @@ fn target_model_canonical_operation_roster_member_type(
           cons: fn(inner, child_edge) {
             target_model_canonical_operation_wire_child_member_type(
               acc: inner,
+              wire: roster_edge.target,
               child_edge: child_edge,
               n: n
             )
@@ -3877,28 +4223,27 @@ fn target_bodied_arrow_compose_statement_tokens(
   )
 }
 
+// The fold-list's items in order, walked with an accumulator so the walk is a tail call: a long
+// token list is not a stack as deep as the list.
 fn concrete_syntax_token_node_targets_from_list_node(node: Node) -> Outcome<List<Node>> {
+  concrete_syntax_token_node_targets_into(node: node, acc: Empty)
+}
+
+fn concrete_syntax_token_node_targets_into(node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   match node.kind {
     TypeNode { connective: Conj } =>
       if is_empty(xs: node.children) {
-        outcome_accepted(Empty)
+        outcome_accepted(acc)
       } else {
-        bind_outcome(
-          o: find_named_child(root: node, name: ^fold_list_node_head),
-          f: fn(head) {
-            bind_outcome(
-              o: find_named_child(root: node, name: ^fold_list_node_tail),
-              f: fn(tail) {
-                bind_outcome(
-                  o: concrete_syntax_token_node_targets_from_list_node(node: tail),
-                  f: fn(rest) {
-                    outcome_accepted(Cons { head: head, tail: rest })
-                  }
-                )
-              }
-            )
-          }
-        )
+        match find_named_child(root: node, name: ^fold_list_node_head) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: head, diagnostics: _ } =>
+            match find_named_child(root: node, name: ^fold_list_node_tail) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: tail, diagnostics: _ } =>
+                concrete_syntax_token_node_targets_into(node: tail, acc: list_snoc_item(xs: acc, item: head))
+            }
+        }
       }
     _ =>
       outcome_rejected(
@@ -5292,6 +5637,70 @@ fn target_value_expr_closure_param_edges(params: List<Symbol>) -> List<Edge> {
         ),
         tail: acc
       }
+    }
+  )
+}
+
+// A closure VALUE realized at a function-typed position: the plain closure wire plus the
+// position's value_open / value_close token classes (FunctionTypeRealizationRow), carried as
+// ordered named edges so the serializer spells them around the closure. An empty pair is exactly
+// target_value_expression_closure.
+fn target_value_expression_realized_closure(
+  params: List<Symbol>,
+  body: TargetValueExpression,
+  value_open: List<Symbol>,
+  value_close: List<Symbol>
+) -> TargetValueExpression {
+  let plain = target_value_expression_closure(params: params, body: body)
+  TargetValueExpression {
+    kind: TargetValueExprClosure,
+    node: Node {
+      kind: plain.node.kind,
+      children: list_append(
+        left: list_append(
+          left: plain.node.children,
+          right: target_value_expr_closure_token_edges(field: ^target_value_expr_field_closure_value_open, classes: value_open)
+        ),
+        right: target_value_expr_closure_token_edges(field: ^target_value_expr_field_closure_value_close, classes: value_close)
+      ),
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+fn target_value_expr_closure_token_edges(field: Symbol, classes: List<Symbol>) -> List<Edge> {
+  fold_list(
+    xs: classes,
+    empty: Empty,
+    cons: fn(acc, tc) {
+      list_snoc_item(xs: acc, item: target_model_named_edge(name: field, target: target_model_type_atom_node(identity: tc)))
+    }
+  )
+}
+
+fn target_value_expr_closure_tokens_from_wire(wire: Node, field: Symbol) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold(
+    wire.children,
+    init: outcome_accepted(Empty),
+    f: fn(acc, edge) {
+      bind_outcome(
+        o: acc,
+        f: fn(so_far) {
+          match edge.label {
+            Named { name: n } =>
+              if n == field {
+                match edge.target.kind {
+                  TypeNode { connective: Atom { identity: tc } } =>
+                    outcome_accepted(list_snoc_item(xs: so_far, item: FixedToken { token_class: tc }))
+                  _ => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+                }
+              } else {
+                outcome_accepted(so_far)
+              }
+            Positional => outcome_accepted(so_far)
+          }
+        }
+      )
     }
   )
 }
@@ -7982,6 +8391,10 @@ fn target_value_expr_closure_params_from_wire(wire: Node) -> Outcome<List<Symbol
                 }
               } else if n == ^target_value_expr_field_closure_body {
                 acc
+              } else if n == ^target_value_expr_field_closure_value_open {
+                acc
+              } else if n == ^target_value_expr_field_closure_value_close {
+                acc
               } else {
                 outcome_rejected(
                   target_value_expr_operand_wire_malformed_diagnostic(wire: wire)
@@ -8050,6 +8463,29 @@ fn target_value_expression_closure_to_concrete_tokens(
 }
 
 fn target_value_expression_closure_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_open),
+    f: fn(open_tokens) {
+      bind_outcome(
+        o: target_value_expr_closure_tokens_from_wire(wire: expr.node, field: ^target_value_expr_field_closure_value_close),
+        f: fn(close_tokens) {
+          bind_outcome(
+            o: target_value_expression_closure_plain_tokens(expr: expr, projection: projection, catalog: catalog),
+            f: fn(plain) {
+              outcome_accepted(list_append(left: list_append(left: open_tokens, right: plain), right: close_tokens))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_value_expression_closure_plain_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
   catalog: Node
@@ -8208,153 +8644,6 @@ fn target_value_expression_to_concrete_tokens(
       outcome_rejected(
         target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
       )
-  }
-}
-
-fn target_declared_inhabitants_edge_targets(root: Node) -> List<Node> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: Empty, f: fn(acc, edge) {
-        list_snoc_item(xs: acc, item: edge.target)
-      })
-    _ => Empty
-  }
-}
-
-fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> {
-  match wire.kind {
-    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-    TypeNode { connective: Conj } =>
-      match fold(
-        wire.children,
-        init: optional_absent(),
-        f: fn(acc, edge) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match edge.label {
-                Named { name: _ } =>
-                  match edge.target.kind {
-                    TypeNode { connective: Atom { identity: id } } =>
-                      optional_present(value: id)
-                    _ => acc
-                  }
-                Positional => acc
-              }
-          }
-        }
-      ) {
-        Present { value: id } => optional_present(value: id)
-        Absent => optional_absent()
-      }
-    _ => optional_absent()
-  }
-}
-
-fn target_catalog_contains_node_shape(
-  slot: Node,
-  catalog_targets: List<Node>
-) -> Bool {
-  fold_list(
-    xs: catalog_targets,
-    empty: false,
-    cons: fn(acc, candidate) {
-      if acc {
-        true
-      } else if content_hash(n: slot) == content_hash(n: candidate) {
-        true
-      } else {
-        false
-      }
-    }
-  )
-}
-
-fn target_catalog_atom_identity_matches_inhabitant_wires(
-  slot_atom: Symbol,
-  catalog_targets: List<Node>
-) -> Bool {
-  fold_list(
-    xs: catalog_targets,
-    empty: false,
-    cons: fn(acc, candidate) {
-      if acc {
-        true
-      } else {
-        match target_inhabitant_wire_primary_atom_identity(wire: candidate) {
-          Present { value: inhabitant_atom } => slot_atom == inhabitant_atom
-          Absent => false
-        }
-      }
-    }
-  )
-}
-
-fn target_signature_slot_matches_declared_inhabitants(
-  slot: Node,
-  inhabitants_root: Node
-) -> Bool {
-  let catalog_targets = target_declared_inhabitants_edge_targets(root: inhabitants_root)
-  if target_catalog_contains_node_shape(slot: slot, catalog_targets: catalog_targets) {
-    true
-  } else {
-    match slot.kind {
-      TypeNode { connective: Atom { identity: slot_atom } } =>
-        slot_atom == ^dag_binding_type_int
-        || target_catalog_atom_identity_matches_inhabitant_wires(
-          slot_atom: slot_atom,
-          catalog_targets: catalog_targets
-        )
-      _ =>
-        match target_inhabitant_wire_primary_atom_identity(wire: slot) {
-          Present { value: slot_atom } =>
-            target_catalog_atom_identity_matches_inhabitant_wires(
-              slot_atom: slot_atom,
-              catalog_targets: catalog_targets
-            )
-          Absent => false
-        }
-    }
-  }
-}
-
-fn target_add_signature_slot_at(
-  arrow: Node,
-  index: Int,
-  inhabitants_root: Node
-) -> Bool {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: index) {
-    Present { value: slot } =>
-      target_signature_slot_matches_declared_inhabitants(
-        slot: slot,
-        inhabitants_root: inhabitants_root
-      )
-    Absent => false
-  }
-}
-
-fn target_add_signature_matches(
-  arrow: Node,
-  inhabitants_root: Node
-) -> Bool {
-  match arrow.kind {
-    TypeNode { connective: Arrow } =>
-      target_add_signature_slot_at(
-        arrow: arrow,
-        index: 0,
-        inhabitants_root: inhabitants_root
-      )
-      && target_add_signature_slot_at(
-        arrow: arrow,
-        index: 1,
-        inhabitants_root: inhabitants_root
-      )
-      && target_add_signature_slot_at(
-        arrow: arrow,
-        index: 2,
-        inhabitants_root: inhabitants_root
-      )
-    _ => false
   }
 }
 
@@ -13389,6 +13678,8 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     PositionalEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     ArrowBodyEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    PositionalPrefixThenLabeledEdges =>
+      target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional_prefix_then_labeled)
     PositionalPlusOneNamedEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
@@ -13690,24 +13981,6 @@ fn target_transform_operator_child(node: Node) -> Outcome<Node> {
   }
 }
 
-fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Outcome<Node> {
-  target_model_declared_inhabitants(target: target)
-}
-
-fn target_value_expr_add_signature_matches_for_target(
-  arrow: Node,
-  target: TargetModel
-) -> Bool {
-  match target_value_expr_declared_inhabitants_from_target(target: target) {
-    Accepted { value: inhabitants_root, diagnostics: _ } =>
-      target_add_signature_matches(
-        arrow: arrow,
-        inhabitants_root: inhabitants_root
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn target_value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
@@ -13763,7 +14036,26 @@ fn target_value_expr_arrow_has_record_construct_body(arrow: Node) -> Bool {
   }
 }
 
+// VALUE-EXPRESSION ADMISSION CONSUMES THE BODY'S ArrowBodyForm, the same classification the
+// projector (target_project_arrow_body_to_value_expression) dispatches on, so the two cannot hold
+// different answers for which forms project. A function-value body projects as a returned closure;
+// every other form keeps its per-kind admission.
 fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } =>
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody => true
+        DirectAtomBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        RecordConstructBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        DeclarationReferenceBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        ComputationBody { behavior: _ } => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+        UnsupportedArrowBody => target_value_expr_arrow_has_value_expression_body_by_kind(arrow: arrow)
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn target_value_expr_arrow_has_value_expression_body_by_kind(arrow: Node) -> Bool {
   target_value_expr_arrow_has_transform_body(arrow: arrow)
     || target_value_expr_arrow_has_branch_body(arrow: arrow)
     || target_value_expr_arrow_has_bind_body(arrow: arrow)
@@ -13838,19 +14130,7 @@ fn target_value_expr_arrow_body_scope_binding(
         bindings: bindings,
         target: target
       ) {
-        Present { value: scoped } =>
-          if target_value_expr_add_signature_matches_for_target(arrow: arrow, target: target)
-            || target_value_expr_arrow_has_transform_body(arrow: arrow)
-            || target_value_expr_arrow_has_match_body(arrow: arrow) {
-            outcome_accepted(scoped)
-          } else {
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_body_scope_binding_invalid,
-                node: body
-              )
-            )
-          }
+        Present { value: scoped } => outcome_accepted(scoped)
         Absent =>
           outcome_rejected(
             target_value_expr_diagnostic(
@@ -14006,6 +14286,12 @@ fn target_project_callable_arg_in_arrow_scope(
   }
 }
 
+// A NAMED ACTUAL HAS NO SLOT THIS PROJECTION CAN NAME. It binds by name against the callee's declared
+// parameters (v2.std.arrow_signature application_binding_plan), and this projection receives
+// the callee as a bare atom with no declaration context, so it cannot recover the declared order a
+// positional target needs; it refuses, located, rather than emitting authored order (a silent
+// mis-bind) or dropping the actual. Tracked, with its trigger, as gunbc.recurring_failure_mode
+// named_actual_order_unavailable_to_target_projection.
 fn target_project_transform_callable_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -14013,6 +14299,14 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
+  if !all_edges_positional(children: body.children) {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_declared_parameter_order_unavailable_to_projection,
+        node: body
+      )
+    )
+  } else {
   bind_outcome(
     o: target_transform_surface_op_atom(node: body),
     f: fn(callee) {
@@ -14058,6 +14352,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
       }
     }
   )
+  }
 }
 
 fn target_value_expr_branch_bool_gate(
@@ -14166,26 +14461,18 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
     optional_present(value: ^dag_binding_pick_lit_two)
   } else if id == ^dag_rec_lit_nine {
     optional_present(value: ^dag_binding_rec_lit_nine)
-  } else if id == ^dag_binding_param_r {
-    optional_present(value: ^dag_binding_param_r)
-  } else if id == ^dag_binding_param_x {
-    optional_present(value: ^dag_binding_param_x)
-  } else if id == ^dag_binding_param_y {
-    optional_present(value: ^dag_binding_param_y)
-  } else if id == ^rust_binding_param_x {
-    optional_present(value: ^rust_binding_param_x)
-  } else if id == ^rust_binding_param_y {
-    optional_present(value: ^rust_binding_param_y)
-  } else if id == ^dag_binding_rec_v {
-    optional_present(value: ^dag_binding_rec_v)
   } else {
     optional_absent()
   }
 }
 
-fn target_value_expr_project_pick_literal_atom(
+// THE ONE LITERAL LADDER. `on_no_literal` is what an atom that spells no literal becomes. Its one
+// caller, target_value_expr_project_atom_in_arrow_scope, refuses it located: such an atom is a name
+// that missed scope, and no caller may mint it as a symbol_identity literal instead.
+fn target_value_expr_project_pick_literal_atom_or(
   id: Symbol,
-  source_bool_form: TargetBoolLiteralShape
+  source_bool_form: TargetBoolLiteralShape,
+  on_no_literal: fn(Symbol) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match target_value_expr_bool_literal_value_from_source_symbol(
     id: id,
@@ -14199,10 +14486,7 @@ fn target_value_expr_project_pick_literal_atom(
           outcome_accepted(
             target_value_expression_binding_ref(binding: binding)
           )
-        Absent =>
-          outcome_accepted(
-            target_value_expression_symbol_identity(identity: id)
-          )
+        Absent => on_no_literal(id)
       }
   }
 }
@@ -14229,9 +14513,17 @@ fn target_value_expr_project_atom_in_arrow_scope(
                 target_value_expression_binding_ref(binding: scoped)
               )
             Rejected { diagnostics: _ } =>
-              target_value_expr_project_atom_literal(
+              target_value_expr_project_atom_literal_or(
                 node: node,
-                source_bool_form: source_bool_form
+                source_bool_form: source_bool_form,
+                on_no_literal: fn(_) {
+                  outcome_rejected(
+                    target_value_expr_diagnostic(
+                      reason: ^target_value_expr_reason_body_scope_binding_invalid,
+                      node: node
+                    )
+                  )
+                }
               )
           }
         _ =>
@@ -14246,9 +14538,10 @@ fn target_value_expr_project_atom_in_arrow_scope(
   )
 }
 
-fn target_value_expr_project_atom_literal(
+fn target_value_expr_project_atom_literal_or(
   node: Node,
-  source_bool_form: TargetBoolLiteralShape
+  source_bool_form: TargetBoolLiteralShape,
+  on_no_literal: fn(Symbol) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -14256,9 +14549,10 @@ fn target_value_expr_project_atom_literal(
         bind_outcome(
           o: target_value_expression_symbol_identity_from_wire(wire: node),
           f: fn(inner_id) {
-            target_value_expr_project_pick_literal_atom(
+            target_value_expr_project_pick_literal_atom_or(
               id: inner_id,
-              source_bool_form: source_bool_form
+              source_bool_form: source_bool_form,
+              on_no_literal: on_no_literal
             )
           }
         )
@@ -14269,9 +14563,10 @@ fn target_value_expr_project_atom_literal(
           Present { value: b } =>
             outcome_accepted(target_value_expression_bool_literal(value: b))
           Absent =>
-            target_value_expr_project_pick_literal_atom(
+            target_value_expr_project_pick_literal_atom_or(
               id: id,
-              source_bool_form: source_bool_form
+              source_bool_form: source_bool_form,
+              on_no_literal: on_no_literal
             )
         }
       }
@@ -14750,10 +15045,24 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
+// target_project_loop realizes ONLY the unary `loop e` encoding (gunbc.plans.for_while_loop_sugar
+// §2.3): one evaluation of its first positional child. It admits a Loop only when every edge's role
+// (v2.std.node loop_edge_role) is the body or the bound; a Loop carrying a domain or a carrier is a
+// different encoding with a different result, so reading its first child as a unary body would emit a
+// plausible wrong program; the gate refuses it instead, until those encodings have a realization.
 fn target_value_expr_loop_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } =>
-      length(xs: node_positional_child_targets(node: node)) >= 1
+      (length(xs: node_positional_child_targets(node: node)) >= 1)
+      && fold(node.children, init: true, f: fn(acc, e) {
+        match loop_edge_role(e: e) {
+          LoopIteratedBody => acc
+          LoopBoundMeasure => acc
+          LoopDomainValue => false
+          LoopCarrierBinder => false
+          LoopEdgeUnrecognized => false
+        }
+      })
     _ => false
   }
 }
@@ -14762,9 +15071,19 @@ fn target_value_expr_loop_gate(node: Node) -> Bool {
 // (target_value_expr_bind_let_gate) admits it by shape, and projecting it as a plain let would drop its v2.std.type_binder
 // <type-annotation> -- a target whose let spells a type would lose what the source wrote. So it
 // refuses, located at the Bind, until a target realization row carries the annotation.
+//
+// THE TAIL IS AN EXPRESSION, NOT A BINDING. The statement-let lowering
+// (v2.compiler.body_lowering_fold, lower_bind) puts the REST OF THE BLOCK at positional 2, so a
+// tail is whatever the block ends in -- a name, another let, a record, a call, a function value --
+// and eval and the bind_let carrier both take it as one. A plain name stays a binding reference;
+// any other tail projects as a body subexpression. `tail_return` is the function-typed position the
+// tail occupies when this Bind IS the function's body (or the tail of one that is): a function
+// value there is the returned closure and renders through target_project_realized_closure, exactly
+// as a FunctionValueBody does; a Bind in any other position passes Absent.
 fn target_project_bind_let(
   arrow: Node,
   body: Node,
+  tail_return: Optional<FunctionTypePosition>,
   target: TargetModel,
   source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
@@ -14790,8 +15109,15 @@ fn target_project_bind_let(
           o: target_transform_positional_operand_binding(node: body, index: 0),
           f: fn(key_binding) {
             bind_outcome(
-              o: target_transform_positional_operand_binding(node: body, index: 2),
-              f: fn(body_binding) {
+              o: target_project_bind_tail(
+                arrow: arrow,
+                bind: body,
+                tail_return: tail_return,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(projected_tail) {
                 match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
                   Absent =>
                     outcome_rejected(
@@ -14814,7 +15140,7 @@ fn target_project_bind_let(
                           target_value_expression_bind_let(
                             bind_key: target_value_expression_binding_ref(binding: key_binding),
                             bind_value: projected_value,
-                            bind_body: target_value_expression_binding_ref(binding: body_binding)
+                            bind_body: projected_tail
                           )
                         )
                       }
@@ -14825,6 +15151,67 @@ fn target_project_bind_let(
           }
         )
     }
+  }
+}
+
+fn target_project_bind_tail(
+  arrow: Node,
+  bind: Node,
+  tail_return: Optional<FunctionTypePosition>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: node_positional_child_targets(node: bind), index: 2) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: bind
+        )
+      )
+    Present { value: tail } =>
+      match tail.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          outcome_accepted(target_value_expression_binding_ref(binding: id))
+        TypeNode { connective: Arrow } =>
+          match tail_return {
+            Present { value: position } =>
+              target_project_realized_closure(
+                closure: tail,
+                position: position,
+                enclosing: arrow_domain_binder_names(arrow: arrow),
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+            Absent =>
+              target_value_expr_project_body_subexpression(
+                arrow: arrow,
+                node: tail,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+          }
+        ComputationNode { behavior: Bind } =>
+          target_project_bind_let(
+            arrow: arrow,
+            body: tail,
+            tail_return: tail_return,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+        _ =>
+          target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: tail,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+      }
   }
 }
 
@@ -14853,10 +15240,12 @@ fn target_project_loop(
         )
       Present { value: literal_node } =>
         bind_outcome(
-          o: target_value_expr_project_atom_literal(
-          node: literal_node,
-          source_bool_form: source_bool_form
-        ),
+          o: target_value_expr_project_atom_in_arrow_scope(
+            arrow: arrow,
+            node: literal_node,
+            target: target,
+            source_bool_form: source_bool_form
+          ),
           f: fn(projected_body) {
             outcome_accepted(
               target_value_expression_loop(body: projected_body)
@@ -14899,6 +15288,7 @@ fn target_value_expr_project_body_subexpression(
       target_project_bind_let(
         arrow: arrow,
         body: node,
+        tail_return: optional_absent(),
         target: target,
         source_bool_form: source_bool_form,
         handle_transform: handle_transform
@@ -14992,6 +15382,159 @@ fn target_project_closure_in_arrow_scope(
   )
 }
 
+// The names an Arrow's domain binds, in order: the Named labels of its domain Conj. A domain with no
+// parameters binds nothing (an empty list, not a refusal), so a nullary function item or `fn() {..}`
+// has an empty scope rather than a malformed one.
+fn arrow_domain_binder_names(arrow: Node) -> List<Symbol> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          arrow_domain_edge_names(edges: domain.children)
+        _ => Empty
+      }
+    Absent => Empty
+  }
+}
+
+fn arrow_domain_edge_names(edges: List<Edge>) -> List<Symbol> {
+  fold_list(
+    xs: edges,
+    empty: Empty,
+    cons: fn(acc, edge) { arrow_domain_edge_name_step(acc: acc, edge: edge) }
+  )
+}
+
+fn arrow_domain_edge_name_step(acc: List<Symbol>, edge: Edge) -> List<Symbol> {
+  match edge.label {
+    Named { name: n } => list_snoc_item(xs: acc, item: n)
+    Positional => acc
+  }
+}
+
+fn symbol_list_contains(xs: List<Symbol>, wanted: Symbol) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == wanted })
+}
+
+// A RETURNED CLOSURE'S PARAMETERS, IN DECLARED ORDER. The emitted closure is applied positionally,
+// so its parameter list is the Arrow's declared order (v2.std.arrow_signature
+// arrow_declared_parameter_order, the one reader of ^arrow_signature_order_edge) -- never the domain
+// Conj's stored sequence, which canonicalization sorts by label and is not the signature (#12361). Scope
+// MEMBERSHIP for captures stays arrow_domain_binder_names, an unordered set question. A domain that
+// binds names but carries no readable order refuses typed, exactly as eval's
+// eval_param_labels_in_declared_order does: there is no domain-order fallback. A domain that binds
+// no name emits no parameter.
+fn realized_closure_ordered_params(closure: Node) -> Outcome<List<Symbol>> {
+  match arrow_domain_binder_names(arrow: closure) {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: _, tail: _ } =>
+      match arrow_declared_parameter_order(arrow: closure) {
+        ArrowParameterOrderDeclared { labels: labels } => outcome_accepted(value: labels)
+        ArrowParameterOrderAbsent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_absent, node: closure)
+          )
+        ArrowParameterOrderMalformed =>
+          outcome_rejected(
+            target_value_expr_diagnostic(reason: ^target_value_expr_reason_closure_parameter_order_malformed, node: closure)
+          )
+      }
+  }
+}
+
+// A FUNCTION VALUE THAT IS RETURNED: the body of a function item (FunctionValueBody), or the body
+// of such a closure when it is itself a function value. Each sits at a function-typed position, so
+// its spelling is the target's FunctionTypeRealizationRow for that position -- the same row the
+// signature's return type was rendered from (produced_decl_type_tokens_at), which is what keeps
+// the value inhabiting the type: a boxed return type gets a boxed closure, an escaping closure moves
+// its captures. A target that declares no row for the position refuses typed and located. A
+// closure in any other position (an argument, a let) stays target_project_closure_in_arrow_scope.
+//
+// THE SCOPE IS LEXICAL. `enclosing` is every binder of the arrows this closure is nested in -- the
+// function item's parameters, then each enclosing closure's -- so a body that names one of them is
+// a CAPTURE, a binding reference the `move` in value_open takes by value. Without it `y => x` reads
+// `x` against y's domain alone, misses, and the atom is treated as a literal.
+fn target_project_realized_closure(
+  closure: Node,
+  position: FunctionTypePosition,
+  enclosing: List<Symbol>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  let rows = match target.produced_decl_support {
+    ProducedDeclUnwired => Empty
+    ProducedDeclWired { render_rows: r, scaffold_relation_rule_name: _, scaffold_base_row: _ } => r.function_type_realizations
+  }
+  match function_type_realization_at(rows: rows, position: position) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_function_type_position_unrealized,
+          node: closure
+        )
+      )
+    Present { value: row } =>
+      let scope = list_append(left: enclosing, right: arrow_domain_binder_names(arrow: closure))
+      bind_outcome(
+        o: realized_closure_ordered_params(closure: closure),
+        f: fn(params) {
+          bind_outcome(
+            o: find_arrow_body_child(root: closure),
+            f: fn(body) {
+              bind_outcome(
+                o: match classify_arrow_body_form(target: body) {
+                  FunctionValueBody =>
+                    target_project_realized_closure(
+                      closure: body,
+                      position: FunctionTypeAtFnBoundReturn,
+                      enclosing: scope,
+                      target: target,
+                      source_bool_form: source_bool_form,
+                      handle_transform: handle_transform
+                    )
+                  _ =>
+                    match body.kind {
+                      TypeNode { connective: Atom { identity: id } } =>
+                        if symbol_list_contains(xs: scope, wanted: id) {
+                          outcome_accepted(target_value_expression_binding_ref(binding: id))
+                        } else {
+                          target_value_expr_project_body_subexpression(
+                            arrow: closure,
+                            node: body,
+                            target: target,
+                            source_bool_form: source_bool_form,
+                            handle_transform: handle_transform
+                          )
+                        }
+                      _ =>
+                        target_value_expr_project_body_subexpression(
+                          arrow: closure,
+                          node: body,
+                          target: target,
+                          source_bool_form: source_bool_form,
+                          handle_transform: handle_transform
+                        )
+                    }
+                },
+                f: fn(body_expr) {
+                  outcome_accepted(
+                    target_value_expression_realized_closure(
+                      params: params,
+                      body: body_expr,
+                      value_open: row.value_open,
+                      value_close: row.value_close
+                    )
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
 fn target_value_expression_projection_from_target(
   target: TargetModel
 ) -> Outcome<TargetValueExpressionProjection> {
@@ -15034,88 +15577,116 @@ fn target_project_arrow_body_to_value_expression(
 ) -> Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
-      match body.kind {
-        ComputationNode { behavior: Transform } =>
-          if target_value_expr_field_access_gate(node: body) {
-            target_project_field_access(
-              arrow: arrow,
-              body: body,
-              target: target,
-              source_bool_form: source_bool_form,
-              handle_transform: handle_transform
-            )
-          } else {
-            handle_transform(arrow, body, target)
-          }
-        ComputationNode { behavior: Branch } =>
-          target_project_branch_bool_if_else(
+      match classify_arrow_body_form(target: body) {
+        FunctionValueBody =>
+          target_project_realized_closure(
+            closure: body,
+            position: FunctionTypeAtItemReturn,
+            enclosing: arrow_domain_binder_names(arrow: arrow),
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          )
+        DirectAtomBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        RecordConstructBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        DeclarationReferenceBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        ComputationBody { behavior: _ } => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+        UnsupportedArrowBody => target_project_arrow_body_by_kind(arrow: arrow, body: body, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// The per-kind projection of a body classify_arrow_body_form did not classify as a function
+// value; a function-value body is dispatched above by its ArrowBodyForm, never by a raw kind here.
+fn target_project_arrow_body_by_kind(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+    match body.kind {
+      ComputationNode { behavior: Transform } =>
+        if target_value_expr_field_access_gate(node: body) {
+          target_project_field_access(
             arrow: arrow,
             body: body,
             target: target,
             source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
-        ComputationNode { behavior: Bind } =>
-          target_project_bind_let(
+        } else {
+          handle_transform(arrow, body, target)
+        }
+      ComputationNode { behavior: Branch } =>
+        target_project_branch_bool_if_else(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      ComputationNode { behavior: Bind } =>
+        target_project_bind_let(
+          arrow: arrow,
+          body: body,
+          tail_return: optional_present(value: FunctionTypeAtItemReturn),
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      ComputationNode { behavior: Loop } =>
+        target_project_loop(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      ComputationNode { behavior: Match } =>
+        target_project_match(
+          arrow: arrow,
+          body: body,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      TypeNode { connective: Conj } =>
+        if target_value_expr_record_construct_gate(node: body) {
+          target_project_record_construct(
             arrow: arrow,
             body: body,
             target: target,
             source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
-        ComputationNode { behavior: Loop } =>
-          target_project_loop(
-            arrow: arrow,
-            body: body,
-            target: target,
-            source_bool_form: source_bool_form,
-            handle_transform: handle_transform
-          )
-        ComputationNode { behavior: Match } =>
-          target_project_match(
-            arrow: arrow,
-            body: body,
-            target: target,
-            source_bool_form: source_bool_form,
-            handle_transform: handle_transform
-          )
-        TypeNode { connective: Conj } =>
-          if target_value_expr_record_construct_gate(node: body) {
-            target_project_record_construct(
-              arrow: arrow,
-              body: body,
-              target: target,
-              source_bool_form: source_bool_form,
-              handle_transform: handle_transform
-            )
-          } else {
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
-                node: body
-              )
-            )
-          }
-        TypeNode { connective: Atom { identity: _ } } =>
-          if target_value_expr_is_int_literal_atom(node: body) {
-            target_value_expr_project_int_literal_atom(node: body)
-          } else {
-            outcome_rejected(
-              target_value_expr_diagnostic(
-                reason: ^target_value_expr_reason_transform_shape_invalid,
-                node: body
-              )
-            )
-          }
-        _ =>
+        } else {
           outcome_rejected(
             target_value_expr_diagnostic(
               reason: ^target_value_expr_reason_transform_shape_invalid,
               node: body
             )
           )
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        }
+      TypeNode { connective: Atom { identity: _ } } =>
+        if target_value_expr_is_int_literal_atom(node: body) {
+          target_value_expr_project_int_literal_atom(node: body)
+        } else {
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        }
+      _ =>
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_arrow_body_form_unsupported,
+            node: body
+          )
+        )
   }
 }
 

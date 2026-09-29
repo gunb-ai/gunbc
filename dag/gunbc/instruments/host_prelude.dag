@@ -52,6 +52,17 @@ type WitnessBinReadiness
   = WitnessBinReady { path: String }
   | WitnessBinRefused { bin_name: String, path: String, reason: WitnessBinRefusalReason }
 
+// THE REFUSAL AS A CARRIED VALUE, for receipts whose own outcome is a std.subject_evidence
+// SubjectEvidence: the refused arm becomes EvidenceInstrumentRefused { cause: WitnessBinRefusal },
+// so a receipt that could not run its binary is a located instrument refusal and never a
+// behavioral false. Each caller builds it only inside its match on a WitnessBinRefused arm, so its
+// fields are that arm's, never a second observation.
+type WitnessBinRefusal {
+  bin_name: String
+  path: String
+  reason: WitnessBinRefusalReason
+}
+
 // The three probes below are annotated OutcomeIsData (operator ruling 2026-07-25). A non-zero exit
 // from `test -f`/`-x`/`-s` here means SUBJECT ABSENT — an answer, not a fault — and it is ambient
 // in BOTH of this helper's contexts: the production readiness path (witness_bin_run_if_ready,
@@ -89,6 +100,25 @@ fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
   }
 }
 
+// The ONE rendering of a refusal for callers whose own outcome carries its cause as text
+// (tools.emission_entry_instrument EmissionSubjectUnestablished, tools.opaque_realization_census
+// OpaqueCensusUnestablished). It names the bin, the path it was looked for at, and the arm, so a
+// reader of that cause can tell an unbuilt binary from a failed build from a zero-byte stub.
+
+fn witness_bin_refusal_reason_name(reason: WitnessBinRefusalReason) -> String {
+  match reason {
+    WitnessBinNotEnrolled => "not-enrolled"
+    WitnessBinBuildFailed => "build-failed"
+    WitnessBinArtifactAbsent => "artifact-absent"
+    WitnessBinArtifactNotExecutable => "artifact-not-executable"
+    WitnessBinArtifactEmpty => "artifact-empty"
+  }
+}
+
+fn witness_bin_refusal_cause(bin_name: String, path: String, reason: WitnessBinRefusalReason) -> String {
+  concat("witness binary ", concat(bin_name, concat(" refused (", concat(witness_bin_refusal_reason_name(reason: reason), concat(") at ", path)))))
+}
+
 // Enrollment wall first (gunbc.ci_release_bins.release_bin_is_enrolled): an unenrolled bin_name
 // refuses as WitnessBinNotEnrolled and never reaches cargo.Build — that is the construction close
 // of the mid-floor cold-monolith absorption the release-bins pack exists to bound (roster
@@ -124,18 +154,6 @@ fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> WitnessBinRe
       }
     }
   }
-}
-
-data witness_bin_ready_lossy_projection_note: String = "SCAFFOLD — witness_bin_ready is a LOSSY projection: it discards the located refusal and answers Bool. It exists so the seven dag/gunbc/instruments self-host harnesses (self_host_parse_engine_hooks / target_carriers / use_site_verdict / logic / discovery_enumeration behavioral transports, dag_compile_clean_transport, self_host_curated_seed_linked_harness) keep compiling across the carrier's shape change without each re-spelling the collapse.
-
-What it buys and what it does not: the collapse is now ONE named, greppable fn over ONE typed carrier, instead of eleven independent copies of a weak shape — so the loss is located in a single place and can be removed in a single place. It does NOT recover the diagnostic at those seven sites; a refusal there is still an undifferentiated false, exactly the state-space conflation the carrier exists to end. Call it what it is rather than let the Bool return read as a design choice.
-
-The five sites where diagnosis actually happens do NOT use this: the four gate transports and build_step_transport match the typed value directly.
-
-DISSOLVE-ON: convert the seven harnesses to typed matches — on the next touch of each harness, or as its own change — and delete this fn. It is not load-bearing for correctness (gate outcome is identical either way), only for how much a failure can tell you. Staged rather than done in one motion because the seven are load-bearing self-host harnesses and the carrier change was already an 11-file sweep; splitting keeps each reviewable. Parent-approved as staged, 2026-07-19."
-
-fn witness_bin_ready(root: String, bin: WitnessBin) -> Bool {
-  witness_bin_readiness_is_ready(readiness: witness_bin_ensure_built_typed(root: root, bin: bin))
 }
 
 // witness_bin_ready_seed is the fold IDENTITY for 'nothing has refused yet', not a claim that a

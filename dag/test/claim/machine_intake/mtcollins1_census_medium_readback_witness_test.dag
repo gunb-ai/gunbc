@@ -25,7 +25,7 @@ import extdeps.ssh.session { SshSessionExecResult }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data recorded: NonEmptyStr = "6455b3b9ae11214d3800c7a6eaea289e5151c0e145049e45210f9295869b5d8c"
+data recorded: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706"
 data other: String = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 // 64 characters, not hexadecimal: the RED that separates "64 long" from "a digest".
 data sixty_four_non_hex: String = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
@@ -55,18 +55,18 @@ test fn the_served_path_and_the_record_path_derive_from_the_census_input() -> Bo
   match mtcollins1_census_image {
     Mtcollins1CensusImageRefused { reason: _ } => false
     Mtcollins1CensusImageDerived { input: input } =>
-      (mtcollins1_census_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
+      (mtcollins1_census_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
         && (mtcollins1_census_record_path(input: input) as String) == concat("/srv/bmc/.gunbc-mtcollins1-census-ubuntu-24.04.3-arm64.", mtcollins1_census_build_key(input: input) as String, ".built")
-        && (mtcollins1_census_build_key(input: input) as String) == "ad4bf3fd18230604"
+        && (mtcollins1_census_build_key(input: input) as String) == "c001ac127d718e72"
   }
 }
 
 test fn a_record_and_a_file_that_both_repeat_the_selected_digest_agree_and_retain_every_value() -> Bool {
   match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: measure_ok()) {
     CensusMediumReadbackAgreed { host: h, build_key: k, recorded_digest: r, image_name: n, served_path: p, measured_digest: m } =>
-      (h as String) == "srv2" && (k as String) == "ad4bf3fd18230604" && (r as String) == (recorded as String) && (m as String) == (recorded as String)
-        && (n as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
-        && (p as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-6455b3b9ae11214d.iso"
+      (h as String) == "srv2" && (k as String) == "c001ac127d718e72" && (r as String) == (recorded as String) && (m as String) == (recorded as String)
+        && (n as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
+        && (p as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
     _ => false
   }
 }
@@ -140,7 +140,7 @@ test fn a_missing_image_is_unreadable_not_diverged() -> Bool {
 }
 
 test fn a_truncated_measurement_is_malformed_not_agreed() -> Bool {
-  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: ok(stdout: "6455b3b9ae11214d  /srv/bmc/x.iso\n")) {
+  match mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: record_ok(), measure: ok(stdout: "30ca88d43f891399  /srv/bmc/x.iso\n")) {
     CensusMediumReadbackMeasureMalformed { served_path: _, content: _ } => true
     _ => false
   }
@@ -168,7 +168,7 @@ test fn only_an_agreed_readback_lets_the_boot_proceed() -> Bool {
   let disagrees = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: ok(stdout: concat(other, "\n")), measure: measure_ok())
   let unreadable = mtcollins1_census_medium_readback_from_answers(medium: census, host: srv2, record: refused(reason: "ssh: connect refused"), measure: measure_ok())
   (match mtcollins1_census_readback_refusal(readback: agreed) { Absent => true  Present { value: _ } => false })
-    && (match mtcollins1_census_readback_refusal(readback: diverged) { Present { value: w } => !string_contains(s: w, pattern: "untouched") && string_contains(s: w, pattern: "6455b3b9")  Absent => false })
+    && (match mtcollins1_census_readback_refusal(readback: diverged) { Present { value: w } => !string_contains(s: w, pattern: "untouched") && string_contains(s: w, pattern: recorded as String) && string_contains(s: w, pattern: other as String)  Absent => false })
     && (match mtcollins1_census_readback_refusal_before_filing(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "controller untouched") && !string_contains(s: w, pattern: "SOL")  Absent => false })
     && (match mtcollins1_census_readback_refusal_before_attach(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "after grant, before attach") && string_contains(s: w, pattern: "media attach, boot selection and power untouched") && string_contains(s: w, pattern: "SOL session had been acquired") && !string_contains(s: w, pattern: "controller untouched")  Absent => false })
     && (match mtcollins1_census_readback_refusal_before_attach(readback: agreed) { Absent => true  Present { value: _ } => false })

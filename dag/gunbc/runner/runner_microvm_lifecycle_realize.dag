@@ -67,6 +67,7 @@ import product.fabric.sanitation { CellId }
 import extdeps.tools.e2fsprogs {
   decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
 }
+import extdeps.systemd.journalctl
 import extdeps.systemd.systemd_run { systemd_run_property_argv, SystemdRunProperty }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -1135,7 +1136,7 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
       runner_microvm_attempt_part_of_property(attempt: attempt),
       attempt_invocation_env_setting(invocation_id: invocation_id),
     ]),
-    command_argv: concat([receipt.jailer.program as String], receipt.jailer.arguments),
+    command_argv: concat([receipt.jailer.program.invocation as String], receipt.jailer.arguments),
   )
   if started.success {
     VmmStarted { unit: unit, receipt: receipt }

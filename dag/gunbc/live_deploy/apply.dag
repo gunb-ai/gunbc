@@ -82,12 +82,16 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
-  approval_broker_tree_receipt_path_for, RevisionBoundAtEmission, ReleaseRevisionBinding,
   microvm_controller_vmm_receipt_path,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_tree_receipt_path_for,
+  RevisionBoundAtEmission,
+  ReleaseRevisionBinding,
 }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
-  microvm_slot_unit_instance_name,
+  microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
 }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -728,11 +732,9 @@ fn approval_broker_dark_install_wet_with_access(
 // the first attempt and is something else entirely. That distinction is the not-met versus
 // cannot-tell split this module keeps everywhere else.
 //
-// THE BOUND IS THE BROKER'S OWN, and it is a declared policy budget with an unmeasured subject
-// rather than a derivation -- said plainly because DESIGN section 4d forbids dressing an inference
-// as a deduction. The roadmap's 240 s expected startup is not the broker's: the broker compiles and
-// serves four routes that consult no roadmap, no plan, no site bundle. What supports 60 s is that
-// qualitative fact, not a measurement, and stage C is what replaces it with one. The cadence and
+// THE BOUND IS THE BROKER'S OWN, derived from one measured srv1 start (see
+// gunbc.live_deploy.service_ready approval_broker_expected_startup for the reading and its
+// thinness), never from the roadmap's 240 s: the two units load different closures. The cadence and
 // the margin factor are the roadmap's own declarations rather than new numbers, because the
 // uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
 fn approval_broker_readback_poll_attempts() -> Int {
@@ -896,7 +898,13 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
 // `show` loads it without starting it. Anything but `loaded` means the unit file the install wrote
 // is not what the manager parses.
 fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
-  let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))
+  match microvm_unit_load_readback(unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+    ExitSuccess => microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+    refused => refused
+  }
+}
+
+fn microvm_unit_load_readback(unit: NonEmptyStr) -> ProcessExit {
   let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: LoadState))
   if !shown.success {
     exit_failure(reason: join(["microvm_controller_install: LoadState of ", unit as String, " could not be read"], ""))

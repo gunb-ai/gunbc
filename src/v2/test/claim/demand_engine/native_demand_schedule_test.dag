@@ -38,6 +38,7 @@ import v2.compiler.compile {
   NativeDemandRun,
   native_demand_eval_samples,
   NativeDemandTransition,
+  NativeDemandObservationRollup,
   ElapsedObserved,
   ElapsedObservationInvalid
 }
@@ -252,7 +253,7 @@ test fn a_blocked_demand_contributes_no_transition_holds() -> Bool {
     id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()),
     state: DemandRefused
   )
-  let run = NativeDemandRun { engine: refused, transitions: [], rows: [] }
+  let run = NativeDemandRun { engine: refused, transitions: [], rows: [], scheduling_nanos: 0 }
   (length(xs: native_demand_eval_samples(run: run)) == 0)
     && (native_demand_observation_rollup(run: run).classified == 0)
     && native_demand_observation_complete(run: run)
@@ -285,7 +286,8 @@ test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
         elapsed: ElapsedObserved { nanos: 22 }
       }
     ],
-    rows: []
+    rows: [],
+    scheduling_nanos: 0
   }
   let before = native_demand_observation_rollup(run: run)
   let rendered = native_demand_run_receipt_lines(run: run)
@@ -307,7 +309,8 @@ test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> B
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,
     transitions: [NativeDemandTransition { identity: g_unknown_kind_identity(), elapsed: ElapsedObserved { nanos: 7 } }],
-    rows: []
+    rows: [],
+    scheduling_nanos: 0
   }
   let r = native_demand_observation_rollup(run: run)
   (r.unclassified == 1)
@@ -342,7 +345,8 @@ test fn an_invalid_elapsed_reading_makes_the_observation_incomplete_holds() -> B
         elapsed: ElapsedObservationInvalid { start: 900, finish: 100 }
       }
     ],
-    rows: []
+    rows: [],
+    scheduling_nanos: 0
   }
   let r = native_demand_observation_rollup(run: run)
   (r.invalid_elapsed == 1)
@@ -377,7 +381,8 @@ test fn a_run_whose_clock_never_advanced_is_not_progressed_holds() -> Bool {
         elapsed: ElapsedObserved { nanos: 0 }
       }
     ],
-    rows: []
+    rows: [],
+    scheduling_nanos: 0
   }
   let r = native_demand_observation_rollup(run: run)
   (r.classified == 2)
@@ -404,7 +409,8 @@ test fn a_run_with_one_advancing_reading_is_progressed_holds() -> Bool {
         elapsed: ElapsedObserved { nanos: 41 }
       }
     ],
-    rows: []
+    rows: [],
+    scheduling_nanos: 0
   }
   native_demand_observation_progressed(run: run)
     && native_demand_observation_complete(run: run)
@@ -413,7 +419,7 @@ test fn a_run_with_one_advancing_reading_is_progressed_holds() -> Bool {
 // AN EMPTY RUN IS VACUOUSLY PROGRESSED. Nothing executed, so there is no span to observe, and
 // reporting a defect here would be reporting one where there was simply no work.
 test fn a_run_with_no_transitions_is_vacuously_progressed_holds() -> Bool {
-  let run = NativeDemandRun { engine: g_one_module_plan().engine, transitions: [], rows: [] }
+  let run = NativeDemandRun { engine: g_one_module_plan().engine, transitions: [], rows: [], scheduling_nanos: 0 }
   native_demand_observation_progressed(run: run)
 }
 
@@ -429,9 +435,108 @@ test fn an_invalid_reading_is_neither_progressed_nor_complete_holds() -> Bool {
         elapsed: ElapsedObservationInvalid { start: 900, finish: 100 }
       }
     ],
-    rows: []
+    rows: [],
+    scheduling_nanos: 0
   }
   !native_demand_observation_progressed(run: run)
     && !native_demand_observation_complete(run: run)
     && (native_demand_observation_rollup(run: run).invalid_elapsed == 1)
+}
+
+// ── preparation is one outcome per module, decided at the infer demand ───────────────────────
+//
+// FOUR CONTROLS BECAUSE THE DEFECT WAS AN ARITHMETIC ONE AND ARITHMETIC NEEDS EACH CASE. Review of
+// gunbc#12401 found a module failing at resolve counted TWICE: once on its resolve transition and
+// again when its infer demand settled DemandRefused. The count now comes only from the infer demand,
+// so each row below fixes one of the four ways a module can reach that boundary.
+//
+// AND THE FOURTH IS THE ONE THAT WOULD HAVE CAUGHT THE ORIGINAL SHAPE. Preparation counts must not
+// move with the number of DECLARATIONS a module has -- a per-transition count scales with them, and a
+// per-module count does not.
+fn nds_prep_counts(transitions: List<NativeDemandTransition>, engine: DemandEngine<NativeDemandValue>) -> NativeDemandObservationRollup {
+  native_demand_observation_rollup(
+    run: NativeDemandRun { engine: engine, transitions: transitions, rows: [], scheduling_nanos: 0 }
+  )
+}
+
+fn nds_infer_id() -> DemandIdentity {
+  native_demand_infer_identity(module: "p.a", compiler: g_compiler())
+}
+
+fn nds_resolve_id() -> DemandIdentity {
+  native_demand_resolve_identity(module: "p.a", compiler: g_compiler())
+}
+
+fn nds_transition(id: DemandIdentity) -> NativeDemandTransition {
+  NativeDemandTransition { identity: id, elapsed: ElapsedObserved { nanos: 5 } }
+}
+
+// A RESOLUTION FAILURE IS ONE REFUSED PREPARATION, counted at the infer demand that inherited it --
+// and the resolve transition beside it adds nothing. Before the repair this pair summed to 2.
+test fn a_resolution_failure_is_one_refused_preparation_holds() -> Bool {
+  let engine = demand_engine_settle(
+    e: g_one_module_plan().engine,
+    id: nds_infer_id(),
+    state: DemandRefused
+  )
+  let r = nds_prep_counts(
+    transitions: [nds_transition(id: nds_resolve_id()), nds_transition(id: nds_infer_id())],
+    engine: engine
+  )
+  (r.prepare_refused == 1) && (r.prepare_ok == 0)
+}
+
+// THE RESOLVE TRANSITION ALONE CONTRIBUTES NOTHING, which is the half my second attempt got backwards.
+// It is not that resolve counts and infer does not; it is that preparation concludes at the infer
+// demand and the resolve transition is not a preparation outcome at all.
+test fn a_resolve_transition_alone_contributes_no_preparation_count_holds() -> Bool {
+  let engine = demand_engine_settle(
+    e: g_one_module_plan().engine,
+    id: nds_resolve_id(),
+    state: DemandRefused
+  )
+  let r = nds_prep_counts(transitions: [nds_transition(id: nds_resolve_id())], engine: engine)
+  (r.prepare_refused == 0) && (r.prepare_ok == 0)
+}
+
+// AND EVAL TRANSITIONS NEVER MOVE A PREPARATION COUNT, however many there are.
+test fn eval_transitions_do_not_move_the_preparation_counts_holds() -> Bool {
+  let engine = demand_engine_settle(
+    e: g_one_module_plan().engine,
+    id: nds_infer_id(),
+    state: DemandRefused
+  )
+  let one = nds_prep_counts(transitions: [nds_transition(id: nds_infer_id())], engine: engine)
+  let many = nds_prep_counts(
+    transitions: [
+      nds_transition(id: nds_infer_id()),
+      nds_transition(id: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler())),
+      nds_transition(id: native_demand_eval_identity(module: "p.a", declaration: "h2", compiler: g_compiler())),
+      nds_transition(id: native_demand_eval_identity(module: "p.a", declaration: "h3", compiler: g_compiler()))
+    ],
+    engine: engine
+  )
+  (one.prepare_refused == 1)
+    && (many.prepare_refused == one.prepare_refused)
+    && (many.prepare_ok == one.prepare_ok)
+}
+
+// THE COUNTS DO NOT MOVE WITH THE DECLARATION COUNT. Same module, same single preparation outcome,
+// whether the module declares one test or many -- which a per-transition count could not satisfy.
+test fn preparation_counts_do_not_scale_with_declarations_holds() -> Bool {
+  let engine = demand_engine_settle(
+    e: g_one_module_plan().engine,
+    id: nds_infer_id(),
+    state: DemandRefused
+  )
+  let r = nds_prep_counts(
+    transitions: [
+      nds_transition(id: nds_resolve_id()),
+      nds_transition(id: nds_infer_id()),
+      nds_transition(id: native_demand_eval_identity(module: "p.a", declaration: "h1", compiler: g_compiler())),
+      nds_transition(id: native_demand_eval_identity(module: "p.a", declaration: "h2", compiler: g_compiler()))
+    ],
+    engine: engine
+  )
+  (r.prepare_refused == 1) && (r.prepare_ok == 0)
 }

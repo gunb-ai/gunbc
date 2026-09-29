@@ -13,7 +13,18 @@ import v2.compiler.infer {
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.type_binder { edge_is_cast_target }
+import v2.std.arrow_signature {
+  ApplicationBindingRefused,
+  ApplicationBound,
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  application_actual_edges,
+  application_binding_plan,
+  arrow_declared_parameter_order
+}
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
@@ -100,6 +111,11 @@ import v2.std.node {
   Arrow,
   Atom,
   DirectAtomBody,
+  FunctionValueBody,
+  ComputationBody,
+  RecordConstructBody,
+  DeclarationReferenceBody,
+  UnsupportedArrowBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
   classify_arrow_body_form,
@@ -111,6 +127,7 @@ import v2.std.node {
   byte_offset_cache_key,
   fold_node,
   is_positional,
+  locally_well_formed,
   node_for_structural_equality,
   well_formed,
 }
@@ -854,6 +871,21 @@ type InterpretationCacheDigestAuthority
       structure_digest: Hash
     }
 
+// A VERDICT IS REUSED ON CONTENT IDENTITY ONLY WHERE CONTENT IDENTITY DETERMINES THE RUN. A named
+// actual's position is not part of an application's identity (v2.std.node
+// canonicalize_positional_then_named sorts the named suffix), but it is part of its
+// EVALUATION ORDER, which is authored order. For pure evaluation the two coincide; with an effect
+// bundle present, f(a: e1(), b: e2()) and f(b: e2(), a: e1()) hash equal and perform their effects
+// in opposite orders, so a verdict keyed on the hash could be reused across two different runs. An
+// effectful evaluation context is therefore cache-ineligible (gunbc.recurring_failure_mode
+// argument_order_silently_orders_two_effects, until v2 carries uses facts and the order wall lands).
+fn eval_context_performs_effects(context: EvalContext) -> Bool {
+  match context.effect_io {
+    EffectIoEvalAbsent => false
+    EffectIoEvalPresent { bundle: _ } => true
+  }
+}
+
 fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
   let authority = context.cache_authority
   let registry_witness = interpretation_registry_semantics_digest(
@@ -865,7 +897,17 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     interpretation: v2_evaluator_interpretation()
   )
   let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
-  if authority.runtime_identity == ^v2_evaluator_runtime_id
+  if eval_context_performs_effects(context: context) {
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: interpretation_algebra_executed_structure_digest(
+        runtime_identity: authority.runtime_identity,
+        interpretation: authority.interpretation,
+        structure_witness: authority.structure_witness
+      )
+    }
+  } else if authority.runtime_identity == ^v2_evaluator_runtime_id
     && interpretation_algebra_slot_identities_equal(a: authority.interpretation, b: v2_evaluator_interpretation())
     && authority.semantics_digest == registered_semantics
     && registry_witness == registered_semantics
@@ -1296,49 +1338,12 @@ fn eval_type_node_atom(
   }
 }
 
-type EvalParamBindAcc {
-  idx: Int
-  acc: Outcome<EvaluationEnvironment>
-}
 
-fn eval_bind_param_edge_step(
-  state: EvalParamBindAcc,
-  param_edge: Edge,
-  args: List<RuntimeValue>,
-  bind: BindInterpreter,
-  node: Node
-) -> EvalParamBindAcc {
-  match state.acc {
-    Rejected { diagnostics: r } =>
-      EvalParamBindAcc { idx: state.idx + 1, acc: Rejected { diagnostics: r } }
-    Accepted { value: env, diagnostics: _ } =>
-      match param_edge.label {
-        Named { name: binding_id } =>
-          EvalParamBindAcc {
-            idx: state.idx + 1,
-            acc: bind_outcome(
-              o: eval_witness_outcome(
-                witness: list_nth(
-                  xs: args,
-                  wanted: state.idx,
-                  absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
-                )
-              ),
-              f: fn(value) {
-                bind.bind_value(
-                  environment_binding_key_for_symbol(sym: binding_id),
-                  value,
-                  env
-                )
-              }
-            )
-          }
-        Positional =>
-          EvalParamBindAcc { idx: state.idx, acc: Accepted { value: env, diagnostics: None } }
-      }
-  }
-}
-
+// BINDING GOES THROUGH THE ONE PLAN. `args` are the application's actuals evaluated in authored
+// order (eval_edge_is_runtime_argument); v2.std.arrow_signature application_binding_plan says,
+// for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
+// the two stages cannot bind one call differently. A domain with no named binder keeps its positional
+// edges, bound in their own order.
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
@@ -1349,30 +1354,56 @@ fn eval_bind_arrow_params(
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
     f: fn(domain_edge) {
-      match fold_list(
-        xs: domain_edge.target.children,
-        empty: EvalParamBindAcc { idx: 0, acc: Accepted { value: environment, diagnostics: None } },
-        cons: fn(state, param_edge) {
-          eval_bind_param_edge_step(
-            state: state,
-            param_edge: param_edge,
-            args: args,
-            bind: bind,
-            node: node
-          )
+      if eval_domain_has_named_binder(domain: domain_edge.target) {
+        match application_binding_plan(arrow: arrow, actuals: application_actual_edges(site: node)) {
+          ApplicationBindingRefused { reason: reason, at: _ } =>
+            outcome_rejected(d: eval_diagnostic(reason: reason, node: node))
+          ApplicationBound { slots: slots } =>
+            fold(slots, init: Accepted { value: environment, diagnostics: None }, f: fn(acc, slot) {
+              bind_outcome(o: acc, f: fn(env) {
+                bind_outcome(
+                  o: eval_witness_outcome(
+                    witness: list_nth(
+                      xs: args,
+                      wanted: slot.actual_index,
+                      absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
+                    )
+                  ),
+                  f: fn(value) { bind.bind_value(environment_binding_key_for_symbol(sym: slot.label), value, env) }
+                )
+              })
+            })
         }
-      ) {
-        EvalParamBindAcc { idx: param_count, acc: bound } =>
-          if eval_actual_present(args: args, wanted: param_count, node: node) {
-            outcome_rejected(
-              d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node)
-            )
-          } else {
-            bound
-          }
+      } else {
+        eval_bind_positional_domain(domain: domain_edge.target, args: args, environment: environment, bind: bind, node: node)
       }
     }
   )
+}
+
+fn eval_domain_has_named_binder(domain: Node) -> Bool {
+  fold(domain.children, init: false, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => true
+      Positional => acc
+    }
+  })
+}
+
+// A DOMAIN WITH NO NAMED BINDER BINDS NO NAME: its positional edges carry types, not binders, so the
+// only question is arity -- an actual beyond the domain's zero named slots is excess.
+fn eval_bind_positional_domain(
+  domain: Node,
+  args: List<RuntimeValue>,
+  environment: EvaluationEnvironment,
+  bind: BindInterpreter,
+  node: Node
+) -> Outcome<EvaluationEnvironment> {
+  if eval_actual_present(args: args, wanted: 0, node: node) {
+    outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_argument_arity_excess, node: node))
+  } else {
+    Accepted { value: environment, diagnostics: None }
+  }
 }
 
 fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {
@@ -1621,6 +1652,21 @@ fn eval_value_node(
   }
 }
 
+// A CALLEE WHOSE BODY IS ITSELF A FUNCTION VALUE REFUSES UNDER ITS OWN REASON. The body is
+// well-formed (v2.std.node FunctionValueBody), but eval carries no closure value to return, so the
+// call is refused -- never folded into the generic unsupported-callee reason, which would hide
+// which capability is missing.
+fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
+  match form {
+    FunctionValueBody => ^eval_rejected_function_value_body
+    DirectAtomBody => ^eval_rejected_unsupported_callee
+    RecordConstructBody => ^eval_rejected_unsupported_callee
+    DeclarationReferenceBody => ^eval_rejected_unsupported_callee
+    ComputationBody { behavior: _ } => ^eval_rejected_unsupported_callee
+    UnsupportedArrowBody => ^eval_rejected_unsupported_callee
+  }
+}
+
 fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
@@ -1683,7 +1729,10 @@ fn eval_transform_node(
                   )
                 } else {
                   outcome_rejected(
-                    d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
+                    d: eval_diagnostic(
+                      reason: eval_callee_body_refusal_reason(form: body_form),
+                      node: callee_edge.target
+                    )
                   )
                 }
               Rejected { diagnostics: _ } =>
@@ -2093,13 +2142,19 @@ fn empty_runtime_values() -> List<RuntimeValue> {
   []
 }
 
+// An applied callee's actuals are every edge after the callee, positional AND named, evaluated in
+// authored order -- never a cast's <cast-target>, which is a type (v2.std.type_binder), whichever arm
+// the node takes; eval_bind_arrow_params binds them through the one binding plan. Every other
+// Transform -- including an application whose callee is a resolved declaration reference, which
+// eval_transform_has_callee_reference does not recognise -- evaluates EVERY child: its named edges are
+// named actuals (v2.std.node PositionalPrefixThenLabeled), and filtering to positional edges dropped
+// them silently.
 fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edge) -> Bool {
   if eval_transform_has_callee_reference(node: parent) {
     match progress {
-      AwaitingChildren { processed: p } =>
-        if p == 0 { false } else { is_positional(e: edge) }
-      ReadyToInterpret => is_positional(e: edge)
-      Interpreted => is_positional(e: edge)
+      AwaitingChildren { processed: p } => (p != 0) && !edge_is_cast_target(e: edge)
+      ReadyToInterpret => !edge_is_cast_target(e: edge)
+      Interpreted => !edge_is_cast_target(e: edge)
     }
   } else if eval_node_is_branch(node: parent) {
     match progress {
@@ -2110,8 +2165,17 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
     }
   } else if eval_node_is_loop(node: parent) {
     false
+  } else if eval_node_is_transform(node: parent) {
+    !edge_is_cast_target(e: edge)
   } else {
     is_positional(e: edge)
+  }
+}
+
+fn eval_node_is_transform(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } => true
+    _ => false
   }
 }
 
@@ -2593,13 +2657,49 @@ fn eval_runtime_node(
   }
 }
 
+// THE EVAL GATE NAMES THE NODE THAT FAILED, NOT THE ROOT IT SAT UNDER. v2.std.node well_formed is a
+// conjunction of locally_well_formed over the subtree, so its refusal has a first witness, and
+// that witness is the only fact that tells a reader what to repair: anchoring the refusal at the
+// prepared module's root made one ill-formed declaration refuse every test in the module under an
+// occurrence that located nothing (the native lane canary, 2026-09-26). The walk is the same
+// preorder fold_node well_formed takes over the same local predicate, so the gate admits exactly
+// what well_formed admits.
+fn eval_first_ill_formed_node(n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        if locally_well_formed(n: n0) { optional_absent() } else { optional_present(value: n0) }
+      },
+      step: fn(acc, _, child) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => child
+        }
+      }
+    }
+  )
+}
+
+fn eval_ill_formed_input(tree: InferredTree, inputs: Inputs) -> Optional<Node> {
+  match eval_first_ill_formed_node(n: tree.root) {
+    Present { value: bad } => optional_present(value: bad)
+    Absent => eval_first_ill_formed_node(n: inputs.root)
+  }
+}
+
+fn eval_ill_formed_refusal(at: Node) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: at)) }
+}
+
 fn eval_with_context(
   tree: InferredTree,
   context: EvalContext,
   inputs: Inputs
 ) -> Outcome<RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2608,17 +2708,13 @@ fn eval_with_context(
         runtime: eval_runtime(),
         effect_io: eval_context_effect_io(context: context)
       )
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 
 fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Inputs) -> Outcome<RuntimeValue> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
+  match eval_ill_formed_input(tree: tree, inputs: inputs) {
+    Present { value: bad } => eval_ill_formed_refusal(at: bad)
+    Absent =>
       eval_runtime_node(
         node: inputs.root,
         tree: tree,
@@ -2627,11 +2723,6 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
         runtime: eval_runtime(),
         effect_io: EffectIoEvalAbsent
       )
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: tree.root)) }
   }
 }
 

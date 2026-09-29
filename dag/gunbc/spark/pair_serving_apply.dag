@@ -71,7 +71,7 @@ fn script_word(w: String) -> String {
 }
 
 fn argv_line(cmd: ArgvCommand) -> String {
-  join(map(concat([cmd.program as String], cmd.arguments), w => script_word(w: w)), " ")
+  join(map(concat([cmd.program.invocation as String], cmd.arguments), w => script_word(w: w)), " ")
 }
 
 fn unit_render_text(u: SparkPairUnitRender) -> String? {
@@ -197,6 +197,8 @@ fn spark_pair_apply_plan_under(r: SparkPairRealization, authority: PairServingGr
   }
 }
 
+data spark_pair_apply_unread_refusal_prefix: String = "the serving authority could not be read, so nothing is converged: "
+
 // THE LIVE AUTHORITY IS THE LOG'S, NOT THE SOURCE ROW'S. gunbc.spark.pair_serving_authority_log
 // folds the row through every recorded transition, so a group a transaction has suspended is
 // suspended HERE, from the transaction's own tree. A group whose authority could not be read is
@@ -208,7 +210,7 @@ fn spark_pair_apply_plan_current(r: SparkPairRealization, current: List<CurrentA
     Present { value: c } =>
       match c {
         CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
-          SparkPairApplyRefused { cause: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "") }
+          SparkPairApplyRefused { cause: join([spark_pair_apply_unread_refusal_prefix, current_authority_wire(c: c)], "") }
         CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
           spark_pair_apply_plan_under(r: r, authority: Present { value: a })
       }

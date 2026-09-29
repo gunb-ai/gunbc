@@ -544,27 +544,74 @@ fn enum_variant_payload_has_fn(variants: List<Node>) -> Bool {
   ))
 }
 
-fn type_summary_or_structural_alias_reaches_fn(name: String, summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>, visited: Set<String>) -> Bool {
-  if set_contains(visited, name) { false } else {
-    let v2 = set_insert(visited, name)
-    match map_get(summaries, name) {
-      Present { value: s } =>
-        s.has_fn_fields || concat(map_values(s.field_type_map), s.field_import_surface_names)
-          |> any(target => type_summary_or_structural_alias_reaches_fn(name: target, summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names, visited: v2))
-      Absent =>
-        set_contains(structural_alias_direct_fn_names, name) || match map_get(structural_alias_fn_surface_names, name) {
-          Present { value: targets } => targets |> any(target => type_summary_or_structural_alias_reaches_fn(name: target, summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names, visited: v2))
-          Absent => false
-        }
-    }
+// WHICH NAMES REACH A FUNCTION-TYPED FIELD, ANSWERED ONCE FOR THE WHOLE SUMMARY MAP.
+//
+// A name holds DIRECTLY when it is a summary with its own fn field, or, when it is no summary at
+// all, a structural alias the builder recorded as naming an arrow. It REACHES when it holds
+// directly or one of its targets reaches: a summary's targets are its field types and import
+// surface names, an alias's are its recorded surface names. That is plain reachability to a
+// direct holder, so it is a least fixpoint over one set, and each round is a fold over the
+// candidates that adds every name with a target already in the set.
+//
+// THE PREVIOUS ANSWER WAS ONE DEPTH-FIRST SEARCH PER SUMMARY, FROM A FRESH `visited`, and the set
+// was PATH-LOCAL: sibling branches never saw what the other had already explored. A summary that
+// reaches no fn -- the common case -- therefore walked its whole reachable type graph, once per
+// path to each node, and that walk ran once per summary. build_emit_graph_info calls this on every
+// resolve and every emit, so the cost landed in every reconcile the floor prepares. The rounds
+// here are bounded by how deep type nesting goes, not by how many types exist.
+type FnReachRound {
+  reached: Set<String>
+  grew: Bool
+}
+
+fn fn_reach_holds_directly(name: String, summaries: Map<String, TypeSummary>, structural_alias_direct_fn_names: Set<String>) -> Bool {
+  match map_get(summaries, name) {
+    Present { value: s } => s.has_fn_fields
+    Absent => set_contains(structural_alias_direct_fn_names, name)
   }
 }
 
+fn fn_reach_targets(name: String, summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>) -> List<String> {
+  match map_get(summaries, name) {
+    Present { value: s } => concat(map_values(s.field_type_map), s.field_import_surface_names)
+    Absent =>
+      match map_get(structural_alias_fn_surface_names, name) {
+        Present { value: targets } => targets
+        Absent => []
+      }
+  }
+}
+
+fn fn_reaching_names_fixpoint(candidates: List<String>, summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>, reached: Set<String>) -> Set<String> {
+  let round = fold(candidates, init: FnReachRound { reached: reached, grew: false }, f: (acc, name) =>
+    if set_contains(acc.reached, name) { acc }
+    else if fn_reach_holds_directly(name: name, summaries: summaries, structural_alias_direct_fn_names: structural_alias_direct_fn_names)
+      || (fn_reach_targets(name: name, summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names)
+        |> any(target => set_contains(acc.reached, target) || fn_reach_holds_directly(name: target, summaries: summaries, structural_alias_direct_fn_names: structural_alias_direct_fn_names))) {
+      FnReachRound { reached: set_insert(acc.reached, name), grew: true }
+    } else { acc }
+  )
+  if round.grew {
+    fn_reaching_names_fixpoint(candidates: candidates, summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names, reached: round.reached)
+  } else { round.reached }
+}
+
+fn fn_reaching_names(summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> Set<String> {
+  fn_reaching_names_fixpoint(
+    candidates: concat(map_keys(summaries), map_keys(structural_alias_fn_surface_names)),
+    summaries: summaries,
+    structural_alias_fn_surface_names: structural_alias_fn_surface_names,
+    structural_alias_direct_fn_names: structural_alias_direct_fn_names,
+    reached: empty_set()
+  )
+}
+
 fn close_fn_fields(summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> Map<String, TypeSummary> {
+  let reaching = fn_reaching_names(summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names)
   fold(map_keys(summaries), init: summaries, f: (acc, name) =>
     match map_get(summaries, name) {
       Present { value: s } =>
-        if !s.has_fn_fields && type_summary_or_structural_alias_reaches_fn(name: name, summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names, visited: empty_set()) {
+        if !s.has_fn_fields && set_contains(reaching, name) {
           map_insert(acc, name, TypeSummary {
             name: s.name,
             repr: s.repr,
