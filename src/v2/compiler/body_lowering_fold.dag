@@ -8207,6 +8207,28 @@ fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
   }
 }
 
+// WHICH type_decl IS A WHERE-REFINEMENT, ASKED ONCE, BY THE SAME ARMS body_lower_type_decl_by_body TAKES:
+// not a record (body_lower_type_decl_record_block_optional), and a where host
+// (body_lower_find_where_host_conj). After lowering, a refinement and a record share the
+// Conj { Name: payload } shape, and so does a payload-bearing single variant, so the refinement fact is
+// read HERE and carried on v2.compiler.normalized_tree NormalizedTree refinement_declarations beside
+// record_declarations -- positive facts only: a Conj member named in neither is neither. It reads the
+// parse, not the lowered where node, so it does not depend on how the predicate itself is represented.
+fn body_lower_type_decl_refinement_name_optional(shell: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => Absent
+    Present { value: captured } =>
+      match body_lower_type_decl_record_block_optional(captured: captured) {
+        Present { value: _ } => Absent
+        Absent =>
+          match body_lower_find_where_host_conj(root: captured) {
+            Absent => Absent
+            Present { value: _ } => dag_surface_kw_then_ident_from_captured(captured: captured)
+          }
+      }
+  }
+}
+
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => body_lower_type_decl_unreadable(shell: shell)
