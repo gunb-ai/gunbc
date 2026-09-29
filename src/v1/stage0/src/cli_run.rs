@@ -927,6 +927,17 @@ pub(crate) mod bare_reference_scanner_tests {
         assert!(!c.names.contains("response"), "{:?}", c.names);
         assert!(!c.call_position.contains("response"));
         assert!(!c.dotted_heads.contains("response"));
+        // The discriminator (ported from #12600's scanner control): a genuine call to `response`
+        // in the SAME file is still a reference, so the reader did not buy the fix by going blind
+        // to the spelling.
+        let calling = parsed(&format!(
+            "{SERVICE_SPECIMEN}fn use_it() -> String {{ response(result: \"x\") }}\n"
+        ));
+        assert!(
+            calling.call_position.contains("response"),
+            "{:?}",
+            calling.call_position
+        );
     }
 
     /// A named argument's LABEL names a parameter of the callee, never a declaration.
@@ -10198,6 +10209,54 @@ mod closure_edge_demand_tests {
             },
         )?;
         Ok(providers)
+    }
+
+    /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
+    /// dispatches on the head's text), not a reference to a pool-wide `fn response`.
+    /// Discriminating RED: before the clause-head rule, the importing service below carried
+    /// `UnimportedBareProvider { name: "response", provider: helper.dag }`. Positive control:
+    /// a genuine bare call to an unimported `fn response` in the SAME file still refuses, so
+    /// the rule is positional, not a denylist of the spelling.
+    #[test]
+    fn service_response_clause_is_not_a_bare_reference() {
+        let service = |call: &str| {
+            format!(
+                "module svc.consumer\nimport svc.types {{ Payload }}\n\n\
+                 service svc.Api {{\n  operation Get {{\n    input {{ id: Int }}\n    \
+                 output {{ id: Int from \"id\" }}\n    readonly\n    \
+                 transport rest {{ method: GET, path: \"/x\" }}\n    \
+                 response {{\n      200 => Payload\n    }}\n  }}\n}}\n{call}"
+            )
+        };
+        let helper = "module test.claim.helper\nfn response(result: String) -> String { result }\n";
+        let types = "module svc.types\ntype Payload = { id: Int }\n";
+        let clean = Fixture::new(&[
+            ("consumer.dag", service("").as_str()),
+            ("helper.dag", helper),
+            ("types.dag", types),
+        ]);
+        let index = clean.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found.iter().all(|v| v.name != "response"),
+            "a service `response` clause head was read as a reference: {found:?}"
+        );
+        let control = Fixture::new(&[
+            (
+                "consumer.dag",
+                service("fn use_it() -> String { response(result: \"x\") }\n").as_str(),
+            ),
+            ("helper.dag", helper),
+            ("types.dag", types),
+        ]);
+        let index = control.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "response" && v.provider_module == "test.claim.helper"),
+            "a genuine unimported bare `response()` call must still be reported: {found:?}"
+        );
     }
 
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
