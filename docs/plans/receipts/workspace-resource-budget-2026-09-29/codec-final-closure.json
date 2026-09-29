@@ -1,0 +1,11 @@
+{
+  "revision": "97cd02e5f",
+  "module_count": 647,
+  "manifest_sha256": "0a602f2e36039701480b7959da3caced3683ba48ff361035287794fea19da952",
+  "entry": "gunbc.test.claim.workspace_launch_directive_witness_test",
+  "source_roots": [
+    "dag",
+    "src/v2"
+  ],
+  "generator": "tools/tests/dag_validation_closure.py"
+}
