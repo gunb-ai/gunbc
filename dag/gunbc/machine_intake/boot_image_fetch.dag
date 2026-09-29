@@ -23,8 +23,8 @@ import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import v2.std.optional { Present }
 import gunbc.host_command_binding {
-  CommandHost, LocalCommandHost, HostEffectDone, HostEffectFailed, HostEffectUnconfirmed, HostEffectNotDispatched,
-  host_effect, host_effect_text,
+  CommandHost, LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  host_command, host_command_outcome_text,
 }
 
 // PLACING A VERIFIED BOOT IMAGE WHERE A CONTROLLER CAN FETCH IT, as a modeled operation. The
@@ -79,9 +79,9 @@ fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
 // could not be read -- the command failed, was not sent, or its reply was lost -- is Unavailable with
 // what was observed; reading is side-effect free, so an unconfirmed read is simply unread.
 fn boot_image_digest_on(host: CommandHost, path: NonEmptyStr) -> Sha256FileDigest {
-  let measured = host_effect(host: host, command: sha256sum_file_command(path: path as String))
+  let measured = host_command(host: host, command: sha256sum_file_command(path: path as String))
   match measured {
-    HostEffectDone { stdout: o } =>
+    HostCommandDone { stdout: o } =>
       match first(filter_words(text: o)) {
         Absent => Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed nothing" }
         Present { value: hex } =>
@@ -90,7 +90,7 @@ fn boot_image_digest_on(host: CommandHost, path: NonEmptyStr) -> Sha256FileDiges
             Present { value: _ } => Sha256FileDigest { digest: sha256_digest(hex: hex as NonEmptyStr) }
           }
       }
-    other => Sha256FileDigestUnavailable { path: path, reason: host_effect_text(e: other) }
+    other => Sha256FileDigestUnavailable { path: path, reason: host_command_outcome_text(e: other) }
   }
 }
 
@@ -262,10 +262,10 @@ fn publish_verified_boot_image(
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
 {
-  return match host_effect(host: host, command: test_regular_file_command(path: published_path as String)) {
-    HostEffectDone { stdout: _ } => reconcile_present_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
-    HostEffectFailed { exit_code: _, stderr: _ } => link_verified_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
-    other => BootImageDigestUnreadable { path: published_path, reason: concat("whether the name is taken is unread: ", host_effect_text(e: other)) }
+  return match host_command(host: host, command: test_regular_file_command(path: published_path as String)) {
+    HostCommandDone { stdout: _ } => reconcile_present_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    HostCommandFailed { exit_code: _, stderr: _ } => link_verified_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    other => BootImageDigestUnreadable { path: published_path, reason: concat("whether the name is taken is unread: ", host_command_outcome_text(e: other)) }
   }
 }
 
@@ -283,9 +283,9 @@ fn link_verified_boot_image(
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome {
-  return match host_effect(host: host, command: ln_hard_command(source: staging_path as String, destination: published_path as String)) {
-    HostEffectDone { stdout: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
-    HostEffectUnconfirmed { exit_code: _, stdout: _, stderr: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+  return match host_command(host: host, command: ln_hard_command(source: staging_path as String, destination: published_path as String)) {
+    HostCommandDone { stdout: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
     _ => BootImagePublishFailed { staged: staging_path, destination: published_path }
   }
 }
@@ -300,9 +300,9 @@ fn unstage_then_confirm(host: CommandHost, staging_path: NonEmptyStr, published_
 // The staging name is removed only once the published name reads back verified, so a failed publish
 // always leaves the verified bytes somewhere to look at.
 fn admitted_after_unstaging(host: CommandHost, staging_path: NonEmptyStr, path: NonEmptyStr, digest: NonEmptyStr) -> BootImageFetchOutcome {
-  match host_effect(host: host, command: rm_force_command(path: staging_path as String)) {
-    HostEffectDone { stdout: _ } => BootImageAdmitted { path: path, digest: digest }
-    other => BootImageAdmittedStagingRemains { path: path, digest: digest, staging: staging_path, reason: host_effect_text(e: other) }
+  match host_command(host: host, command: rm_force_command(path: staging_path as String)) {
+    HostCommandDone { stdout: _ } => BootImageAdmitted { path: path, digest: digest }
+    other => BootImageAdmittedStagingRemains { path: path, digest: digest, staging: staging_path, reason: host_command_outcome_text(e: other) }
   }
 }
 

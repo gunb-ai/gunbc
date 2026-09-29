@@ -257,6 +257,24 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.inferred_tree NodeGrounding); retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_unsupported_form,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body lowering's CATCH-ALL refusal: a value, arm capture or postfix/as-suffix shape v2.compiler.body_lowering_fold reads but has no dedicated reason for (gunbc#12245 and gunbc#12315 added producers without this row). Owned as a frontier, not as a class: it retires when each producing site refuses with a cause that names its shape (or lowers), so that no body-lowering path answers with this symbol and the count zeroes. Observed at fatal grain on the native route at main 1457bd81d00 over dag + src/v2 (member rows and file refusals)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_function_value_body_unread,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a function value in value position (gunbc#12210) whose body neither body reader of v2.compiler.body_lowering_fold body_lower_function_value_body lowers: the refusal is located at the body rather than narrowing the value to its parameter. Flips when every function-value body shape in the corpus lowers through the same statement/expression readers an fn body uses, and the count zeroes. Observed at fatal grain as file refusals on the native route at main 1457bd81d00 over dag + src/v2"
+  },
+  CauseOwnership {
+    cause: ^infer_match_shape_invalid,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "v2.compiler.04_infer infer_match_bool_arm_row reached a match arm that is not a Conj carrying match_arm_pattern and match_arm_body, i.e. a lowered arm shape infer does not read. Now observable at PREPARE because more modules clear body lowering and reach infer. Flips when every arm shape body lowering emits is the one infer reads (one arm carrier, no second shape) and the count zeroes. Observed at fatal grain on native-route member rows at main 1457bd81d00 over dag + src/v2"
   }
 ]
 
