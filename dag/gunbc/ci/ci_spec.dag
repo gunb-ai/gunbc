@@ -91,9 +91,14 @@ import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_discovery_scan_dirs
 }
-import gunbc.cli_invoke {
-  claim_executor_verify_artifacts_shell
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var,
 }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.std.node { Node }
 import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script,
   gunbc_run_step_script_with_prelude,
@@ -146,7 +151,7 @@ import v2.std.orchestration {
   Run
 }
 import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning }
+import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -561,7 +566,7 @@ fn ci_fmt_gate_line() -> String {
   "\"$CARGO_BIN\" fmt --all --check"
 }
 
-data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. Operation shape: v2.workflow.ci_v1_compiler_tests_compile_gate_emit (extdeps.cargo_build cargo.Build.Test)."
+data ci_v1_compiler_tests_compile_gate_note: String = "cargo test -p v1-compiler-tests --release (RETAINED-KERNEL EXECUTION gate; the tests RUN). --no-run was removed 2026-08-11 with the suite cutover: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), 9 modules / 30 tests, down from 98 / 740 of which zero executed. There is no compile-only arm — a retained test either executes or the gate refuses. Originally RE-ORDERED 2026-08-05 (operator ruling, PR A / fierce-heron-177 / #7868): runs AFTER the release build so the gate reuses the release-profile v1-compiler artifact instead of forcing a second dev-profile compile. ci_release_features carries text_lookup_work_counter,interp_test_witness,test_hooks so release bins and the test crate share ONE release-profile v1-compiler artifact (feature-set union). Per-call depth instrumentation is default-off armed (record_call_env_depth is a relaxed-load guard until a test calls arm_call_env_depth_witness_for_test). Affected-set admission (compile_contract_admission_witness + CompileContractAdmissionReceipt) was built per lane brief step 3, measured at 84-133s to skip an 18s compile (resolve_entry_graph_shared for one git diff), and REMOVED 2026-08-06 — the gate runs unconditionally on every build job. CI-performance status authority gunbc.ci_build_job_v1_compiler_unit_receipt (one_profile_ordering_status, one_compiler_unit_status, wall_benefit_status, fleet_build_job_log_evidence_note). A2 fix (#7910): delete broken package-relative .git rerun-if-changed lines in src/v1/stage0/build.rs (StaleItem(MissingFile) on second cargo invocation); machine unit evidence in ci_build_job_v1_compiler_unit_receipt machine_unit_identity_note. The step no longer runs: the rust-unit-tests job was cut on 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path), and its unconsumed emitter v2.workflow.ci_v1_compiler_tests_compile_gate_emit was deleted on 2026-09-28. A restored lane is authored fresh against the route that exists then."
 
 fn ci_retry_body_run(command: String) -> Run {
   Run {
@@ -610,13 +615,30 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
 // ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control
 // (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of
 // scope: a same-run artifact is fresh by construction.
-fn artifact_shell_path(name: String) -> String {
-  concat(concat("\"$ROOT/target/release/", name), "\"")
+fn ci_release_artifact_word(name: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: "ROOT"),
+    bash_build_word_lit(text: concat("/target/release/", name)),
+  ])
 }
 
+// claim_executor verifies every roster bin it was built beside, itself included.
+fn ci_floor_build_verify_stmt() -> Node {
+  bash_build_command_with_words(words: concat(
+    [ci_release_artifact_word(name: "claim_executor"), bash_build_word_lit(text: "--verify-build-artifacts")],
+    map(ci_floor_required_artifact_names(), name => ci_release_artifact_word(name: name))
+  ))
+}
+
+// A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
+// gate turns red. It is never a partial script (DESIGN 5: refuse, never widen).
+data ci_floor_build_verify_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ gunbc.ci_spec ci_floor_build_verify_script: the bash serializer refused the verify statement; this marker is not valid workflow shell\n"
+
 fn ci_floor_build_verify_script() -> String {
-  let paths = map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
-  claim_executor_verify_artifacts_shell(artifact_paths: paths)
+  match bash_emit_stmts(statements: [ci_floor_build_verify_stmt()], set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ci_floor_build_verify_refused_poison
+  }
 }
 
 data ci_release_bins_archive_name: String = "release-bins.tgz"

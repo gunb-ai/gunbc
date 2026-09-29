@@ -1058,7 +1058,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 ///
 /// `held` and `advanced` are the observation holding: every planned identity reached a terminal
 /// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
-/// roster, which a reviewed pull request may carry (the nightly only publishes it). An owned
+/// roster, which a reviewed pull request may carry (the required native-route lane publishes it). An owned
 /// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
 /// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
 /// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier

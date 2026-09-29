@@ -1,6 +1,6 @@
 module test.claim.spark.fabric_capacity_standing_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
@@ -18,7 +18,7 @@ import gunbc.instruments.fabric_capacity_standing {
   ProbeFieldName, Invocation, UnitSha, Container, ImageSha, StartedAt, PoolLine, ConcurrencyLine,
   AllocatorBlocks, BlockSize, MaxModelLen,
   LaunchRead, LaunchIdentified, LaunchUnidentified, launch_from_fields,
-  GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing_current,
+  GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing_current, fabric_capacity_standing_for,
   standing_for_authority,
 }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, AuthorityTransitionRecord }
@@ -315,8 +315,7 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // THE ROSTER IS SUPPLIED AT GENERATION 0 -- every claimed group's resting row, which is what the
 // authority log folds to when no transition is recorded -- so the claim stays hermetic while the
 // real group_report producer and the binding that maps it over the roster both execute. The
-// live entry, which reads that roster from the event log first, is executed by
-// test.claim.spark.fabric_capacity_standing_wet_witness on the local-repo wet lane.
+// roster READ is exercised by the supplied-host claim below.
 fn w_resting_current() -> List<CurrentAuthority> {
   map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
@@ -328,6 +327,24 @@ test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_t
     ExitFailure { code: _, reason: reason } =>
       (live.admitting == false)
         && string_contains(s: reason, pattern: live.text)
+  }
+}
+
+// THE OFF-FLEET PREMISE IS SUPPLIED, NOT READ FROM THE RUNNER. The live entry differs from
+// fabric_capacity_standing_for only in taking the executor from the host's `hostname` and the
+// instant from its clock; both are supplied here, so the verdict does not depend on which runner
+// executes it (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+// Everything beneath the seam is real: store resolution for a host that declares no dashboard
+// instance, the per-group CurrentAuthorityUnread, and the verdict text naming that read. Letting an
+// unreadable log fall back to the resting row turns this red.
+data witness_host_declaring_no_dashboard_instance: String = "gunbc-witness-host-without-dashboard-instance"
+data witness_instant: EpochSecs = 1000
+
+test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
+  match fabric_capacity_standing_for(executor: witness_host_declaring_no_dashboard_instance, at: witness_instant) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: reason } =>
+      string_contains(s: reason, pattern: "group-a: serving authority could not be read at store: no dashboard instance is declared for host gunbc-witness-host-without-dashboard-instance")
   }
 }
 
