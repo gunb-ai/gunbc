@@ -2043,7 +2043,6 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
- (roadmap: the continuation decision reconciles the worker PROCESS, not only the provider ledger — a worker that exited without writing a terminal provider event (the placement-refusal exit path) left its lineage live forever and every redispatch hit continuation-hold; the 2026-09-29 slot-population attempt was exactly that. worker_terminal is now provider-terminal OR a recorded process exit (WorkerProcessExited), fail-closed for running/absent/unobserved. Witness pins the four arms of belt_worker_process_terminal.)
       capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
       supervisor_verdict: belt_supervisor_verdict_observe(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
       verification: belt_verification_segment(progress: progress),
@@ -7386,7 +7385,6 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
     || belt_attempt_unrecoverable(provider: provider, evidence: evidence)
 }
 
- (roadmap: the continuation decision reconciles the worker PROCESS, not only the provider ledger — a worker that exited without writing a terminal provider event (the placement-refusal exit path) left its lineage live forever and every redispatch hit continuation-hold; the 2026-09-29 slot-population attempt was exactly that. worker_terminal is now provider-terminal OR a recorded process exit (WorkerProcessExited), fail-closed for running/absent/unobserved. Witness pins the four arms of belt_worker_process_terminal.)
 fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {
   match evidence {
     WorkerProcessExited { exit_code: _, last_command: _ } => true
