@@ -411,7 +411,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_observation.dag", name: "ReadsLiveTree", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_observation_witness.dag", name: "ReadsLiveTree", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_representability_witness.dag", name: "ReadsLiveTree", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_representability_witness.dag", name: "ReadsLiveTree", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_representability_witness.dag", name: "artifact_path", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_fan_program_syntax_boundary_witness.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/bmc/bmc_health_reader.dag", name: "ends_with", standing: ActiveDebt },
