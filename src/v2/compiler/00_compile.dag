@@ -4276,6 +4276,7 @@ type NativeDemandObservationRollup {
   eval_samples: List<Int>
   prepare_ok: Int
   prepare_refused: Int
+  prepare_unrun: Int
   classified: Int
   unclassified: Int
   invalid_elapsed: Int
@@ -4289,6 +4290,7 @@ fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
     eval_samples: [],
     prepare_ok: 0,
     prepare_refused: 0,
+    prepare_unrun: 0,
     classified: 0,
     unclassified: 0,
     invalid_elapsed: 0
@@ -4298,9 +4300,28 @@ fn native_demand_rollup_empty() -> NativeDemandObservationRollup {
 // PREPARATION STANDING IS READ FROM THE ENGINE'S TYPED STATE, not from a settlement word. The run
 // already holds the settled DemandState and its NativeDemandValue, so the standing is matched where
 // it lives rather than re-derived from a rendering of it.
+// A DEMAND THAT NEVER RAN IS NOT A SECOND REFUSAL, and separating the two is what keeps a module's
+// failure counted once. When resolution decides rows, the resolve transition carries those rows as its
+// VALUE and is a preparation refusal; the dependent infer demand is then admitted and settles
+// DemandRefused WITHOUT a value -- it never executed, and there is nothing it refused. Counting both
+// reported prepare_refused = 2 for one failing module where the module-level count before the demand
+// engine was 1 (review of gunbc#12401).
+//
+// PreparationUnrun IS COUNTED, JUST NOT AS A REFUSAL. It gets its own total rather than folding into
+// NotApplicable, because "admitted and never executed" is a fact about the run worth reading: a
+// population where it is large is a population mostly blocked behind earlier failures, and a reader
+// who saw only prepare_ok and prepare_refused could not tell that from a small universe.
+//
+// THE LIMIT, STATED. This reads the settled state and not a cause, so a demand that genuinely refused
+// on its OWN execution without producing rows also lands in Unrun. The engine distinguishes
+// DemandRefused from DemandBlocked { cause } (v2.std.demand_engine), and settling such a dependent as
+// Blocked rather than Refused is the sharper repair -- it belongs to the engine's settlement, not to
+// this rollup, and until it lands the number is visible here rather than silently inside the refusal
+// count.
 type NativePreparationStanding
   = PreparationSucceeded
   | PreparationRefused
+  | PreparationUnrun
   | PreparationNotApplicable
 
 fn native_demand_preparation_standing(
@@ -4311,7 +4332,7 @@ fn native_demand_preparation_standing(
     Absent => PreparationNotApplicable
     Present { value: entry } =>
       match entry.state {
-        DemandRefused => PreparationRefused
+        DemandRefused => PreparationUnrun
         DemandAvailable { value: v } =>
           match v {
             NativeInferValue { preparation: p } =>
@@ -4342,6 +4363,7 @@ fn native_demand_rollup_step(
   let invalid_delta = if elapsed_is_valid(e: t.elapsed) { 0 } else { 1 }
   let ok_delta = match standing { PreparationSucceeded => 1  _ => 0 }
   let refused_delta = match standing { PreparationRefused => 1  _ => 0 }
+  let unrun_delta = match standing { PreparationUnrun => 1  _ => 0 }
   match native_demand_cost_class(identity: t.identity) {
     NativeCostPrepare =>
       NativeDemandObservationRollup {
@@ -4351,6 +4373,7 @@ fn native_demand_rollup_step(
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok + ok_delta,
         prepare_refused: acc.prepare_refused + refused_delta,
+        prepare_unrun: acc.prepare_unrun + unrun_delta,
         classified: acc.classified + 1,
         unclassified: acc.unclassified,
         invalid_elapsed: acc.invalid_elapsed + invalid_delta
@@ -4363,6 +4386,7 @@ fn native_demand_rollup_step(
         eval_samples: list_snoc_item(xs: acc.eval_samples, item: nanos),
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
+        prepare_unrun: acc.prepare_unrun,
         classified: acc.classified + 1,
         unclassified: acc.unclassified,
         invalid_elapsed: acc.invalid_elapsed + invalid_delta
@@ -4375,6 +4399,7 @@ fn native_demand_rollup_step(
         eval_samples: acc.eval_samples,
         prepare_ok: acc.prepare_ok,
         prepare_refused: acc.prepare_refused,
+        prepare_unrun: acc.prepare_unrun,
         classified: acc.classified,
         unclassified: acc.unclassified + 1,
         invalid_elapsed: acc.invalid_elapsed + invalid_delta
@@ -4450,6 +4475,13 @@ fn native_demand_prepare_ok(run: NativeDemandRun) -> Int {
 
 fn native_demand_prepare_refused(run: NativeDemandRun) -> Int {
   native_demand_observation_rollup(run: run).prepare_refused
+}
+
+// ADMITTED AND NEVER EXECUTED, exported beside the refusal count so the receipt can carry both. A
+// reader comparing prepare_ok + prepare_refused against the transition count would otherwise find a
+// gap with no name.
+fn native_demand_prepare_unrun(run: NativeDemandRun) -> Int {
+  native_demand_observation_rollup(run: run).prepare_unrun
 }
 
 fn native_demand_unclassified_transitions(run: NativeDemandRun) -> Int {
