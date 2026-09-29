@@ -792,7 +792,7 @@ fn leg_is_bound(leg: RouteLegStanding) -> Bool {
 }
 
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "the fleet-converge mode row for the qualification route, landing with #11484 (boot leg) and #11731 (image leg): the collect stage parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, and admit_callers on observed_run names it" as NonEmptyStr,
+  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
   sufficient_for: "minting an ObservedRunnerQualificationRun from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
 }
 
