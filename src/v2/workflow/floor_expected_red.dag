@@ -1099,7 +1099,7 @@ fn floor_expected_red_chunk_24() -> List<String> {
 // Class, mechanism, attribution and capability-grain trigger:
 // gunbc.recurring_failure_mode.absence_classifier_default_bucket.
 fn floor_expected_red_chunk_disjoint_refinement_chains() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
