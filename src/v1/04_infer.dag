@@ -4682,6 +4682,25 @@ fn structured_literal_constructs_formal_carrier(formal_peeled: Node, lit_name: S
   }
 }
 
+// A KERNEL CONTAINER FORMAL IS DECIDED BY IDENTITY BEFORE ANY SPELLING IS COMPARED. When the formal
+// is a kernel container spelling (List/Set/Map) and the literal's owning declaration is recoverable,
+// the literal is a value of the container exactly when that owner IS the container's std.algebra
+// carrier declaration. Equal leaf spellings never stand in: a module's own `type FreeMonoid<T> {..}`
+// owns a different declaration and is refused at List<Int>. Absent when the formal is not a kernel
+// container or the owner cannot be recovered, so the existing route decides as before.
+fn structured_kernel_container_identity_verdict(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool? {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal_peeled)
+  if !is_container_type(name: name) { return none }
+  match structured_formal_carrier_declaration(formal_peeled: formal_peeled, scope: scope) {
+    Present { value: carrier } =>
+      match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
+        Present { value: owner } => Present { value: declaration_ref_eq(a: carrier, b: owner) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
@@ -4702,6 +4721,9 @@ fn structured_application_site_type_mismatch_with_peeled(
           let formal_structural = formal_structural_name
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
+              match structured_kernel_container_identity_verdict(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
+                Present { value: admitted } => !admitted
+                Absent =>
               if application_type_names_compatible(
                 formal_name: formal_name, lit_name: lit_name,
                 type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
@@ -4783,6 +4805,7 @@ fn structured_application_site_type_mismatch_with_peeled(
                       false
                     }
                 }
+              }
               }
               }
             Absent => false
