@@ -49,9 +49,28 @@ fn probe_launch(dir: String, pid_path: String) -> ProbeLaunch {
       pid_path: pid_path as NonEmptyStr,
       ipmitool: probe as NonEmptyStr,
     )
-    let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 5))
-    let capture = Filesystem.Read(path: concat(dir, "/capture"))
-    ProbeLaunch { launched: spawned.success, capture: if capture.success { capture.content } else { "" } }
+    ProbeLaunch { launched: spawned.success, capture: capture_after(path: concat(dir, "/capture"), remaining: wait_seconds) }
+  }
+}
+
+// THE WAIT IS BOUNDED BY THE PROBE'S REPORT, NOT BY A FIXED WINDOW (gunbc.recurring_failure_mode
+// wet_witness_keyed_to_the_runner_not_its_subject). A fixed five seconds had to cover the launch plus
+// the probe's own three-second read; on a loaded runner the report could land after the window and
+// the positive claim went red for the runner's load, not the launch. The capture is re-read once a
+// second until it carries the probe's line or the bound runs out, so a fast runner returns as soon
+// as the probe reports and a slow one is given the time. The negative claim, whose child is stopped
+// before it reports, waits out the bound: its absence is only meaningful after the probe would have
+// reported on any runner the positive claim passes on.
+data wait_seconds: Int = 30
+
+fn capture_after(path: String, remaining: Int) -> String {
+  let read = Filesystem.Read(path: path)
+  let content = if read.success { read.content } else { "" }
+  if string_contains(s: content, pattern: "stdin-probe") || remaining <= 0 {
+    content
+  } else {
+    let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    capture_after(path: path, remaining: remaining - 1)
   }
 }
 
