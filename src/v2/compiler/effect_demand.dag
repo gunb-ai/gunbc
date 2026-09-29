@@ -1242,16 +1242,16 @@ data effect_demand_seam_roster: List<SeamStanding> = [
   },
   SeamStanding {
     declaration: "symbol_lexeme",
-    seam_module: "v2.std.compilers.lexing",
+    seam_module: "v2.std.node",
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "symbol_lexeme") },
-    emitted_rust_identity: "v2_std_compilers_lexing.rs::symbol_lexeme",
+    emitted_rust_identity: "v2_std_node.rs::symbol_lexeme",
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   },
   SeamStanding {
     declaration: "symbol_intern_lexeme",
-    seam_module: "v2.std.compilers.lexing",
+    seam_module: "v2.std.node",
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "symbol_intern_lexeme") },
-    emitted_rust_identity: "v2_std_compilers_lexing.rs::symbol_intern_lexeme",
+    emitted_rust_identity: "v2_std_node.rs::symbol_intern_lexeme",
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   },
   SeamStanding {
