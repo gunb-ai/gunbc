@@ -181,7 +181,7 @@ fn ln_symbolic_force_command(target: String, link_name: String) -> ArgvCommand {
 // With the trailing separator, a D that does not exist fails with ENOENT instead of minting a
 // LINK NAMED D -- the fail-closed half of "into the directory"; without it, `ln -sf T D` on a
 // missing D silently creates that stray link and reports success. The one live caller
-// (extdeps.linux.usb_gadget configfs_op_command) refuses a destination that is not
+// (extdeps.linux.usb_gadget configfs_op_staging) refuses a destination that is not
 // directory-spelled before any argv is minted, so the contract is enforced where the arguments
 // are, not hoped for here.
 //
