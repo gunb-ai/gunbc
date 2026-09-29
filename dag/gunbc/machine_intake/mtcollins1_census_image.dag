@@ -121,11 +121,12 @@ data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = UbuntuAuto
   early_commands: [concat("sh ", mtcollins1_census_program_on_medium() as String) as NonEmptyStr],
 }
 
-// THE KERNEL CMDLINE, IN TWO ROWS. The PINNED row is the cmdline of the image the boot medium row
-// pins (build key 8d357a525f078cb4, output 30ca88d4...): the census seed and the serial console. The
-// CURRENT row adds the module-identity instrument. The pinned row is kept because the fleet-SSH
-// publish's first act is to rebuild the pinned derivation on srv2 and require the pinned digest
-// before it publishes anything (mtcollins1_census_image_srv2_regression).
+// THE KERNEL CMDLINE, IN TWO ROWS. The PINNED row is the cmdline of the image the boot medium row pins
+// (output 30ca88d4..., built under builder revision 1 as key 8d357a525f078cb4): the census seed and the
+// serial console. The CURRENT row adds the module-identity instrument. The pinned row is kept because
+// the fleet-SSH publish first rebuilds the pinned-input derivation on srv2 and requires its hermetic
+// digest and the stock boot chain before it publishes anything
+// (gunbc.machine_intake_mtcollins1_census_image_publish census_srv2_regression).
 data mtcollins1_census_pinned_grub_cmdline: NonEmptyStr = concat(
   ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: mtcollins1_census_nocloud_dir) as String,
   " ",
@@ -200,7 +201,9 @@ data mtcollins1_census_image: Mtcollins1CensusImage = mtcollins1_census_image_de
   volume_id: mtcollins1_census_volume_id,
 )
 
-// THE DERIVATION THE BOOT MEDIUM ROW PINS (build key 8d357a525f078cb4, output 30ca88d4...).
+// THE PRE-INSTRUMENT DERIVATION: the inputs of the image the boot medium row pins (30ca88d4..., built under
+// builder revision 1). Under the attribute-pinning builder its key is bf916c060d072e72 and its hermetic
+// output eb23f174... (gunbc.machine_intake_mtcollins1_census_image_publish).
 data mtcollins1_census_pinned_image: Mtcollins1CensusImage = mtcollins1_census_image_derivation_with_cmdline(
   stages: mtcollins1_census_stages,
   image_stem: mtcollins1_census_image_stem,
