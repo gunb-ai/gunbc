@@ -16,14 +16,7 @@ fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
           Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
         }
       })
-    TypeNode { connective: _ } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
-        }
-      })
-    ComputationNode { behavior: _ } =>
+    _ =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc

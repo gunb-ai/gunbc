@@ -30,14 +30,7 @@ data wave1_gate1_add_module_source: String = "module add_probe\n\nfn add(x: Int,
 fn wave1_gate1_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    TypeNode { connective: _ } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => wave1_gate1_find_arrow_in_module(root: e.target)
-        }
-      })
-    ComputationNode { behavior: _ } =>
+    _ =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc

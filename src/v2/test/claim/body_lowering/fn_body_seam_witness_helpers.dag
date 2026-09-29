@@ -96,15 +96,7 @@ fn fn_body_seam_add_fn_body_shell() -> Optional<Node> {
 fn fn_body_seam_tree_has_transform(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Transform } => true
-    TypeNode { connective: _ } =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          fn_body_seam_tree_has_transform(root: e.target)
-        }
-      })
-    ComputationNode { behavior: _ } =>
+    _ =>
       fold(root.children, init: false, f: fn(found, e) {
         if found {
           true

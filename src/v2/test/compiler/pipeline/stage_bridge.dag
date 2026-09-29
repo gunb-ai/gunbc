@@ -52,14 +52,7 @@ import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    TypeNode { connective: _ } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => pipeline_find_arrow_in_module(root: e.target)
-        }
-      })
-    ComputationNode { behavior: _ } =>
+    _ =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
