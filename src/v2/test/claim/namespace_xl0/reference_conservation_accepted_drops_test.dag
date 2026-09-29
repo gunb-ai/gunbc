@@ -31,8 +31,9 @@ fn binary_operand_beside_match_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "binary_operand_beside_match", source: binary_operand_beside_match_source)
 }
 
-test fn a_binary_operand_beside_a_match_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: conservation_report_of(subject: binary_operand_beside_match_subject()), wanted: ^rc_left) == 1
+test fn a_binary_operand_beside_a_match_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: binary_operand_beside_match_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_left) == 0)
 }
 
 data binary_operand_beside_if_source: String = "module v2.test.reference_conservation_binop_if\n\ndata rc_left: Bool = true\n\nfn rc_and(c: Bool) -> Bool {\n  rc_left && if c { true } else { false }\n}\n"
@@ -41,8 +42,9 @@ fn binary_operand_beside_if_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "binary_operand_beside_if", source: binary_operand_beside_if_source)
 }
 
-test fn a_binary_operand_beside_an_if_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: conservation_report_of(subject: binary_operand_beside_if_subject()), wanted: ^rc_left) == 1
+test fn a_binary_operand_beside_an_if_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: binary_operand_beside_if_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_left) == 0)
 }
 
 data record_field_beside_match_source: String = "module v2.test.reference_conservation_record_match\n\ntype RcT = RcA | RcB\n\ntype RcR { k: Bool, j: Bool }\n\ndata rc_sibling: Bool = true\n\nfn rc_record(t: RcT) -> RcR {\n  RcR { k: match t {\n      RcA => true\n      RcB => false\n    }, j: rc_sibling }\n}\n"
@@ -51,8 +53,9 @@ fn record_field_beside_match_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "record_field_beside_match", source: record_field_beside_match_source)
 }
 
-test fn a_record_field_beside_a_match_valued_field_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: conservation_report_of(subject: record_field_beside_match_subject()), wanted: ^rc_sibling) == 1
+test fn a_record_field_beside_a_match_valued_field_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: record_field_beside_match_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_sibling) == 0)
 }
 
 data call_argument_beside_match_source: String = "module v2.test.reference_conservation_call_match\n\ntype RcT = RcA | RcB\n\ndata rc_sibling: Bool = true\n\nfn rc_h(a: Bool, b: Bool) -> Bool { a }\n\nfn rc_call(t: RcT) -> Bool {\n  rc_h(a: match t {\n      RcA => true\n      RcB => false\n    }, b: rc_sibling)\n}\n"
@@ -61,8 +64,9 @@ fn call_argument_beside_match_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "call_argument_beside_match", source: call_argument_beside_match_source)
 }
 
-test fn a_call_argument_beside_a_match_valued_argument_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: conservation_report_of(subject: call_argument_beside_match_subject()), wanted: ^rc_sibling) == 1
+test fn a_call_argument_beside_a_match_valued_argument_is_conserved_holds() -> Bool {
+  let r = conservation_report_of(subject: call_argument_beside_match_subject())
+  reference_conservation_accepted(report: r) && (report_drop_count(report: r, wanted: ^rc_sibling) == 0)
 }
 
 // A primary expression the primary readers do not recognize lowers to its first atom: a map literal

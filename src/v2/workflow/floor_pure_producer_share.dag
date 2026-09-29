@@ -602,6 +602,10 @@ import v2.std.collection { List }
 // THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
 // v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
 // over five inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 ENCLOSING-EXPRESSION ROW: v2.test.claim.body_lowering.enclosing_expression_structure
+// ees_and_match_value, ees_call_match_value, ees_and_match_walked and ees_call_match_walked each
+// tokenize and parse one inline module and call one producer on its body expression; the stored value
+// is an EesValue (a lowered Node or a reason Symbol, no resolution context and no closure).
 // THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
 // over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
@@ -701,6 +705,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_and_match_value",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_call_match_value",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_and_match_walked",
+  "v2.test.claim.body_lowering.enclosing_expression_structure.ees_call_match_walked",
   "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
@@ -730,6 +738,11 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_mixed_probe_verdict",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_empty_probe_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_coproduct_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_alias_used_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_alias_of_alias_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_bodyless_verdict",
+  "v2.test.claim.body_lowering.plain_type_decl_lowering.ptd_payload_single_variant_verdict",
   "v2.test.claim.coercion.identity_cast_emission_route.identity_cast_route_verdict",
   "v2.test.claim.coercion.identity_cast_emission_route.refused_cast_route_verdict",
   "v2.test.emit.int_literal_form_unwired_located.int_literal_probe_table",
