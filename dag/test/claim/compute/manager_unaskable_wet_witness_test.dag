@@ -31,6 +31,15 @@ import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 //
 // THE UNIT NAME IS FOR AN IDENTITY NO PRODUCER MINTS (all-f), so on a host WITH a manager the
 // reading is of a unit that does not exist and nothing is stopped or released.
+//
+// WHAT THE MANAGER-PRESENT ARM ASSERTS IS THE RELATION BETWEEN THE TWO READINGS, NOT A FIXED ARM.
+// A reachable manager answers LoadState=not-found for the all-f unit, which the termination fold
+// reads as an authoritative absence (frees) and the lifecycle fold as a removed transient unit
+// (ended); a manager that refuses the bus leaves both unavailable. Either is that host's honest
+// answer, so the claim asserts the two routes AGREE and that the unit is not reported populated.
+// The earlier form asserted "nothing frees" on a manager host, which is false wherever the user
+// manager answers, so the cell was red on srv1 by runner assignment alone --
+// gunbc.recurring_failure_mode wet_witness_keyed_to_the_runner_not_its_subject.
 data unaskable_identity: String = "ffffffffffffffff"
 
 fn manager_present() -> Bool {
@@ -43,6 +52,15 @@ fn termination_unavailable(t: UnitTermination) -> Bool {
     UnitAttemptCompleted { detail: _ } => false
     UnitAbsentAuthoritatively { detail: _ } => false
     UnitPopulated { detail: _ } => false
+  }
+}
+
+fn unit_populated(t: UnitTermination) -> Bool {
+  match t {
+    UnitPopulated { detail: _ } => true
+    UnitAttemptCompleted { detail: _ } => false
+    UnitAbsentAuthoritatively { detail: _ } => false
+    UnitTerminationUnavailable { detail: _ } => false
   }
 }
 
@@ -68,7 +86,8 @@ fn lifecycle_unknown(u: UnitLifecycle) -> Bool {
 // THE INHABITANCE HALF (DESIGN section 3, the pairing obligation). The claim above supplies the
 // boundary's inputs, so something must still establish that the REAL producer emits that shape and
 // that the real route runs. On a host WITH a manager this asserts the route reaches a RETURNED
-// reading rather than aborting, which is the half the wet lane can honestly carry; on a host
+// reading on which the termination and lifecycle routes agree, which is the half the wet lane can
+// honestly carry; on a host
 // without one it asserts the unavailable arm end to end. Deleting the ShellOutcome opt-in makes
 // this cell ABORT rather than answer, which is the control the file's header describes.
 test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting() -> Bool {
@@ -76,8 +95,8 @@ test fn a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_abo
   let termination = observe_unit_termination(identity_hex: unaskable_identity, attempt_completed: false)
   let lifecycle = observe_unit_lifecycle(unit: compute_unit_name(identity_hex: unaskable_identity))
   if present {
-    !unit_termination_frees_capacity(t: termination)
-      && !unit_lifecycle_ended(u: lifecycle)
+    unit_termination_frees_capacity(t: termination) == unit_lifecycle_ended(u: lifecycle)
+      && !unit_populated(t: termination)
   } else {
     termination_unavailable(t: termination)
       && !unit_termination_frees_capacity(t: termination)

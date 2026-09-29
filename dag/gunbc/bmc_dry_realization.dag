@@ -1,0 +1,75 @@
+module gunbc.bmc_dry_realization
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { Second, second }
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep,
+  OperationObserved, OperationHarnessFault, ShellObserved,
+  operation_input_text, virtual_delay_binding,
+}
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.bmc.ipmi_chassis_control {
+  ipmi_chassis_control_action_of_verb, ipmitool_chassis_status_power_line, ipmitool_chassis_power_control_reply,
+}
+import gunbc.bmc_model { BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance }
+
+// THE DRY ADAPTER BETWEEN THE extdeps.bmc INTERFACE AND THE ONE BMC MODEL. For each bound operation
+// it reads the actual inputs the dispatcher bound, asks gunbc.bmc_model for the transition, and
+// ENCODES the resulting world as that operation's transport observation -- the stdout the client
+// would print -- using the extdeps renderer that sits beside the production decoder. It holds no BMC
+// state of its own and decides nothing a production decoder decides: the orchestrator's own decoders
+// read what this renders.
+//
+// An operation the model does not cover is not bound here, so the dispatcher refuses it as unbound;
+// an input this adapter cannot read into the model's vocabulary is a harness fault, never a
+// plausible success.
+data bmc_ipmi_operation_path: String = "dag/extdeps/bmc/ipmi.dag"
+
+data bmc_ipmi_service: String = "diagnostic.ipmi.Tool"
+
+data sleep_delay_seconds_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/tools/sleep.dag",
+  service: "sleep.Delay",
+  operation: "Seconds",
+}
+
+fn bmc_ipmi_operation(operation: String) -> OperationRef {
+  OperationRef { path: bmc_ipmi_operation_path, service: bmc_ipmi_service, operation: operation }
+}
+
+fn exited(stdout: String, world: BmcWorld) -> OperationStep<BmcWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: stdout, stderr: "" } },
+    state: world,
+    elapsed: second(count: 1),
+  }
+}
+
+fn bmc_chassis_status_handler(world: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  exited(stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world)
+}
+
+fn bmc_chassis_power_control_handler(world: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  match operation_input_text(invocation: call.invocation, name: "action") {
+    Absent => OperationHarnessFault { reason: "ChassisPowerControl was dispatched without an action input" as NonEmptyStr }
+    Present { value: verb } => match ipmi_chassis_control_action_of_verb(verb: verb) {
+      Absent => OperationHarnessFault { reason: join(["ChassisPowerControl action `", verb, "` names no IPMI chassis control action the model carries"], "") as NonEmptyStr }
+      Present { value: action } => exited(stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action).world)
+    }
+  }
+}
+
+fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) -> OperationRealization<BmcWorld> {
+  OperationRealization {
+    identity: identity,
+    initial: initial,
+    epoch: epoch,
+    bindings: [
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_chassis_status_handler },
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_chassis_power_control_handler },
+      virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
+    ],
+    advance: bmc_advance,
+  }
+}

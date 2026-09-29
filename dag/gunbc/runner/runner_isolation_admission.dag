@@ -87,18 +87,27 @@ fn runner_work_isolation_requirement(p: RunnerWorkProvenance) -> IsolationProfil
           DefaultDenyEgress,
         ],
       }
-    _ =>
-      IsolationProfile {
-        guarantees: [
-          FreshWritableRoot,
-          PrivateProcessNamespace,
-          PrivateNetworkNamespace,
-          PrivateUserNamespace,
-          AttemptScopedSecrets,
-          DefaultDenyEgress,
-          DedicatedKernel,
-        ],
-      }
+    GeneralCiWorkload => runner_dedicated_kernel_isolation()
+    ForkPullRequest => runner_dedicated_kernel_isolation()
+    UnreviewedBranch => runner_dedicated_kernel_isolation()
+    PullRequestControlledWorkflow => runner_dedicated_kernel_isolation()
+    ThirdPartyAction => runner_dedicated_kernel_isolation()
+    ArbitraryShellStep => runner_dedicated_kernel_isolation()
+    HostControlAgent => runner_dedicated_kernel_isolation()
+  }
+}
+
+fn runner_dedicated_kernel_isolation() -> IsolationProfile {
+  IsolationProfile {
+    guarantees: [
+      FreshWritableRoot,
+      PrivateProcessNamespace,
+      PrivateNetworkNamespace,
+      PrivateUserNamespace,
+      AttemptScopedSecrets,
+      DefaultDenyEgress,
+      DedicatedKernel,
+    ],
   }
 }
 
@@ -230,7 +239,13 @@ fn provider_for_work(p: RunnerWorkProvenance) -> ProviderSelection {
 fn is_schedulable_work(p: RunnerWorkProvenance) -> Bool {
   match p {
     HostControlAgent => false
-    _ => true
+    GeneralCiWorkload => true
+    ForkPullRequest => true
+    UnreviewedBranch => true
+    PullRequestControlledWorkflow => true
+    ThirdPartyAction => true
+    ArbitraryShellStep => true
+    QualifiedFixedOperation { qualification: _ } => true
   }
 }
 
