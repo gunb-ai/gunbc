@@ -5518,8 +5518,12 @@ pub fn declared_type_inhabitance(
             crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
         let produced_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
-        let carrier_verdict = if (crate::std_types::is_container_type(declared_name.clone())
-            && !crate::std_types::is_container_type(produced_name.clone()))
+        let carrier_verdict = if ((crate::std_types::is_container_type(declared_name.clone())
+            && !crate::std_types::is_container_type(crate::v1_std_core::qualified_last_segment(
+                produced_name.clone(),
+            )))
+            && ((produced.connective.clone() == Connective::Disj)
+                || (produced.connective.clone() == Connective::Conj)))
         {
             kernel_container_carrier_verdict(
                 declared.clone(),
