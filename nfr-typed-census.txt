@@ -1,0 +1,1189 @@
+summary sources=6984 typed_modules=4403 wildcard_arms=1869 residue_sites=1243 unrostered=1055 stale=1 undetermined=10 blocked_diagnostics=122
+unrostered dag/extdeps/apple/app_attest.dag::app_attest_member
+unrostered dag/extdeps/apple/app_attest.dag::credential_certificate_nonce
+unrostered dag/extdeps/apple/app_attest.dag::ecdsa_verifies_on
+unrostered dag/extdeps/bmc/ipmi_chassis_control.dag::chassis_power_line_seen
+unrostered dag/extdeps/bmc/redfish_memory_inventory.dag::redfish_collection_page_of
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_log_entries
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_log_entry
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_member_ids
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_point
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_sensor_point
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_status
+unrostered dag/extdeps/bmc/redfish_telemetry.dag::redfish_thermal_points
+unrostered dag/extdeps/container/oci/ctrl_session_witness.dag::witness_descriptor_rejects_negative_size
+unrostered dag/extdeps/container/oci/ctrl_session_witness.dag::witness_linux_namespaces_count
+unrostered dag/extdeps/container/oci/ctrl_session_witness.dag::witness_media_type_other_accepts_extension
+unrostered dag/extdeps/cpu/ampere_altra_package.dag::classified_power_and_ground_pin_count
+unrostered dag/extdeps/cpu/ampere_altra_package.dag::classified_reserved_pin_count
+unrostered dag/extdeps/cpu/ampere_altra_package.dag::classified_signal_pin_count
+unrostered dag/extdeps/cpu/ampere_altra_package.dag::differential_pair_standing
+unrostered dag/extdeps/cpu/ampere_altra_package.dag::first_incomplete_polarity_pair
+unrostered dag/extdeps/cpu/ampere_altra_package.dag::scan_differential_pair_population
+unrostered dag/extdeps/deepseek/deepseek_v4_1_flash.dag::deepseek_v4_1_flash_admit_tokenizer_population
+unrostered dag/extdeps/ebay/browse.dag::browse_render_filter
+unrostered dag/extdeps/ebay/browse.dag::browse_render_filters
+unrostered dag/extdeps/ebay/browse.dag::browse_wrap_condition_ids
+unrostered dag/extdeps/firmware/types.dag::prerequisite_evidence_verdict
+unrostered dag/extdeps/formats/elf/encode.dag::witness_encode_decode_roundtrip_ehdr
+unrostered dag/extdeps/formats/elf/hello_static_witness.dag::witness_elf32_class_rejects
+unrostered dag/extdeps/formats/elf/hello_static_witness.dag::witness_invalid_magic_rejects
+unrostered dag/extdeps/formats/elf/hello_static_witness.dag::witness_truncated_ehdr_rejects
+unrostered dag/extdeps/formats/elf/hello_static_witness.dag::witness_unknown_class_rejects
+unrostered dag/extdeps/formats/elf/types.dag::validate_elf64_ident
+unrostered dag/extdeps/git/git.dag::git_diff_name_status_parse
+unrostered dag/extdeps/git/git.dag::git_diff_status_entry_departed_path
+unrostered dag/extdeps/git/gitignore.dag::filter_categories
+unrostered dag/extdeps/git/object_store.dag::git_index_local_pointers
+unrostered dag/extdeps/git/object_store.dag::git_project_repository_after_repository_decode
+unrostered dag/extdeps/github/app.dag::permission_axis_admitted_accesses
+unrostered dag/extdeps/github/expressions.dag::expression_accesses_runner_var_via_env
+unrostered dag/extdeps/github/organizations.dag::organization_id_from_included
+unrostered dag/extdeps/languages/markdown.dag::md_item
+unrostered dag/extdeps/languages/rust/emit.dag::rust_refusing_int_operator_helper
+unrostered dag/extdeps/languages/yaml/emit.dag::all_scalars_flowable
+unrostered dag/extdeps/languages/yaml/emit.dag::block_sequence_element_doc
+unrostered dag/extdeps/languages/yaml/emit.dag::emit_flow_entry
+unrostered dag/extdeps/languages/yaml/emit.dag::entry_doc
+unrostered dag/extdeps/languages/yaml/emit.dag::yaml_emit_check
+unrostered dag/extdeps/languages/yaml/emit.dag::yaml_lexeme_reads_back
+unrostered dag/extdeps/languages/yaml/emit.dag::yaml_root_doc
+unrostered dag/extdeps/languages/yaml/emit.dag::yaml_root_doc_refusal
+unrostered dag/extdeps/languages/yaml/ingest.dag::yaml_quoted_key_entry
+unrostered dag/extdeps/languages/yaml/ingest.dag::yaml_string_reads_back_plain
+unrostered dag/extdeps/languages/yaml/types.dag::yaml_entry_count
+unrostered dag/extdeps/memory/jedec.dag::jedec_ddr_generation_catalog_row
+unrostered dag/extdeps/mercurial.dag::mercurial_first_duplicate_changeset_parent
+unrostered dag/extdeps/mercurial.dag::mercurial_first_duplicate_file_revision_parent
+unrostered dag/extdeps/ntfy/access.dag::ntfy_access_fold_step
+unrostered dag/extdeps/ocp/mt_jade/memory_mixing.dag::mt_jade_dimm_mixing_axis_eq
+unrostered dag/extdeps/ocp/mt_jade/memory_mixing.dag::mt_jade_dimm_mixing_placement_eq
+unrostered dag/extdeps/pricing/object_storage.dag::evaluate_redundancy_only
+unrostered dag/extdeps/pricing/object_storage.dag::evaluate_reliability
+unrostered dag/extdeps/provisioning/ubuntu_seeded_install_media_remaster.dag::install_media_remaster_digest
+unrostered dag/extdeps/runtime/api/darwin.dag::witness_macos_libsystem_exports_include_read
+unrostered dag/extdeps/runtime/api/windows.dag::witness_windows_boundary_exports_match_user_mode
+unrostered dag/extdeps/runtime/architecture/aarch64_linux.dag::witness_deployment_invocation_matches_linux_abi
+unrostered dag/extdeps/runtime/architecture/x86_64_linux.dag::witness_deployment_invocation_matches_linux_abi
+unrostered dag/extdeps/sec/facts.dag::derive_gross_margin_ratio_from_facts
+unrostered dag/extdeps/standards/rfc_5280.dag::tbs_first_index
+unrostered dag/extdeps/standards/rfc_5280.dag::tbs_tail
+unrostered dag/extdeps/standards/rfc_8118.dag::pdf_open_parameters_include_page
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_array_items
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_byte_string_octets
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_entries_named
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_map_unique_text_member
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_text_string_value
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_unsigned_value
+unrostered dag/extdeps/standards/rfc_8949.dag::cbor_values_equal
+unrostered dag/extdeps/standards/rfc_9052.dag::cose_coordinate
+unrostered dag/extdeps/standards/rfc_9052.dag::cose_integer_at
+unrostered dag/extdeps/standards/rfc_9052.dag::cose_integer_of
+unrostered dag/extdeps/standards/rfc_9052.dag::cose_key_label
+unrostered dag/extdeps/standards/x690_der.dag::der_class_matches
+unrostered dag/extdeps/tailscale/serve.dag::tailscale_serve_status_funnel_listeners
+unrostered dag/gunbc/action_use_admission.dag::realized_job_reads
+unrostered dag/gunbc/action_use_admission.dag::realized_workflow_reading
+unrostered dag/gunbc/auth/approval_decision_store.dag::json_field_bool
+unrostered dag/gunbc/auth/approval_decision_store.dag::json_field_string
+unrostered dag/gunbc/auth/approval_device_redemption.dag::device_redemption_admission
+unrostered dag/gunbc/auth/approval_device_redemption.dag::push_outcome_of_apns
+unrostered dag/gunbc/auth/approval_device_wire.dag::wire_string
+unrostered dag/gunbc/auth/approval_gate.dag::approval_derive
+unrostered dag/gunbc/auth/approval_ntfy_access_readback.dag::approval_ntfy_started
+unrostered dag/gunbc/auth/approval_ntfy_access_readback.dag::cmdline_words
+unrostered dag/gunbc/auth/approval_ntfy_access_readback.dag::pid_start_ticks
+unrostered dag/gunbc/auth/approval_ntfy_runtime_observe.dag::ntfy_observe_fds
+unrostered dag/gunbc/auth/approval_ntfy_runtime_observe.dag::ntfy_start_ticks
+unrostered dag/gunbc/auth/approval_request_submission.dag::admit_parsed_submission
+unrostered dag/gunbc/auth/approval_request_submission.dag::notify_filed
+unrostered dag/gunbc/auth/approval_status_wire.dag::submission_body_admits_poll
+unrostered dag/gunbc/auth/credentials.dag::gcp_oauth_access_token_adc_for_path
+unrostered dag/gunbc/auth/gcp_iam_converge.dag::delta_effects
+unrostered dag/gunbc/auth/gcp_iam_converge.dag::delta_refusals
+unrostered dag/gunbc/auth/gcp_iam_converge.dag::execute_target_diff
+unrostered dag/gunbc/auth/github_app_control_plane_observe.dag::installation_of_read
+unrostered dag/gunbc/auth/github_app_control_plane_observe.dag::observe_github_app_control_plane
+unrostered dag/gunbc/auth/github_app_control_plane_observe.dag::registration_of_app_read
+unrostered dag/gunbc/auth/github_app_control_plane_observe.dag::signer_custody_of_app_read
+unrostered dag/gunbc/auth/secret_rotation.dag::destroy_on_silence_sketch
+unrostered dag/gunbc/bmc/bmc_health_reader.dag::enabled_member
+unrostered dag/gunbc/bmc/bmc_health_reader.dag::member_ids
+unrostered dag/gunbc/bmc/bmc_health_reader.dag::reader_account_from_json
+unrostered dag/gunbc/bmc_megarac_web_adapter.dag::megarac_stream_open
+unrostered dag/gunbc/bmc_model.dag::bmc_apply_event
+unrostered dag/gunbc/bmc_model.dag::bmc_kvm_viewer_count
+unrostered dag/gunbc/build_cache/build_cache_endpoint_observation.dag::build_cache_ci_placement_unknown_count
+unrostered dag/gunbc/citation/pdf_safe_profile.dag::pdf_safe_parameters_include_page
+unrostered dag/gunbc/cloudflare/r2_bucket_ensure.dag::classify_r2_bucket_ensure
+unrostered dag/gunbc/codex_app_server_press.dag::absorb_account_trip_line
+unrostered dag/gunbc/codex_app_server_press.dag::buckets_from_rate_limits_frame
+unrostered dag/gunbc/codex_app_server_press.dag::disposition_from_account_read_result
+unrostered dag/gunbc/codex_app_server_press.dag::disposition_from_rate_limits_result
+unrostered dag/gunbc/codex_app_server_press.dag::disposition_from_structured_rpc_error
+unrostered dag/gunbc/codex_app_server_press.dag::rate_limit_buckets_from_legacy_rate_limits
+unrostered dag/gunbc/codex_app_server_press.dag::rate_limit_buckets_from_result
+unrostered dag/gunbc/codex_app_server_press.dag::rate_limits_primary_resets_at
+unrostered dag/gunbc/codex_app_server_press.dag::rate_limits_reached_type
+unrostered dag/gunbc/codex_app_server_press.dag::rate_limits_snapshot_has_exhaustion_signal
+unrostered dag/gunbc/codex_supervised_turn.dag::absorb_supervised_turn_line
+unrostered dag/gunbc/codex_supervised_turn.dag::codex_runner_turn_terminal_receipt
+unrostered dag/gunbc/codex_supervised_turn.dag::native_id_from_entity_result
+unrostered dag/gunbc/codex_supervised_turn.dag::prepare_codex_supervised_turn_binding
+unrostered dag/gunbc/codex_supervised_turn.dag::supervised_turn_terminal_from_notification
+unrostered dag/gunbc/codex_supervised_turn_run.dag::run_codex_supervised_turn
+unrostered dag/gunbc/commit_workflow.dag::commit_writer_blob_classification_refusals
+unrostered dag/gunbc/commit_workflow.dag::project_local_tidy_fmt_rows
+unrostered dag/gunbc/compute/attempt_lifecycle.dag::attempt_member
+unrostered dag/gunbc/compute/attempt_lifecycle.dag::attempt_member_int
+unrostered dag/gunbc/compute/host_occupancy.dag::read_host_occupancy
+unrostered dag/gunbc/compute/test_run.dag::test_run_report_json
+unrostered dag/gunbc/compute/work_provider_local.dag::compute_summary_is_oom_kill
+unrostered dag/gunbc/compute/work_provider_local.dag::compute_unit_ending
+unrostered dag/gunbc/compute/work_provider_local.dag::unit_lifecycle_decide
+unrostered dag/gunbc/compute/work_provider_local.dag::unit_termination_decide
+unrostered dag/gunbc/compute/work_request.dag::stored_outcome_member
+unrostered dag/gunbc/cursor_sdk_provider_standing.dag::cursor_sdk_authentication_standing_from_probe
+unrostered dag/gunbc/cursor_sdk_provider_standing.dag::cursor_sdk_local_provider_standing_has_usage_capability_gap
+unrostered dag/gunbc/econ/free_tier_serving.dag::average_serving_cost_per_registered_user_year_micros_upper_bound
+unrostered dag/gunbc/econ/knowable_wedge.dag::convert_money_per_minute_eur_to_usd
+unrostered dag/gunbc/econ/knowable_wedge.dag::derive_github_hetzner_ci_minute_wedge
+unrostered dag/gunbc/econ/knowable_wedge.dag::derive_runner_cost_floor_per_minute_usd
+unrostered dag/gunbc/econ/margin_envelope.dag::derive_margin_envelope_from_filed_facts
+unrostered dag/gunbc/econ/regional_compute_premium.dag::derive_regional_premium
+unrostered dag/gunbc/econ/regional_compute_premium.dag::monthly_micros
+unrostered dag/gunbc/econ/regional_compute_premium.dag::per_vcpu_month_micros
+unrostered dag/gunbc/econ/scm_serving_model.dag::derive_scm_monthly_cost
+unrostered dag/gunbc/econ/scm_serving_model.dag::derive_scm_usage
+unrostered dag/gunbc/econ/scm_serving_model.dag::egress_ladder
+unrostered dag/gunbc/econ/scm_serving_model.dag::quote_provider_monthly
+unrostered dag/gunbc/econ/scm_serving_model.dag::storage_ladder
+unrostered dag/gunbc/emit_copy_qualification.dag::derive_expectation
+unrostered dag/gunbc/emit_copy_qualification_fixture_gen.dag::input_expr
+unrostered dag/gunbc/emit_copy_qualification_fixture_gen.dag::subject_body
+unrostered dag/gunbc/emit_copy_qualification_fixture_gen.dag::subject_param_name
+unrostered dag/gunbc/emit_copy_qualification_fixture_gen.dag::subject_param_type
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_ask_is_composite
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_ask_is_scan
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_ask_is_spelling_only
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_holds_node_at_ask
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_severance_is_rostered
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_use_escapes
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_use_is_terminal
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_use_leaves_the_map
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::consumer_use_rekeys
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::guard_fails_trigger_preservation
+unrostered dag/gunbc/emit_summary_map_consumer_partition.dag::guard_refuses
+unrostered dag/gunbc/explicit_witness_admission.dag::explicit_witness_admission_substrate_long_lane_roster
+unrostered dag/gunbc/explicit_witness_admission.dag::explicit_witness_admission_well_formed
+unrostered dag/gunbc/fabric/fabric_required_build_cell.dag::fabric_cell_shape
+unrostered dag/gunbc/fabric/fabric_storage_wire.dag::fabric_storage_unwire_advance
+unrostered dag/gunbc/fleet/app_control_plane_inspection.dag::decode_hook_url
+unrostered dag/gunbc/fleet/app_control_plane_inspection.dag::decode_registration_permissions
+unrostered dag/gunbc/fleet/app_control_plane_inspection.dag::json_member_int
+unrostered dag/gunbc/fleet/app_control_plane_inspection.dag::json_member_string
+unrostered dag/gunbc/fleet/fleet_converge_cli.dag::absent_converge_target_cause
+unrostered dag/gunbc/fleet/fleet_converge_cli.dag::converge_cli_run_host_knobs
+unrostered dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_allocation_store_plan_artifact
+unrostered dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_observed_baseline_matches
+unrostered dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_plan_apply_shell_structural_hash
+unrostered dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_plan_body_structural_hash
+unrostered dag/gunbc/fleet/fleet_convergence_verdict.dag::fleet_unobserved_cell_count
+unrostered dag/gunbc/fleet/fleet_convergence_verdict.dag::host_knob_standing
+unrostered dag/gunbc/fleet/fleet_health_observe.dag::is_fan
+unrostered dag/gunbc/fleet/fleet_health_observe.dag::is_temperature
+unrostered dag/gunbc/fleet/fleet_health_observe.dag::manager_firmware
+unrostered dag/gunbc/fleet/fleet_health_observe.dag::temperature_sample_of
+unrostered dag/gunbc/fleet/fleet_host_key_enrollment.dag::enrolled_fingerprint_for
+unrostered dag/gunbc/fleet/fleet_revision_acceptance.dag::merge_group_run_carries_verdict
+unrostered dag/gunbc/fleet/fleet_revision_acceptance.dag::merge_group_run_succeeded
+unrostered dag/gunbc/fleet/fleet_show_effective_read.dag::show_effective_read_from_slice_cap_row
+unrostered dag/gunbc/fleet/host_credential_custody_converge.dag::converge_host_credential_custody
+unrostered dag/gunbc/fleet/host_credential_custody_converge.dag::ensure_custody_dir
+unrostered dag/gunbc/fleet/host_credential_custody_converge.dag::host_credential_custody
+unrostered dag/gunbc/fleet/host_credential_custody_converge.dag::observe_custody_path
+unrostered dag/gunbc/fleet/org_actions_inspection.dag::json_member_bool
+unrostered dag/gunbc/fleet/org_actions_inspection.dag::json_member_int
+unrostered dag/gunbc/fleet/org_actions_inspection.dag::json_member_string
+unrostered dag/gunbc/fleet/organization_runner_roster_read.dag::decode_runner_labels
+unrostered dag/gunbc/floor/floor_cold_build_receipt.dag::subject_is_cold
+unrostered dag/gunbc/gcp/gcp_estate_adoption.dag::classify_desired_binding
+unrostered dag/gunbc/gcp/gcp_estate_adoption.dag::classify_desired_wif_pool
+unrostered dag/gunbc/gcp/gcp_estate_adoption.dag::classify_desired_wif_provider
+unrostered dag/gunbc/gcp/gcp_estate_adoption.dag::observed_member_eq
+unrostered dag/gunbc/gcp/gcp_estate_dependency.dag::census_cross_project_account_project_number
+unrostered dag/gunbc/gcp/gcp_estate_dependency.dag::census_has_cross_project_binding_for_account
+unrostered dag/gunbc/gcp/gcp_estate_dependency.dag::census_has_same_project_pool_binding_for_account
+unrostered dag/gunbc/git_use_authority.dag::git_import_authority_verdict
+unrostered dag/gunbc/githooks/githooks_pre_push_plan.dag::pre_push_path_hits_binding
+unrostered dag/gunbc/guarantee_probe_corpus.dag::canonical_probe_row_resolution_refuses_duplicate_population
+unrostered dag/gunbc/harness/harness_backend.dag::harness_bounded_presence
+unrostered dag/gunbc/harness/harness_backend.dag::harness_observe_route
+unrostered dag/gunbc/harness/harness_seat.dag::admitting_event_for
+unrostered dag/gunbc/harness/harness_throughput.dag::throughput_is_usage_row
+unrostered dag/gunbc/harness/harness_tool.dag::harness_tool_use_input_string
+unrostered dag/gunbc/harness/harness_turn.dag::harness_chat_assistant_message_json
+unrostered dag/gunbc/harness/harness_turn.dag::harness_tool_use_blocks
+unrostered dag/gunbc/harness/harness_wire.dag::harness_chat_message_calls
+unrostered dag/gunbc/harness/harness_wire.dag::harness_member_int
+unrostered dag/gunbc/harness/harness_wire.dag::harness_member_string
+unrostered dag/gunbc/harness/harness_wire.dag::harness_usage_read
+unrostered dag/gunbc/host/host_converge.dag::find_by_identity
+unrostered dag/gunbc/host/host_converge_slice1.dag::converge_knob_by_name
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_converge_host
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_converge_loop
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_converge_unit_tasks
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_fixture_receipt
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_host_result_refusal_reason
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_live_read
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_per_slot_memory_max_knob
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_prove_tasks_reapply_noop
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_receipt_from_read
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_tasks_guard
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_tasks_knob
+unrostered dag/gunbc/host/host_converge_slice1.dag::host_converge_slice1_tasks_read_limit
+unrostered dag/gunbc/host/host_effect_codex_supervised_turn.dag::host_effect_codex_supervised_turn_apply
+unrostered dag/gunbc/host/host_effect_nbd_proxy_serve.dag::host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented
+unrostered dag/gunbc/host/host_effect_realize.dag::realize_provision_build_cache
+unrostered dag/gunbc/host/host_effect_realize.dag::realize_provision_codex_runtime
+unrostered dag/gunbc/host/host_effect_realize.dag::resolve_host_effect_cell
+unrostered dag/gunbc/host/host_effect_realize.dag::srv3_summarize_independent_observations
+unrostered dag/gunbc/host/host_hygiene_reaper.dag::exempt_cause_of
+unrostered dag/gunbc/host/host_identity_converge.dag::host_identity_unprivileged_refusal_has_no_marker
+unrostered dag/gunbc/host/host_memory_qualification.dag::part_implication
+unrostered dag/gunbc/host/host_reach_identity_probe.dag::classify_reach_probe_wire_with_expectation
+unrostered dag/gunbc/host/host_reach_identity_probe.dag::host_reach_identity_probe_receipt_for
+unrostered dag/gunbc/host/host_reach_identity_probe.dag::observe_host_identity_converge
+unrostered dag/gunbc/host/host_reach_identity_probe.dag::observe_reach_secrets_network
+unrostered dag/gunbc/host/host_runner_memory_cap_plan_emit.dag::memory_cap_plan_row_fields
+unrostered dag/gunbc/host/host_runner_memory_cap_plan_emit.dag::memory_cap_plan_row_is_per_slot_memory_cap
+unrostered dag/gunbc/host/memory_change_evaluation.dag::memory_configuration_admission_refusal
+unrostered dag/gunbc/host/memory_configuration_evaluation.dag::memory_standing_facts
+unrostered dag/gunbc/host/memory_configuration_evaluation.dag::memory_training_screen_facts
+unrostered dag/gunbc/host_command_binding.dag::scratch_removed
+unrostered dag/gunbc/host_convergence_census.dag::row_is_well_formed
+unrostered dag/gunbc/instruments/approval_store_live_probe.dag::approval_submission_live_probe
+unrostered dag/gunbc/instruments/cause_assertion_census.dag::cause_acquisition_disposition_report
+unrostered dag/gunbc/instruments/dag_compile_clean_shard_totality.dag::witness_totality_fails_closed_on_glob_failure
+unrostered dag/gunbc/instruments/dag_compile_clean_shard_totality.dag::witness_totality_green_when_glob_matches_roster
+unrostered dag/gunbc/instruments/dag_compile_clean_shard_totality.dag::witness_totality_reds_on_synthetic_double_claim
+unrostered dag/gunbc/instruments/dag_compile_clean_shard_totality.dag::witness_totality_reds_on_synthetic_orphan
+unrostered dag/gunbc/instruments/dag_compile_clean_shard_totality.dag::witness_totality_reds_on_synthetic_surplus
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::behavior_for_case
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::clippy_findings_from_stdout
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::json_member
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::observation_at
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::parsed_case_lines
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::result_at
+unrostered dag/gunbc/instruments/emit_copy_qualification_transport.dag::runtime_for_case
+unrostered dag/gunbc/instruments/emit_host_transport.dag::c_emit_host_green_holds
+unrostered dag/gunbc/instruments/extdeps_scope_placement_gate.dag::diff_added_paths_observation
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_cell_admitted
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_exact_absent_to_free_control
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_exact_free_to_free_control
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_extra_generation_refused_control
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_generation_changed
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_lifetime_dependent
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_lifetime_held
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_replace_held
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_slot_absent_admitted
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_assert_unreadable_slot_refused
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_canonical_cleanup_disposition
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_invalid_before_wire_refuses
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_live_release
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_live_release_with_receipt
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_write_disposable_cleanup_receipt
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_write_generation_changed_receipt
+unrostered dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_write_lifetime_dependent_receipt
+unrostered dag/gunbc/instruments/frontier_ingestion_probe.dag::census_is_complete
+unrostered dag/gunbc/instruments/frontier_ingestion_probe.dag::reconcile_against_valid_rows
+unrostered dag/gunbc/instruments/frontier_ingestion_probe.dag::reconcile_census_over
+unrostered dag/gunbc/instruments/frontier_ingestion_probe.dag::take_census_over
+unrostered dag/gunbc/instruments/frontier_ingestion_probe.dag::verify_roster
+unrostered dag/gunbc/instruments/json_parse_ladder.dag::weight_map_members
+unrostered dag/gunbc/instruments/merge_admission_walk.dag::merge_target_refresh
+unrostered dag/gunbc/instruments/native_app_attest.dag::chain_untrusted
+unrostered dag/gunbc/instruments/native_app_attest.dag::counter_refusal_is
+unrostered dag/gunbc/instruments/publication_publisher.dag::newly_public_subject_receipt_refusal
+unrostered dag/gunbc/instruments/source_snapshot_handoff.dag::run_composition_mismatch_scenario
+unrostered dag/gunbc/instruments/source_snapshot_handoff.dag::run_corrupted_bytes_scenario
+unrostered dag/gunbc/instruments/source_snapshot_handoff.dag::run_duplicate_path_scenario
+unrostered dag/gunbc/instruments/source_snapshot_handoff.dag::run_escaping_path_scenario
+unrostered dag/gunbc/instruments/source_snapshot_handoff.dag::run_missing_object_scenario
+unrostered dag/gunbc/live_deploy/apply.dag::approval_broker_liveness_poll
+unrostered dag/gunbc/live_deploy/apply.dag::live_deploy_pre_mutation_access
+unrostered dag/gunbc/live_deploy/emit.dag::apply_step_effects
+unrostered dag/gunbc/live_deploy/emit.dag::identity_member_of_step
+unrostered dag/gunbc/live_deploy/emit.dag::step_renders_its_own_member_commands
+unrostered dag/gunbc/live_deploy/fleet_request.dag::bind_release_target_to_desired
+unrostered dag/gunbc/live_deploy/fleet_request.dag::first_unreadable
+unrostered dag/gunbc/live_deploy/fleet_request.dag::live_deploy_observe_supplied
+unrostered dag/gunbc/live_deploy/fleet_request.dag::replacement_is_foreign
+unrostered dag/gunbc/live_deploy/fleet_request.dag::root_path_in_roster
+unrostered dag/gunbc/live_deploy/member_identity.dag::release_member_changed
+unrostered dag/gunbc/live_deploy/member_observe.dag::deployment_effect_plan
+unrostered dag/gunbc/live_deploy/member_observe.dag::observe_service_process
+unrostered dag/gunbc/live_deploy/member_observe.dag::root_members_of_step
+unrostered dag/gunbc/live_deploy/repository_convergence.dag::convergence_coherence_is_clean
+unrostered dag/gunbc/live_deploy/repository_convergence.dag::convergence_worktree_identity_matches
+unrostered dag/gunbc/live_deploy/repository_convergence.dag::repository_root_emptiness_of
+unrostered dag/gunbc/live_deploy/srv1_residue_rehearsal.dag::residue_disposition_is_delete
+unrostered dag/gunbc/live_deploy/unit_standing.dag::service_directive_exec_start
+unrostered dag/gunbc/live_deploy/unit_standing.dag::service_directive_user
+unrostered dag/gunbc/live_deploy/unit_standing.dag::service_directive_working_directory
+unrostered dag/gunbc/live_deploy/unit_standing.dag::timer_accuracy_duration
+unrostered dag/gunbc/live_deploy/unit_standing.dag::timer_directive_target
+unrostered dag/gunbc/live_deploy/unit_standing.dag::timer_on_boot_duration
+unrostered dag/gunbc/live_deploy/unit_standing.dag::timer_on_unit_inactive_duration
+unrostered dag/gunbc/machine_intake/ampere_dram_console_observation.dag::ampere_dram_findings
+unrostered dag/gunbc/machine_intake/ampere_dram_console_observation.dag::close_roster_if_open
+unrostered dag/gunbc/machine_intake/ampere_socket_console_observation.dag::ampere_cper_is_this_boot
+unrostered dag/gunbc/machine_intake/boot_image_fetch.dag::fetch_verified_boot_image
+unrostered dag/gunbc/machine_intake/boot_image_fetch.dag::link_verified_boot_image
+unrostered dag/gunbc/machine_intake/host_capture_historical_binding.dag::binding_holds_against_argv
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::has_duplicate
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::host_topology_assessment
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::memory_field
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::nat_token
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::numa_node_line
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::numa_record_attempt
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::observe_memory
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::observe_numa
+unrostered dag/gunbc/machine_intake/host_resource_observation.dag::observe_threads
+unrostered dag/gunbc/machine_intake/kernel_module_decompression_observation.dag::kernel_module_decompression_observation
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::attach_readiness
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::configuration_row_reading
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::detach_verdict
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::json_number_member
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::json_string_member
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::megarac_await_enumeration
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::presentation_still_served
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::readiness_standing
+unrostered dag/gunbc/machine_intake/megarac_media_attach.dag::readiness_wait_outcome
+unrostered dag/gunbc/machine_intake/mtcollins1_32dimm_bringup_observation.dag::check_bounded_terminal
+unrostered dag/gunbc/machine_intake/mtcollins1_32dimm_bringup_observation.dag::check_collectors_before_actuation
+unrostered dag/gunbc/machine_intake/mtcollins1_32dimm_bringup_observation.dag::check_console_silence_is_not_a_terminal
+unrostered dag/gunbc/machine_intake/mtcollins1_32dimm_bringup_observation.dag::check_opaque_oem_stays_opaque
+unrostered dag/gunbc/machine_intake/mtcollins1_32dimm_bringup_observation.dag::sol_readings_all_banner_only
+unrostered dag/gunbc/machine_intake/mtcollins1_actuate.dag::mtcollins1_drive_handoff
+unrostered dag/gunbc/machine_intake/mtcollins1_bmc_sensor_observation.dag::mtcollins1_sensor_table_text
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::boot_override_pending
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::channel_answered
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::channel_cause
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::redfish_collection_assembly
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::sel_event_is_memory_or_processor
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::sel_event_is_oem
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::smpro_channel
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_milestone.dag::numa_node_cpus_line
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_milestone.dag::numa_nodes
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_actuate
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_await_capture_terminal
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_bundle_of_attempt
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_conclude
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_handoff_when_media_ready
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_power_after_poll
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::open_unresolved_causes
+unrostered dag/gunbc/machine_intake/mtcollins1_boot_run.dag::workload_pending_footprint_judge
+unrostered dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag::census_regression_holds
+unrostered dag/gunbc/machine_intake/mtcollins1_maintenance_hold.dag::unit_hold_acquire
+unrostered dag/gunbc/machine_intake/mtcollins1_platform_observation.dag::mtcollins1_bmc_interfaces_are_distinct_ports
+unrostered dag/gunbc/machine_intake/mtcollins1_sixteen_module_restore_observation.dag::check_loop_before_restore_is_the_bounded_terminal
+unrostered dag/gunbc/machine_intake/mtcollins1_sixteen_module_restore_observation.dag::check_restore_window_is_undetermined_not_terminal
+unrostered dag/gunbc/machine_intake/mtcollins1_smpro_observation.dag::established_any
+unrostered dag/gunbc/machine_intake/mtcollins1_smpro_observation.dag::reported_failed
+unrostered dag/gunbc/machine_intake/pre_os_bringup_attempt.dag::console_lease_gap
+unrostered dag/gunbc/machine_intake/pre_os_timeline.dag::pre_os_machine_timeline
+unrostered dag/gunbc/machine_intake/pre_os_timeline.dag::pre_os_read_observation
+unrostered dag/gunbc/machine_intake/sel_stimulus_listener.dag::sel_snapshot_summary
+unrostered dag/gunbc/namespace/namespace_pool_independence.dag::bound_reference_population_eq
+unrostered dag/gunbc/namespace/namespace_pool_independence.dag::declaration_occurrence_lists_agree
+unrostered dag/gunbc/namespace/namespace_pool_independence.dag::provenance_lists_agree
+unrostered dag/gunbc/namespace/namespace_pool_independence.dag::reference_occurrence_lists_agree
+unrostered dag/gunbc/namespace/namespace_reference_derived_closure_admission.dag::assess_reference_binding_observation
+unrostered dag/gunbc/namespace/namespace_xl2_rehearsal_census.dag::xl2_admit_unique_paths
+unrostered dag/gunbc/package_delivery.dag::materialize_codex_runtime_bundle_finish_after_install
+unrostered dag/gunbc/primitive_runtime_body_gate.dag::runtime_body_required_check_census_in
+unrostered dag/gunbc/product/build_fulfillment.dag::memory_screened_rows
+unrostered dag/gunbc/product/build_fulfillment.dag::owned_stock_consumed
+unrostered dag/gunbc/product/build_fulfillment.dag::resolve_from_offering
+unrostered dag/gunbc/product/capacity/event_json.dag::member_nat
+unrostered dag/gunbc/product/capacity/event_json.dag::member_string
+unrostered dag/gunbc/product/compute_board/composition.dag::requirement_met
+unrostered dag/gunbc/product/fan_tach.dag::fan_tach_window_of
+unrostered dag/gunbc/product/host_health.dag::any_disabled
+unrostered dag/gunbc/product/host_health.dag::assess_bmc_events
+unrostered dag/gunbc/provider_readiness_claim_evidence.dag::provider_live_request_failed_inference
+unrostered dag/gunbc/provider_readiness_claim_evidence.dag::provider_live_request_succeeded_inference
+unrostered dag/gunbc/provider_readiness_claim_evidence.dag::provider_login_status_inference
+unrostered dag/gunbc/provider_readiness_claim_evidence.dag::provider_readiness_fidelity_claim
+unrostered dag/gunbc/provider_readiness_claim_evidence.dag::provider_readiness_link_relation
+unrostered dag/gunbc/provider_standing.dag::first_blocking_native_limit_bucket_for_automatic_draw
+unrostered dag/gunbc/quarantine_probe_disposition.dag::admission_is_quarantine_probe
+unrostered dag/gunbc/repo/repo_atlas_projection.dag::atlas_impact_is_exact
+unrostered dag/gunbc/repo/repo_ruleset.dag::converged_evidence_of
+unrostered dag/gunbc/required_ci_epoch_observation.dag::epoch_from_entry
+unrostered dag/gunbc/required_ci_epoch_observation.dag::required_ci_epoch_from_workflow_source
+unrostered dag/gunbc/required_ci_epoch_observation.dag::yaml_env_entries
+unrostered dag/gunbc/roadmap/roadmap_attempt_continuation.dag::verification_segment_of
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_audit_attempt_for_instance
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_commit_pass_outcome_from
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_goal_audit_segment
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_pass_outcome_from_json
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_pass_outcome_from_member
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_publish_pass_outcome_from
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_review_attempt_for_instance
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_review_segment
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_spawn_tally
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_tick_execution_from_member
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_tick_is_conflicted
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_tick_is_refused
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_tick_is_running
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_tick_is_stale
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_tick_receipt_decode
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_verification_segment
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_verify_attempt_for_instance
+unrostered dag/gunbc/roadmap/roadmap_belt_actuate.dag::belt_verify_pass_outcome_from
+unrostered dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag::dashboard_bootstrap_only_ops
+unrostered dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag::dashboard_instance_apply_preflight
+unrostered dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::dispatch_session_is_owned
+unrostered dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::dispatch_spawn_commands_for_inventory
+unrostered dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::dispatch_tmux_session_scope_for_live_session
+unrostered dag/gunbc/roadmap/roadmap_event_carrier.dag::roadmap_standings_read
+unrostered dag/gunbc/roadmap/roadmap_event_log.dag::event_member_string
+unrostered dag/gunbc/roadmap/roadmap_event_log.dag::roadmap_event_decode
+unrostered dag/gunbc/roadmap/roadmap_launch_deployment_receipt.dag::tick_blockers
+unrostered dag/gunbc/roadmap/roadmap_presentation.dag::activity_view_from_progress
+unrostered dag/gunbc/roadmap/roadmap_publication_helper.dag::publication_request_decode_document
+unrostered dag/gunbc/roadmap/roadmap_publish.dag::publication_receipt_bool_member
+unrostered dag/gunbc/roadmap/roadmap_publish.dag::publication_receipt_decode_document
+unrostered dag/gunbc/roadmap/roadmap_publish.dag::publication_receipt_int_array_member
+unrostered dag/gunbc/roadmap/roadmap_publish.dag::publication_receipt_int_member
+unrostered dag/gunbc/roadmap/roadmap_publish.dag::publication_receipt_member
+unrostered dag/gunbc/roadmap/roadmap_publish.dag::publication_subject_decode
+unrostered dag/gunbc/roadmap/roadmap_review_function.dag::review_report_approved
+unrostered dag/gunbc/roadmap/roadmap_review_role.dag::review_feedback_standings
+unrostered dag/gunbc/roadmap/roadmap_review_role.dag::review_member_string
+unrostered dag/gunbc/roadmap/roadmap_review_role.dag::review_reasons_of
+unrostered dag/gunbc/roadmap/roadmap_served_observation.dag::served_observation_decode
+unrostered dag/gunbc/roadmap/roadmap_served_observation.dag::served_observation_entry_of_json
+unrostered dag/gunbc/roadmap/roadmap_served_observation.dag::served_observation_write_bodies_for_instance
+unrostered dag/gunbc/roadmap/roadmap_spawner.dag::node_plan_doc_json
+unrostered dag/gunbc/roadmap/roadmap_validation_oracle.dag::validation_receipt_string_member
+unrostered dag/gunbc/roadmap/roadmap_verification_receipt.dag::verification_executions_decode
+unrostered dag/gunbc/roadmap/roadmap_verification_receipt.dag::verification_receipt_decode_document
+unrostered dag/gunbc/roadmap/roadmap_verification_receipt.dag::verification_receipt_int_member
+unrostered dag/gunbc/roadmap/roadmap_verification_receipt.dag::verification_receipt_object_member
+unrostered dag/gunbc/roadmap/roadmap_verification_receipt.dag::verification_receipt_string_array_member
+unrostered dag/gunbc/roadmap/roadmap_verification_receipt.dag::verification_receipt_string_member
+unrostered dag/gunbc/roadmap/roadmap_workflow_progress.dag::goal_audit_segment
+unrostered dag/gunbc/roadmap/roadmap_workflow_progress.dag::review_segment
+unrostered dag/gunbc/roadmap/roadmap_workflow_progress.dag::workflow_observed_fact_forest
+unrostered dag/gunbc/runner/runner_attempt_launch.dag::host_mint_admission_is_required
+unrostered dag/gunbc/runner/runner_attempt_launch.dag::stage_jit_device
+unrostered dag/gunbc/runner/runner_capacity_plan.dag::connectivity_replace_action
+unrostered dag/gunbc/runner/runner_capacity_plan.dag::count_matching_actions
+unrostered dag/gunbc/runner/runner_capacity_realize.dag::count_add_actions_in_host_plan
+unrostered dag/gunbc/runner/runner_capacity_realize.dag::disk_preflight_refusal_for_host_plan
+unrostered dag/gunbc/runner/runner_microvm_boot_probe.dag::guest_agent_boot_verdict
+unrostered dag/gunbc/runner/runner_microvm_footprint_probe.dag::footprint_receipt_is_complete
+unrostered dag/gunbc/runner/runner_microvm_host_ready.dag::firecracker_binary_installed
+unrostered dag/gunbc/runner/runner_microvm_host_ready.dag::firecracker_host_ready_in_this_process
+unrostered dag/gunbc/runner/runner_microvm_host_ready.dag::observe_firecracker_host_standing_wet
+unrostered dag/gunbc/runner/runner_microvm_host_ready.dag::runner_microvm_host_converge_wet
+unrostered dag/gunbc/runner/runner_microvm_network_apply.dag::run_privileged_microvm_network_apply
+unrostered dag/gunbc/runner/runner_microvm_network_apply.dag::run_staged_microvm_network_apply
+unrostered dag/gunbc/runner/runner_microvm_slot_start.dag::microvm_slot_start_on_its_host
+unrostered dag/gunbc/runner/runner_microvm_slot_unit.dag::microvm_slot_unit_execs_controller
+unrostered dag/gunbc/runner/runner_observed_version_check.dag::verify_captured_console
+unrostered dag/gunbc/runner/runner_registration_labels.dag::runner_registration_labels
+unrostered dag/gunbc/runner/runner_throughput_qualification.dag::first_incomplete_roster
+unrostered dag/gunbc/runner/runner_throughput_qualification.dag::phase_roster_standing
+unrostered dag/gunbc/runner/runner_throughput_qualification.dag::phase_wall_standing
+unrostered dag/gunbc/runner/runner_throughput_qualification_route.dag::route_bmc_write_count
+unrostered dag/gunbc/runner/runner_throughput_qualification_route.dag::route_bmc_writes_are_gated
+unrostered dag/gunbc/runner/runner_throughput_qualification_route.dag::route_control_plane_write_count
+unrostered dag/gunbc/runner/runner_throughput_qualification_route.dag::route_deregisters_what_it_registered
+unrostered dag/gunbc/runner/runner_throughput_qualification_route.dag::route_dispatch_selector_names_the_attempt
+unrostered dag/gunbc/runner/runner_throughput_qualification_route.dag::route_registers_one_slot
+unrostered dag/gunbc/runner/runner_unit_live_read.dag::runner_unit_memory_max_drifts_against_cap
+unrostered dag/gunbc/runner/runner_unit_live_read.dag::runner_unit_swap_max_converged
+unrostered dag/gunbc/runner/runner_usage_receipt.dag::runner_usage_from_observation
+unrostered dag/gunbc/scm/commit_closure_json_v2.dag::decode_closure_document
+unrostered dag/gunbc/scm/commit_closure_json_v2.dag::decode_closure_document_body
+unrostered dag/gunbc/scm/object_table_json.dag::decode_connective
+unrostered dag/gunbc/scm/object_table_json.dag::decode_kind
+unrostered dag/gunbc/scm/object_table_json.dag::decode_label
+unrostered dag/gunbc/scm/object_table_json.dag::decode_manifest_entry
+unrostered dag/gunbc/scm/object_table_json.dag::decode_named_label
+unrostered dag/gunbc/scm/object_table_json.dag::decode_node_entry_shape
+unrostered dag/gunbc/scm/object_table_json.dag::decode_pending_edge
+unrostered dag/gunbc/scm/repository_envelope.dag::decode_commit_members_after_reference
+unrostered dag/gunbc/scm/repository_envelope.dag::decode_repository
+unrostered dag/gunbc/scm/repository_envelope.dag::decode_repository_body_with_allocator
+unrostered dag/gunbc/scm/repository_envelope.dag::decode_repository_checkout
+unrostered dag/gunbc/scm/repository_envelope.dag::decode_repository_stage
+unrostered dag/gunbc/scm/repository_envelope.dag::decode_repository_versioned
+unrostered dag/gunbc/scm/repository_envelope.dag::read_pending_integration
+unrostered dag/gunbc/scm/repository_envelope.dag::read_pending_parent_reference
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_acceptance_is_paired
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_admission_is_structural_after
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_admission_regression_reachable
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_count_is_instrument_read
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_provenance_readers
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_reader_is_enumerating
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_slot_is_highest_rank
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_slot_is_lowest_rank
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_slot_is_rank_independent
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_slot_is_single_declarer
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_unconsumed_construction_readers
+unrostered dag/gunbc/scope_rank_view.dag::scope_rank_whole_key_readers
+unrostered dag/gunbc/source_root_read.dag::source_root_candidate_is_file
+unrostered dag/gunbc/spark/first_party_serving.dag::spark_realization_identity
+unrostered dag/gunbc/spark/host_commitment.dag::spark_host_standings_over
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::abort_provenance_covers
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::authority_fold_step
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::finalization_gaps
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::group_live_commitment
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::host_elements_decode_allowing_empty
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::host_placement_cleanup_wet
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::hosts_decode
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::hosts_decode_allowing_empty
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::placement_abort_attempt
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::placement_claim_append
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::placement_finalize_attempt
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::placement_fold_step
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::preparation_consumption
+unrostered dag/gunbc/spark/pair_serving_authority_log.dag::preparation_is_pending
+unrostered dag/gunbc/spark/pair_serving_d0.dag::d0_decide
+unrostered dag/gunbc/spark/pair_serving_d0.dag::d0_dispatch
+unrostered dag/gunbc/spark/pair_serving_d0.dag::d0_settle_admitted_over
+unrostered dag/gunbc/spark/pair_serving_d0.dag::d0_transaction
+unrostered dag/gunbc/spark/pair_serving_d0.dag::fabric_storage_append_principal_unrefused_trigger
+unrostered dag/gunbc/spark/pair_serving_d0.dag::reconcile_occupancy
+unrostered dag/gunbc/spark/pair_serving_d0_door.dag::d0_gate
+unrostered dag/gunbc/spark/vllm_observed.dag::vllm_models_data_standing
+unrostered dag/gunbc/spark/vllm_observed.dag::vllm_models_entry_id
+unrostered dag/gunbc/spark/vllm_observed.dag::vllm_models_route_standing_from_entry
+unrostered dag/gunbc/specification_citation_read_provenance.dag::specification_citation_read_byte_standing
+unrostered dag/gunbc/srv1_tasks_preapply_observation.dag::observe_srv1_tasks_preapply
+unrostered dag/gunbc/srv1_tasks_preapply_observation.dag::observe_unit_tasks
+unrostered dag/gunbc/srv3/srv3_boot_once_cd.dag::srv3_boot_once_cd_gated
+unrostered dag/gunbc/srv3/srv3_os_install_actuate.dag::srv3_bmcweb_session_login
+unrostered dag/gunbc/srv3/srv3_os_install_actuate.dag::srv3_bmcweb_session_login_resolved
+unrostered dag/gunbc/srv3/srv3_os_install_actuate.dag::srv3_os_install_actuator_plan_refuses_on_unestablished_path
+unrostered dag/gunbc/srv3/srv3_os_install_actuate_workflow.dag::srv3_os_install_actuate_workflow_includes_operator_approval_before_boot
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::classify_redfish_system_boot
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::diagnose_os_install_actuation
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::diagnose_srv3_install
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::install_serve_session_active
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::redfish_boot_override_is_disabled_none
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::redfish_power_on_boot_verdict
+unrostered dag/gunbc/srv3/srv3_os_install_diagnostic.dag::router_table_has_wrong_dynamic_hostname
+unrostered dag/gunbc/srv3/srv3_seeded_install_media.dag::srv3_seeded_install_media_remaster
+unrostered dag/gunbc/type_reference_decl_file_occurrence_census.dag::class_is_a_conversion
+unrostered dag/gunbc/type_reference_decl_file_occurrence_census.dag::class_is_irreducible
+unrostered dag/gunbc/v1/v1_complexity_decl_classification.dag::classification_is_authority_for_capability
+unrostered dag/gunbc/workflow_reconcile.dag::workflow_fact_observation_tally
+unrostered dag/gunbc/workflow_reconcile.dag::workflow_reconcile_report
+unrostered dag/gunbc/workflow_reconcile.dag::workflow_reconcile_status_key
+unrostered dag/std/algebra.dag::template_step_position
+unrostered dag/std/cache_interface.dag::cache_layer_beats_recompute_path
+unrostered dag/std/change.dag::keyed_three_way_row_patch
+unrostered dag/std/citation.dag::citation_pin_expected_sha256
+unrostered dag/std/citation.dag::text_position_selector
+unrostered dag/std/decision.dag::decision_closure
+unrostered dag/std/decision.dag::structural_join_refuses
+unrostered dag/std/effects.dag::check_modifier_vs_derivation
+unrostered dag/std/emission_provenance.dag::emission_contribution_fold
+unrostered dag/std/encoding.dag::utf8_decode_octets
+unrostered dag/std/filesystem.dag::skip_reason
+unrostered dag/std/observation.dag::active_occurrences
+unrostered dag/std/observation.dag::occurrence_concluded_in
+unrostered dag/std/occurrence_binding_candidates.dag::resolve_type_reference_containment_binding
+unrostered dag/std/occurrence_binding_candidates.dag::section13_population_law_roster_adjudicate
+unrostered dag/std/occurrence_binding_candidates.dag::section13_population_law_roster_denominator_holds
+unrostered dag/std/reducible.dag::fold_located_verdict
+unrostered dag/std/state_durability.dag::state_durability_boundary_evidence_verdict
+unrostered dag/test/manual/emission_provenance_specimen_red.dag::emission_combined_read_preserves_content_order_and_origin_multiplicity
+unrostered src/v2/compiler/00_compile.dag::native_test_eval_one
+unrostered src/v2/compiler/02_parse.dag::choice_shared_prefix_suffixes_from
+unrostered src/v2/compiler/02_parse.dag::flatten_choice_exprs
+unrostered src/v2/compiler/02_parse.dag::prepared_prefix_atom_eq
+unrostered src/v2/compiler/02_parse.dag::prepared_sequence_left_atom
+unrostered src/v2/compiler/02_parse.dag::prepared_terminal_prefix
+unrostered src/v2/compiler/03_body_producer.dag::attach_arrow_body
+unrostered src/v2/compiler/03_body_producer.dag::body_producer_dispatch_structured_body
+unrostered src/v2/compiler/03_ingest.dag::grammar_relation_binding_to_token_class_map
+unrostered src/v2/compiler/03_ingest.dag::grammar_relation_token_class_set
+unrostered src/v2/compiler/03_name_resolve.dag::admit_named_exports
+unrostered src/v2/compiler/03_name_resolve.dag::named_exports_topdown_algebra
+unrostered src/v2/compiler/03_resolve.dag::add_arrow_domain_named_params
+unrostered src/v2/compiler/03_resolve.dag::add_bind_atom_binder
+unrostered src/v2/compiler/03_resolve.dag::arrow_domain_has_named_bindings
+unrostered src/v2/compiler/03_resolve.dag::direct_atom_binding_fold
+unrostered src/v2/compiler/03_resolve.dag::domain_root_has_named_bindings
+unrostered src/v2/compiler/03_resolve.dag::harvest_conj_named_bindings
+unrostered src/v2/compiler/03_resolve.dag::resolve_bind_binder_target
+unrostered src/v2/compiler/03_resolve.dag::resolve_pattern_binders
+unrostered src/v2/compiler/03_resolve.dag::resolve_pattern_is_wildcard
+unrostered src/v2/compiler/03_resolve.dag::resolve_transform_operator_child
+unrostered src/v2/compiler/03_resolve.dag::resolve_type_param_binder
+unrostered src/v2/compiler/03_resolve.dag::type_parameter_in_value_position_optional
+unrostered src/v2/compiler/04_infer.dag::algebra_ref_is_grounded
+unrostered src/v2/compiler/04_infer.dag::infer_arrow_body_inhabits_declared_return
+unrostered src/v2/compiler/04_infer.dag::infer_arrow_domain_type_for_binding
+unrostered src/v2/compiler/04_infer.dag::infer_arrow_empty_domain_edge
+unrostered src/v2/compiler/04_infer.dag::infer_arrow_signature_order_edge
+unrostered src/v2/compiler/04_infer.dag::infer_atom_binding_sym
+unrostered src/v2/compiler/04_infer.dag::infer_branch_type_atoms_equal
+unrostered src/v2/compiler/04_infer.dag::infer_branch_type_is_bool
+unrostered src/v2/compiler/04_infer.dag::infer_branch_type_is_int
+unrostered src/v2/compiler/04_infer.dag::infer_conj_named_type_for_binding
+unrostered src/v2/compiler/04_infer.dag::infer_formals_from_domain
+unrostered src/v2/compiler/04_infer.dag::infer_gather_acc_awaits_product_row
+unrostered src/v2/compiler/04_infer.dag::infer_literal_payload_member_type
+unrostered src/v2/compiler/04_infer.dag::infer_match_bool_arm_row
+unrostered src/v2/compiler/04_infer.dag::infer_operator_arrow
+unrostered src/v2/compiler/04_infer.dag::infer_parameter_scope_search
+unrostered src/v2/compiler/04_infer.dag::infer_transform_operator_is_int_add
+unrostered src/v2/compiler/05_emit_orchestration.dag::orch_emit_retry_1level
+unrostered src/v2/compiler/05_emit_orchestration.dag::orch_emit_retry_levels
+unrostered src/v2/compiler/05_eval.dag::eval_binding_key_from_atom
+unrostered src/v2/compiler/05_eval.dag::eval_node_is_arrow
+unrostered src/v2/compiler/05_eval.dag::eval_node_is_branch
+unrostered src/v2/compiler/05_eval.dag::eval_node_is_callee_reference
+unrostered src/v2/compiler/05_eval.dag::eval_node_is_effect_io_roundtrip
+unrostered src/v2/compiler/05_eval.dag::eval_node_is_loop
+unrostered src/v2/compiler/05_eval.dag::eval_runtime_control_node
+unrostered src/v2/compiler/05_eval.dag::eval_runtime_node_is_control_transfer
+unrostered src/v2/compiler/05_eval.dag::eval_transform_has_callee_reference
+unrostered src/v2/compiler/05_eval.dag::run_test_claim
+unrostered src/v2/compiler/06_translate.dag::conj_optional_named_child
+unrostered src/v2/compiler/06_translate.dag::translate_apply_use_site_ownership_to_projected_boundary
+unrostered src/v2/compiler/06_translate.dag::translate_coerced_type_shell_from_source
+unrostered src/v2/compiler/06_translate.dag::translate_shell_attach_value_expression
+unrostered src/v2/compiler/06_translate.dag::type_expr_carrier_identity
+unrostered src/v2/compiler/07_target_carriers.dag::fidelity_disposition_node_decode_fidelity
+unrostered src/v2/compiler/07_target_carriers.dag::fidelity_quotient_decode_fidelity
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_arrow_domain_named_bindings
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_eq_type_decl
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_is_core_substrate
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_operand_ref_read_optional
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_position_function_value_arrow
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_reify_arrow_body
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_reify_branch_body
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_reify_transform_body
+unrostered src/v2/compiler/body_lowering_fold.dag::body_lower_rename_fresh_type_variables
+unrostered src/v2/compiler/body_producer_forward.dag::body_producer_forward_is_core_substrate
+unrostered src/v2/compiler/emit_host.dag::host_exit_failure_outcome
+unrostered src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval
+unrostered src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict_from_run
+unrostered src/v2/compiler/emit_host.dag::run_test_claim_from_source_emit_vs_eval
+unrostered src/v2/compiler/emit_host.dag::run_test_claim_from_source_emit_vs_eval_cached
+unrostered src/v2/compiler/emit_produced.dag::emit_produced_decl_inner_arrow
+unrostered src/v2/compiler/emit_produced.dag::produced_decl_edge_is_decl
+unrostered src/v2/compiler/emit_produced.dag::produced_module_member_is_bodied_decl
+unrostered src/v2/compiler/emit_semantic_decl.dag::emit_semantic_type_decl
+unrostered src/v2/compiler/ingested_fixture_arrows.dag::ingested_find_arrow_in_module
+unrostered src/v2/compiler/namespace_graft.dag::namespace_graft_has_explicit_braced_container
+unrostered src/v2/compiler/namespace_graft.dag::namespace_graft_is_transparent_sequence_spine
+unrostered src/v2/compiler/program_assembly.dag::program_assembly_phase_tokenize
+unrostered src/v2/compiler/program_partition.dag::partition_carrier_identity_snoc
+unrostered src/v2/compiler/program_partition.dag::partition_collect_user_semantic_type_edge
+unrostered src/v2/compiler/program_partition.dag::partition_collect_user_semantic_types_from_module
+unrostered src/v2/compiler/program_partition.dag::partition_segment_is_ambient_arrow_body_behavior
+unrostered src/v2/compiler/program_partition.dag::partition_segment_root_is_transform_computation
+unrostered src/v2/compiler/program_partition.dag::partition_semantic_type_search_subtree
+unrostered src/v2/compiler/program_partition.dag::partition_user_semantic_type_shape
+unrostered src/v2/compiler/reference_conservation.dag::authored_atom_extent_text
+unrostered src/v2/compiler/reference_conservation.dag::node_atom_identity_of
+unrostered src/v2/compiler/reference_conservation.dag::range_encloses_atom
+unrostered src/v2/compiler/reference_conservation.dag::refusal_cover_add
+unrostered src/v2/compiler/reference_conservation_admission.dag::changed_scope_observation_of_subjects
+unrostered src/v2/compiler/reference_conservation_admission.dag::dropped_reference_extent
+unrostered src/v2/compiler/reference_conservation_admission.dag::known_drop_shape_eq
+unrostered src/v2/compiler/reference_site_collector.dag::reference_sites_in_node
+unrostered src/v2/compiler/self_host/frontier_probe.dag::frontier_probe_diagnostic_tail_port_lexeme
+unrostered src/v2/compiler/self_host/frontier_probe.dag::frontier_probe_first_missing_import_lookup
+unrostered src/v2/compiler/self_host/frontier_probe.dag::frontier_probe_source_ref_for_read_diagnostic
+unrostered src/v2/compiler/self_host/frontier_probe_types.dag::frontier_survey_subject_eq
+unrostered src/v2/compiler/source_authority.dag::module_storage_binding_from_read_prepared
+unrostered src/v2/compiler/source_authority.dag::source_ir_artifact_provenance_from_model
+unrostered src/v2/compiler/source_authority.dag::source_ref_eq
+unrostered src/v2/compiler/source_authority_read.dag::dag_source_read_result_from_ref
+unrostered src/v2/compiler/symbol_index_fill.dag::disj_variant_counts_in_module
+unrostered src/v2/compiler/symbol_index_fill.dag::symbol_index_fill_containment_node
+unrostered src/v2/compiler/symbol_index_fill.dag::symbol_index_fill_unique_variant_aliases
+unrostered src/v2/compiler/target_serialize.dag::conj_named_child
+unrostered src/v2/compiler/target_serialize.dag::conj_positional_targets
+unrostered src/v2/compiler/target_serialize.dag::grammar_relation_row_with_bodied_scaffold
+unrostered src/v2/compiler/target_serialize.dag::grammar_tokens_fold_list_targets_into
+unrostered src/v2/compiler/target_serialize.dag::node_atom_identity
+unrostered src/v2/compiler/target_serialize.dag::optional_named_child_ignoring_positional
+unrostered src/v2/compiler/target_serialize.dag::serialize_type_expr_boundary_bounded
+unrostered src/v2/compiler/target_serialize.dag::target_bundle_child
+unrostered src/v2/compiler/target_serialize.dag::target_bundle_optional_child
+unrostered src/v2/compiler/target_serialize.dag::translate_project_transform_surface_or_callable_in_arrow_scope
+unrostered src/v2/compiler/target_serialize.dag::type_expr_atom_binding_from_positional
+unrostered src/v2/compiler/trait_derive_completeness.dag::repr_grounding_derive_elem_shape
+unrostered src/v2/compiler/use_site_verdict.dag::use_site_verdict_move_field_of
+unrostered src/v2/compiler/use_site_verdict.dag::use_site_verdict_of_node
+unrostered src/v2/compiler/wrap_decision.dag::wrap_decision_bundle_optional_child
+unrostered src/v2/extdeps/formats/spice.dag::spice_emit_ngspice
+unrostered src/v2/extdeps/languages/c.dag::c_type_atoms_by_value_in_node
+unrostered src/v2/extdeps/languages/dag.dag::dag_binding_branded_atom_identity
+unrostered src/v2/extdeps/languages/dag.dag::dag_node_is_module_root_conj
+unrostered src/v2/extdeps/languages/dag.dag::namespace_graft_node_is_conj
+unrostered src/v2/extdeps/languages/dag.dag::namespace_graft_spine_segment_edge_optional
+unrostered src/v2/extdeps/languages/gha_workflow_yaml_fold.dag::gha_fold_job_bundle_witness
+unrostered src/v2/extdeps/languages/llvm_ir.dag::block_well_formed
+unrostered src/v2/extdeps/languages/rust.dag::rust_sg2_malformed_atom_zero_positional_emitted
+unrostered src/v2/extdeps/languages/rust.dag::rust_sg2_type_expr_target_model_node
+unrostered src/v2/extdeps/languages/rust.dag::rust_trait_derive_surface_binding_for_coproduct
+unrostered src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_roundtrip_through_store
+unrostered src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_represent_literal
+unrostered src/v2/lens/common/construction_justification.dag::wall_now_total_projection_forbids_outside_modeled_guarantee
+unrostered src/v2/lens/complexity_accumulator_copy/analyze.dag::analyze_absent_primary_expr
+unrostered src/v2/lens/complexity_accumulator_copy/analyze.dag::count_fold_sites
+unrostered src/v2/lens/complexity_accumulator_copy/analyze.dag::lowered_loop_carrier_optional
+unrostered src/v2/lens/complexity_accumulator_copy/analyze.dag::lowered_transform_combiner_optional
+unrostered src/v2/lens/complexity_accumulator_copy/analyze.dag::lowered_transform_port_readings
+unrostered src/v2/lens/complexity_accumulator_copy/analyze.dag::tree_contains_lowered_loop
+unrostered src/v2/lens/complexity_accumulator_copy/corpus_census.dag::ingested_root_child_labels
+unrostered src/v2/lens/cost.dag::nat_dominates
+unrostered src/v2/lens/cost/copied_port_derivation.dag::arrow_domain_param_nodes
+unrostered src/v2/lens/cost/expr.dag::normalize_cost_expr_to_symbolic
+unrostered src/v2/lens/effect_reach.dag::flows_from_sink_call
+unrostered src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_derived_kernel_boundary_is_wall_after_grounding
+unrostered src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_optimality_boundary_is_outside_modeled_guarantee
+unrostered src/v2/lens/enforcement/inventory.dag::cadence_row_is_main_push_floor
+unrostered src/v2/lens/enforcement/inventory.dag::cadence_row_is_offline_local_recipe
+unrostered src/v2/lens/enforcement/inventory.dag::cadence_row_is_pr_floor_discovery
+unrostered src/v2/lens/idempotency.dag::idempotency_first_law_violation_diagnostic
+unrostered src/v2/lens/identity_captured_navigation/analyze.dag::node_source_symbol_of_occurrence
+unrostered src/v2/lens/live_read_classification.dag::live_read_selection_of
+unrostered src/v2/lens/mandatory_tag.dag::mandatory_tag_subtree_atoms
+unrostered src/v2/lens/module_impact_query.dag::impact_admission_pool_independence_established
+unrostered src/v2/lens/module_impact_query.dag::impact_admission_pool_independence_trigger
+unrostered src/v2/lens/no_dual_representation_test/scan.dag::argument_value_read
+unrostered src/v2/lens/no_dual_representation_test/scan.dag::eq_site_from_conj
+unrostered src/v2/lens/no_dual_representation_test/scan.dag::node_atom_sym
+unrostered src/v2/lens/no_dual_representation_test/scan.dag::replace_param_in_output
+unrostered src/v2/lens/parallelism.dag::parallelism_first_unresolved_coupling_diagnostic
+unrostered src/v2/lens/schedule_lens.dag::on_success_runnable_is_admitted
+unrostered src/v2/lens/undecidable_verdict_collapse.dag::pattern_head_identity_optional
+unrostered src/v2/lens/unit_modeling.dag::field_name_has_known_carrier
+unrostered src/v2/lens/unit_modeling.dag::name_is_exempt
+unrostered src/v2/lens/wiring_liveness.dag::wiring_decl_verdict
+unrostered src/v2/lens/wiring_liveness.dag::wiring_fn_dead_wires
+unrostered src/v2/lens/wiring_liveness.dag::wiring_liveness_corpus_is_clean
+unrostered src/v2/lens/wiring_liveness.dag::wiring_liveness_corpus_verdict
+unrostered src/v2/lens/wiring_liveness.dag::wiring_relation_is_wired
+unrostered src/v2/program.dag::program_branch_effect_io_holds
+unrostered src/v2/program.dag::program_pick_if_arrow_holds
+unrostered src/v2/std/cardinality.dag::loop_measure_node
+unrostered src/v2/std/compilers/body_lowering.dag::application_head_optional
+unrostered src/v2/std/compilers/body_lowering.dag::application_head_read_transform
+unrostered src/v2/std/compilers/body_lowering.dag::bind_view
+unrostered src/v2/std/compilers/body_lowering.dag::branch_view
+unrostered src/v2/std/compilers/body_lowering.dag::match_arm_view
+unrostered src/v2/std/compilers/body_lowering.dag::match_view
+unrostered src/v2/std/compilers/body_lowering.dag::view_atom_identity_optional
+unrostered src/v2/std/compilers/compilation_unit.dag::type_atom_identity
+unrostered src/v2/std/compilers/coproduct_variant_shape.dag::coproduct_variant_edge_has_payload
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::decode_semantic_decl_surface_projection_bool_flag
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::decode_semantic_decl_surface_projection_coproduct_layout
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::semantic_decl_binding_spelling_rows_from_catalog
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::semantic_decl_coproduct_decoration_rules_from_catalog
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::semantic_decl_decoration_lines_from_catalog
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::semantic_decl_lex_rule_rows_from_catalog
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::semantic_decl_string_from_bundle_node
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::target_semantic_decl_coproduct_shape_key
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::target_semantic_decl_field_surface_from_edge
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::target_semantic_enum_surface_from_coproduct_admitted
+unrostered src/v2/std/compilers/semantic_decl_emission.dag::target_semantic_struct_surface_from_record_admitted
+unrostered src/v2/std/compilers/sugar.dag::apply_sugar
+unrostered src/v2/std/compilers/sugar.dag::sugar_separated_rhs_as_coproduct
+unrostered src/v2/std/compilers/target_model.dag::canonical_operation_from_wire_node
+unrostered src/v2/std/compilers/target_model.dag::concrete_syntax_token_from_wire_node
+unrostered src/v2/std/compilers/target_model.dag::concrete_syntax_token_node_targets_into
+unrostered src/v2/std/compilers/target_model.dag::concrete_syntax_token_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::decode_bodied_arrow_statement_scaffold_bundle
+unrostered src/v2/std/compilers/target_model.dag::decode_int_literal_shape_bundle
+unrostered src/v2/std/compilers/target_model.dag::decode_optional_projection_bundle_symbol_field
+unrostered src/v2/std/compilers/target_model.dag::decode_type_expression_projection_bundle
+unrostered src/v2/std/compilers/target_model.dag::decode_value_expression_projection_bundle
+unrostered src/v2/std/compilers/target_model.dag::produced_decl_subject_from_decl
+unrostered src/v2/std/compilers/target_model.dag::produced_decl_type_ref_tokens
+unrostered src/v2/std/compilers/target_model.dag::produced_decl_type_tokens_at
+unrostered src/v2/std/compilers/target_model.dag::projection_bundle_symbol_field
+unrostered src/v2/std/compilers/target_model.dag::source_atom_char_projection_from_node
+unrostered src/v2/std/compilers/target_model.dag::source_atom_string_projection_from_node_bounded
+unrostered src/v2/std/compilers/target_model.dag::source_atom_symbol_projection_from_node
+unrostered src/v2/std/compilers/target_model.dag::source_atom_value_for_value_template
+unrostered src/v2/std/compilers/target_model.dag::target_atom_realization_conj_child
+unrostered src/v2/std/compilers/target_model.dag::target_atom_realization_display_name_from_row
+unrostered src/v2/std/compilers/target_model.dag::target_atom_realization_lookup_in_catalog_node
+unrostered src/v2/std/compilers/target_model.dag::target_capability_element_kernel_identity
+unrostered src/v2/std/compilers/target_model.dag::target_collection_node_atom_identity
+unrostered src/v2/std/compilers/target_model.dag::target_collection_type_node_is_free_monoid_carrier
+unrostered src/v2/std/compilers/target_model.dag::target_collection_type_node_is_set_carrier
+unrostered src/v2/std/compilers/target_model.dag::target_constructor_template_from_node
+unrostered src/v2/std/compilers/target_model.dag::target_function_boundary_site_from_node
+unrostered src/v2/std/compilers/target_model.dag::target_function_signature_realization_lookup_in_catalog_node
+unrostered src/v2/std/compilers/target_model.dag::target_lex_rule_literal_step
+unrostered src/v2/std/compilers/target_model.dag::target_model_augment_use_site_ownership_catalog
+unrostered src/v2/std/compilers/target_model.dag::target_model_augment_value_semantics_carriers
+unrostered src/v2/std/compilers/target_model.dag::target_model_bundle_core
+unrostered src/v2/std/compilers/target_model.dag::target_model_bundle_replace_edge_target
+unrostered src/v2/std/compilers/target_model.dag::target_model_canonical_operation_atom_field_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_model_canonical_operation_wire_child_declared_type
+unrostered src/v2/std/compilers/target_model.dag::target_model_canonical_operation_wire_predicate_type
+unrostered src/v2/std/compilers/target_model.dag::target_model_node_atom_identity
+unrostered src/v2/std/compilers/target_model.dag::target_node_atom_identity
+unrostered src/v2/std/compilers/target_model.dag::target_operator_realization_catalog_lookup
+unrostered src/v2/std/compilers/target_model.dag::target_operator_realization_catalog_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_operator_realization_row_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_operator_shape_from_wire_node
+unrostered src/v2/std/compilers/target_model.dag::target_operator_shape_token_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_operator_shape_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_project_arrow_body_by_kind
+unrostered src/v2/std/compilers/target_model.dag::target_project_callable_arg_in_arrow_scope
+unrostered src/v2/std/compilers/target_model.dag::target_project_field_access
+unrostered src/v2/std/compilers/target_model.dag::target_project_realized_closure
+unrostered src/v2/std/compilers/target_model.dag::target_project_record_construct
+unrostered src/v2/std/compilers/target_model.dag::target_project_transform_primitive_apply_in_arrow_scope
+unrostered src/v2/std/compilers/target_model.dag::target_reference_layer_probe_from_emitted_type
+unrostered src/v2/std/compilers/target_model.dag::target_reference_layer_tokens_from_node
+unrostered src/v2/std/compilers/target_model.dag::target_transform_positional_operand_binding_atom
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_arrow_wire_shape
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_decode_kind_edge
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_emitted_kind
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_emitted_surface_identity
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_labeled_wire
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_positional_wire
+unrostered src/v2/std/compilers/target_model.dag::target_type_expr_fold_named_metadata_edges
+unrostered src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_append_derived_rows
+unrostered src/v2/std/compilers/target_model.dag::target_use_site_ownership_lookup_in_catalog_node
+unrostered src/v2/std/compilers/target_model.dag::target_use_site_ownership_reference_catalog_lookup
+unrostered src/v2/std/compilers/target_model.dag::target_use_site_ownership_source_key
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_arrow_has_branch_body
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_arrow_has_transform_body
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_bind_let_gate
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_bind_let_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_binding_ref_binding_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_binding_ref_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_bool_literal_octet_body_tokens
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_bool_literal_value_from_atom
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_bool_literal_value_from_expression
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_callable_apply_callee_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_closure_param_tokens
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_closure_params_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_closure_tokens_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_conditional_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_effect_apply_kind_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_effect_apply_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_field_access_field_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_field_access_gate
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_field_access_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_int_bool_octet_scrutinee_carrier_tokens
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_is_int_literal_atom
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_is_source_bool_literal_atom
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_loop_gate
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_loop_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_match_arm_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_match_gate
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_match_is_int_bool_octet_channel
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_match_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_primitive_apply_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_project_atom_in_arrow_scope
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_project_atom_literal_or
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_project_body_subexpression
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_record_construct_gate
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_record_construct_type_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_record_construct_wire_schema_valid
+unrostered src/v2/std/compilers/target_model.dag::target_value_expr_wire_atom_identity
+unrostered src/v2/std/compilers/target_model.dag::target_value_expression_binding_refs_intersperse_separator
+unrostered src/v2/std/compilers/target_model.dag::target_value_expression_bool_literal_to_concrete_tokens
+unrostered src/v2/std/compilers/target_model.dag::target_value_expression_int_literal_lexeme_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expression_reify_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expression_symbol_identity_from_wire
+unrostered src/v2/std/compilers/target_model.dag::target_value_expression_to_concrete_tokens
+unrostered src/v2/std/compilers/target_model.dag::target_value_semantics_carrier_snoc
+unrostered src/v2/std/compilers/target_model.dag::target_value_semantics_carriers_from_node
+unrostered src/v2/std/compilers/target_model.dag::target_value_template_from_node
+unrostered src/v2/std/compilers/target_model.dag::wire_conj_named_binding_atom
+unrostered src/v2/std/concept_index.dag::field_refs_from_node
+unrostered src/v2/std/data_initializer_identity.dag::projection_kind_lexeme_optional
+unrostered src/v2/std/datetime.dag::calendar_date_admits
+unrostered src/v2/std/datetime.dag::leap_second_next_day
+unrostered src/v2/std/decl_facts_skeleton.dag::skeleton_atom_lexeme_census_fold
+unrostered src/v2/std/dependency.dag::classify_named_edge_usage
+unrostered src/v2/std/float.dag::float_body_compare_semantic_total
+unrostered src/v2/std/fold_assembly.dag::decode_node_list
+unrostered src/v2/std/grammar.dag::conj_positional_children
+unrostered src/v2/std/grammar.dag::derive_grammar_relation_row_node_resolved
+unrostered src/v2/std/grammar.dag::emitted_node_slot_count
+unrostered src/v2/std/grammar.dag::emitted_shape_supported_for_lhs_exact
+unrostered src/v2/std/grammar.dag::formal_emitted_index_key
+unrostered src/v2/std/grammar.dag::formal_grammar_symbol_from_node
+unrostered src/v2/std/grammar.dag::formal_nonterminal_from_node
+unrostered src/v2/std/grammar.dag::formal_production_from_node
+unrostered src/v2/std/grammar.dag::formal_production_matches_resolution
+unrostered src/v2/std/grammar.dag::formal_production_rhs_matches_emitted_conj
+unrostered src/v2/std/grammar.dag::formal_production_rhs_singleton_binding
+unrostered src/v2/std/grammar.dag::formal_production_rhs_singleton_terminal_identity
+unrostered src/v2/std/grammar.dag::formal_productions_from_catalog_node
+unrostered src/v2/std/grammar.dag::formal_rhs_from_node
+unrostered src/v2/std/grammar.dag::formal_terminal_from_node
+unrostered src/v2/std/grammar.dag::grammar_atom_identity_from_node
+unrostered src/v2/std/grammar.dag::grammar_node_carries_surface_identity
+unrostered src/v2/std/grammar.dag::grammar_node_insert_atom_identities
+unrostered src/v2/std/grammar.dag::grammar_relation_row_forward_production_selection
+unrostered src/v2/std/grammar.dag::grammar_relation_row_forward_select
+unrostered src/v2/std/grammar.dag::grammar_relation_row_forward_token_spine_selection
+unrostered src/v2/std/grammar.dag::grammar_relation_row_reverse_parse_selection
+unrostered src/v2/std/grammar.dag::grammar_relation_rules_formal_productions_from_rows
+unrostered src/v2/std/grammar.dag::node_atom_identity_optional
+unrostered src/v2/std/inhabitance.dag::inhabitance_formal_declaration
+unrostered src/v2/std/integer.dag::int_eq
+unrostered src/v2/std/integer.dag::int_gt
+unrostered src/v2/std/integer.dag::int_lt
+unrostered src/v2/std/integer.dag::int_ne
+unrostered src/v2/std/integer.dag::integer_decimal_digit_from_node_optional
+unrostered src/v2/std/lens_verdict.dag::lens_verdict_node_occurrence_text_in_spans
+unrostered src/v2/std/list_introduction.dag::list_introduction_elements_optional
+unrostered src/v2/std/node.dag::arrow_body_record_construct_conforms
+unrostered src/v2/std/node.dag::arrow_domain_binder_labels
+unrostered src/v2/std/node.dag::arrow_parameter_order_step
+unrostered src/v2/std/node.dag::arrow_signature_order_list_read
+unrostered src/v2/std/node.dag::classify_arrow_body_form
+unrostered src/v2/std/node.dag::cost_edge_role
+unrostered src/v2/std/node.dag::declaration_reference_body_marked
+unrostered src/v2/std/node.dag::is_empty_conj_root
+unrostered src/v2/std/node.dag::loop_edge_contributes_to_iteration_fold
+unrostered src/v2/std/node.dag::match_arm_node_conforms
+unrostered src/v2/std/node.dag::type_binder_conforms
+unrostered src/v2/std/node.dag::type_binder_conj_conforms
+unrostered src/v2/std/node_query.dag::arm_payload_from_target
+unrostered src/v2/std/node_query.dag::arrow_domain_named_param_bindings
+unrostered src/v2/std/node_query.dag::conj_ordered_named_param_binding_ids
+unrostered src/v2/std/node_query.dag::construct_tag_optional
+unrostered src/v2/std/node_query.dag::declared_field_cardinality_of_target
+unrostered src/v2/std/node_query.dag::declared_field_list
+unrostered src/v2/std/node_query.dag::edge_field_type_name
+unrostered src/v2/std/node_query.dag::field_projection_edge_field_optional
+unrostered src/v2/std/node_query.dag::field_projection_optional
+unrostered src/v2/std/node_query.dag::find_arrow_body_child
+unrostered src/v2/std/node_query.dag::named_child_lookup
+unrostered src/v2/std/node_query.dag::node_is_coproduct
+unrostered src/v2/std/node_query.dag::variant_declaration_edge_optional
+unrostered src/v2/std/provenance.dag::span_index_resolve_textual_locus
+unrostered src/v2/std/qualified_name.dag::declaration_reference_spine_optional
+unrostered src/v2/std/qualified_name.dag::qn_fold_init
+unrostered src/v2/std/qualified_name.dag::qualified_name_from_node
+unrostered src/v2/std/qualified_name.dag::qualified_name_spine_shape_present
+unrostered src/v2/std/text.dag::octet_scalar_walk_step
+unrostered src/v2/std/type_binder.dag::behavior_marker_optional
+unrostered src/v2/std/type_binder.dag::cast_target_optional
+unrostered src/v2/std/type_binder.dag::type_annotation_optional
+unrostered src/v2/std/type_binder.dag::type_binder_node_conforms
+unrostered src/v2/std/type_binder.dag::type_decl_wrapper_params_once
+unrostered src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::arrow_body_form_eval_int_result_equals_for_call
+unrostered src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::classify_arrow_body_form_red_no_computation_body
+unrostered src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::classify_arrow_body_form_red_no_declaration_reference
+unrostered src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::classify_arrow_body_form_red_no_direct_atom
+unrostered src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::classify_arrow_body_form_red_no_function_value_body
+unrostered src/v2/test/claim/body_lowering/atom_body_discriminator_helpers.dag::atom_body_discriminator_named_binding_count
+unrostered src/v2/test/claim/body_lowering/atom_body_discriminator_helpers.dag::atom_body_discriminator_observed_top_level_arrow_lexemes
+unrostered src/v2/test/claim/body_lowering/atom_body_discriminator_helpers.dag::atom_body_discriminator_parameter_count
+unrostered src/v2/test/claim/body_lowering/atom_body_discriminator_helpers.dag::atom_body_discriminator_top_level_arrow_lexeme_optional
+unrostered src/v2/test/claim/body_lowering/atom_body_discriminator_helpers.dag::atom_body_discriminator_top_level_named_arrow
+unrostered src/v2/test/claim/body_lowering/atom_body_discriminator_helpers.dag::atom_body_discriminator_walk_spine_to_body
+unrostered src/v2/test/claim/body_lowering/fn_body_seam_witness_helpers.dag::fn_body_seam_tree_has_transform
+unrostered src/v2/test/claim/body_lowering/fn_body_seam_witness_helpers.dag::wave1_gate1_a1_fn_body_seam_normalize_still_yields_arrow_transform_holds
+unrostered src/v2/test/claim/body_lowering/infer_transform_binary_infix_witness_helpers.dag::infer_transform_witness_add_body
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_a1_symbol_index_helpers.dag::wave1_gate1_a1_find_arrow_in_module
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_a1_symbol_index_helpers.dag::wave1_gate1_a1_symbol_index_frontend_parity_holds
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_b1_bare_call_helpers.dag::wave1_gate1_b1_caller_body_has_transform
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_b1_bare_call_helpers.dag::wave1_gate1_b1_find_named_fn_arrow_body
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_d_ingested_fixture_helpers.dag::wave1_gate1_d_arrow_body_is_bind
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_d_ingested_fixture_helpers.dag::wave1_gate1_d_arrow_body_is_branch
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_d_ingested_fixture_helpers.dag::wave1_gate1_d_arrow_body_is_loop
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_d_ingested_fixture_helpers.dag::wave1_gate1_d_arrow_body_is_match
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_d_ingested_fixture_helpers.dag::wave1_gate1_d_arrow_body_is_transform
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_normalize_add_helpers.dag::wave1_gate1_find_arrow_in_module
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_normalize_add_helpers.dag::wave1_gate1_normalized_add_yields_arrow_transform_holds
+unrostered src/v2/test/claim/body_lowering/wave1_gate1_normalize_add_helpers.dag::wave1_gate1_resolved_add_arrow_transform_holds
+unrostered src/v2/test/claim/generated/coproduct_exhaustiveness.dag::witness_coproduct_exhaustiveness_generated_anchor
+unrostered src/v2/test/claim/generated/cross_representation_equality.dag::witness_cross_representation_uses_generated_anchor
+unrostered src/v2/test/claim/grounding_go/sg_claims.dag::go_g2_sg1_symbol_evidence_targets_canonical_carrier
+unrostered src/v2/test/claim/grounding_go/sg_claims.dag::go_g2_sg2_absence_evidence_targets_canonical_carrier
+unrostered src/v2/test/claim/grounding_go/sg_claims.dag::go_g2_sg5_absence_evidence_targets_canonical_carrier
+unrostered src/v2/test/claim/manual/eval_runtime.dag::witness_eval_add_accepts_five
+unrostered src/v2/test/claim/manual/eval_runtime.dag::witness_eval_call_primitive_rejects_bad_args
+unrostered src/v2/test/claim/manual/typescript_descriptor_node_run.dag::typescript_descriptor_node_host_run_i32
+unrostered src/v2/test/claim/manual/v4_evaluator_runtime_anchor.dag::witness_v4_evaluator_semantics_fail_closed
+unrostered src/v2/test/claim/manual/v4_evaluator_runtime_anchor.dag::witness_v4_evaluator_transfer_fail_closed
+unrostered src/v2/test/claim/manual/validate_then_compile_public_terminal.dag::claim_empty_lenses_matches_compile_core_outcome
+unrostered src/v2/test/claim/namespace_graft/normalize_graft_witness_helpers.dag::ng_norm_grafted_tree_has_no_metadata_edges
+unrostered src/v2/test/compiler/pipeline/stage_bridge.dag::pipeline_arrow_body_has_behavior
+unrostered src/v2/test/compiler/pipeline/stage_bridge.dag::pipeline_find_arrow_in_module
+unrostered src/v2/test/lens_cost/arrow_body_cost_domain_excluded.dag::arrow_body_cost_domain_excluded_holds
+unrostered src/v2/test/lens_effect/effect_depends_on.dag::effect_depends_on_claim_holds
+unrostered src/v2/test/lens_ownership/resource_dependency.dag::ownership_resource_dependency_claim_holds
+unrostered src/v2/test/lens_structural_resolution/facts_lookup_miss.dag::facts_lookup_miss_claim_holds
+unrostered src/v2/test/lens_structural_resolution/module_import_out_of_scope.dag::module_import_out_of_scope_claim_holds
+unrostered src/v2/test/lens_structural_resolution/unbound_symbol_at_use.dag::unbound_symbol_at_use_claim_holds
+unrostered src/v2/test/lens_structural_resolution/unresolved_infer_witness.dag::unresolved_infer_witness_claim_holds
+unrostered src/v2/test/lens_unused_parameters/binds_to_edge.dag::unused_parameters_binds_to_edge_claim_holds
+unrostered src/v2/test/lens_unused_parameters/non_use_edges.dag::unused_parameters_non_use_edges_claim_holds
+unrostered src/v2/test/lens_unused_parameters/rollup_unused_declaration.dag::unused_parameters_rollup_claim_holds
+unrostered src/v2/test/workflow/glob_discovery_law.dag::owned_other_init_is_illegal_unified_claim_arm
+unrostered src/v2/workflow/bootstrap.dag::bootstrap_construct_fold_init
+unrostered src/v2/workflow/emitted_crate_workspace.dag::emitted_workspace_red
+unrostered src/v2/workflow/floor_expected_red_coherence.dag::floor_expected_red_chunk_coherence_check
+unrostered src/v2/workflow/floor_unimported_bare_provider_debt_roster.dag::unimported_bare_provider_row_view
+unrostered src/v2/workflow/local_repo_wet_terminal.dag::local_repo_wet_identity_passed_on_candidate
+unrostered src/v2/workflow/realization_attempt.dag::collect_arrows
+unrostered src/v2/workflow/realization_attempt.dag::decl_edges_named
+unrostered src/v2/workflow/realization_attempt.dag::first_arrow_in
+unrostered src/v2/workflow/realization_attempt.dag::first_located_file
+unrostered src/v2/workflow/rust_crate_partition.dag::emitted_edge_merge_step
+unrostered src/v2/workflow/rust_crate_partition.dag::emitted_target_reach
+unrostered src/v2/workflow/rust_crate_partition.dag::string_member
+unrostered src/v2/workflow/witness_admission.dag::witness_consumer_cadence_for_row
+unrostered src/v2/workflow/witness_admission.dag::witness_execution_standing_for_row
+stale dag/gunbc/scm/commit_closure_json_v2.dag::encode_connective
+undetermined src/v2/extdeps/runtimes/v2_evaluator.dag::v2_eval_transform_is_int_add
+undetermined src/v2/lens/undecidable_verdict_collapse.dag::pattern_head_identity_optional
+undetermined src/v2/lens/vacuity.dag::vacuity_transform_operator_symbol_optional
+undetermined src/v2/std/compilers/target_model.dag::arrow_domain_binder_names
+undetermined src/v2/std/compilers/target_model.dag::produced_decl_function_type_domain_edges
+undetermined src/v2/workflow/bash_command_fold_serialize.dag::bash_fold_built_stmt_production_binding
+undetermined src/v2/workflow/bash_command_fold_serialize.dag::bash_fold_serialize_assign_node
+undetermined src/v2/workflow/bash_command_fold_serialize.dag::bash_fold_serialize_exit_node
+undetermined src/v2/workflow/bash_command_fold_serialize.dag::bash_fold_serialize_with_redir_node
+undetermined src/v2/workflow/bash_command_fold_serialize.dag::bash_fold_serialize_word_node
+blocked-module extdeps.version.pep440 value does not inhabit its declared type at the direct call argument for parameter 'a': declared 'Primitive(NonNegativeInt)', produced 'Optional<Primitive(NonNegativeInt)>'
+blocked-module extdeps.version.pep440 value does not inhabit its declared type at the direct call argument for parameter 'b': declared 'Primitive(NonNegativeInt)', produced 'Optional<Primitive(NonNegativeInt)>'
+blocked-module extdeps.vllm.memory_profile value does not inhabit its declared type at the direct call argument for parameter 'fraction_text': declared 'Primitive(String)', produced 'Optional<Primitive(String)>'
+blocked-module extdeps.vllm.memory_profile value does not inhabit its declared type at the direct call argument for parameter 'whole_text': declared 'Primitive(String)', produced 'Optional<Primitive(String)>'
+blocked-module gunbc.auth.patterns value does not inhabit its declared type at the direct call argument for parameter 'header_name': declared 'Primitive(String)', produced 'Optional<Primitive(String)>'
+blocked-module gunbc.bmc_fan_program_decode_witness value does not inhabit its declared type at the direct call argument for parameter 'd': declared 'Product(ExactDecimal)', produced 'Optional<Product(ExactDecimal)>'
+blocked-module gunbc.bmc_fan_program_decode_witness value does not inhabit its declared type at the direct call argument for parameter 'program': declared 'Product(BmcFanControlProgram)', produced 'Optional<Product(BmcFanControlProgram)>'
+blocked-module gunbc.host_converge_delta no field 'value' on type 'KeyedRow'
+blocked-module gunbc.host_converge_delta unresolved type 'KeyedRow'
+blocked-module gunbc.host_hygiene_liveness_observe value does not inhabit its declared type at the direct call argument for parameter 'line': declared 'Primitive(String)', produced 'Optional<Primitive(String)>'
+blocked-module gunbc.namespace_step0_canary_v1_history undefined variable 'HistoricalStep0SubjectNotEntered'
+blocked-module gunbc.namespace_step0_canary_v1_history unresolved type 'HistoricalStep0SubjectNotEntered'
+blocked-module gunbc.pid_control_curve_decode_witness value does not inhabit its declared type at the direct call argument for parameter 'd': declared 'Product(ExactDecimal)', produced 'Optional<Product(ExactDecimal)>'
+blocked-module gunbc.repo_ruleset value does not inhabit its declared type at the direct call argument for parameter 'p': declared 'Product(RulesetRuleParametersWire)', produced 'Optional<Product(RulesetRuleParametersWire)>'
+blocked-module gunbc.tailscale_acl_emit ambiguous reference 'json_string': 2 candidates: gunbc.required_lane_resolution_census.json_string, extdeps.languages.json.emit.json_string — qualify by containment path, alias, or rename
+blocked-module test.claim.altra_memory_controller_witness value does not inhabit its declared type at the direct call argument for parameter 'b': declared 'Node(ByteSize<Primitive(Memory),Primitive(One),Primitive(Nat)>)', produced 'Optional<Optional(Node(Byt
+blocked-module test.claim.build_cache_endpoint_path unresolved type 'EndpointListening'
+blocked-module test.claim.build_cache_placement_observation ambiguous reference 'placement_verdict': 2 candidates: gunbc.runner.runner_cgroup_placement_receipt.placement_verdict, gunbc.build_cache_provision_verdict.placement_verdict — qualify by containment pa
+blocked-module test.claim.build_latency_actions_collect_witness value does not inhabit its declared type at the direct call argument for parameter 'm': declared 'Node(Measure<Primitive(Q),Primitive(S),Primitive(M)>)', produced 'Optional<Primitive(std.measure.Milli
+blocked-module test.claim.cheap_gate_pool value does not inhabit its declared type at the direct call argument for parameter 'pool': declared 'Container(List,Product(ClaimRun))', produced 'Optional<Container(List,Product(ClaimRun))>'
+blocked-module test.claim.commit_check_demand_witness value does not inhabit its declared type at the direct call argument for parameter 'a': declared 'Coproduct(CommitCheckKind)', produced 'Optional<Coproduct(CommitCheckKind)>'
+blocked-module test.claim.commit_check_demand_witness value does not inhabit its declared type at the direct call argument for parameter 'left': declared 'Container(List,Product(DeclarationRef))', produced 'Optional<Container(List,Product(DeclarationRef)
+blocked-module test.claim.commit_check_demand_witness value does not inhabit its declared type at the direct call argument for parameter 'right': declared 'Container(List,Product(DeclarationRef))', produced 'Optional<Container(List,Product(DeclarationRef
+blocked-module test.claim.commit_check_demand_witness value does not inhabit its declared type at the list element: declared 'Product(DeclarationRef)', produced 'Optional<Product(DeclarationRef)>'
+blocked-module test.claim.config_record_emit_witness effect summary incomplete: test.claim.config_record_emit_witness.render_field calls test.claim.config_record_emit_witness.render, whose identity is established but names no registry row, so the join c
+blocked-module test.claim.config_record_emit_witness effect summary incomplete: test.claim.config_record_emit_witness.render_fields calls test.claim.config_record_emit_witness.render, whose identity is established but names no registry row, so the join 
+blocked-module test.claim.config_record_emit_witness effect summary incomplete: test.claim.config_record_emit_witness.render_record calls test.claim.config_record_emit_witness.render, whose identity is established but names no registry row, so the join 
+blocked-module test.claim.fabric_grant_authorization_witness variant 'GrantCommitted' not found in type 'FreeMonoid'
+blocked-module test.claim.fabric_grant_authorization_witness variant 'GrantRefused' not found in type 'FreeMonoid'
+blocked-module test.claim.fleet_converge_cli_witness value does not inhabit its declared type at the direct call argument for parameter 'a': declared 'Primitive(ConvergeVerdict)', produced 'Coproduct(Optional)'
+blocked-module test.claim.fleet_converge_cli_witness value does not inhabit its declared type at the direct call argument for parameter 'b': declared 'Primitive(ConvergeVerdict)', produced 'Coproduct(Optional)'
+blocked-module test.claim.fleet_show_effective_read_witness value does not inhabit its declared type at the direct call argument for parameter 'desired': declared 'Primitive(Percent)', produced 'Optional<Primitive(std.measure.Percent)>'
+blocked-module test.claim.fleet_show_effective_read_witness value does not inhabit its declared type at the direct call argument for parameter 'p': declared 'Primitive(Percent)', produced 'Optional<Primitive(std.measure.Percent)>'
+blocked-module test.claim.floor_preparation_shared_build non-exhaustive match: missing variant(s) CrossClaimPureProducerWarm
+blocked-module test.claim.grounded_principal_witness unresolved type 'HostEffect'
+blocked-module test.claim.host_hygiene_liveness value does not inhabit its declared type at the direct call argument for parameter 'line': declared 'Primitive(String)', produced 'Optional<Primitive(String)>'
+blocked-module test.claim.host_network_diagnosis unresolved type 'InterfaceObservation'
+blocked-module test.claim.json_emit_witness ambiguous reference 'json_string': 2 candidates: gunbc.required_lane_resolution_census.json_string, extdeps.languages.json.emit.json_string — qualify by containment path, alias, or rename
+blocked-module test.claim.keyed_delta_fold_witness unresolved type 'KeyedRow'
+blocked-module test.claim.layout_render_witness ambiguous reference 'render': 2 candidates: std.layout.render, gunbc.demo.semantic_system_readout.render — qualify by containment path, alias, or rename
+blocked-module test.claim.llm_attempt_receipt_witness type mismatch: expected 'Node(TokenThroughput<Primitive(Nat)>)', got 'Product(FieldOfFractions)'
+blocked-module test.claim.long.dag_arrow_lambda_witness_test value does not inhabit its declared type at the direct call argument for parameter 'source': declared 'Node(std.algebra.FreeMonoid<Product(Char)>)', produced 'Primitive(String)'
+blocked-module test.claim.long.extdeps_scope_placement_gate_loudness_witness value does not inhabit its declared type at the list element: declared 'Primitive(String)', produced 'Optional<Primitive(String)>'
+blocked-module test.claim.machine_shape_catalog_integration_witness value does not inhabit its declared type at the direct call argument for parameter 'b': declared 'Node(ByteSize<Primitive(Memory),Primitive(One),Primitive(Nat)>)', produced 'Optional<Optional(Node(Byt
+blocked-module test.claim.machine_shape_witness value does not inhabit its declared type at the direct call argument for parameter 'b': declared 'Node(ByteSize<Primitive(Memory),Primitive(One),Primitive(Nat)>)', produced 'Optional<Optional(Node(Byt
+blocked-module test.claim.roadmap_dispatch_actuator value does not inhabit its declared type at the direct call argument for parameter 'entry': declared 'Product(TmuxLsEntry)', produced 'Optional<Product(TmuxLsEntry)>'
+blocked-module test.claim.roadmap_forecast_witness call shape mismatch calling 'roadmap_authority_projection': missing required argument 'history' (0 of 1 required argument(s) supplied)
+blocked-module test.claim.runner_capacity_operator_access_witness missing required field 'ssh_host' in literal of type 'SshShell'
+blocked-module test.claim.runner_placement_witness ambiguous reference 'render': 2 candidates: std.layout.render, gunbc.demo.semantic_system_readout.render — qualify by containment path, alias, or rename
+blocked-module test.claim.spark.pair_incumbent_identity_witness call shape mismatch calling 'endpoint_incarnation_observation': missing required argument 'container_env' (2 of 3 required argument(s) supplied)
+blocked-module test.claim.srv3_os_install_actuate_workflow unresolved type 'AttemptIdentity'
+blocked-module test.claim.srv3_websocat_sequence_witness effect summary incomplete: call to 'join' in test.claim.srv3_websocat_sequence_witness.the_readback_never_runs_after_a_failed_step has no established callee identity, so its effects cannot be joined
+blocked-module test.claim.srv3_websocat_sequence_witness function 'join' not found in scope
+blocked-module test.claim.workflow_recursive_witness ambiguous reference 'settle': 2 candidates: gunbc.idea_pr_spine.settle, gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test.settle — qualify by containment path, alias, or rename
+blocked-module test.fixture.health_read_only.mutation_probe call shape mismatch calling 'ssh_session_exec': missing required argument 'host' (0 of 1 required argument(s) supplied)
+blocked-module test.fixture.health_read_only.mutation_probe call shape mismatch calling 'ssh_session_exec': no parameter named 'target' (declared: [host, command])
+blocked-module test.fixture.health_read_only.mutation_probe function 'CreateAccount' not found in scope
+blocked-module test.fixture.health_read_only.mutation_probe type mismatch: expected 'Product(NonEmptyStr)', got 'Coproduct(HostEffectTransport)'
+blocked-module test.probe.bare_string_from_boundary_probe a 'Present' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a gen
+blocked-module test.probe.bare_string_from_boundary_probe no field 'email' on type 'Classified'
+blocked-module test.probe.bare_string_from_boundary_probe sole_constructor type 'Classified' cannot be constructed outside its defining module
+blocked-module test.probe.census_app_acquisition_forged_probe call shape mismatch calling 'census_app_acquisition_standing': argument 'record' supplied more than once
+blocked-module test.probe.census_app_acquisition_forged_probe call shape mismatch calling 'census_app_acquisition_standing': missing required argument 'record' (0 of 1 required argument(s) supplied)
+blocked-module test.probe.census_app_acquisition_forged_probe call shape mismatch calling 'census_app_acquisition_standing': no parameter named 'custody' (declared: [record])
+blocked-module test.probe.census_app_acquisition_forged_probe call shape mismatch calling 'census_app_acquisition_standing': no parameter named 'installation' (declared: [record])
+blocked-module test.probe.census_app_acquisition_forged_probe call shape mismatch calling 'census_app_acquisition_standing': no parameter named 'registration' (declared: [record])
+blocked-module test.probe.census_app_acquisition_forged_probe sole_constructor type 'CensusAppAcquisitionReceipt' cannot be constructed outside its defining module
+blocked-module test.probe.census_app_acquisition_forged_probe value does not inhabit its declared type at the direct call argument for parameter 'record': declared 'Coproduct(GitHubAppAcquisitionRecord)', produced 'Coproduct(RegistrationStanding)'
+blocked-module test.probe.classified_unwrap_helper_probe sole_constructor type 'DataRevealKey' cannot be constructed outside its defining module
+blocked-module test.probe.data_effect_permit_forged_probe constructor call admission refused: 'product.data_class.admitted_seed' refuses call from 'test.probe.data_effect_permit_forged_probe.seeded_past_the_fold' — permitted callers: [product.data_class.admi
+blocked-module test.probe.data_effect_permit_forged_probe sole_constructor type 'DataEffectPermit' cannot be constructed outside its defining module
+blocked-module test.probe.data_effect_permit_forged_probe sole_constructor type 'Sink' cannot be constructed outside its defining module
+blocked-module test.probe.declaring_identity_spelling_unresolvable_probe unresolved type 'ThisNameIsNotDeclaredInThisFixture'
+blocked-module test.probe.file_hold_plan_forged_probe constructor call admission refused: 'gunbc.fabric_control_plane.commit_hold_end' refuses call from 'test.probe.file_hold_plan_forged_probe.commit_a_genuine_plan_with_an_authored_outcome' — permitted c
+blocked-module test.probe.file_hold_plan_forged_probe constructor call admission refused: 'gunbc.fabric_control_plane.end_cell_hold' refuses call from 'test.probe.file_hold_plan_forged_probe.free_the_cell_with_an_authored_advanced_account' — permitted ca
+blocked-module test.probe.file_hold_plan_forged_probe constructor call admission refused: 'gunbc.fabric_control_plane.free_cell_slot' refuses call from 'test.probe.file_hold_plan_forged_probe.free_a_genuine_plan_with_an_authored_account' — permitted call
+blocked-module test.probe.file_hold_plan_forged_probe sole_constructor type 'FileHoldAcquirePlan' cannot be constructed outside its defining module
+blocked-module test.probe.file_hold_plan_forged_probe sole_constructor type 'FileHoldReleasePlan' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_formula_observation_forged_probe sole_constructor type 'FormulaWholeTabObservation' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_header_row_authorization_forged_probe sole_constructor type 'HeaderRowWriteAuthorization' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_tab_forged_probe constructor call admission refused: 'gunbc.review_sheet_tab_locator.review_tab_standing_from_classification' refuses call from 'test.probe.review_sheet_tab_forged_probe.mint_a_located_tab_from_an_auth
+blocked-module test.probe.review_sheet_tab_forged_probe constructor call admission refused: 'gunbc.review_sheet_tab_locator.review_tab_standing_of_outcome' refuses call from 'test.probe.review_sheet_tab_forged_probe.mint_a_located_tab_from_an_authored_ok_o
+blocked-module test.probe.review_sheet_tab_forged_probe constructor call admission refused: 'test.claim.review_sheet_format_target_witness.located_tab_for_witness' refuses call from 'test.probe.review_sheet_tab_forged_probe.mint_a_located_tab_through_the_w
+blocked-module test.probe.review_sheet_tab_forged_probe sole_constructor type 'FormatRequestPlan' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_tab_forged_probe sole_constructor type 'FreezeRowsRequest' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_tab_forged_probe sole_constructor type 'HeaderBandRequest' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_tab_forged_probe sole_constructor type 'LocatedReviewTab' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_tab_forged_probe sole_constructor type 'StandingRuleRequest' cannot be constructed outside its defining module
+blocked-module test.probe.review_sheet_validated_header_schema_forged_probe sole_constructor type 'ValidatedHeaderSchema' cannot be constructed outside its defining module
+blocked-module test.probe.self_authored_map_probe constructor call admission refused: 'product.data_class.data_handling_map' refuses call from 'test.probe.self_authored_map_probe.authored_map_through_the_mint' — permitted callers: [strategy.data_map.
+blocked-module test.probe.self_authored_map_probe constructor call admission refused: 'test.fixture.data_handling_map_fixture.sealed_fixture_map' refuses call from 'test.probe.self_authored_map_probe.authored_map_through_the_fixture_builder' — permit
+blocked-module test.probe.self_authored_map_probe sole_constructor type 'DataHandlingMap' cannot be constructed outside its defining module
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_megarac_media_attach.megarac_attach_remote_image' refuses call from 'test.probe.unit_hold_proof_forged_probe.attach_through_the_generic_megara
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_actuate.mtcollins1_drive_handoff' refuses call from 'test.probe.unit_hold_proof_forged_probe.power_cycle_through_the_wrapper_from_o
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle.mtcollins1_boot_chassis_power' refuses call from 'test.probe.unit_hold_proof_forged_probe.bundle_chassis_rea
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle.mtcollins1_boot_param5' refuses call from 'test.probe.unit_hold_proof_forged_probe.bundle_param5_read_from_o
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_run.mtcollins1_boot_actuate' refuses call from 'test.probe.unit_hold_proof_forged_probe.actuate_with_a_forged_proof_from_outsi
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_run.mtcollins1_boot_handoff_when_media_ready' refuses call from 'test.probe.unit_hold_proof_forged_probe.gated_handoff_from_ou
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_run.mtcollins1_boot_param5_under_hold' refuses call from 'test.probe.unit_hold_proof_forged_probe.boot_param5_read_from_outsid
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_run.mtcollins1_boot_power_after_poll' refuses call from 'test.probe.unit_hold_proof_forged_probe.final_power_read_from_outside
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_boot_run.mtcollins1_boot_under_live_unit_hold' refuses call from 'test.probe.unit_hold_proof_forged_probe.boot_the_hold_owning_path
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_maintenance_hold.unit_hold_acquire' refuses call from 'test.probe.unit_hold_proof_forged_probe.acquire_the_unit_hold_from_outside_i
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_media_attach.mtcollins1_attach_diskless_image' refuses call from 'test.probe.unit_hold_proof_forged_probe.attach_through_the_wrappe
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_mtcollins1_media_attach.mtcollins1_observe_presentation' refuses call from 'test.probe.unit_hold_proof_forged_probe.observe_presentation_from_
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_oob_boot_handoff.oob_boot_handoff' refuses call from 'test.probe.unit_hold_proof_forged_probe.power_cycle_through_the_generic_handoff_from_out
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_oob_boot_handoff.oob_power_action_after_confirmed_selection' refuses call from 'test.probe.unit_hold_proof_forged_probe.power_action_past_the_
+blocked-module test.probe.unit_hold_proof_forged_probe constructor call admission refused: 'gunbc.machine_intake_oob_boot_handoff.oob_power_actuate_and_read_back' refuses call from 'test.probe.unit_hold_proof_forged_probe.power_command_past_the_state_read
+blocked-module test.probe.unit_hold_proof_forged_probe sole_constructor type 'UnitHoldProof' cannot be constructed outside its defining module
+blocked-module v2.lens.enforcement.cost_coverage value does not inhabit its declared type at the direct call argument for parameter 'acc': declared 'Container(List,Primitive(Node))', produced 'Coproduct(FreeMonoid)'
+blocked-module v2.test.fixture.meta_exec_confinement_scan.leak_plant sole_constructor type 'TransportScript' cannot be constructed outside its defining module
+blocked-module v2.test.manual.ownership_movable effect summary incomplete: call to 'build_movable_set' in v2.test.manual.ownership_movable.movable_of has no established callee identity, so its effects cannot be joined
+blocked-module v2.test.manual.ownership_movable function 'build_movable_set' not found in scope
+blocked-module v2.test.manual.ownership_movable set_contains receiver must be a Set
+blocked-module v2.test.manual.ownership_movable undefined variable 'Consumed'
+blocked-module v2.test.manual.ownership_movable undefined variable 'Projected'
+blocked-module v2.test.manual.ownership_movable undefined variable 'Threaded'
+blocked-module v2.test.manual.ownership_movable unresolved import: module 'v1.compiler.ownership' not found (imported by 'v2.test.manual.ownership_movable')
+blocked-module v2.test.manual.ownership_movable unresolved type 'BindingUsage'
+blocked-module v2.test.manual.ownership_movable unresolved type 'EdgeClassification'
+blocked-module v2.test.manual.ownership_movable unresolved type 'EdgeKind'
+blocked-module v2.test.manual.ownership_movable unresolved type 'OwnershipProof'
+blocked-module v2.test.name_resolve.test_code_reference_wall undefined variable 'Empty'
