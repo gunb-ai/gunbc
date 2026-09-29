@@ -102,7 +102,7 @@ import v2.std.compilers.target_model {
   target_text_empty,
   target_text_is_empty,
   render_target_text,
-  token_text_from_model,
+  token_text_from_decoded,
   target_text_nested,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
@@ -201,7 +201,7 @@ fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<In
   )
 }
 type TokenSequenceItemKind
-  = TokenSequenceConcreteToken
+  = TokenSequenceConcreteToken { token: ConcreteSyntaxToken }
   | TokenSequenceNonterminal
   | TokenSequenceNestedBlock { unit: Symbol, tokens: List<Node> }
 
@@ -535,8 +535,8 @@ fn token_sequence_item_kind_flat(item: Node) -> Outcome<TokenSequenceItemKind> {
 
                   bind_outcome(
                     o: concrete_syntax_token_from_node(token: item),
-                    f: fn(_) {
-                      Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
+                    f: fn(decoded) {
+                      Accepted { value: TokenSequenceConcreteToken { token: decoded }, diagnostics: None }
                     }
                   )
                 Absent =>
@@ -982,8 +982,8 @@ fn token_item_to_source_bounded(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
       match item_kind {
-        TokenSequenceConcreteToken =>
-          token_text_from_model(target: target, token: item)
+        TokenSequenceConcreteToken { token: decoded } =>
+          token_text_from_decoded(target: target, decoded: decoded)
         TokenSequenceNestedBlock { unit: unit, tokens: inner } =>
           serialize_relation_row_nested_bounded(remaining - 1, target, unit, inner)
         TokenSequenceNonterminal =>
