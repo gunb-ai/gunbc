@@ -238,8 +238,6 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   }
 }
 
-// The padding the std.encoding encoder emits: the total length a multiple of four, and exactly two
-// "=" after a two-sextet tail, one after a three-sextet tail, none otherwise -- never three.
 // ── The timestamp comparison contract ────────────────────────────────────────────────────────
 // Timestamp is an alias for String, so `a < b` is a LEXICOGRAPHIC comparison over arbitrary text.
 // That happens to be correct for one shape and silently wrong for every other: "2026-9-05T..."
