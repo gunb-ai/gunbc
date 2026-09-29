@@ -1033,30 +1033,6 @@ fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn cpp_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: [
-      cpp_named_edge(name: ^serialize_source_field_source_text, target: cpp_atom(id: ^cpp_source_literal)),
-      cpp_named_edge(name: ^serialize_source_field_source_grammar, target: cpp_atom(id: ^cpp_production_fn_add))
-    ],
-    right: [
-      cpp_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: cpp_concrete_tokens(),
-          token_to_node: cpp_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn cpp_serialize_source_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
- occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1165,8 +1141,7 @@ fn cpp_target_model_node(target_profile: Node) -> Node {
     children: [
       cpp_named_edge(name: ^target_model_edge_selection_policy, target: cpp_selection_policy_node(target_profile: target_profile)),
       cpp_named_edge(name: ^target_model_edge_declared_inhabitants, target: cpp_add_declared_inhabitants_root(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_translation_rules_node(target_profile: target_profile)),
-      cpp_named_edge(name: ^target_model_edge_serialize_source, target: cpp_serialize_source_node())
+      cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_translation_rules_node(target_profile: target_profile))
     ],
     occurrence_id: OccurrenceSynthetic
 }

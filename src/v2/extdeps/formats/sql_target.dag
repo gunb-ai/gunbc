@@ -103,10 +103,6 @@ fn sql_formal_production_from_fixture(
   )
 }
 
-fn sql_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  concrete_syntax_token_to_node(token: token)
-}
-
 fn sql_empty_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -183,45 +179,13 @@ fn sql_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   map_insert(empty_map(), ^sql_token_ident, EmitSpellingIdentity)
 }
 
-fn sql_serialize_source_node(
-  source_text_binding: Symbol,
-  production_binding: Symbol,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: sql_atom(id: source_text_binding)
-      ),
-      dag_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: sql_atom(id: production_binding)
-      ),
-      dag_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: tokens,
-          token_to_node: sql_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn sql_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+fn sql_target_model_bundle(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^target_model_edge_translation_rules,
         target: rules
-      ),
-      dag_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: serialize_source
       )
     ],
     occurrence_id: OccurrenceSynthetic
@@ -239,13 +203,7 @@ fn sql_make_bound_tokens_target_model(
 ) -> TargetModel {
   target_model_make_with_emit_transforms(
     bundle: sql_target_model_bundle(
-      rules: rules,
-      serialize_source: sql_serialize_source_node(
-        source_text_binding: source_literal,
-        production_binding: production_name,
-        tokens: tokens
-      )
-    ),
+      rules: rules),
     lex: lex,
     binding_spellings: binding_spellings,
     token_class_emit_transforms: sql_token_class_emit_transforms(),

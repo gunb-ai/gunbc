@@ -1108,45 +1108,6 @@ fn rust_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
 }
 
-fn rust_add_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_add)
-    )
-  ]
-}
-
-fn rust_serialize_source_children() -> List<Edge> {
-
-  list_append(
-    left: rust_add_serialize_source_prefix_edges(),
-    right: [
-      rust_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: rust_concrete_tokens(),
-          token_to_node: rust_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn rust_add_serialize_source_node() -> Node {
-
-  let _authority = rust_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: rust_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
 fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
@@ -1998,10 +1959,6 @@ fn rust_target_model_core_edges_full(operator_catalog: Node, rules: Node) -> Lis
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rules
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_add_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -4608,10 +4565,6 @@ fn rust_sg2_type_expr_bundle_core_base() -> List<Edge> {
       target: rust_type_expression_projection_bundle_node()
     ),
     rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_sg2_serialize_source_node()
-    ),
-    rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: Node {
         kind: TypeNode { connective: Conj },
@@ -4683,19 +4636,6 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
 
 fn rust_type_expression_projection_bundle_node() -> Node {
   type_expr_projection_step_algebra(projection: rust_type_expression_projection())
-}
-
-fn rust_sg2_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn rust_sg2_type_expr_target_model() -> TargetModel {
