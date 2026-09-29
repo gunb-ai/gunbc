@@ -59,9 +59,9 @@ fn derive_regional_premium(
                 premium_bp: basis_point(count: ((reg - base) * 10000) / base),
               }
             }
-          _ => RegionalPremiumRefused { cause: RegionRateUnavailable }
+          Absent => RegionalPremiumRefused { cause: RegionRateUnavailable }
         }
-      _ => RegionalPremiumRefused { cause: BaselineRateUnavailable }
+      Absent => RegionalPremiumRefused { cause: BaselineRateUnavailable }
     }
   }
 }
@@ -73,7 +73,7 @@ fn derive_regional_premium(
 fn monthly_micros(row: RegionalComputeRow) -> Nat? {
   match hourly_micros(row: row) {
     Present { value: h } => Present { value: h * 730 }
-    _ => none
+    Absent => none
   }
 }
 
@@ -84,7 +84,7 @@ fn per_vcpu_month_micros(row: RegionalComputeRow) -> Nat? {
   } else {
     match monthly_micros(row: row) {
       Present { value: m } => Present { value: m / cores }
-      _ => none
+      Absent => none
     }
   }
 }

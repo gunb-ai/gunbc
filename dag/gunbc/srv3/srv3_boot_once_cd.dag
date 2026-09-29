@@ -126,7 +126,8 @@ fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject
       let outcome = match resolution {
         CredentialResolutionRefused { reason: r } =>
           exit_failure(reason: concat("boot-once-cd: credential resolution refused: ", r))
-        _ => srv3_boot_once_cd_resolved(resolution: resolution)
+        UseFactoryCredential { login: _ } => srv3_boot_once_cd_resolved(resolution: resolution)
+        UseRotatedSecretRef { secret_ref: _ } => srv3_boot_once_cd_resolved(resolution: resolution)
       }
       return settle_authorization_claim(label: srv3_boot_once_cd_label, outcome: outcome, escalation_id: srv3_boot_once_cd_authorization_request.escalation_id, attempt: srv3_boot_once_cd_attempt, held_at: held_at, at: observed_at)
   }

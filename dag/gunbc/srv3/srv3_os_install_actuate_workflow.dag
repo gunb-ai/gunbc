@@ -239,11 +239,23 @@ fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> 
     && match steps.skip(n: 5).first() {
       WorkflowOperatorApproval { request: r } =>
         r.escalation_id == srv3_boot_once_cd_authorization_request.escalation_id
-      _ => false
+      WorkflowEnsureActuatorToolchain => false
+      WorkflowEnsureSeededInstallMedia => false
+      WorkflowBmcCredentialProbeAndResolve => false
+      WorkflowBmcwebSessionLogin => false
+      WorkflowNbdProxyServe => false
+      WorkflowBootOnceCd => false
+      WorkflowSolConsoleCapture => false
     }
     && match steps.skip(n: 6).first() {
       WorkflowBootOnceCd => true
-      _ => false
+      WorkflowEnsureActuatorToolchain => false
+      WorkflowEnsureSeededInstallMedia => false
+      WorkflowBmcCredentialProbeAndResolve => false
+      WorkflowBmcwebSessionLogin => false
+      WorkflowNbdProxyServe => false
+      WorkflowOperatorApproval { request: _ } => false
+      WorkflowSolConsoleCapture => false
     }
 }
 

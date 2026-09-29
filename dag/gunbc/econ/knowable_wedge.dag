@@ -97,7 +97,7 @@ fn convert_money_per_minute_eur_to_usd(
             currency: Usd,
           }
         }
-      _ => none
+      Usd => none
     }
   }
 }
@@ -181,10 +181,10 @@ fn derive_runner_cost_floor_per_minute_usd(
           ) {
             Present { value: floor_usd } =>
               RunnerCostFloorDerived { floor: floor_usd }
-            _ => RunnerCostFloorRefused { cause: ExchangeRateUnknown }
+            Absent => RunnerCostFloorRefused { cause: ExchangeRateUnknown }
           }
         }
-        _ => RunnerCostFloorRefused { cause: AmortizationUnknown }
+        Absent => RunnerCostFloorRefused { cause: AmortizationUnknown }
       }
     }
   }
@@ -220,7 +220,7 @@ fn derive_github_hetzner_ci_minute_wedge(
                           wedge_per_minute: wedge_usd,
                         }
                       }
-                    _ =>
+                    Absent =>
                       KnowableWedgeRefused { cause: FloorExceedsUmbrella }
                   }
                 }
