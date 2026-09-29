@@ -7,6 +7,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
 }
 import v2.compiler.parse { parse_module }
+import v2.lens.identity_captured_navigation { Finding }
 import v2.compiler.tokenize { tokenize }
 import v2.lens.common.source_analysis_standing {
   SourceAnalysisNotEstablishedCause,
