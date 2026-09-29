@@ -18,7 +18,15 @@ reviewed source revision and the workflow's own WIF identity. No operator token,
 manual SCP, or fallback approval key is required. Read each run's custody receipt
 before advancing to storage service commissioning. Those runs have not occurred.
 
-Validation is pending. The initial test attempt with the older bootstrap binary
-was killed with exit 137 under MemoryMax=6G / MemorySwapMax=0 before producing
-results. A clean build of this branch's own binary is in progress. This is not a
-passing witness or deployment receipt.
+The branch-local release build passed under 6 GiB/no swap (15m10s). The initial
+older-binary test and both branch-local full-root test/emission runs exited 137.
+Byte-identical dependency-only runs also exited 137: 1746 modules for custody
+controls, 2110 for the standard registry emitter. The latter reached some
+transitive typechecking but neither produced a qualification result or workflow
+output. No memory limit was increased. Receipt JSON records the exact binary.
+
+PR #12580 remains draft and unqualified for installation. Its integrated CI run
+36510800728 is still outstanding at this checkpoint. The generated workflow option
+must be emitted and checked before landing. These failures are a significant
+local qualification blocker, not proof that the custody behavior passed or a
+claim that any specific source defect caused the process kills.
