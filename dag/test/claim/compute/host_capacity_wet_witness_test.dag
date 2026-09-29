@@ -58,10 +58,10 @@ fn fresh_root() -> String {
 // instant: a busy fleet runner answered ComputeHostBelowFloor and the cell was red by assignment.
 // The reading below backs every request these cells make, so only the ledger can decide them. The
 // real observation route is kept by the_real_reservation_route_admits_exactly_what_the_reading_backs.
-data supplied_host_kib: Int = 67108864
+data supplied_host: Kibibyte = kibibyte(count: 67108864)
 
 fn reserve_with_room(subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeReservation {
-  compute_reserve_against(subject: subject, reference: reference, term_seconds: 60, total: kibibyte(count: supplied_host_kib), available: kibibyte(count: supplied_host_kib))
+  compute_reserve_against(subject: subject, reference: reference, term_seconds: 60, total: supplied_host, available: supplied_host)
 }
 
 fn subject_at(root: String, appropriation_kib: Int, request_kib: Int) -> ComputeCapacitySubject {
