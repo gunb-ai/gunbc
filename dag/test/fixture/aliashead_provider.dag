@@ -1,0 +1,15 @@
+module test.fixture.aliashead_provider
+
+// Provider for test.claim.record_lit_alias_head_use_line_witness_test: one struct reached by its
+// consumers ONLY through a zero-parameter alias, so the head the emitter renders (the struct) is a
+// name the consumer never imports, and one optional field so a literal can leave it out.
+type AliasheadRate {
+  amount: Int
+  note: String?
+}
+
+type AliasheadQuote = AliasheadRate
+
+fn aliashead_amount(r: AliasheadRate) -> Int {
+  r.amount
+}

@@ -1,0 +1,21 @@
+module test.fixture.aliashead_twin_provider
+
+// Provider for test.claim.record_lit_alias_head_use_line_witness_test: a struct reached by its consumers
+// ONLY through a zero-parameter alias, beside a TWIN struct declaring the same field set. A head guessed
+// from a literal's field names is ambiguous here even when every field is present, while the renderer
+// still constructs the aliased struct.
+type AliastwinRate {
+  amount: Int
+  note: String?
+}
+
+type AliastwinOther {
+  amount: Int
+  note: String?
+}
+
+type AliastwinQuote = AliastwinRate
+
+fn aliastwin_amount(r: AliastwinRate) -> Int {
+  r.amount
+}
