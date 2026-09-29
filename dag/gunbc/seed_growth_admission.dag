@@ -24,6 +24,7 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
   with_authored_string_literals_seed_growth_justification
 }
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
+import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
 import gunbc.kind_reflection_seed_growth { kind_reflection_seed_growth_justification }
@@ -305,6 +306,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     authored_string_literal_edge_seed_growth_justification,
     with_authored_string_literals_seed_growth_justification,
     keyed_declaration_read_seed_growth_justification,
+    keyed_dependency_edge_read_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
     required_lane_judgment_seed_growth_justification,

@@ -15,7 +15,6 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_srv1_stage,
   gunbc_ci_deploy_invoke,
   ci_floor_build_verify_script,
-  artifact_shell_path
 }
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
@@ -94,8 +93,15 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
   let script = claim_executor_verify_artifacts_shell(artifact_paths: ["\"$ROOT/target/release/gunbc\""])
   string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\"")
-    && ci_floor_build_verify_script() == claim_executor_verify_artifacts_shell(
-      artifact_paths: map(ci_floor_required_artifact_names(), name => artifact_shell_path(name: name))
+    && ci_floor_build_verify_script() == concat(
+      join(
+        concat(
+          ["\"$ROOT\"'/target/release/claim_executor' '--verify-build-artifacts'"],
+          map(ci_floor_required_artifact_names(), name => concat("\"$ROOT\"'/target/release/", concat(name, "'")))
+        ),
+        " "
+      ),
+      "\n"
     )
 }
 
