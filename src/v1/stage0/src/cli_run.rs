@@ -9698,28 +9698,140 @@ pub(crate) fn unimported_bare_providers(
     Ok(out.into_iter().collect())
 }
 
-/// Pool admission consumes the same resolution predicate as edge production, but never
-/// expands an import closure or retains an edge. Memoize the verdict for this immutable
-/// index, including refusals; the heads census is its only shared lookup input.
-fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
-    if let Some(verdict) = index.bare_reference_admission.borrow().as_ref() {
+/// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
+/// The driver's ran-marker is a literal it pushes after the call; this record is the evidence
+/// that the call happened and what it judged, so a driver that retained the marker but lost the
+/// call is caught by `required_bare_reference_admission_completion_failure`, attributed to this
+/// phase, rather than by some later whole-pool refusal or not at all.
+#[derive(Clone, Debug)]
+pub struct BareReferenceAdmissionCompletion {
+    pub roots: Vec<String>,
+    pub judged: usize,
+    pub pool: usize,
+    pub verdict: Result<(), String>,
+}
+
+thread_local! {
+    static BARE_REFERENCE_ADMISSION_COMPLETION: RefCell<Option<BareReferenceAdmissionCompletion>> =
+        const { RefCell::new(None) };
+}
+
+/// THE REQUIRED WHOLE-POOL PHASE (`gunbc.required_ci_phase_roster` `BareReferenceAdmissionPhase`).
+/// Judges every pool file on the process-shared index the floor then prepares from, records what
+/// it judged, and refuses unless every file carries a verdict: coverage is checked, not assumed
+/// from a fold that returned. Returns the coverage it established.
+pub fn run_required_bare_reference_admission(source_roots: &[String]) -> Result<String, String> {
+    let index = try_process_shared_index(source_roots)?;
+    let verdict = admit_pool_bare_references(&index);
+    let judged = index.bare_reference_admission.borrow().len();
+    let pool = index.source_files.len();
+    BARE_REFERENCE_ADMISSION_COMPLETION.with(|c| {
+        *c.borrow_mut() = Some(BareReferenceAdmissionCompletion {
+            roots: canonical_shared_index_roots(source_roots),
+            judged,
+            pool,
+            verdict: verdict.clone(),
+        })
+    });
+    verdict?;
+    if judged != pool {
+        return Err(format!(
+            "coverage incomplete: {judged} of {pool} pool files carry a bare-reference verdict"
+        ));
+    }
+    let eligible = index
+        .source_files
+        .values()
+        .filter(|s| !source_declares_import_lines(&s.content))
+        .count();
+    Ok(format!(
+        "judged={judged} pool={pool} import_less={eligible}"
+    ))
+}
+
+/// The required driver's completion check for this phase: `None` when the producer recorded a
+/// judgment over `source_roots` -- a refusal, or a success covering every pool file -- and a
+/// located failure otherwise. A missing record means the producer never ran for these roots,
+/// whatever ran-marker the driver pushed.
+pub fn required_bare_reference_admission_completion_failure(
+    source_roots: &[String],
+) -> Option<String> {
+    let roots = canonical_shared_index_roots(source_roots);
+    let record = BARE_REFERENCE_ADMISSION_COMPLETION.with(|c| c.borrow().clone());
+    match record {
+        None => Some(
+            "bare-reference-admission bypassed: the phase was selected but its producer recorded \
+             no judgment"
+                .to_string(),
+        ),
+        Some(r) if r.roots != roots => Some(format!(
+            "bare-reference-admission bypassed: the producer judged roots {:?}, not the run's {:?}",
+            r.roots, roots
+        )),
+        Some(r) => match r.verdict {
+            Err(_) => None,
+            Ok(()) if r.judged == r.pool => None,
+            Ok(()) => Some(format!(
+                "bare-reference-admission incomplete: {} of {} pool files judged",
+                r.judged, r.pool
+            )),
+        },
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn reset_bare_reference_admission_completion_for_test() {
+    BARE_REFERENCE_ADMISSION_COMPLETION.with(|c| *c.borrow_mut() = None);
+}
+
+/// ONE FILE'S BARE-REFERENCE ADMISSION: the judgment both demands fold.
+///
+/// An import-less file's bare references are resolved against the COMPLETE heads-derived name
+/// census (`closure_name_census`), so a declaration anywhere in the pool can still make a
+/// reference ambiguous; an import-bearing file owes nothing here. The verdict, refusals included,
+/// is memoized PER FILE on this immutable index. It is bound to the file's bytes and to the
+/// index's name environment, both fixed for the index's life, so a success is evidence about
+/// THAT file and nothing else: a clean entry's closure never certifies another file or the pool.
+fn admit_bare_references_of_file(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> Result<(), String> {
+    let file = workspace_relative_repo_path(&source.path);
+    if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
     }
-    let admission_started = std::time::Instant::now();
-    let mut sources: Vec<_> = index.source_files.values().collect();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    let verdict = sources.into_iter().try_for_each(|source| {
-        if source_declares_import_lines(&source.content) {
-            return Ok(());
-        }
+    let verdict = if source_declares_import_lines(&source.content) {
+        Ok(())
+    } else {
         visit_bare_reference_providers(
             source,
             index,
             |root| closure_name_census(index, root),
             |_, _, _| Ok(()),
         )
-    });
-    *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
+    };
+    index
+        .bare_reference_admission
+        .borrow_mut()
+        .insert(file, verdict.clone());
+    verdict
+}
+
+/// THE WHOLE-POOL DEMAND: the per-file judgment folded over every file of the pool, in path
+/// order, stopping at the first refusal. It holds no pool-wide verdict of its own -- the pool is
+/// admitted exactly when every file's judgment is -- so it cannot answer from an earlier, narrower
+/// demand. Its required consumer is the floor preparation (`warm_bare_reference_edge_index`
+/// through `whole_pool_closure_edge_index`), which runs on every pull_request and merge_group.
+/// An ENTRY no longer demands this: it judges the files its closure reaches (see
+/// `build_both_closure_edge_index`), which is the scoping approved on #12419 (decision comment
+/// 5857893764).
+fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
+    let admission_started = std::time::Instant::now();
+    let mut sources: Vec<_> = index.source_files.values().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let verdict = sources
+        .into_iter()
+        .try_for_each(|source| admit_bare_references_of_file(index, source));
     pre_entry_phase::record(
         "pool_bare_reference_admission",
         pre_entry_phase::PhaseScale::Tree,
@@ -10051,7 +10163,10 @@ fn build_both_closure_edge_index(
     index: &MultiEntryIndex,
     source: &Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<Rc<BothClosureEdgeIndex>, String> {
-    admit_pool_bare_references(index)?;
+    // THE DEMANDED FILE IS JUDGED, NOT THE POOL. Every file a closure reaches -- by import, by a
+    // reference-derived edge, or by a bare provider -- has its row produced here, so every reached
+    // file is admitted before its edges are followed and before the entry is evaluated.
+    admit_bare_references_of_file(index, source)?;
     let file = workspace_relative_repo_path(&source.path);
     if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
         if hit.ref_out.contains_key(&file) {
@@ -10234,8 +10349,12 @@ mod closure_edge_demand_tests {
         Ok(providers)
     }
 
+    /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
+    /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
+    /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
+    /// -- still refuses with the same located cause the entry used to report.
     #[test]
-    fn nonclosure_ambiguity_refuses_without_materializing_edges() {
+    fn nonclosure_ambiguity_is_entry_local_and_still_refused_by_the_whole_pool_demand() {
         let fixture = Fixture::new(&[
             (
                 "entry.dag",
@@ -10254,17 +10373,161 @@ mod closure_edge_demand_tests {
         let index = fixture.index();
         let old =
             providers(&index, &index.source_files["frontier.child.consumer"], true).unwrap_err();
-        let refused = load_sources_for_entry_with_pool(
+        let sources = load_sources_for_entry_with_pool(
             &index,
             &fixture.0.join("entry.dag").to_string_lossy(),
         )
-        .unwrap_err();
+        .unwrap();
+        assert_eq!(sources.len(), 1, "the entry reaches only itself");
+        let refused = admit_pool_bare_references(&index).unwrap_err();
         assert_eq!(refused, old);
         assert!(refused.contains("AMBIGUOUS"), "{refused}");
         assert!(refused.contains("frontier, frontier.child"), "{refused}");
         assert!(refused.contains("c.dag"), "{refused}");
-        assert!(index.both_closure_edges.borrow().is_none());
-        assert_eq!(admit_pool_bare_references(&index), Err(old));
+        assert!(whole_pool_closure_edge_index(&index).is_err());
+    }
+
+    /// NO SCOPED SUCCESS CERTIFIES ANOTHER SUBJECT. On ONE index, in both orders: a clean entry is
+    /// admitted; an entry that reaches the ambiguous file -- through a BARE provider, not an
+    /// import -- refuses before evaluation; the whole-pool demand refuses. A clean entry's earlier
+    /// success fills only its own files' verdicts, so neither later demand can read it as theirs.
+    #[test]
+    fn scoped_admission_never_certifies_a_poisoned_entry_or_the_pool() {
+        let files: &[(&str, &str)] = &[
+            ("clean.dag", "module clean_entry\nfn main() -> Int { 1 }\n"),
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "b.dag",
+                "module frontier.child\nfn duplicated() -> Int { 2 }\n",
+            ),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+            (
+                "poisoned.dag",
+                "module poisoned_entry\nfn main() -> Int { read() }\n",
+            ),
+        ];
+        for clean_first in [true, false] {
+            let fixture = Fixture::new(files);
+            let index = fixture.index();
+            let entry = |name: &str| {
+                load_sources_for_entry_with_pool(&index, &fixture.0.join(name).to_string_lossy())
+            };
+            if clean_first {
+                assert!(entry("clean.dag").is_ok());
+                let poisoned = entry("poisoned.dag").unwrap_err();
+                assert!(poisoned.contains("AMBIGUOUS"), "{poisoned}");
+                assert!(admit_pool_bare_references(&index).is_err());
+            } else {
+                assert!(admit_pool_bare_references(&index).is_err());
+                let poisoned = entry("poisoned.dag").unwrap_err();
+                assert!(poisoned.contains("AMBIGUOUS"), "{poisoned}");
+                assert!(entry("clean.dag").is_ok());
+                assert!(admit_pool_bare_references(&index).is_err());
+            }
+        }
+    }
+
+    /// THE REQUIRED PHASE'S OWN PRODUCER over the specimen and its twin, and the completion check
+    /// the required driver runs. The specimen: the clean entry is admitted, the phase REFUSES the
+    /// unrelated bad file with its located cause, and that refusal is a recorded judgment (no
+    /// completion failure). The twin: the phase admits with every pool file judged. BYPASS: with no
+    /// producer run recorded for these roots -- the state a driver that kept its ran-marker but
+    /// lost the call is in -- the completion check fails under this phase's name.
+    #[test]
+    fn required_phase_refuses_the_specimen_admits_the_twin_and_catches_a_bypass() {
+        let bad = Fixture::new(&[
+            ("clean.dag", "module clean_entry\nfn main() -> Int { 1 }\n"),
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "b.dag",
+                "module frontier.child\nfn duplicated() -> Int { 2 }\n",
+            ),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let bad_roots = vec![bad.0.to_string_lossy().into_owned()];
+        reset_bare_reference_admission_completion_for_test();
+        assert!(
+            required_bare_reference_admission_completion_failure(&bad_roots)
+                .is_some_and(|f| f.contains("bypassed")),
+            "no producer run recorded must fail as a bypass"
+        );
+        let index = process_shared_index(&bad_roots);
+        assert!(load_sources_for_entry_with_pool(
+            &index,
+            &bad.0.join("clean.dag").to_string_lossy()
+        )
+        .is_ok());
+        let refused = run_required_bare_reference_admission(&bad_roots).unwrap_err();
+        assert!(refused.contains("AMBIGUOUS"), "{refused}");
+        assert!(refused.contains("c.dag"), "{refused}");
+        assert_eq!(
+            required_bare_reference_admission_completion_failure(&bad_roots),
+            None,
+            "a refusal is a recorded judgment"
+        );
+
+        let twin = Fixture::new(&[
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let twin_roots = vec![twin.0.to_string_lossy().into_owned()];
+        assert!(
+            required_bare_reference_admission_completion_failure(&twin_roots)
+                .is_some_and(|f| f.contains("bypassed")),
+            "a judgment of OTHER roots is not a judgment of these"
+        );
+        let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
+        assert!(ok.contains("judged=2 pool=2"), "{ok}");
+        assert_eq!(
+            required_bare_reference_admission_completion_failure(&twin_roots),
+            None
+        );
+        reset_bare_reference_admission_completion_for_test();
+    }
+
+    /// THE VALID TWIN: the same shape with the homonym removed is admitted by the entry and by
+    /// the whole pool, and the entry still reaches its bare provider.
+    #[test]
+    fn valid_twin_is_admitted_by_entry_and_pool() {
+        let fixture = Fixture::new(&[
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+            (
+                "entry.dag",
+                "module twin_entry\nfn main() -> Int { read() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            modules,
+            BTreeSet::from([
+                "twin_entry".into(),
+                "frontier.child.consumer".into(),
+                "frontier".into()
+            ])
+        );
+        admit_pool_bare_references(&index).unwrap();
     }
 
     #[test]
@@ -10367,12 +10630,12 @@ mod closure_edge_demand_tests {
         assert!(owners.iter().all(|owner| owner.upgrade().is_some()));
         assert!(drop_private_term_for_test(&index, "closure_name_censuses"));
         assert!(owners.iter().all(|owner| owner.upgrade().is_none()));
-        assert!(index.bare_reference_admission.borrow().is_some());
+        assert!(!index.bare_reference_admission.borrow().is_empty());
         assert!(drop_private_term_for_test(
             &index,
             "bare_reference_admission"
         ));
-        assert!(index.bare_reference_admission.borrow().is_none());
+        assert!(index.bare_reference_admission.borrow().is_empty());
         let counts = private_term_entry_counts_for_test(&index);
         assert!(counts.contains(&("closure_name_censuses", 0)));
         assert!(counts.contains(&("bare_reference_admission", 0)));
@@ -10602,7 +10865,6 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    admit_pool_bare_references(index)?;
     let lookup_started = std::time::Instant::now();
     let lookup = path_to_source_lookup(&index.source_files);
     resolve_stage_slot_add(|s| {
@@ -12939,7 +13201,9 @@ pub struct MultiEntryIndex {
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
-    bare_reference_admission: RefCell<Option<Result<(), String>>>,
+    /// Per-file bare-reference admission verdicts, refusals included, keyed by workspace-relative
+    /// path. Never a pool-wide bit: see `admit_bare_references_of_file`.
+    bare_reference_admission: RefCell<HashMap<String, Result<(), String>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -12982,6 +13246,8 @@ pub use shared_typecheck_store::{
 };
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
 }
 
@@ -12992,6 +13258,8 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
 /// requires the `MultiEntryIndex` for its per-tree bare census), dissolving the §3
 /// closure-authority fork the two loaders' doc-comments each falsely claimed to be single.
 fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiEntryIndex {
+    #[cfg(test)]
+    yield_live_pool_before_building_another();
     new_multi_entry_index_shell(
         build_module_index_primary_precedence(source_roots),
         source_roots,
@@ -13184,7 +13452,7 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
         ),
         (
             "bare_reference_admission",
-            usize::from(index.bare_reference_admission.borrow().is_some()),
+            index.bare_reference_admission.borrow().len(),
         ),
         (
             "entry_closure_sources",
@@ -13226,7 +13494,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
         "closure_name_censuses" => index.closure_name_censuses.borrow_mut().clear(),
-        "bare_reference_admission" => *index.bare_reference_admission.borrow_mut() = None,
+        "bare_reference_admission" => index.bare_reference_admission.borrow_mut().clear(),
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
         "resolved_graph_memo" => {
@@ -17141,6 +17409,10 @@ fn closure_name_census(
         return Ok(hit.clone());
     }
     let pool = pool_parse(index)?;
+    // Timed NET of `pool_parse`, which is forced above and carries its own row: this is the
+    // name-census construction over pool heads -- global name information every bare-reference
+    // judgment reads, so it scales with the pool, not the closure.
+    let census_started = std::time::Instant::now();
     let nodes = match root {
         Some(root) => tree_census_nodes(index, root)?,
         None => Rc::new(
@@ -17152,6 +17424,11 @@ fn closure_name_census(
     };
     let census =
         v1_compiler_infer::build_symbol_index_census_raw_nodes(nodes, pool.combined_si.clone());
+    pre_entry_phase::record(
+        "closure_name_census_build",
+        pre_entry_phase::PhaseScale::Tree,
+        census_started.elapsed(),
+    );
     index
         .closure_name_censuses
         .borrow_mut()
@@ -28095,6 +28372,20 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         (src, dest, diff.to_string())
     }
 
+    // The enrolment reads the destination's declarations from the LIVE tree, so the census a
+    // rename carries is derived from that file rather than listed: a listed set goes stale the
+    // moment the file gains a test (#12199 added two) and then reports those as enrolled.
+    fn live_test_names_at(dest: &str) -> HashSet<String> {
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the rename destination is a live file");
+        let names: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
+        assert!(
+            names.contains("gate_green_synthetic_shape_from_catalog_call"),
+            "the fixture's held-out name must still be declared at {dest}"
+        );
+        names
+    }
+
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
     // SOURCE path or every moved fn is gated as new.
     #[test]
@@ -28106,13 +28397,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             "fixture must carry git's rename-from so this control can fail the dest-only lookup"
         );
         let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            src.to_string(),
-            HashSet::from([
-                "gate_green_synthetic_shape_from_catalog_call".to_string(),
-                "gate_red_synthetic_machine_shape_call".to_string(),
-            ]),
-        );
+        at_base.insert(src.to_string(), live_test_names_at(dest));
         let index = build_multi_entry_index(&[]);
         let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
             .expect("a rename-destination diff must attribute, not refuse");
@@ -28134,10 +28419,9 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     fn rename_still_enrols_a_name_absent_from_the_source() {
         let (src, dest, diff) = machine_shape_rename_diff();
         let mut at_base = std::collections::HashMap::new();
-        at_base.insert(
-            src.to_string(),
-            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
-        );
+        let mut source_names = live_test_names_at(dest);
+        source_names.remove("gate_green_synthetic_shape_from_catalog_call");
+        at_base.insert(src.to_string(), source_names);
         let index = build_multi_entry_index(&[]);
         let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
             .expect("a rename-destination diff must attribute, not refuse");
@@ -31836,11 +32120,15 @@ mod construction_authority_graph_tests {
     // unified kind-agnostic decl-resolution exposed to .dag; see construction_authority_* docs.)
     #[test]
     fn wall_now_authority_graph_is_total() {
+        // A DeclarationRef names a module by its FULL path, and the corpus cites the seed's
+        // modules (`v1.std.core`, `v1.compiler.*`) as authorities, so the table spans every root
+        // a module lives in. Full-path keying is why the last-segment collision that keeps
+        // `src/v1` out of the floor's roots cannot reach this walk.
         let ws = workspace_root();
-        let roots = vec![
-            ws.join("dag").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ];
+        let roots: Vec<String> = super::DAG_PARSE_SWEEP_ROOTS
+            .iter()
+            .map(|r| ws.join(r).to_string_lossy().into_owned())
+            .collect();
         let unresolved =
             construction_authority_graph_unresolved(&roots).expect("corpus walk must succeed");
         assert!(

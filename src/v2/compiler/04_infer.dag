@@ -48,7 +48,10 @@ import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_
 import v2.std.collection {
   List,
   Map,
-  list_at_optional
+  empty_map,
+  list_at_optional,
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -859,13 +862,24 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
+// THE FACTS MAP IS A NODE-KEYED MAP, BUILT ONCE PER RUN (DESIGN section 6, bare minimum cost): a
+// lookup against the admitted entries list was a scan, so every lookup was linear in the tree and
+// a consumer walking the tree paid quadratic. Entry order still decides a repeated node: the FIRST
+// admitted entry answers, exactly as the scan it replaces did, so a later entry never displaces it.
+fn inferred_facts_map_enter(facts: Map<Node, InferredFacts>, entry: InferredFactsEntry) -> Map<Node, InferredFacts> {
+  match map_lookup(m: facts, key: entry.node) {
+    Present { value: _ } => facts
+    Absent => map_insert(m: facts, key: entry.node, value: entry.facts)
+  }
+}
+
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialFunction<Node, InferredFacts>> {
-  match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
+  match fold(entries, init: Accepted { value: empty_map(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: ok_entries, diagnostics: d } =>
+      Accepted { value: admitted, diagnostics: d } =>
         if inferred_facts_cover_node(facts: entry.facts, node: entry.node) {
-          Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
+          Accepted { value: inferred_facts_map_enter(facts: admitted, entry: entry), diagnostics: d }
         } else {
           Rejected {
             diagnostics: diagnostics_singleton(
@@ -880,7 +894,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialF
       Accepted {
         value: PartialFunction {
           lookup: fn(key) {
-            lookup_inferred_facts_in_entries(entries: admitted, key: key)
+            map_lookup(m: admitted, key: key)
           }
         },
         diagnostics: d
