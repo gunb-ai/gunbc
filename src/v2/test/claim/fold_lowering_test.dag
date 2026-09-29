@@ -9,15 +9,41 @@ module v2.test.claim.fold_lowering
 // carried two. Measured 2026-08-21: with those two import rows present, every
 // end-to-end claim fails with `no such function: tokenize` -- an explicit
 // import block replaces the ambient pool rather than adding to it. The rows
-// were removed, not relocated, because `fold_family_head` and `Bool` resolve
+// were removed, not relocated, because `fold_family_realization` and `Bool` resolve
 // from that same pool and the one claim that used them still passes.
+fn realizes_roster_operation(head: Symbol) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: FoldRealizesRosterOperation { template: _, row: _, slots: _ } } => true
+    Present { value: FoldRealizesDeclaration { declaration: _, slots: _ } } => false
+    Absent => false
+  }
+}
+
+fn realizes_corpus_declaration(head: Symbol) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: FoldRealizesDeclaration { declaration: _, slots: _ } } => true
+    Present { value: FoldRealizesRosterOperation { template: _, row: _, slots: _ } } => false
+    Absent => false
+  }
+}
+
+fn outside_the_family(head: Symbol) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The family is one roster with a realization per member: `fold` is the collection OPERATION
+// (std.algebra collection_fold_shape), the other three are corpus declarations, and anything else
+// is outside it.
 test fn fold_family_head_recognizes_fold_variants() -> Bool {
-  fold_family_head(sym: ^fold)
-    && fold_family_head(sym: ^fold_list)
-    && fold_family_head(sym: ^fold_list_right)
-    && fold_family_head(sym: ^fold_node)
-    && !fold_family_head(sym: ^map)
-    && !fold_family_head(sym: ^g)
+  realizes_roster_operation(head: ^fold)
+    && realizes_corpus_declaration(head: ^fold_list)
+    && realizes_corpus_declaration(head: ^fold_list_right)
+    && realizes_corpus_declaration(head: ^fold_node)
+    && outside_the_family(head: ^map)
+    && outside_the_family(head: ^g)
 }
 
 data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."

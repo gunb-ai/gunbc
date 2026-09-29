@@ -1603,7 +1603,7 @@ fn resolve_realized_declaration(ctx: ResolveContext, head: Node) -> Outcome<Node
         Accepted { value: found, diagnostics: pending } =>
           match fold_family_realization(head: identity) {
             Absent => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
-            Present { value: FoldRealizesRosterOperation { template: t, row: row } } =>
+            Present { value: FoldRealizesRosterOperation { template: t, row: row, slots: _ } } =>
               match found {
                 RealizedHeadUnbound =>
                   if symbol_lexeme(sym: identity) == t.name {
@@ -1615,7 +1615,7 @@ fn resolve_realized_declaration(ctx: ResolveContext, head: Node) -> Outcome<Node
                 RealizedHeadBoundLocally => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
                 RealizedHeadAmbiguous { class: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
               }
-            Present { value: FoldRealizesDeclaration { declaration: d } } =>
+            Present { value: FoldRealizesDeclaration { declaration: d, slots: _ } } =>
               match found {
                 RealizedHeadBound { path: path } =>
                   if qualified_name_to_dotted_string(qn: path) == qualified_name_to_dotted_string(qn: declaration_ref_path(r: d)) {

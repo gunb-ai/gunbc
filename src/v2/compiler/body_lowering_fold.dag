@@ -20,7 +20,7 @@ import v2.compiler.fold_lowering {
   fold_recurrence_encoding,
   fold_call_head_symbol,
   fold_call_lowering,
-  fold_family_head
+  fold_family_realization
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.compiler.body_producer_forward {
@@ -1626,7 +1626,8 @@ fn body_lower_try_fold_loop_search(node: Node) -> Outcome<Optional<Node>> {
 fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
   match fold_call_head_symbol(fold_call: node) {
     Present { value: head } =>
-      if fold_family_head(sym: head) {
+      match fold_family_realization(head: head) {
+        Present { value: _ } =>
         match fold_call_lowering(fold_call: node) {
           FoldCallLowered { operands: operands } =>
             match body_lower_fold_encoding(operands: operands) {
@@ -1643,7 +1644,7 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
           FoldCallNotAFold { diagnostic: d } => outcome_rejected(d: d)
           FoldCallStepShapeInvalid { diagnostic: d } => outcome_rejected(d: d)
         }
-      } else {
+        Absent =>
         body_lower_try_fold_loop_search(node: node)
       }
     Absent => body_lower_try_fold_loop_search(node: node)
@@ -2750,7 +2751,8 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
       match fold_call_head_symbol(fold_call: captured) {
         Absent => optional_absent()
         Present { value: head } =>
-          if fold_family_head(sym: head) {
+          match fold_family_realization(head: head) {
+            Present { value: _ } =>
             match fold_call_lowering(fold_call: captured) {
               FoldCallLowered { operands: operands } => optional_present(value: body_lower_fold_encoding(operands: operands))
               FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
@@ -2758,7 +2760,7 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
               FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
               FoldCallNotAFold { diagnostic: _ } => optional_absent()
             }
-          } else {
+            Absent =>
             optional_absent()
           }
       }
