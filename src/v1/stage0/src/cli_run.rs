@@ -111,6 +111,7 @@ pub use required_floor_runner::{
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
+pub mod pre_entry_phase;
 mod required_lane_resolution_census;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
@@ -5927,23 +5928,22 @@ pub struct ModuleGraphFactsLive {
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
     // set per entry (bare-minimum-cost, DESIGN §6).
     pub(crate) declared_paths: HashSet<String>,
-    // SELECTION-ONLY adjacency: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
-    // reference-derived edges for import-less files.
+    // SELECTION-ONLY tier: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
+    // reference-derived edges for import-less files, and the import-less files the reference
+    // producer could not answer for (`reference_unaccounted`, the one state
+    // `entry_file_touched_via_import_closure` may refuse on).
     //
-    // A second map rather than a widening of `adjacency` because the two consumers need
-    // different tiers, and mixing them is a measured regression: `adjacency` also feeds LOADER
-    // closures (`import_closure_live_paths_with_facts`, and `resolve_transitively` inside
+    // Separate from `adjacency` because the two consumers need different tiers, and mixing them
+    // is a measured regression: `adjacency` also feeds LOADER closures
+    // (`import_closure_live_paths_with_facts`, and `resolve_transitively` inside
     // `precompute_whole_tree_published_mock_keys`), which Strict-resolve whatever they reach.
     // Unioning reference edges into it grew the mock-corpus precompute closure until it pulled
     // `dag/` modules importing `v2.*` into a dag-only pool where those imports cannot resolve
     // (82 keys to a hard failure). Selection wants maximum precision; the loader wants a safe
-    // superset over a pool it can resolve. Same facts build, two answers, no shared tier.
-    pub(crate) selection_adjacency: HashMap<String, Vec<String>>,
-    // Import-less files the reference-edge producer could not answer for (unreadable / no module
-    // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
-    // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
-    // a known-empty dependency set and a precise `{self}` closure.
-    pub(crate) reference_unaccounted: HashSet<String>,
+    // superset over a pool it can resolve.
+    //
+    // Produced on demand at the grain demanded -- see `ReferenceSelectionTier`.
+    pub(crate) selection: Rc<ReferenceSelectionTier>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
     // repo path, built once per facts build. Read by the discovery witness run loop (a witness
     // entry with no module identity refuses rather than fabricating a `DeclarationRef`) and by
@@ -6962,12 +6962,10 @@ impl ModuleGraphFactsLive {
             .map(|s| s.as_str())
             .collect();
         let mut out: Vec<String> = self
-            .selection_adjacency
-            .get(importer_repo_path)
+            .selection
+            .strict_reference_targets(importer_repo_path)
             .into_iter()
-            .flatten()
             .filter(|p| !import_targets.contains(p.as_str()))
-            .cloned()
             .collect();
         out.sort();
         out.dedup();
@@ -7036,7 +7034,7 @@ fn entry_file_touched_via_import_closure(
     // "affected" for it (the arm deleted here) conflated ⊤-as-ignorance with ⊤-as-answer and,
     // being silent and uncounted, zeroed the deficit's observed frequency by construction while
     // the cost surfaced as a 95-minute CI floor rather than a diagnostic (DESIGN §5).
-    if facts.reference_unaccounted.contains(&entry_rel) {
+    if facts.selection.reference_unaccounted().contains(&entry_rel) {
         return Err(format!(
             "AFFECTED-SET REFUSAL cause=ReferenceEdgesUnaccounted entry={entry_rel} — the \
              reference-edge producer could not read or parse this import-less entry, so its \
@@ -7044,7 +7042,7 @@ fn entry_file_touched_via_import_closure(
              run-all or narrowing to skip"
         ));
     }
-    let closure = import_closure_from_adjacency(entry_path, &facts.selection_adjacency);
+    let closure = import_closure_from_adjacency(entry_path, facts.selection.selection_adjacency());
     Ok(touched_paths.iter().any(|touched| {
         closure
             .iter()
@@ -9739,6 +9737,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
     if let Some(verdict) = index.bare_reference_admission.borrow().as_ref() {
         return verdict.clone();
     }
+    let admission_started = std::time::Instant::now();
     let mut sources: Vec<_> = index.source_files.values().collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     let verdict = sources.into_iter().try_for_each(|source| {
@@ -9753,6 +9752,11 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
         )
     });
     *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
+    pre_entry_phase::record(
+        "pool_bare_reference_admission",
+        pre_entry_phase::PhaseScale::Tree,
+        admission_started.elapsed(),
+    );
     verdict
 }
 
@@ -16971,6 +16975,11 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         nodes_by_file,
         combined_si: Rc::new(combined_si),
     });
+    pre_entry_phase::record(
+        "pool_census_parse",
+        pre_entry_phase::PhaseScale::Tree,
+        pool_started.elapsed(),
+    );
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
     // The one place this term is measured, so it is counted once wherever it is forced
     // from. Every enclosing timer records itself net of this row — see
@@ -31742,9 +31751,8 @@ mod module_graph_read_refusal_tests {
         ModuleGraphFactsLive {
             nodes: node_rows,
             adjacency: adjacency.clone(),
-            selection_adjacency: adjacency,
+            selection: std::rc::Rc::new(super::ReferenceSelectionTier::supplied(adjacency)),
             declared_paths,
-            reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
             read_refusals: Vec::new(),
         }
@@ -32866,6 +32874,40 @@ pub fn dependency_resolution_facts(
     union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
 
+/// THE SAME UNION, KEYED BY IMPORTER. `v2.lens.module_graph` `dependency_closure_live_excluding`
+/// asks which modules ONE entry reaches, so it may demand only the edges of modules it has already
+/// reached. This answers "the edges whose importer is `importer_path`" from the population
+/// `dependency_resolution_facts` produces over the pool as its own importer roots -- the one
+/// reference-first dedup authority, computed once per (pool, exclusions) in this process and
+/// grouped by importer, never a second reader. Any row returned is the row the population read
+/// returns for that path, in the same order. An importer the pool does not carry, or one with no
+/// edges, answers the empty list, exactly as the population read carries no row for it.
+pub fn dependency_resolution_facts_at(
+    pool_roots: &[String],
+    importer_path: &str,
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let key = format!(
+        "{}\u{1f}{}",
+        pool_roots_abs(pool_roots).join("\u{1e}"),
+        exclude_substrings.join("\u{1e}")
+    );
+    let by_importer = DEPENDENCY_FACTS_BY_IMPORTER.with(|c| c.borrow().get(&key).cloned());
+    let by_importer = match by_importer {
+        Some(index) => index,
+        None => {
+            let mut index: HashMap<String, Vec<ImportResolutionFactRaw>> = HashMap::new();
+            for fact in dependency_resolution_facts(pool_roots, pool_roots, exclude_substrings) {
+                index.entry(fact.path.clone()).or_default().push(fact);
+            }
+            let index = Rc::new(index);
+            DEPENDENCY_FACTS_BY_IMPORTER.with(|c| c.borrow_mut().insert(key, index.clone()));
+            index
+        }
+    };
+    by_importer.get(importer_path).cloned().unwrap_or_default()
+}
+
 /// THE UNION, ONCE. Reference-first exact dedup over `{path, import_module, target_declared}`,
 /// keeping first occurrence and therefore a stable order.
 ///
@@ -33612,6 +33654,10 @@ fn longest_declared_module_prefix(
 
 thread_local! {
     static REFERENCE_EDGE_CACHE: RefCell<HashMap<String, Vec<ReferenceEdgeRaw>>> =
+        RefCell::new(HashMap::new());
+    /// `dependency_resolution_facts_at`'s grouping of the one population union by importer path,
+    /// keyed by (pool, exclusions). Released with the other process caches at floor teardown.
+    static DEPENDENCY_FACTS_BY_IMPORTER: RefCell<HashMap<String, Rc<HashMap<String, Vec<ImportResolutionFactRaw>>>>> =
         RefCell::new(HashMap::new());
     /// Import-less files the reference producer could NOT account for. Keyed identically to
     /// `REFERENCE_EDGE_CACHE` and populated in the same pass.
@@ -37159,7 +37205,8 @@ mod witness_layer_roots_compile_clean_tests {
             // Wiring receipt: the entry declares no imports, so a non-empty adjacency here is
             // reference-derived by construction.
             let targets = facts
-                .selection_adjacency
+                .selection
+                .selection_adjacency()
                 .get(entry)
                 .cloned()
                 .unwrap_or_default();
@@ -37225,7 +37272,8 @@ mod witness_layer_roots_compile_clean_tests {
                 .iter()
                 .filter(|p| {
                     facts
-                        .selection_adjacency
+                        .selection
+                        .selection_adjacency()
                         .get(*p)
                         .is_none_or(|targets| targets.is_empty())
                 })
@@ -41416,6 +41464,7 @@ pub fn release_process_caches_at_exit() {
     MODULE_PATH_INDEX_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     MODULE_GRAPH_FACTS_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
     REFERENCE_EDGE_CACHE.with(|c| forget(take(&mut *c.borrow_mut())));
+    DEPENDENCY_FACTS_BY_IMPORTER.with(|c| forget(take(&mut *c.borrow_mut())));
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| forget(take(&mut *m.borrow_mut())));
     eprintln!(
