@@ -3140,9 +3140,9 @@ fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
 }
 
 fn infer_facts_for_tree(tree: ResolvedTree) -> Outcome<Map<Node, InferredFacts>> {
-  let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
+  let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
   let kinds = infer_language_inhabitants_kind_index()
-  let gather = fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree))
+  let gather = fold_node(n: tree.root, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree.root))
   infer_gather_state_to_outcome(state: gather.run(infer_gather_state_empty()))
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
@@ -3155,7 +3155,7 @@ fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
     Accepted { value: known, diagnostics: d } =>
       Accepted {
         value: ObligatedInferredTree {
-          root: tree,
+          root: tree.root,
           facts: inferred_facts_partial_function(facts: known),
           obligations: Empty
         },
