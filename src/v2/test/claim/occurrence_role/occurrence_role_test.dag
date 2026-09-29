@@ -20,7 +20,8 @@ import v2.compiler.occurrence_role {
 }
 import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
 import v2.extdeps.languages.dag { dag_grammar_root }
-import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List, Map, map_lookup }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Atom, Conj, Edge, Named, Node, TypeNode, node_with_occurrence_id, symbol_intern_lexeme }
@@ -264,7 +265,7 @@ fn plant_unreadable_binder(n: Node) -> Node {
   }
   node_with_occurrence_id(
     kind: kind,
-    children: list_map(xs: n.children, f: fn(e) { Edge { label: e.label, target: plant_unreadable_binder(n: e.target) } }),
+    children: fold(n.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: e.label, target: plant_unreadable_binder(n: e.target) }) }),
     occurrence_id: n.occurrence_id
   )
 }
@@ -274,11 +275,11 @@ fn mixed_param_list_outcome(plant: Bool) -> OccurrenceRoleOutcome {
   match subject.parsed {
     Rejected { diagnostics: _ } => OccurrenceRoleTableRefused { unlisted: [^occurrence_role_mixed_fixture_unparsed], unknown: [], unkeyed: [] }
     Accepted { value: artifact, diagnostics: _ } =>
-      occurrence_roles_of_tree(
-        tree: if plant { plant_unreadable_binder(n: artifact.tree) } else { artifact.tree },
-        root: dag_grammar_root(),
-        rows: dag_name_production_rows()
-      )
+      if plant {
+        occurrence_roles_of_tree(tree: plant_unreadable_binder(n: artifact.tree), root: dag_grammar_root(), rows: dag_name_production_rows())
+      } else {
+        occurrence_roles_of_tree(tree: artifact.tree, root: dag_grammar_root(), rows: dag_name_production_rows())
+      }
   }
 }
 
