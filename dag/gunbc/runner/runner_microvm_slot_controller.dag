@@ -19,7 +19,7 @@ import gunbc.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_posix_accounts { fleet_posix_home_directory }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities, microvm_slot_row }
 import gunbc.runner_host_deploy { RunnerHostSpec }
 import gunbc.runner_microvm_host_ready {
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused, MicrovmHostBindingRefusal,
@@ -116,6 +116,7 @@ data runner_microvm_slot_controller_disposition: ConstructionMechanism = SingleA
 type SlotControllerRefusal
   = EnvironmentAbsent { name: String }
   | SlotNotAFabricMember { instance: String }
+  | SlotHasNoMicroVmRow { instance: String }
   | SlotHostBindingRefused { cause: MicrovmHostBindingRefusal }
   | ReleaseLocusIncomplete { path: String }
   | GuestImageIncomplete { path: String }
@@ -220,6 +221,10 @@ fn guest_image_sources(spec: RunnerHostSpec) -> GuestImageSources {
 
 // THE DEMAND AND OFFER ARE DERIVED, NOT REMEMBERED (gunbc.runner_microvm_shakedown): the same
 // authority the placer used, so the hold owner the CAS carries is one this process can name.
+// THE RESERVATION IS OBSERVED ONLY FOR A SLOT WITH A ROW, for the demand and offer the reserve broker
+// placed, derived through the same functions (gunbc.runner_microvm_shakedown microvm_shakedown_demand /
+// microvm_shakedown_offer), so the placer and this controller cannot derive two different holds for
+// one slot. The shakedown is the only Work a row has today; the caller refuses a slot with no row.
 fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
   uses net: Network, fs: Filesystem
 {
@@ -378,10 +383,14 @@ fn slot_controller_on_host(slot: RunnerSlotIdentity, spec: RunnerHostSpec, relea
   } else if !path_exists(path: image.rootfs) {
     SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
   } else {
-    match observe_reservation(slot: slot) {
-      RequiredBuildCellObserved { snapshot: snapshot } =>
-        slot_controller_on_reservation(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
-      not_observed => SlotControllerRefused { refusal: ReservationNotObserved { observation: not_observed } }
+    match microvm_slot_row(slot: slot) {
+      Absent => SlotControllerRefused { refusal: SlotHasNoMicroVmRow { instance: runner_slot_instance_name(slot: slot) as String } }
+      Present { value: _ } =>
+        match observe_reservation(slot: slot) {
+          RequiredBuildCellObserved { snapshot: snapshot } =>
+            slot_controller_on_reservation(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
+          not_observed => SlotControllerRefused { refusal: ReservationNotObserved { observation: not_observed } }
+        }
     }
   }
 }
@@ -521,6 +530,7 @@ fn refusal_text(r: SlotControllerRefusal) -> String {
   match r {
     EnvironmentAbsent { name: n } => join(["EnvironmentAbsent ", n, " -- the unit did not set it, so the controller cannot name its slot or locus"], "")
     SlotNotAFabricMember { instance: i } => join(["SlotNotAFabricMember ", i, " -- not in gunbc.runner_slot_allocation fabric_execution_slot_identities"], "")
+    SlotHasNoMicroVmRow { instance: i } => join(["SlotHasNoMicroVmRow ", i, " -- no row in gunbc.runner_slot_allocation microvm_slot_rows, so no Work to observe a reservation for"], "")
     SlotHostBindingRefused { cause: c } => join(["SlotHostBindingRefused ", microvm_host_binding_refusal_text(c: c)], "")
     ReleaseLocusIncomplete { path: p } => join(["ReleaseLocusIncomplete ", p, " is not an executable in the release locus"], "")
     GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")

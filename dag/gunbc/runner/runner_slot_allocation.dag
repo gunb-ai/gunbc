@@ -2,6 +2,7 @@ module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
+import v2.std.collection { list_at_optional }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { byte_size_saturating_sub }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
@@ -80,8 +81,48 @@ fn srv1_microvm_shakedown_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv1, slot_index: gunbc_microvm_shakedown_slot_index }
 }
 
-fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
-  runner_slot_identity_equal(a: slot, b: srv1_microvm_shakedown_slot())
+// A MICROVM SLOT IS A ROW. It was one predicate, `slot_is_microvm_shakedown_slot`, while srv1-13 was
+// the only microVM slot, so a second slot had to be either another if-branch beside it or the
+// shakedown's envelope by accident. The row states the slot's ENVELOPE -- the fleet row, or the one
+// declared ceiling above it -- as its own field, so a slot on the fleet row joins without widening
+// gunbc.rung_drop.microvm_shakedown_slot_row_above_fleet_row, whose population is ONE slot. The Work a
+// slot's reservations are for is a second fact; it joins the row as a role when a second role exists
+// to tell apart, since a sum of one arm is an alias in this grammar, not a discriminator.
+type MicroVmSlotEnvelope = FleetRowEnvelope | ShakedownCeilingEnvelope
+
+type MicroVmSlotRow {
+  slot: RunnerSlotIdentity
+  envelope: MicroVmSlotEnvelope
+}
+
+fn microvm_slot_rows() -> List<MicroVmSlotRow> {
+  [MicroVmSlotRow { slot: srv1_microvm_shakedown_slot(), envelope: ShakedownCeilingEnvelope }]
+}
+
+fn microvm_slot_row(slot: RunnerSlotIdentity) -> MicroVmSlotRow? {
+  list_at_optional(xs: filter(microvm_slot_rows(), r => runner_slot_identity_equal(a: r.slot, b: slot)), index: 0)
+}
+
+fn slot_takes_ceiling_envelope(slot: RunnerSlotIdentity) -> Bool {
+  match microvm_slot_row(slot: slot) {
+    Absent => false
+    Present { value: r } => match r.envelope { ShakedownCeilingEnvelope => true FleetRowEnvelope => false }
+  }
+}
+
+// THE HOST'S CEILING SLOT, READ OFF THE ROWS. The width, the fleet index range and the committed
+// membership below all need "the slot on this host that is charged at the ceiling"; they used to ask
+// whether the host was srv1. The rung drop bounds that population to one slot, so the first match is
+// the only one and the witness holds the count.
+fn host_ceiling_slot(host: HostIdentity) -> RunnerSlotIdentity? {
+  list_at_optional(
+    xs: map(filter(microvm_slot_rows(), r => (r.slot.host as String) == (host as String) && slot_takes_ceiling_envelope(slot: r.slot)), r => r.slot),
+    index: 0,
+  )
+}
+
+fn ceiling_envelope_slot_count() -> Int {
+  length(filter(microvm_slot_rows(), r => slot_takes_ceiling_envelope(slot: r.slot)))
 }
 
 // WHAT ONE SLOT IS GRANTED, ASKED PER SLOT. Every consumer that renders or judges a cell's envelope
@@ -92,7 +133,7 @@ fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
 // because the fleet row IS the answer to a question asked of no particular slot.
 fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
   let fleet = gunbc_runner_slot_desired()
-  if slot_is_microvm_shakedown_slot(slot: slot) {
+  if slot_takes_ceiling_envelope(slot: slot) {
     RunnerSlotDesired {
       memory_max: gunbc_microvm_shakedown_slot_memory_max,
       memory_swap_max: byte_size(0),
@@ -411,7 +452,7 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
   memory_admitted_width_of_envelope(
     envelope: host_runner_memory_envelope(host: host),
-    carries_shakedown_slot: host_carries_microvm_shakedown_slot(host: host),
+    carries_shakedown_slot: host_carries_ceiling_slot(host: host),
   )
 }
 
@@ -836,8 +877,12 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
   )
 }
 
-fn host_carries_microvm_shakedown_slot(host: HostIdentity) -> Bool {
-  (host as String) == (srv1_microvm_shakedown_slot().host as String)
+fn host_carries_ceiling_slot(host: HostIdentity) -> Bool {
+  match host_ceiling_slot(host: host) { Absent => false Present { value: _ } => true }
+}
+
+fn host_ceiling_slot_index(host: HostIdentity) -> Nat {
+  match host_ceiling_slot(host: host) { Absent => 0 Present { value: s } => s.slot_index }
 }
 
 // WHAT A HOST'S COMMITTED RUNNERS COST ITS MEMORY BUDGET, AND THE ONE PLACE IT IS ANSWERED. The width
@@ -849,7 +894,7 @@ fn host_carries_microvm_shakedown_slot(host: HostIdentity) -> Bool {
 // This is the BUDGET charge, not the runner slice's systemd cap (gunbc_runner_slice_cap_for_width):
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
-  if host_carries_microvm_shakedown_slot(host: host) && slots > 0 {
+  if host_carries_ceiling_slot(host: host) && slots > 0 {
     byte_size(
       byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - 1))
         + byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
@@ -1620,8 +1665,8 @@ fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
 // rename no live state). The index stays authored for the reason gunbc_microvm_shakedown_slot_index
 // gives; only the fleet range beneath it is derived.
 fn host_fleet_slot_top(host: HostIdentity, committed: Int) -> Int {
-  if host_carries_microvm_shakedown_slot(host: host) && committed > 0 {
-    if committed > (gunbc_microvm_shakedown_slot_index as Int) { committed } else { committed - 1 }
+  if host_carries_ceiling_slot(host: host) && committed > 0 {
+    if committed > (host_ceiling_slot_index(host: host) as Int) { committed } else { committed - 1 }
   } else {
     committed
   }
@@ -1632,12 +1677,14 @@ fn host_fleet_slot_top(host: HostIdentity, committed: Int) -> Int {
 fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
   filter(
     nat_range_inclusive(lo: 1, hi: host_fleet_slot_top(host: host, committed: committed)),
-    i => !(host_carries_microvm_shakedown_slot(host: host) && i == gunbc_microvm_shakedown_slot_index)
+    i => !(host_carries_ceiling_slot(host: host) && i == host_ceiling_slot_index(host: host))
   )
 }
 
 fn host_authored_members_above_fleet_range(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
-  if host_carries_microvm_shakedown_slot(host: host) && committed > 0 { [srv1_microvm_shakedown_slot()] } else { [] }
+  if committed > 0 {
+    match host_ceiling_slot(host: host) { Absent => [] Present { value: s } => [s] }
+  } else { [] }
 }
 
 fn host_committed_identities_at(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
