@@ -1,0 +1,70 @@
+module v2.test.infer_facts.facts_key_conflict
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty }
+import v2.compiler.infer {
+  facts_map_from_entries,
+  infer_canonical_grounding_incoherent_diagnostic,
+  infer_facts_lookup_miss_diagnostic
+}
+import v2.compiler.inferred_tree { GroundingNotDerived, InferredFacts, InferredFactsEntry }
+import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
+import v2.std.node { Atom, Node, TypeNode }
+import v2.std.optional { Absent, Present }
+import v2.std.witness { Violates }
+
+// The table's admission is the interface under test, so its entries are SUPPLIED: two facts that
+// differ only in their descent witness, under one key. The route through gather is the integration
+// program's qualification, not this module's subject.
+
+fn fkc_key() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^fkc_key } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn fkc_facts_a() -> InferredFacts {
+  InferredFacts {
+    grounding: GroundingNotDerived { node: fkc_key() },
+    descent: Violates { diagnostic: infer_facts_lookup_miss_diagnostic(key: fkc_key()) }
+  }
+}
+
+fn fkc_facts_b() -> InferredFacts {
+  InferredFacts {
+    grounding: GroundingNotDerived { node: fkc_key() },
+    descent: Violates { diagnostic: infer_canonical_grounding_incoherent_diagnostic(node: fkc_key()) }
+  }
+}
+
+fn fkc_entry(facts: InferredFacts) -> InferredFactsEntry {
+  InferredFactsEntry { node: fkc_key(), facts: facts }
+}
+
+// Differing facts under one key refuse with the conflict reason -- asserted by reason, so a refusal
+// for any other cause does not green this.
+test fn fkc_differing_facts_under_one_key_refuse() -> Bool {
+  match facts_map_from_entries(entries: [fkc_entry(facts: fkc_facts_a()), fkc_entry(facts: fkc_facts_b())]) {
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_facts_key_conflict)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// Equal facts under one key are one fact: admitted, and the lookup answers that fact.
+test fn fkc_equal_facts_under_one_key_merge() -> Bool {
+  match facts_map_from_entries(entries: [fkc_entry(facts: fkc_facts_a()), fkc_entry(facts: fkc_facts_a())]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: table, diagnostics: _ } =>
+      match table.lookup(fkc_key()) {
+        Present { value: f } => f == fkc_facts_a()
+        Absent => false
+      }
+  }
+}
+
+// Positive control for the discriminator: the two supplied facts really differ.
+test fn fkc_supplied_facts_differ() -> Bool {
+  fkc_facts_a() != fkc_facts_b()
+}
