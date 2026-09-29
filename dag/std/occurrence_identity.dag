@@ -382,6 +382,92 @@ fn node_occurrence_identity_projected(
   OccurrenceProjected { id: id, caused_by: caused_by }
 }
 
+// A SAME-GRAPH LOWERING DERIVES ITS PROJECTED IDS; IT DOES NOT ALLOCATE THEM.
+//
+// A lowering turns one authored node into an IMAGE of several structurally different nodes. Exactly
+// one of them, the image root the builder returns, stands for the authored text and keeps its
+// OccurrenceMinted. Every other node in the image is a real occurrence of the lowered graph with an
+// authored CAUSE, which is what OccurrenceProjected says. Its id is derived from
+// (source, k), where k >= 1 is the node's pre-order ordinal among the image's non-root members,
+// rather than threaded from an allocator through the lowering fold, so the lowering stays pure and
+// its output does not depend on fold order.
+//
+// COLLISION ARGUMENT. The parse allocator owns [0, N) densely, where N is the snapshot's next_id. A
+// derived id is N + cantor(source, k), and the Cantor pairing is injective over non-negative pairs,
+// so a derived id never equals an authored id (it is >= N) and never equals another derived id
+// (source is unique because the parser minted it, and k is unique within one source's image). The
+// Int encoding is not a choice of taste: the arm's id must stay a bare OccurrenceId because
+// v2.workflow.legacy_binding_delta insertion_provenance_entry wraps it in ScopedOccurrenceRef and
+// v2.lens.identity_captured_navigation node_source_symbol looks spans up by it. The bound is a
+// typed refusal and never a wraparound: both operands are held below occurrence_derivation_operand_bound,
+// so the pairing stays below 2^61 and the sum below the Int range.
+//
+// DEPENDING ON N ADDS NO INSTABILITY. Authored ids are dense and already shift under any token
+// insertion, and source annotations are disjoint from allocation (DESIGN section 4c), so a derived
+// id moves exactly when some authored id before it would have moved anyway.
+//
+// THE SNAPSHOT IS ONE VALUE, so N and the scope digest cannot come from two different parses. The
+// cause is minted in the SAME allocator as the projected node, and scoping it by that allocator
+// domain's digest is the honest ScopedOccurrenceRef rather than a second cause shape.
+type OccurrenceAllocatorSnapshot {
+  ordinal_space: AuthoredTokenOrdinalSpace
+  scope: Fnv1a64Structural
+}
+
+type ProjectedOccurrenceDerivation
+  = ProjectedOccurrenceDerived { identity: NodeOccurrenceIdentity }
+  | ProjectedSourceNotAuthoredInSnapshot { source: OccurrenceId, bound: Int }
+  | ProjectedOrdinalOutOfRange { source: OccurrenceId, ordinal: Int }
+
+fn occurrence_derivation_operand_bound() -> Int {
+  1073741824
+}
+
+fn occurrence_cantor_pair(a: Int, b: Int) -> Int {
+  let s = a + b
+  (s * (s + 1)) / 2 + b
+}
+
+fn derive_projected_occurrence(
+  snapshot: OccurrenceAllocatorSnapshot,
+  source: OccurrenceId,
+  ordinal: Int
+) -> ProjectedOccurrenceDerivation {
+  let n = snapshot.ordinal_space.allocator.next_id
+  if source.value < 0 || source.value >= n || n >= occurrence_derivation_operand_bound() {
+    ProjectedSourceNotAuthoredInSnapshot { source: source, bound: n }
+  } else {
+    if ordinal < 1 || ordinal >= occurrence_derivation_operand_bound() {
+      ProjectedOrdinalOutOfRange { source: source, ordinal: ordinal }
+    } else {
+      ProjectedOccurrenceDerived {
+        identity: OccurrenceProjected {
+          id: OccurrenceId { value: n + occurrence_cantor_pair(a: source.value, b: ordinal) },
+          caused_by: ScopedOccurrenceRef { scope: snapshot.scope, occurrence: source },
+        },
+      }
+    }
+  }
+}
+
+// Membership in a source's image is read from the identity, never from shape: a node belongs to
+// source's image when it carries source's minted id, or is already projected with source as its
+// cause. That second arm is what makes the image pass idempotent, so an image-root lowering that
+// calls another on the SAME source renumbers the inner image instead of colliding with it.
+fn occurrence_identity_in_image_of(
+  identity: NodeOccurrenceIdentity,
+  source: OccurrenceId,
+  snapshot: OccurrenceAllocatorSnapshot
+) -> Bool {
+  match identity {
+    OccurrenceSynthetic => false
+    OccurrenceMinted { id: id } => id.value == source.value
+    OccurrenceProjected { id: _, caused_by: caused_by } =>
+      caused_by.occurrence.value == source.value
+        && scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: snapshot.scope)
+  }
+}
+
 // occurrence_transport_refusal builds each graph-local identity/category index exactly once, then
 // validates declaration and reference rows by indexed lookup. It must never rescan a full
 // occurrence population per authored occurrence.
