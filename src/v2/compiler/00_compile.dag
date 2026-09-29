@@ -122,11 +122,12 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
-import v2.std.algebra { contains, fold_list, is_empty, length, list_find_first, list_reverse }
+import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
+  UserInputBoundary,
   Accepted,
   Diagnostic,
   Diagnostics,
@@ -152,7 +153,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -1283,9 +1284,10 @@ type NativeTestContextFoldState {
 
 // The LAST diagnostic is the cause that actually refused the file; the head is the advisory
 // that rode along. Both are carried because ownership is keyed by grain.
-fn native_test_file_refusal(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileRefusal {
+fn native_test_file_refusal(path: Symbol, module: Optional<String>, d: NonEmptyDiagnostics) -> NativeTestFileRefusal {
   NativeTestFileRefusal {
     path: path,
+    module: module,
     head_reason: d.head.reason,
     fatal_reason: diagnostics_fatal_reason(d: d)
   }
@@ -1337,7 +1339,7 @@ fn native_test_context_absorb(
         index: state.index,
         file_refusals: list_snoc_item(
           xs: state.file_refusals,
-          item: native_test_file_refusal(path: read.compilation_unit, d: d)
+          item: native_test_file_refusal(path: read.compilation_unit, module: native_lane_declared_module_name(content: read.source.carried), d: d)
         ),
         alloc: alloc
       }
@@ -1349,7 +1351,7 @@ fn native_test_context_absorb(
             index: state.index,
             file_refusals: list_snoc_item(
               xs: state.file_refusals,
-              item: native_test_file_refusal(path: read.compilation_unit, d: d)
+              item: native_test_file_refusal(path: read.compilation_unit, module: native_lane_declared_module_name(content: read.source.carried), d: d)
             ),
             alloc: alloc
           }
@@ -3113,6 +3115,12 @@ type NativeLaneModuleResolution
 // resolver said.
 type NativeModuleResolveVerdict
   = NativeModuleResolveFileRefused { refusal: NativeTestFileRefusal }
+  | NativeModuleResolveImportTargetFileRefused {
+      target: NativeTestFileRefusal
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
   | NativeModuleResolveRefused {
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
@@ -3123,6 +3131,55 @@ type NativeModuleResolveVerdict
 // The walk ran under context.resolution's index (resolve_walk_with_admission_context_policy
 // builds the subject namespace over it), so that index is minted beside the root. An
 // accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
+// A MODULE WHOSE IMPORT TARGET WAS REFUSED AT INGEST IS TOLD SO. When a file the context refused
+// declares a module this one imports, none of that module's declarations entered the index, so the
+// resolver finds each imported name unbound. That is true and located, but it names the SYMPTOM:
+// measured on the native seven (quiet-hawk-702, 2026-09-29), every refusal pointed at `tokenize` while
+// the cause was v2.compiler.tokenize's own file, refused by body lowering. The verdict keeps the
+// resolver's diagnostics and names the refused target first. It is decided only when resolution
+// already refused, so a module that resolved is never re-attributed.
+// The import targets are read from the module's own captured import rows
+// (v2.compiler.normalized_tree NormalizedTree import_bindings), and a row's target module is its path
+// less the imported name. The refused module is the one the refused file's header declares.
+fn native_import_target_file_refusal(context: NativeTestContext, module: QualifiedName) -> Optional<NativeTestFileRefusal> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: _ } =>
+      match map_lookup(m: shared.roots.by_name, key: module) {
+        Absent => optional_absent()
+        Present { value: tree } =>
+          fold_list(xs: context.file_refusals, empty: optional_absent(), cons: fn(found, refusal) {
+            match found {
+              Present { value: _ } => found
+              Absent =>
+                match refusal.module {
+                  Absent => optional_absent()
+                  Present { value: refused_module } =>
+                    if any(xs: tree.import_bindings, predicate: fn(row) {
+                      qualified_name_to_dotted_string(qn: qualified_name_init(qn: row.target)) == refused_module
+                    }) {
+                      optional_present(value: refusal)
+                    } else {
+                      optional_absent()
+                    }
+                }
+            }
+          })
+      }
+  }
+}
+
+fn native_import_target_refusal_diagnostics(target: NativeTestFileRefusal, resolver: NonEmptyDiagnostics) -> NonEmptyDiagnostics {
+  let at = Textual { file: target.path, extent: WholeFile }
+  NonEmptyDiagnostics {
+    head: Diagnostic { reason: ^native_prepare_reason_import_target_file_refused, at: at, correction: Unavailable { reason: UserInputBoundary } },
+    tail: list_append(
+      left: [Diagnostic { reason: target.fatal_reason, at: at, correction: Unavailable { reason: UserInputBoundary } }, resolver.head],
+      right: resolver.tail
+    )
+  }
+}
+
 fn native_module_resolve_verdict(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
@@ -3137,7 +3194,11 @@ fn native_module_resolve_verdict(
         module: qualified_name_from_dotted_string(dotted: module)
       ) {
         ResolveWalkRefused { first: f, rest: r, observation: o } =>
-          NativeModuleResolveRefused { first: f, rest: r, observation: o }
+          match native_import_target_file_refusal(context: context, module: qualified_name_from_dotted_string(dotted: module)) {
+            Present { value: target } =>
+              NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
+            Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+          }
         ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
           match context.resolution {
             Accepted { value: shared, diagnostics: _ } =>
@@ -3173,6 +3234,13 @@ fn native_lane_module_resolution(
             reason: fr.fatal_reason,
             at: Textual { file: fr.path, extent: WholeFile }
           )
+        )
+      }
+    NativeModuleResolveImportTargetFileRefused { target: t, first: d, rest: _, observation: _ } =>
+      NativeLaneModuleResolveRowsDecided {
+        rows: native_lane_module_refusal_rows(
+          entry: entry,
+          verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
         )
       }
     NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
@@ -3301,6 +3369,8 @@ fn native_census_module_resolution(
     path: entry.path
   ) {
     NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
+    NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+      NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
     NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
       NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
     NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved

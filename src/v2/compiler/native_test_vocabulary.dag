@@ -15,6 +15,7 @@ import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
+import v2.std.optional { Optional }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
@@ -171,8 +172,14 @@ type NativeTestObservation {
 // reason and the fatal (last) reason are different observations of one refusal — the door
 // ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
 // classifier asks both questions of every row.
+// `module` is the module the refused file DECLARES, read from its header line
+// (v2.compiler.compile native_lane_declared_module_name), because a refused file never produced a
+// parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
+// told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
+// told only that a name is unbound. Absent means the file declares no module line.
 type NativeTestFileRefusal {
   path: Symbol
+  module: Optional<String>
   head_reason: Symbol
   fatal_reason: Symbol
 }
