@@ -7,7 +7,7 @@ import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import gunbc.host_command_binding {
-  CommandHost, HostEffectDone, HostEffectFailed, host_effect, host_effect_text,
+  CommandHost, HostCommandDone, HostCommandFailed, host_command, host_command_outcome_text,
   HostFileWrite, HostFileWritten, host_write_file,
   ScratchOutcome, CreationNotRequested,
 }
@@ -86,9 +86,9 @@ fn seeded_image_publication_refused(reason: String) -> SeededImagePublication {
 fn resolve_seeded_image_named(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, recorded: NonEmptyStr) -> SeededImageResolution {
   let built = ubuntu_seeded_install_media_built(input: input, output_digest: recorded)
   let path = boot_image_published_path(export_dir: dir, image_name: built.image_name)
-  match host_effect(host: host, command: test_regular_file_command(path: path as String)) {
-    HostEffectFailed { exit_code: _, stderr: _ } => SeededImageRecordedImageAbsent { path: path, recorded: recorded }
-    HostEffectDone { stdout: _ } =>
+  match host_command(host: host, command: test_regular_file_command(path: path as String)) {
+    HostCommandFailed { exit_code: _, stderr: _ } => SeededImageRecordedImageAbsent { path: path, recorded: recorded }
+    HostCommandDone { stdout: _ } =>
       match boot_image_digest_on(host: host, path: path) {
         Sha256FileDigestUnavailable { path: _, reason: r } =>
           SeededImageUnobservable { reason: concat("the image at ", path as String, " exists but its digest could not be read: ", r) }
@@ -99,17 +99,17 @@ fn resolve_seeded_image_named(host: CommandHost, input: UbuntuSeededInstallMedia
             SeededImageRecordDiverged { path: path, recorded: recorded, observed: d.hex }
           }
       }
-    other => SeededImageUnobservable { reason: concat("whether ", path as String, " exists is unread: ", host_effect_text(e: other)) }
+    other => SeededImageUnobservable { reason: concat("whether ", path as String, " exists is unread: ", host_command_outcome_text(e: other)) }
   }
 }
 
 fn resolve_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr) -> SeededImageResolution {
   let record_path = ubuntu_seeded_install_media_record_path(dir: dir, input: input)
-  match host_effect(host: host, command: test_regular_file_command(path: record_path as String)) {
-    HostEffectFailed { exit_code: _, stderr: _ } => SeededImageNotBuilt { record_path: record_path }
-    HostEffectDone { stdout: _ } =>
-      match host_effect(host: host, command: cat_command(path: record_path as String)) {
-        HostEffectDone { stdout: content } => {
+  match host_command(host: host, command: test_regular_file_command(path: record_path as String)) {
+    HostCommandFailed { exit_code: _, stderr: _ } => SeededImageNotBuilt { record_path: record_path }
+    HostCommandDone { stdout: _ } =>
+      match host_command(host: host, command: cat_command(path: record_path as String)) {
+        HostCommandDone { stdout: content } => {
           let recorded = trim(s: content)
           if recorded.length() == 0 {
             SeededImageUnobservable { reason: concat("derivation record is empty at ", record_path as String) }
@@ -117,9 +117,9 @@ fn resolve_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildI
             resolve_seeded_image_named(host: host, input: input, dir: dir, recorded: recorded as NonEmptyStr)
           }
         }
-        other => SeededImageUnobservable { reason: concat("derivation record unreadable at ", record_path as String, ": ", host_effect_text(e: other)) }
+        other => SeededImageUnobservable { reason: concat("derivation record unreadable at ", record_path as String, ": ", host_command_outcome_text(e: other)) }
       }
-    other => SeededImageUnobservable { reason: concat("whether the derivation record ", record_path as String, " exists is unread: ", host_effect_text(e: other)) }
+    other => SeededImageUnobservable { reason: concat("whether the derivation record ", record_path as String, " exists is unread: ", host_command_outcome_text(e: other)) }
   }
 }
 

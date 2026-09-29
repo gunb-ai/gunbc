@@ -1,5 +1,7 @@
 module extdeps.tools.busybox
 
+import extdeps.exec.program { cataloged_program }
+
 import std.types { NonEmptyStr, String, Int, Port }
 import std.measure { Mebibyte, mebibyte_count }
 import extdeps.version { VersionConstraint }
@@ -31,7 +33,7 @@ data busybox_source_1_36_1_url: Uri = Uri {
 
 fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, port: Port) -> ArgvCommand {
   argv_command(
-    program: busybox_bin,
+    program: cataloged_program(invocation: busybox_bin),
     arguments: ["httpd", "-p", to_string(port), "-h", document_root as String],
   )
 }
@@ -46,7 +48,7 @@ fn busybox_httpd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr, p
 // server that must never accept an upload.
 fn busybox_tftpd_over_udpsvd_command(busybox_bin: NonEmptyStr, document_root: NonEmptyStr) -> ArgvCommand {
   argv_command(
-    program: busybox_bin,
+    program: cataloged_program(invocation: busybox_bin),
     arguments: [
       "udpsvd", "-E", "0.0.0.0", "69",
       busybox_bin as String,
@@ -65,7 +67,7 @@ fn busybox_dd_sparse_image_command(
   size: Mebibyte,
 ) -> ArgvCommand {
   argv_command(
-    program: busybox_bin,
+    program: cataloged_program(invocation: busybox_bin),
     arguments: [
       "dd",
       "if=/dev/zero",

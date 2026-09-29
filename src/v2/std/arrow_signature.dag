@@ -70,8 +70,10 @@ fn declared_signature(params: List<Edge>, source: Node) -> DeclaredSignatureEdge
 
 // THE ONE READER OF DECLARED PARAMETER ORDER, and the only thing positional binding may read it from.
 // An Arrow built from a declared signature carries one ^arrow_signature_order_edge whose target is a
-// FreeMonoid introduction of its parameter labels (signature_order_edge). ArrowParameterOrderAbsent is not a fallback to label order: the
-// domain is a Conj sorted by label, so its stored sequence is not the declared one, and a binder
+// FreeMonoid introduction of its parameter labels (signature_order_edge). ArrowParameterOrderAbsent is not a fallback to domain order:
+// the domain is a Conj, a set of labelled binders whose stored sequence is not a fact about the
+// signature (lowering keeps the authored sequence, canonicalization sorts it by label -- v2.std.node
+// arrow_signature_order_conforms), so no reader may take positions from it, and a binder
 // that finds no order edge refuses (v2.compiler.infer infer_application_formals,
 // v2.compiler.eval eval_bind_arrow_params).
 type ArrowParameterOrder

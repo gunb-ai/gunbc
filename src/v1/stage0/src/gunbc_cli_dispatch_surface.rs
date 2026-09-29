@@ -738,6 +738,15 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     doc: Rc::new(vec![]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
+    field: "unix_socket".to_string(),
+    long: "unix-socket".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliAtMostOne,
+    doc: Rc::new(vec!["Listen on this unix socket INSTEAD of --host/--port. Each request's".to_string(), "kernel-attested peer (SO_PEERCRED) is handed to the handler as peer_user.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
     field: "release_revision".to_string(),
     long: "release-revision".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
