@@ -499,9 +499,9 @@ fn g_settle_deltas(e: DemandEngine<Int>) -> GSettleCost {
 //
 // UNTIL IT INVERTS, THE PRODUCTION CUT IS NOT LANDABLE: its central claim is that a completion costs
 // its out-degree and not the graph, and at the entries grain the implementation does not hold that.
-test fn a_settle_scans_no_relations_but_still_walks_every_entry_holds() -> Bool {
+test fn a_settle_costs_the_same_in_a_wider_unrelated_graph_holds() -> Bool {
   let small = g_settle_deltas(e: g_lopsided_unsealed())
   let wide = g_settle_deltas(e: g_wide_extra(e: g_lopsided_unsealed(), n: 40, tag: "w"))
   (small.derivations == wide.derivations)
-    && (wide.entries_walked > small.entries_walked)
+    && (small.entries_walked == wide.entries_walked)
 }

@@ -202,8 +202,19 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
 // among N unrelated ones did O(relations) work and reported one derivation. That is a locality claim
 // the implementation did not hold, and at the seven's scale it was survivable while at all-native
 // scale it is not.
+// ENTRIES ARE KEYED, AND THEIR ORDER IS A SEPARATE FACT. `entries` answers "what is the state of THIS
+// demand" in one lookup, which is the question settlement asks; `entry_order` preserves the insertion
+// order the whole-population passes and receipts need. Splitting them is what lets a completion touch
+// its own entry and its direct dependents instead of rewriting the population to change one state.
+//
+// WHAT THIS MAKES TRUE THAT WAS NOT. The law is "a completion re-evaluates its DIRECT dependents". With
+// a persistent LIST as the store, updating one entry is inherently a walk of every entry, so settling a
+// demand among N unrelated ones cost O(N) twice over -- measured at 10 entry visits in a 5-demand graph
+// and 90 in a 45-demand graph, same out-degree. The population passes that REMAIN are the ones the law
+// does not claim are local: seal validates every demand, and reevaluate recomputes every readiness.
 type DemandEngine<V> {
-  entries: List<DemandEntry<V>>
+  entries: Map<DemandIdentity, DemandEntry<V>>
+  entry_order: List<DemandIdentity>
   relations: List<DependencyRelation<DemandIdentity>>
   dependents_of: Map<DemandIdentity, List<DemandIdentity>>
   prerequisites_of: Map<DemandIdentity, List<DemandIdentity>>
@@ -212,9 +223,45 @@ type DemandEngine<V> {
   entries_visited: Int
 }
 
+// THE STORE'S VALUE TYPE SURVIVES ONLY THROUGH A DECLARED PARAMETER. map_lookup answers Optional<V> over
+// the map's own value generic, and a value destructured straight out of it does not carry DemandEntry<V>
+// through a FIELD READ -- the same erasure that makes an inline `aggregate.fields` a runtime type error
+// elsewhere in this corpus. Naming the parameter restores it, so every entry rewrite below goes through
+// one of these two.
+fn demand_entry_with_state<V>(entry: DemandEntry<V>, state: DemandState<V>) -> DemandEntry<V> {
+  DemandEntry {
+    identity: entry.identity,
+    nature: entry.nature,
+    state: state,
+    attachments: entry.attachments,
+    productions: entry.productions
+  }
+}
+
+fn demand_entry_produced<V>(entry: DemandEntry<V>, state: DemandState<V>) -> DemandEntry<V> {
+  DemandEntry {
+    identity: entry.identity,
+    nature: entry.nature,
+    state: state,
+    attachments: entry.attachments,
+    productions: entry.productions + 1
+  }
+}
+
+fn demand_entry_attached<V>(entry: DemandEntry<V>) -> DemandEntry<V> {
+  DemandEntry {
+    identity: entry.identity,
+    nature: entry.nature,
+    state: entry.state,
+    attachments: entry.attachments + 1,
+    productions: entry.productions
+  }
+}
+
 fn demand_engine_empty<V>() -> DemandEngine<V> {
   DemandEngine {
-    entries: [],
+    entries: empty_map(),
+    entry_order: [],
     relations: [],
     dependents_of: empty_map(),
     prerequisites_of: empty_map(),
@@ -225,18 +272,40 @@ fn demand_engine_empty<V>() -> DemandEngine<V> {
 }
 
 fn demand_engine_entry<V>(e: DemandEngine<V>, id: DemandIdentity) -> Optional<DemandEntry<V>> {
+  map_lookup(m: e.entries, key: id)
+}
+
+// A WHOLE-POPULATION REWRITE, NAMED SO IT CANNOT HIDE. Seal and reevaluate legitimately touch every
+// demand -- seal validates the graph once, reevaluate recomputes every readiness -- and the law does not
+// claim either is local. Routing both through one named helper is what keeps a THIRD such pass from
+// appearing inside a function that is supposed to be local: a reader looking for population cost greps
+// for this name.
+fn demand_engine_entries_mapped<V>(
+  e: DemandEngine<V>,
+  f: fn(DemandEntry<V>) -> DemandEntry<V>
+) -> Map<DemandIdentity, DemandEntry<V>> {
   fold_list(
-    xs: e.entries,
-    empty: optional_absent(),
-    cons: fn(acc, entry) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if demand_identity_eq(a: entry.identity, b: id) {
-            optional_present(value: entry)
-          } else {
-            optional_absent()
-          }
+    xs: e.entry_order,
+    empty: empty_map(),
+    cons: fn(acc, id) {
+      match map_lookup(m: e.entries, key: id) {
+        Absent => acc
+        Present { value: entry } => map_insert(m: acc, key: id, value: f(entry))
+      }
+    }
+  )
+}
+
+// THE POPULATION, IN INSERTION ORDER. Every whole-population pass goes through this one reader, so a
+// pass that should be local is visible as a call to it rather than hidden in a fold over the store.
+fn demand_engine_all_entries<V>(e: DemandEngine<V>) -> List<DemandEntry<V>> {
+  fold_list(
+    xs: e.entry_order,
+    empty: Empty,
+    cons: fn(acc, id) {
+      match map_lookup(m: e.entries, key: id) {
+        Absent => acc
+        Present { value: entry } => Cons { head: entry, tail: acc }
       }
     }
   )
@@ -283,22 +352,12 @@ fn demand_engine_request<V>(
     Present { value: existing } =>
       if demand_nature_admits_sharing(nature: existing.nature) {
         DemandEngine {
-          entries: list_map(
-            xs: e.entries,
-            f: fn(entry) {
-              if demand_identity_eq(a: entry.identity, b: id) {
-                DemandEntry {
-                  identity: entry.identity,
-                  nature: entry.nature,
-                  state: entry.state,
-                  attachments: entry.attachments + 1,
-                  productions: entry.productions
-                }
-              } else {
-                entry
-              }
-            }
+          entries: map_insert(
+            m: e.entries,
+            key: id,
+            value: demand_entry_attached(entry: existing)
           ),
+          entry_order: e.entry_order,
           relations: e.relations,
           dependents_of: e.dependents_of,
           prerequisites_of: e.prerequisites_of,
@@ -308,22 +367,12 @@ fn demand_engine_request<V>(
         }
       } else {
         DemandEngine {
-          entries: list_map(
-            xs: e.entries,
-            f: fn(entry) {
-              if demand_identity_eq(a: entry.identity, b: id) {
-                DemandEntry {
-                  identity: entry.identity,
-                  nature: entry.nature,
-                  state: DemandWaiting,
-                  attachments: entry.attachments,
-                  productions: entry.productions + 1
-                }
-              } else {
-                entry
-              }
-            }
+          entries: map_insert(
+            m: e.entries,
+            key: id,
+            value: demand_entry_produced(entry: existing, state: DemandWaiting)
           ),
+          entry_order: e.entry_order,
           relations: e.relations,
           dependents_of: e.dependents_of,
           prerequisites_of: e.prerequisites_of,
@@ -334,7 +383,12 @@ fn demand_engine_request<V>(
       }
     Absent =>
       DemandEngine {
-        entries: list_snoc_item(xs: e.entries, item: demand_entry_new(identity: id, nature: nature)),
+        entries: map_insert(
+          m: e.entries,
+          key: id,
+          value: demand_entry_new(identity: id, nature: nature)
+        ),
+        entry_order: list_snoc_item(xs: e.entry_order, item: id),
         relations: e.relations,
         dependents_of: e.dependents_of,
         prerequisites_of: e.prerequisites_of,
@@ -363,6 +417,7 @@ fn demand_engine_relate<V>(
 ) -> DemandEngine<V> {
   DemandEngine {
     entries: e.entries,
+    entry_order: e.entry_order,
     relations: list_snoc_item(xs: e.relations, item: relation),
     dependents_of: demand_engine_adjacency_push(
       m: e.dependents_of,
@@ -422,7 +477,7 @@ fn demand_reaches<V>(
 }
 
 fn demand_in_cycle<V>(e: DemandEngine<V>, id: DemandIdentity) -> Bool {
-  demand_reaches(e: e, from: id, target: id, fuel: length(xs: e.entries) + 1)
+  demand_reaches(e: e, from: id, target: id, fuel: length(xs: e.entry_order) + 1)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -494,8 +549,8 @@ fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V>
 fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
   demand_engine_reevaluate(
     e: DemandEngine {
-      entries: list_map(
-        xs: e.entries,
+      entries: demand_engine_entries_mapped(
+        e: e,
         f: fn(entry) {
           if demand_in_cycle(e: e, id: entry.identity) {
             DemandEntry {
@@ -510,6 +565,7 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
           }
         }
       ),
+      entry_order: e.entry_order,
       relations: e.relations,
       dependents_of: e.dependents_of,
       prerequisites_of: e.prerequisites_of,
@@ -522,8 +578,8 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
 
 fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
   DemandEngine {
-    entries: list_map(
-      xs: e.entries,
+    entries: demand_engine_entries_mapped(
+      e: e,
       f: fn(entry) {
         DemandEntry {
           identity: entry.identity,
@@ -534,11 +590,12 @@ fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
         }
       }
     ),
+    entry_order: e.entry_order,
     relations: e.relations,
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
     completion_order: e.completion_order,
-    readiness_computations: e.readiness_computations + length(xs: e.entries),
+    readiness_computations: e.readiness_computations + length(xs: e.entry_order),
     entries_visited: e.entries_visited
   }
 }
@@ -562,7 +619,7 @@ fn demand_queue_sort_key(id: DemandIdentity) -> String {
 
 fn demand_engine_ready_queue<V>(e: DemandEngine<V>) -> List<DemandIdentity> {
   list_map(
-    xs: filter(xs: e.entries, predicate: fn(entry) { demand_state_is_ready(s: entry.state) }),
+    xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_state_is_ready(s: entry.state) }),
     f: fn(entry) { entry.identity }
   ) |> sort_by(demand_queue_sort_key)
 }
@@ -585,7 +642,7 @@ fn demand_lease_admits(offer: DemandLeaseOffer, in_flight: Int) -> Bool {
 }
 
 fn demand_engine_in_flight<V>(e: DemandEngine<V>) -> Int {
-  length(xs: filter(xs: e.entries, predicate: fn(entry) { demand_state_is_running(s: entry.state) }))
+  length(xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_state_is_running(s: entry.state) }))
 }
 
 // The next demand to admit: the head of the stable queue, but only if a seat is available. The
@@ -625,54 +682,67 @@ fn demand_engine_settle<V>(
   state: DemandState<V>
 ) -> DemandEngine<V> {
   let settled = DemandEngine {
-    entries: list_map(
-      xs: e.entries,
-      f: fn(entry) {
-        if demand_identity_eq(a: entry.identity, b: id) {
-          DemandEntry {
-            identity: entry.identity,
-            nature: entry.nature,
-            state: state,
-            attachments: entry.attachments,
-            productions: entry.productions + 1
-          }
-        } else {
-          entry
-        }
-      }
-    ),
+    entries: demand_engine_settle_entry(e: e, id: id, state: state),
+    entry_order: e.entry_order,
     relations: e.relations,
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
     completion_order: list_snoc_item(xs: e.completion_order, item: id),
     readiness_computations: e.readiness_computations,
-    entries_visited: e.entries_visited + length(xs: e.entries)
+    entries_visited: e.entries_visited + 1
   }
   let direct = demand_engine_dependents(e: settled, id: id)
   DemandEngine {
-    entries: list_map(
-      xs: settled.entries,
-      f: fn(entry) {
-        if contains(xs: direct, item: entry.identity, eq: fn(a, b) { demand_identity_eq(a: a, b: b) }) {
-          DemandEntry {
-            identity: entry.identity,
-            nature: entry.nature,
-            state: demand_readiness(e: settled, id: entry.identity),
-            attachments: entry.attachments,
-            productions: entry.productions
-          }
-        } else {
-          entry
-        }
-      }
-    ),
+    entries: demand_engine_reevaluate_only(e: settled, ids: direct),
+    entry_order: settled.entry_order,
     relations: settled.relations,
     dependents_of: settled.dependents_of,
     prerequisites_of: settled.prerequisites_of,
     completion_order: settled.completion_order,
     readiness_computations: settled.readiness_computations + length(xs: direct),
-    entries_visited: settled.entries_visited + length(xs: settled.entries)
+    entries_visited: settled.entries_visited + length(xs: direct)
   }
+}
+
+// THE SETTLED DEMAND'S OWN ENTRY, and nothing else. One lookup, one insert: the productions counter
+// advances because a settlement is a production, and a demand the store does not hold is left alone
+// rather than invented.
+fn demand_engine_settle_entry<V>(
+  e: DemandEngine<V>,
+  id: DemandIdentity,
+  state: DemandState<V>
+) -> Map<DemandIdentity, DemandEntry<V>> {
+  match map_lookup(m: e.entries, key: id) {
+    Absent => e.entries
+    Present { value: entry } =>
+      map_insert(m: e.entries, key: id, value: demand_entry_produced(entry: entry, state: state))
+  }
+}
+
+// THE DIRECT DEPENDENTS, AND ONLY THEY. This is the law's whole content: a completion re-derives
+// readiness for the demands that named it as a prerequisite, so the work is its OUT-DEGREE and the
+// unrelated population is never read. Replacing the previous population rewrite with this is what makes
+// that claim true rather than merely stated -- the fold is over `ids`, which came from the keyed
+// reverse-adjacency index, so nothing here is proportional to the number of demands in flight elsewhere.
+fn demand_engine_reevaluate_only<V>(
+  e: DemandEngine<V>,
+  ids: List<DemandIdentity>
+) -> Map<DemandIdentity, DemandEntry<V>> {
+  fold_list(
+    xs: ids,
+    empty: e.entries,
+    cons: fn(acc, dependent) {
+      match map_lookup(m: acc, key: dependent) {
+        Absent => acc
+        Present { value: entry } =>
+          map_insert(
+            m: acc,
+            key: dependent,
+            value: demand_entry_with_state(entry: entry, state: demand_readiness(e: e, id: dependent))
+          )
+      }
+    }
+  )
 }
 
 fn demand_engine_completion_keys<V>(e: DemandEngine<V>) -> List<String> {
@@ -721,6 +791,6 @@ fn demand_engine_closure<V>(e: DemandEngine<V>, targets: List<DemandIdentity>) -
     e: e,
     frontier: targets,
     seen: [],
-    fuel: (length(xs: e.entries) + length(xs: e.relations) + length(xs: targets) + 1) * 2
+    fuel: (length(xs: e.entry_order) + length(xs: e.relations) + length(xs: targets) + 1) * 2
   )
 }
