@@ -214,7 +214,9 @@ fn citation_exact_pin(
 fn citation_pin_expected_sha256(pin: Pin<CitedRepresentationIdentity>) -> Sha256Digest? {
   match pin.expected_identity {
     Sha256Hash(digest) => Present { value: digest }
-    _ => none
+    Fnv1a64(_) => none
+    Sha1Hash(_) => none
+    Sha512Hash(_) => none
   }
 }
 
@@ -288,11 +290,8 @@ fn text_position_selector(start: NonNegativeInt, end: NonNegativeInt) -> Citatio
       CitationSelectorRefused {
         cause: TextPositionEndBeforeStart { start: start, end: end },
       }
-    _ =>
-      CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector {
-        start: start,
-        end: end,
-      }))
+    Equal => CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector { start: start, end: end }))
+    Greater => CitationSelectorConstructed(TextPositionSelectorVariant(TextPositionSelector { start: start, end: end }))
   }
 }
 
