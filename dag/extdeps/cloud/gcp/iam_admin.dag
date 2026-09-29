@@ -70,6 +70,19 @@ type GcpCustomRoleWire {
   deleted: Bool?
 }
 
+// A newly observed pool may return HTTP 200 with an entirely empty policy. Missing
+// etag is a valid wire observation, not authority for an unconditional replacement.
+// Only presence is consumed: pool policies with audit configuration are refused
+// by this bootstrap rather than reconstructed without their logging settings.
+type GcpPoolAuditConfigWire { service: String? }
+
+type GcpPoolPolicyWire {
+  audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs"
+  bindings: List<GcpBinding>?
+  etag: String?
+  version: Int?
+}
+
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
@@ -109,12 +122,12 @@ service gcp.IamAdmin {
 
   operation GetWorkloadIdentityPoolIamPolicy {
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
-    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int?, outcome: RestOutcome }
     readonly
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:getIamPolicy",
       body: { options: { requestedPolicyVersion: 3 } } }
     response {
-      200 => GcpPolicy
+      200 => GcpPoolPolicyWire
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape
@@ -125,10 +138,10 @@ service gcp.IamAdmin {
 
   operation SetWorkloadIdentityPoolIamPolicy {
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, policy: GcpPolicy }
-    output { bindings: List<GcpBinding>?, etag: String, version: Int?, outcome: RestOutcome }
+    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int?, outcome: RestOutcome }
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:setIamPolicy", body: { policy: policy } }
     response {
-      200 => GcpPolicy
+      200 => GcpPoolPolicyWire
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape

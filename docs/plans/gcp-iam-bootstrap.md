@@ -205,3 +205,39 @@ as the authority identity. A different subject with the same email, missing clai
 or changed transport email refuses publication. Cleanup does not require the old
 operator credential's identity: an authorized recovery credential may remove the
 already-pinned exact cell. No access token is put in a URL or command argument.
+
+## Exclusive initialization of an empty pool policy
+
+On 2026-09-29 the operator confirmed that no other administrator will update
+these pool policies during bootstrap. This supplies an operational exclusivity
+assumption, not a provider-enforced CAS token. Normal policy updates still require
+an observed nonempty etag.
+
+The one-off initializer is limited to pool resources already derived by
+`iam_bootstrap_capability_bindings`: `github-heal-publisher`,
+`github-heal-publisher-private`, `github-mtcollins1-boot`,
+`github-namecheap-dns`, and `github-gcp-iam-converge`. Each initial policy contains
+all and only that pool's declared capability cells. The last pool receives
+observer capability only; the apply principal cannot administer its own trust.
+It does not install target OIDC providers or account impersonation grants.
+
+An invocation must explicitly select the confirmed window using
+`GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=exclusive-pool-policy-initialization-20260929`.
+The native initializer verifies the same stable Google administrator identity,
+requires an empty policy without a revision, elects one publication through a
+create-only local journal, and performs independent readback. Completion requires
+exact declared cells and a returned revision before later CAS updates are allowed.
+A failed or ambiguous write retains the journal and cannot issue another
+unconditional request. Recovery can close it only after matching readback.
+Keep the same journal workspace across retries; do not delete election records or
+run independent copies. The operator's exclusive window must still be in force
+at actual execution. This is not a standing permission for future initializations.
+
+This slice has not been applied to Google yet. An approval receipt does not
+create an administrator credential. The normal `gcp-iam-converge` workflow first
+federates as `iam-observe`, files its request, and only after approval federates as
+`iam-converge`. Both trust grants are deliberately the final bootstrap stage.
+Consequently that workflow cannot bootstrap its own initial trust. An existing
+administrator credential is a remaining explicit dependency; this environment
+has neither gcloud nor a configured readable GCP token file. No credential or
+refresh token is stored in these sources or receipts.

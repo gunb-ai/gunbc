@@ -2,14 +2,14 @@ module test.claim.auth.gcp_iam_bootstrap_witness_test
 
 import std.types { Bool }
 import extdeps.auth.oidc { OidcStandardClaims }
-import extdeps.transports.rest { RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
 }
 import gunbc.auth.gcp_iam_bootstrap {
-  iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
+  iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
   BootstrapCapabilities, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
 }
 
@@ -24,6 +24,8 @@ import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse, gcp_cells_bindings, gcp_policy_cells,
   reconcile_gcp_policy, GcpPolicyDeltaRequired, gcp_cell_in,
 }
+
+import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyResourceAbsent }
 
 test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
   all(iam_bootstrap_roles, role => {
@@ -143,4 +145,35 @@ test fn authority_beneficiary_requires_the_verified_stable_google_subject() -> B
     && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: claims.email, email_verified: Present { value: false }, name: none })
     && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: none, email_verified: Present { value: true }, name: none })
     && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: Present { value: "briansrls@gunb.ai" }, email_verified: Present { value: true }, name: none })
+}
+
+
+test fn empty_pool_policy_does_not_authorize_unconditional_publication() -> Bool {
+  let missing = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Absent, version: Absent)
+  let empty = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Present { value: "" }, version: Absent)
+  let observed = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Present { value: "observed-revision" }, version: Absent)
+  (match missing { PolicyUnreadable { cause: reason } => reason != "" _ => false })
+    && (match empty { PolicyUnreadable { cause: _ } => true _ => false })
+    && (match observed { PolicyObserved { policy } => policy.etag == "observed-revision" _ => false })
+}
+
+
+test fn pool_initialization_rejects_existing_unfenced_bindings() -> Bool {
+  let cells = iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")
+  count(cells) > 0
+    && iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Absent, version: Absent)
+    && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Present { value: gcp_cells_bindings(cs: cells) }, etag: Absent, version: Absent)
+    && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Present { value: "revision" }, version: Absent)
+    && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Absent, version: Present { value: 99 })
+    && !iam_bootstrap_pool_seedable(audit_configured: true, bindings: Absent, etag: Absent, version: Absent)
+    && count(iam_bootstrap_pool_initial_cells(pool: "undeclared-pool")) == 0
+}
+
+test fn pool_initialization_readback_requires_exact_cells_and_a_revision() -> Bool {
+  let cells = iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")
+  let policy = GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "revision", version: 3 }
+  iam_bootstrap_pool_initialized(policy: policy, cells: cells)
+    && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: policy.bindings, etag: "", version: 3 }, cells: cells)
+    && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: [], etag: "revision", version: 3 }, cells: cells)
+    && !iam_bootstrap_pool_initialized(policy: policy, cells: [])
 }

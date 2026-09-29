@@ -10,7 +10,7 @@ import extdeps.cloud.gcp.iam_deny
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
-  gcp_policy_from_wire, gcp_policy_cells, gcp_cell_in, reconcile_gcp_policy,
+  gcp_cells_bindings, gcp_policy_from_wire, gcp_policy_cells, gcp_cell_in, reconcile_gcp_policy,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
 }
 import extdeps.transports.rest { RestOutcome, RestStatusRefused }
@@ -82,6 +82,8 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
     bootstrap_authority_dependency_plan(),
+    concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
+    "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
     "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
     concat("The grant targets ", iam_bootstrap_operator_member, " after verified Google subject ", iam_bootstrap_operator_subject, "; retry cannot renew or republish it."),
   ]
@@ -162,6 +164,18 @@ fn iam_bootstrap_policy_reading(outcome: RestOutcome, bindings: List<GcpBinding>
   else { PolicyUnreadable { cause: rest_refusal_text(o: outcome) } }
 }
 
+// Preserve a successful but unfenced pool read as an explicit unmet dependency.
+// Transport failure and resource absence keep their original standing.
+fn iam_bootstrap_pool_policy_reading(outcome: RestOutcome, bindings: List<GcpBinding>?, etag: String?, version: Int?) -> PolicyReading {
+  if !rest_ok(o: outcome) { iam_bootstrap_policy_reading(outcome: outcome, bindings: bindings, etag: "", version: version) }
+  else { match etag {
+    Present { value: revision } => if revision != "" {
+      iam_bootstrap_policy_reading(outcome: outcome, bindings: bindings, etag: revision, version: version)
+    } else { PolicyUnreadable { cause: "pool policy publication prerequisite unmet: successful read has no concurrency token; unconditional replacement is not admitted" } }
+    Absent => PolicyUnreadable { cause: "pool policy publication prerequisite unmet: successful read has no concurrency token; unconditional replacement is not admitted" }
+  } }
+}
+
 fn iam_bootstrap_read_policy(resource: IamBootstrapResource, token: Secret) -> PolicyReading {
   match resource {
     BootstrapProject => {
@@ -170,7 +184,9 @@ fn iam_bootstrap_read_policy(resource: IamBootstrapResource, token: Secret) -> P
     }
     BootstrapPool { pool } => {
       let r = gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool)
-      iam_bootstrap_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version)
+      if (match r.audit_configs { Absent => false Present { value: rows } => count(rows) != 0 }) {
+        PolicyUnreadable { cause: "pool policy audit configuration is outside bootstrap representation; no replacement" }
+      } else { iam_bootstrap_pool_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version) }
     }
     BootstrapAccount { account } => {
       let r = gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: account)
@@ -193,6 +209,14 @@ fn iam_bootstrap_write_policy(resource: IamBootstrapResource, policy: GcpPolicy,
 }
 
 fn iam_bootstrap_ensure_binding(binding: IamBootstrapBinding, token: Secret) -> String {
+  let prerequisite = match binding.resource {
+    BootstrapPool { pool } => iam_bootstrap_initialize_pool_policy(pool: pool, token: token)
+    _ => ""
+  }
+  if prerequisite != "" { prerequisite } else { iam_bootstrap_ensure_fenced_binding(binding: binding, token: token) }
+}
+
+fn iam_bootstrap_ensure_fenced_binding(binding: IamBootstrapBinding, token: Secret) -> String {
   match iam_bootstrap_read_policy(resource: binding.resource, token: token) {
     PolicyResourceAbsent => concat(iam_bootstrap_resource_key(resource: binding.resource), ": binding subject absent")
     PolicyUnreadable { cause } => cause
@@ -563,4 +587,76 @@ fn iam_bootstrap_operator_readback(token: Secret) -> String {
   if !rest_ok(o: actor.outcome) { concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: actor.outcome)) }
   else if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { "" }
   else { "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" }
+}
+
+
+// The operator confirmed exclusive pool-policy writers on 2026-09-29. This one-off
+// initialization is not CAS. Its journal must stay in this same recovery workspace;
+// ambiguous outcomes never authorize another unconditional request.
+data iam_bootstrap_pool_window: String = "exclusive-pool-policy-initialization-20260929"
+
+fn iam_bootstrap_pool_initial_cells(pool: NonEmptyStr) -> List<GcpIamBindingCell> {
+  map(filter(iam_bootstrap_capability_bindings(), binding => binding.resource == BootstrapPool { pool: pool }), binding => binding.cell)
+}
+
+fn iam_bootstrap_pool_seedable(audit_configured: Bool, bindings: List<GcpBinding>?, etag: String?, version: Int?) -> Bool {
+  !audit_configured && (match bindings { Absent => true Present { value: rows } => count(rows) == 0 })
+    && (match etag { Absent => true Present { value: revision } => revision == "" })
+    && (match version { Absent => true Present { value: number } => number == 0 || number == 1 || number == 3 })
+}
+
+fn iam_bootstrap_pool_initialized(policy: GcpPolicy, cells: List<GcpIamBindingCell>) -> Bool {
+  policy.etag != "" && count(cells) > 0
+    && count(gcp_policy_cells(p: policy)) == count(cells)
+    && all(cells, cell => gcp_cell_in(c: cell, xs: gcp_policy_cells(p: policy)))
+}
+
+fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> String {
+  let cells = iam_bootstrap_pool_initial_cells(pool: pool)
+  let name = concat("gcp-iam-pool-initialization-", pool as String)
+  let wire = concat(iam_bootstrap_pool_window, "\n", iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), "\n", join(map(cells, cell => cell_preimage(c: cell)), "\n"))
+  let elected = iam_authority_record(name: concat(name, "-elected.txt"))
+  let closed = iam_authority_record(name: concat(name, "-closed.txt"))
+  if !path_segment_is_safe(raw: pool as String) || count(cells) == 0 { "pool is outside the declared bootstrap capability roster" }
+  else if !iam_authority_record_matches(record: elected, wire: wire) || !iam_authority_record_matches(record: closed, wire: wire) {
+    "pool initialization journal is unreadable or differs; retain the recovery obligation"
+  } else {
+    let read = gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool)
+    if !rest_ok(o: read.outcome) { rest_refusal_text(o: read.outcome) }
+    else if (match read.audit_configs { Absent => false Present { value: rows } => count(rows) != 0 }) {
+      "pool policy audit configuration is outside bootstrap representation; no replacement"
+    } else { match iam_bootstrap_pool_policy_reading(outcome: read.outcome, bindings: read.bindings, etag: read.etag, version: read.version) {
+      PolicyObserved { policy } => if !iam_authority_record_present(record: elected) || iam_authority_record_present(record: closed) { "" }
+        else if iam_bootstrap_pool_initialized(policy: policy, cells: cells) {
+          if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { "" } else { "pool initialized but completion journal failed; recover before continuing" }
+        } else { "unresolved initial pool write differs from readback; do not apply later policy changes" }
+      _ => if iam_authority_record_present(record: elected) || iam_authority_record_present(record: closed) {
+        "initial pool publication is unresolved or its revision disappeared; no unconditional retry"
+      } else if !iam_bootstrap_pool_seedable(audit_configured: false, bindings: read.bindings, etag: read.etag, version: read.version) {
+        "unfenced pool policy is not empty; no initialization admitted"
+      } else if actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_POOL_WINDOW") != iam_bootstrap_pool_window {
+        "empty pool initialization requires the operator-confirmed exclusive maintenance window"
+      } else {
+        let actor = iam_bootstrap_operator_readback(token: token)
+        if actor != "" { actor } else {
+          let election = Filesystem.WriteCreateNew(path: concat("target/", name, "-elected.txt"), content: wire)
+          if !election.success { "pool initialization election lost or unreadable; recover without another write" }
+          else {
+            let changed = gcp.IamAdmin.SetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool,
+              policy: GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "", version: 3 })
+            if !rest_ok(o: changed.outcome) { concat("initial pool publication requires readback recovery; no unconditional retry: ", rest_refusal_text(o: changed.outcome)) }
+            else {
+              let checked = gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool)
+              match iam_bootstrap_pool_policy_reading(outcome: checked.outcome, bindings: checked.bindings, etag: checked.etag, version: checked.version) {
+                PolicyObserved { policy } => if iam_bootstrap_pool_initialized(policy: policy, cells: cells) {
+                  if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { "" } else { "pool initialized but completion journal failed" }
+                } else { "pool initialization readback differs; workflow trust withheld" }
+                _ => "pool initialization readback lacks its policy revision; workflow trust withheld"
+              }
+            }
+          }
+        }
+      }
+    } }
+  }
 }
