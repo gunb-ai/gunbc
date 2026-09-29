@@ -47,7 +47,13 @@ import extdeps.communication.medium { Lossless, Medium }
 // gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft -- so the
 // incidental field is gone rather than the fixture standing on a silent drop.)
 
-data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\ntest fn real_test() -> Bool { true }\n"
+// The module also carries `data default_shade: Shade = Light`, which lowers to a nullary Arrow whose
+// body is a resolved declaration reference. Eval admits a module only if its whole tree is well
+// formed, so this row is the real-route control for v2.std.node DeclarationReferenceBody: with that
+// arm deleted the reference reads as a record construct, the module fails well_formed, and
+// real_test is refused eval_rejected_invalid_node instead of passing (the native lane canary,
+// 2026-09-26).
+data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\ntype Shade = Light | Dark\n\ndata default_shade: Shade = Light\n\ntest fn real_test() -> Bool { true }\n"
 
 data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport v2.std.logic { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
 

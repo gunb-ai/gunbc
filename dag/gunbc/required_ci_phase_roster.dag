@@ -78,7 +78,7 @@ type RequiredCiPhase
 
 // TWO NAMED ARMS, NEVER A WIDENED PATH PREDICATE. A path that neither authority owns is in
 // neither arm; inability to produce either arm refuses GeneratedArtifactPhase. The registry arm
-// is gunbc.generated_artifact committed_generated_artifacts. The mirror arm is
+// is gunbc.generated_artifact_registry committed_generated_artifacts. The mirror arm is
 // v1.compiler.emit_rust emit_emitted_population_manifest joined against the committed stage0
 // source directory. The required host runs both adjudicators before issuing one terminal verdict.
 type DeclaredGeneratedArtifactPopulation

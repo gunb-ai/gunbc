@@ -264,6 +264,7 @@ pub enum TargetProducer {
     PrimitiveEgressCensusSeed,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
+    SelfHostBehavioralEquivalence,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -379,6 +380,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("bare-reference-channel-outcome"),
             TargetProducer::BareReferenceChannelOutcome,
+        ),
+        (
+            instrument_label("self-host-behavioral-equivalence"),
+            TargetProducer::SelfHostBehavioralEquivalence,
         ),
     ]
 }
@@ -782,6 +787,11 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
+        TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
+            "self-host-behavioral-equivalence",
+            "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
+            "take_self_host_behavioral_equivalence_receipt",
+        ),
         TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
             "required-lane-resolution-census",
             "dag/gunbc/required_lane_resolution_census_live.dag",
@@ -1048,7 +1058,12 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 ///
 /// `held` and `advanced` are the observation holding: every planned identity reached a terminal
 /// verdict and every honest failure is rostered debt. An advance also prints a proposed smaller
-/// roster, which the nightly turns into a pull request. `lost` and `unminted` are the observation
+/// roster, which a reviewed pull request may carry (the required native-route lane publishes it). An owned
+/// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
+/// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
+/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
+/// `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
@@ -1057,7 +1072,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_frontier(source_roots, &pattern) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
-                "held" | "advanced" => Termination::ObservationHeld,
+                "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
                 "lost" | "unminted" => Termination::ObservationDidNotHold,
                 "not-a-measurement" => Termination::SubjectUnreached,
                 other => {
