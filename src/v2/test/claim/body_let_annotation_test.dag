@@ -18,6 +18,8 @@ import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
 import v2.std.collection { List, list_at_optional }
 import v2.std.diagnostic {
   None,
+  Some,
+  Diagnostic,
   Accepted,
   NodeLocus,
   NonEmptyDiagnostics,
@@ -36,7 +38,8 @@ import v2.compiler.reference_conservation_admission { conservation_subject_of_te
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { length, list_snoc_item, skip }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
+import v2.std.grammar { node_atom_identity_optional }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -443,6 +446,44 @@ test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool {
 test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
   bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
     && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
+}
+
+// (5d) A SYMBOL LITERAL'S TYPE IS NOT DERIVED, AND AN ANNOTATION THAT DEMANDS ONE IS NEVER PASSED AS
+// MATCHED. MQ-1 PR-2 lowers `^s` to a symbol literal (v2.extdeps.languages.dag dag_symbol_literal_node)
+// but no v2 node yet denotes v2.std.node Symbol (gunbc.symbol_identity_census
+// symbol_nominality_next_rung_trigger (a)), so infer leaves the literal on the counted
+// GroundingNotDerived frontier. `let y: Int = ^s` must therefore either refuse or carry that frontier
+// advisory AT THE LITERAL (the `^` atom); an infer that typed the literal as Int -- a fabricated
+// grounding -- would admit the ascription with no such advisory, and this row reds.
+fn bla_symbol_literal_as_int() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = ^bla_sym\n  x\n}\n")
+}
+
+fn bla_symbol_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_symbol_literal_as_int())
+}
+
+fn bla_frontier_at_caret(xs: List<Diagnostic>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(held, d) {
+    held || ((d.reason == ^infer_grounding_not_derived) && match d.at {
+      NodeLocus { anchor: a } =>
+        match node_atom_identity_optional(node: a.at) {
+          Present { value: id } => id == ^dag_token_caret
+          Absent => false
+        }
+      _ => false
+    })
+  })
+}
+
+test fn bla_symbol_literal_ascribed_int_is_never_passed_as_matched() -> Bool {
+  tpb_accepts(o: bla_symbol_literal_as_int())
+    && match bla_symbol_literal_as_int_inferred() {
+      Rejected { diagnostics: _ } => true
+      Accepted { value: _, diagnostics: None } => false
+      Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+        bla_frontier_at_caret(xs: Cons { head: d.head, tail: d.tail })
+    }
 }
 
 // TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and
