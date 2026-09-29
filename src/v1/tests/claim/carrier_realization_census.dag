@@ -13,7 +13,7 @@ import v1.compiler.infer_env {
   TypeNodeUnidentifiedCause, TypeNodeAuthoredNameEmpty, TypeNodeNameDeclaredNowhere, TypeNodeSpanDeclaresNothing, TypeNodeCarriesNoSpan, TypeNodeQualifierMatchesNoDeclarer
 }
 import v1.compiler.infer { declared_return_type_node }
-import std.decl_ref { declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import v1.std.core { ModuleItemTypeDeclaration, Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow, declaration_provenance_of, type_reference_provenance, provenance_reported_file, type_reference_identity }
 import std.coercion {
   TypeRealizationDecision, Realized, Unrealized, RealizationRefused, TypeDeclarationProvenance, DeclarationIdentityAbsent,
@@ -94,6 +94,7 @@ type TypedCarrierRow {
   legacy_base: String
   authority_base: String
   outcome: CensusOutcome
+  recorded_declaration: DeclarationRef?
 }
 
 fn identity_observation(inferred: TypeDeclarationProvenance, environment: TypeDeclarationProvenance) -> DeclarationIdentityObservation {
@@ -213,6 +214,7 @@ fn typed_decision_row(
     decl_identity: decl_identity,
     legacy_base: legacy_base_label(n: n, si: si),
     authority_base: authority_base_of(name: name, provenance: query_provenance),
+    recorded_declaration: n.declaration,
     outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, provenance: query_provenance), query_file: query_file)
   }
 }
@@ -415,6 +417,16 @@ fn decl_identity_label(r: TypeReferenceDeclarationReading) -> String {
   }
 }
 
+// THE SHADOW COLUMN: Node.declaration as resolve recorded it, read with no fallback. It is the
+// replacement for decl_identity's joins, measured apart from them. It is the only consumer of
+// Node.declaration until the transition (v1.compiler.infer_env declaration_reading_of_type_node).
+fn recorded_declaration_label(d: DeclarationRef?) -> String {
+  match d {
+    Present { value: r } => concat("Declaration:", declaration_ref_display_key(ref: r))
+    Absent => "none"
+  }
+}
+
 fn outcome_label(o: CensusOutcome) -> String {
   match o {
     Agrees => "Agrees"
@@ -428,7 +440,7 @@ fn tsv_escape(v: String) -> String {
 }
 
 fn typed_census_header() -> String {
-  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome"
+  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome\trecorded_declaration"
 }
 
 fn typed_row_tsv(r: TypedCarrierRow) -> String {
@@ -444,7 +456,8 @@ fn typed_row_tsv(r: TypedCarrierRow) -> String {
     tsv_escape(v: decl_identity_label(r: r.decl_identity)),
     tsv_escape(v: r.legacy_base),
     tsv_escape(v: r.authority_base),
-    outcome_label(o: r.outcome)
+    outcome_label(o: r.outcome),
+    recorded_declaration_label(d: r.recorded_declaration)
   ] |> join(separator: "\t")
 }
 

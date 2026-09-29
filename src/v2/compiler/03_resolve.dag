@@ -128,11 +128,25 @@ import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
   find_named_child,
+  is_wildcard_pattern,
   pattern_wildcard_name
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
-type ResolvedTree = Node
+// RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
+// stage that needs a reference's declaration asks the SAME authority resolution asked
+// (v2.std.symbol_index symbol_index_lookup) instead of reconstructing it from the tree: the index is
+// the Namespace.symbol_index the walk ran under, minted beside the root on the Accepted arm only, so
+// a refusal carries no index and no stage can read one for a tree that did not resolve.
+// CONSUMERS: .root is read by every stage after resolve (infer's gather reads it at its entry).
+// .symbol_index is a DECLARED FRONTIER in this change: its consumer is gunbc#12407, which stacks on
+// it -- v2.compiler.infer refinement_declaration asks symbol_index_lookup for a refinement
+// declaration a cast operand's type references (the declared-carrier widening), replacing an
+// infer-private walk over the tree.
+type ResolvedTree {
+  root: Node
+  symbol_index: SymbolIndex
+}
 
 // `test_code`, `declared_in` and `imported_origins` exist for one decision: whether a reference binds
 // to test code (owner ruling 2026-09-16/17). Root-scope bindings come from exactly two sources: the
@@ -1233,6 +1247,15 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   }
 }
 
+// The stage exit: the same projection, with the index resolution consulted minted beside the root.
+fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outcome<ResolvedTree> {
+  match w {
+    ResolveWalkAccepted { value: v, diagnostics: d } =>
+      Accepted { value: ResolvedTree { root: v, symbol_index: symbol_index }, diagnostics: d }
+    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+  }
+}
+
 // PENDING ADVISORIES STAY WITH THEIR OWN FATAL. A refused child's chains arrive intact; the walk
 // prefixes the advisories accepted siblings raised SINCE THE PREVIOUS REFUSAL onto the child's
 // first chain only, then resets them. So every advisory lands in at most one chain, the one whose
@@ -1527,7 +1550,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
       fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
         match e.target.kind {
           TypeNode { connective: Atom { identity: id } } =>
-            if id == pattern_wildcard_name() {
+            if is_wildcard_pattern(pattern: e.target) {
               m
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
               m
@@ -1541,7 +1564,7 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 }
 
 // The pat resolves under the ARM frame: the tag and any nested constructor resolve as
-// references, a binder answers BoundInFrame and stays itself, and `_` is kept as it is.
+// references, a binder answers BoundInFrame and stays itself, and the wildcard is kept as it is.
 //
 // THESE ARE WALKS, ON gunbc#12116's CHILD WALK (XL-2 P4). A pattern, an arm and a match each fold
 // their children through child_walk_step and close with child_walk_node, so every independent
@@ -1551,18 +1574,13 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 // come from resolve_pattern_binders over the pattern's SYNTAX and the symbol index, before the
 // fold runs, so a refused pattern does not leave the body under an invented scope and no site is
 // marked unobservable (P4's one exception, a Bind's binder, has no counterpart here).
-fn resolve_pattern_is_wildcard(pat: Node) -> Bool {
-  match pat.kind {
-    TypeNode { connective: Atom { identity: id } } => id == pattern_wildcard_name()
-    _ => false
-  }
-}
-
-// A pattern is the arm's whole `pat` or a constructor field's target, and `_` is the same pattern
-// form in both: it binds nothing and names nothing, so it is kept as it is at every depth rather
-// than looked up as a reference to a symbol spelled `_`.
+//
+// A pattern is the arm's whole `pat` or a constructor field's target, and the wildcard is the same
+// pattern FORM in both (v2.std.node_query is_wildcard_pattern): it binds nothing and names nothing,
+// so it is kept as it is at every depth. Lowering mints it, so it is recognised by form, never by
+// comparing an atom's spelling to `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
-  if resolve_pattern_is_wildcard(pat: pat) {
+  if is_wildcard_pattern(pattern: pat) {
     ResolveWalkAccepted { value: pat, diagnostics: None }
   } else {
     match construct_tag_optional(n: pat) {
@@ -2096,12 +2114,15 @@ fn resolve_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  resolve_walk_outcome(w: resolve_walk_with_namespace_policy(
-    tree: tree,
-    namespace: namespace,
-    lm: lm,
-    policy: policy
-  ))
+  resolved_tree_outcome(
+    w: resolve_walk_with_namespace_policy(
+      tree: tree,
+      namespace: namespace,
+      lm: lm,
+      policy: policy
+    ),
+    symbol_index: namespace.symbol_index
+  )
 }
 
 fn resolve_walk_with_namespace_policy(
