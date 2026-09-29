@@ -2,6 +2,9 @@ module extdeps.tools.gnu_coreutils
 
 import std.types { NonEmptyStr, FilePath, String, List, Int }
 import std.measure { Second, second_count }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -207,8 +210,21 @@ data coreutils_rmdir_binary_name: NonEmptyStr = "rmdir"
 
 // DECLARED FRONTIER (DESIGN §3c), stated beside the declaration it fronts: an already-removed
 // directory is a MODELED outcome, not a suppressed error, and this builder mints the plain
-// command only.
-data rmdir_already_absent_realization_frontier: String = "The old teardown text carried `2>/dev/null || true`, which is absorbing-fallback shell (DESIGN §5) and was deleted with the script; the plain rmdir stays the instruction and its nonzero on an absent directory is not swallowed here. THE NAMED LATER CONSUMER: the host-effect lane's configfs teardown realization, which observes the target's state and records an absent directory as already-converged instead of re-running a suppressed command. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md). THE TRIGGER, stated beside the declaration: when that node's effect family binds typed execution it takes over the absent-directory outcome and this frontier dissolves; until then the described teardown is what the witnesses gate, and no `|| true` re-enters."
+// command only. The debt is a typed DissolutionCondition on the dissolution census roster, not a
+// bare commentary String (DESIGN §4c; review 72478 finding 1), and the carrier's description is
+// also the rung-change record §4b(3) asks a handling change to declare (review 72478 finding 2).
+// UNBOUND, deliberately: the condition is the ARRIVAL of a family the host-effect lane has not
+// yet named anywhere in its plan, so a bound forward ref would cite a symbol nobody declared.
+// The census reads this row as unmet until the paying change binds the outcome and deletes it.
+data rmdir_already_absent_realization_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
+    reason: "rmdir_command|already-absent-outcome:unmodeled-owed-to-host-effect-lane",
+    dissolution: unbound_dissolution(
+      description: "The old teardown text carried `2>/dev/null || true`, which is absorbing-fallback shell (DESIGN §5) and was deleted with the script; the plain rmdir stays the instruction and its nonzero on an absent directory is not swallowed here. PREVIOUS RUNG: an already-absent directory was tolerated by an unmodeled shell fallback -- silent absorption, which is below the ladder, not a rung on it. TEMPORARY RUNG: the described teardown surfaces the honest nonzero, and the witnesses gate the staging as a description. REASON: absorbing-fallback shell text is forbidden, and modeling absence without a state observer would fabricate a readback the described command cannot supply. BOUNDED POPULATION: the ConfigfsRmdir arm of the configfs staging -- this builder's sole executing call site -- i.e. the final rmdir of the gunbcvm gadget teardown. RESTORATION TRIGGER: the host-effect lane's configfs teardown realization (roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49, fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md), which observes the target's state and records an absent directory as already-converged instead of re-running a suppressed command; when that node's effect family binds typed execution it takes over the absent-directory outcome and this frontier dissolves -- no `|| true` re-enters.",
+    ),
+  ),
+]
 
 fn rmdir_command(path: String) -> ArgvCommand {
   argv_command(program: coreutils_rmdir_binary_name, arguments: [path])

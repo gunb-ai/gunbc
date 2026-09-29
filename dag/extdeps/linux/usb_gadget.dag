@@ -2,6 +2,9 @@ module extdeps.linux.usb_gadget
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.algebra { list_append }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_into_directory_command, rm_force_command, rmdir_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
@@ -128,7 +131,21 @@ type ConfigfsOpCommand
 // fronts (review 38602, finding 3): the arm is a typed write, not an argv command -- no argv
 // program carries a file write without a shell redirect, which is the exact text this migration
 // deletes -- so its realization is owed to a named later consumer rather than minted here.
-data configfs_attr_write_realization_frontier: String = "ConfigfsOpWritesAttr realizes as a native write(2) over the target's transport; no argv command carries it without a shell redirect, so this change mints no realization for it. THE NAMED LATER CONSUMER: the host-effect lane's configfs effect family, the lane that owns host_effect_apply binding typed execution over machine transports. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md). THE TRIGGER, stated beside the declaration: when that node's configfs effect family lands it consumes this typed write as its requirement and this frontier dissolves; until then the typed write stays the instruction, the witness gates it as a description, and nothing degrades it to a shell redirect."
+// The debt is a typed DissolutionCondition on the dissolution census roster, not a bare
+// commentary String (DESIGN §4c; review 72478 finding 1). UNBOUND, deliberately: the condition
+// is the ARRIVAL of a family the host-effect lane has not yet named anywhere in its plan, so a
+// bound forward ref would cite a symbol nobody declared -- the fabricated-citation class
+// std.dissolution refuses. The census reads this row as unmet until the paying change binds the
+// realization and deletes it.
+data configfs_attr_write_realization_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "ConfigfsOpWritesAttr"),
+    reason: "ConfigfsOpWritesAttr|realization:native-write-owed-to-host-effect-lane",
+    dissolution: unbound_dissolution(
+      description: "ConfigfsOpWritesAttr realizes as a native write(2) over the target's transport, and this change mints no realization for it. THE NAMED LATER CONSUMER: the host-effect lane's configfs effect family, the lane that owns host_effect_apply binding typed execution over machine transports. THE NAMED LATER CHANGE: roadmap node rn_TAPSSCRTTBBV274TFK1PAGAP49 (fleet-closed-loop-converge, docs/plans/host-effect-orchestration.md). THE TRIGGER, stated beside the declaration: when that node's configfs effect family lands it consumes this typed write as its requirement and this frontier dissolves; until then the typed write stays the instruction, the witness gates it as a description, and nothing degrades it to a shell redirect.",
+    ),
+  ),
+]
 
 // THE STAGED RESULT of turning described ops into commands (review 38602, finding 1): either the
 // commands to run, or the WHOLE staging refused. There is no state in which a refused op sits in
