@@ -214,3 +214,253 @@ mod heads_reading_item_boundary_tests {
         );
     }
 }
+
+/// THE POOL CENSUS'S READING OF ONE FILE, projected from the file-local heads reading
+/// `pool_acquire::heads_reading_for` holds rather than parsed a second time.
+///
+/// The census threads one intern table and one occurrence-ordinal space across the pool, and the
+/// closure parses continue from it, so its nodes are not the file-local reading's values. The
+/// projection between them is TOTAL, because both of the reading's space-dependent facts are
+/// derived from the file alone plus the space's state on entry:
+///   - OCCURRENCE IDS are allocated sequentially from the entry base (`alloc_occurrence_id`,
+///     `occurrence_allocator_after_index`), so a local id `k` is pool id `base + k`, and the
+///     allocator leaves at `base + local_next`.
+///   - IDENTS are intern ids. The local table interns this file's strings in first-sight order,
+///     which is exactly the order the threaded parse interns the ones the pool has not seen, so
+///     interning the local strings in local-id order into the incoming table reproduces the
+///     threaded table, and `relabel[k]` is the pool id of local ident `k`.
+///
+/// Anything the parser does not produce refuses instead of being guessed at: a projected
+/// occurrence, or expression data carrying semantic payload. The receipt that
+/// the projection is the threaded reading is
+/// `heads_projection_tests` (fixture) and `entry_resolve::heads_projection_live_differential`
+/// (live pool).
+pub(crate) fn project_heads_reading(
+    local: &crate::v1_compiler_parse::ParseWithTableResult,
+    incoming: &Rc<InternTable>,
+) -> Result<(crate::v1_compiler_parse::ParseResult, Rc<InternTable>), String> {
+    let base = incoming.authored_token_ordinals.allocator.next_id;
+    let mut table = incoming.clone();
+    let mut relabel: Vec<i64> = Vec::with_capacity(local.intern_table.strings.len());
+    for s in local.intern_table.strings.iter() {
+        let r = crate::v1_std_core::intern(table.clone(), s.clone());
+        relabel.push(r.id);
+        table = r.table.clone();
+    }
+    let local_next = local.intern_table.authored_token_ordinals.allocator.next_id;
+    let table = crate::v1_std_core::intern_table_with_authored_token_ordinals(
+        table,
+        crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+            crate::std_occurrence_identity::OccurrenceIdAllocator {
+                next_id: base + local_next,
+            },
+        ),
+    );
+    let module = match &local.result.module {
+        Some(m) => Some(project_node(m, base, &relabel)?),
+        None => None,
+    };
+    Ok((
+        crate::v1_compiler_parse::ParseResult {
+            module,
+            error: local.result.error.clone(),
+        },
+        table,
+    ))
+}
+
+fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, String> {
+    use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
+    use crate::v1_std_core::ExprData;
+    let occurrence_identity = match &*n.occurrence_identity {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => n.occurrence_identity.clone(),
+        NodeOccurrenceIdentity::OccurrenceMinted { id } => {
+            Rc::new(NodeOccurrenceIdentity::OccurrenceMinted {
+                id: OccurrenceId {
+                    value: base + id.value,
+                },
+            })
+        }
+        NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
+            return Err(format!(
+                "heads projection refused: node '{}' carries a projected occurrence, which the \
+                 parser does not mint",
+                n.name
+            ))
+        }
+    };
+    // The parser records a written type expression as `Resolved { node }`: one more nested node.
+    // The other arms carry no id.
+    let inferred = match n.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node }) => {
+            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                node: project_node(node, base, relabel)?,
+            }))
+        }
+        _ => n.inferred.clone(),
+    };
+    let payload_free = match &*n.expr_data {
+        ExprData::ExprElaboratedLiteral { .. } => false,
+        ExprData::ExprVar { binding_kind } => binding_kind.is_none(),
+        ExprData::ExprFieldAccess { summary } => summary.is_none(),
+        ExprData::ExprCall {
+            call_semantics,
+            descent_evidence,
+        } => call_semantics.is_none() && descent_evidence.is_none(),
+        ExprData::ExprMethodCall { method_semantics } => method_semantics.is_none(),
+        ExprData::ExprBinOp {
+            algebra_field,
+            operand,
+            ..
+        } => algebra_field.is_none() && operand.is_none(),
+        _ => true,
+    };
+    if !payload_free {
+        return Err(format!(
+            "heads projection refused: node '{}' carries semantic expression data at parse",
+            n.name
+        ));
+    }
+    let ident = match n.ident {
+        Some(k) => Some(*relabel.get(k as usize).ok_or_else(|| {
+            format!(
+                "heads projection refused: node '{}' ident {k} is outside the file's intern table",
+                n.name
+            )
+        })?),
+        None => None,
+    };
+    let list = |v: &Rc<im::Vector<Rc<Node>>>| -> Result<Rc<im::Vector<Rc<Node>>>, String> {
+        v.iter()
+            .map(|c| project_node(c, base, relabel))
+            .collect::<Result<im::Vector<_>, _>>()
+            .map(Rc::new)
+    };
+    let opt = |o: &Option<Rc<Node>>| -> Result<Option<Rc<Node>>, String> {
+        o.as_ref()
+            .map(|c| project_node(c, base, relabel))
+            .transpose()
+    };
+    let match_pattern = match &n.match_pattern {
+        None => None,
+        Some(p) => Some(Rc::new(match &**p {
+            MatchPattern::Bind { declaration } => MatchPattern::Bind {
+                declaration: project_node(declaration, base, relabel)?,
+            },
+            MatchPattern::VariantPattern {
+                name,
+                parent_enum,
+                field_bindings,
+            } => MatchPattern::VariantPattern {
+                name: name.clone(),
+                parent_enum: parent_enum.clone(),
+                field_bindings: list(field_bindings)?,
+            },
+            other => other.clone(),
+        })),
+    };
+    Ok(Rc::new(Node {
+        occurrence_identity,
+        ident,
+        children: list(&n.children)?,
+        params: list(&n.params)?,
+        uses: list(&n.uses)?,
+        body: opt(&n.body)?,
+        transport: opt(&n.transport)?,
+        properties: list(&n.properties)?,
+        type_annotation: opt(&n.type_annotation)?,
+        match_pattern,
+        inferred,
+        ..(**n).clone()
+    }))
+}
+
+/// Thread `files` through the pool census's two readings in order -- the threaded parse the census
+/// used to take, and the projection of the file-local reading it takes now -- and return every
+/// divergence at identity grain: the whole projected module Node (every occurrence id and ident),
+/// the refusal, and the intern table and occurrence allocator each file leaves behind.
+#[cfg(test)]
+pub(crate) fn heads_projection_divergences(files: &[(String, String)]) -> (usize, Vec<String>) {
+    let mut threaded = crate::v1_std_core::empty_intern_table();
+    let mut projected = crate::v1_std_core::empty_intern_table();
+    let mut divergent = Vec::new();
+    for (path, content) in files {
+        let tokens = pool_acquire::tokens_for(path, content);
+        let mut si = HashMap::new();
+        si.insert(path.clone(), pool_acquire::newline_index_for(path, content));
+        let old = v1_compiler_parse::parse_heads_with_table(tokens, Rc::new(si), threaded.clone());
+        let local = pool_acquire::heads_reading_for(path, content);
+        let (new, table) = match project_heads_reading(&local, &projected) {
+            Ok(v) => v,
+            Err(e) => {
+                divergent.push(format!("{path}: {e}"));
+                return (files.len(), divergent);
+            }
+        };
+        if old.result.module != new.module {
+            divergent.push(format!("{path}: module node"));
+        }
+        if old.result.error != new.error {
+            divergent.push(format!("{path}: refusal"));
+        }
+        if old.intern_table != table {
+            divergent.push(format!("{path}: intern table / occurrence allocator"));
+        }
+        threaded = old.intern_table.clone();
+        projected = table;
+    }
+    (files.len(), divergent)
+}
+
+#[cfg(test)]
+mod heads_projection_tests {
+    use super::*;
+
+    fn fixture() -> Vec<(String, String)> {
+        [
+            ("dag/test/fixture/proj_a.dag", "module proj.a\n\ntype Shape = Circle | Square\n\ntype Box<T> { value: T }\n\nfn area(s: Shape) -> Int {\n  match s {\n    Circle => 1,\n    Square => 2,\n  }\n}\n"),
+            ("dag/test/fixture/proj_b.dag", "module proj.b\n\nfn area(b: Box<Int>) -> Int {\n  1\n}\n\ndata limit: Int = 3\n"),
+            ("dag/test/fixture/proj_c.dag", "module proj.c\n\ntype Shape = Circle | Triangle\n\nfn fresh_name(x: Shape, y: Box<Shape>) -> Shape {\n  x\n}\n"),
+            ("dag/test/fixture/proj_bad.dag", "module proj.bad\n\nfn broken( -> Int {\n  1\n}\n"),
+        ]
+        .iter()
+        .map(|(p, c)| (p.to_string(), c.to_string()))
+        .collect()
+    }
+
+    /// Strings repeat across files (`Shape`, `area`, `Box`), so identity only holds if idents are
+    /// relabeled into the pool table and occurrence ids offset by what earlier files allocated;
+    /// the malformed head checks that the refusal and the table it leaves agree too.
+    #[test]
+    fn projected_heads_equal_the_threaded_parse_at_identity_grain() {
+        let (n, divergent) = heads_projection_divergences(&fixture());
+        assert_eq!(n, 4);
+        assert!(divergent.is_empty(), "divergent: {divergent:?}");
+    }
+
+    /// The red the comparison exists to catch: taking the file-local reading as the census
+    /// reading, with no projection, diverges from the threaded parse from the second file on.
+    #[test]
+    fn the_unprojected_local_reading_is_not_the_threaded_reading() {
+        let files = fixture();
+        let (a, b) = (&files[0], &files[1]);
+        let mut si = HashMap::new();
+        si.insert(a.0.clone(), pool_acquire::newline_index_for(&a.0, &a.1));
+        let first = v1_compiler_parse::parse_heads_with_table(
+            pool_acquire::tokens_for(&a.0, &a.1),
+            Rc::new(si),
+            crate::v1_std_core::empty_intern_table(),
+        );
+        let mut si = HashMap::new();
+        si.insert(b.0.clone(), pool_acquire::newline_index_for(&b.0, &b.1));
+        let threaded = v1_compiler_parse::parse_heads_with_table(
+            pool_acquire::tokens_for(&b.0, &b.1),
+            Rc::new(si),
+            first.intern_table.clone(),
+        );
+        let local = pool_acquire::heads_reading_for(&b.0, &b.1);
+        assert_ne!(threaded.result.module, local.result.module);
+        let (projected, _) = project_heads_reading(&local, &first.intern_table).unwrap();
+        assert_eq!(threaded.result.module, projected.module);
+    }
+}
