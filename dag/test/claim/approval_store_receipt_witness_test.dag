@@ -8,7 +8,7 @@ import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, mac_sign }
 import gunbc.durable_cas_file_store { CasGenerationRead, GenerationPresent, GenerationAbsent }
 import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied, ExecutionObligation }
-import gunbc.auth.approval_capability { ApprovalCapability, ApprovalCapabilityClaims, parse_approval_capability_signing_input, approval_capability_signing_input, issue_capability, CapabilityIssued, CapabilityIssuanceRefused }
+import gunbc.auth.approval_capability { ApprovalCapability, ApprovalCapabilityClaims, issue_capability, CapabilityIssued, CapabilityIssuanceRefused }
 import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided,
   ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, stored_request_json,
@@ -19,7 +19,7 @@ import gunbc.auth.approval_store_receipt {
   approval_store_receipt_mac_key_id, approval_store_receipt_audience, approval_store_receipt_mac_key_path,
   StoreReceiptIssuance, StoreReceiptIssued, StoreReceiptRefused,
   ReceiptEscalationNotFiled, ReceiptStillPending, ReceiptDenied, ReceiptAttemptMismatch, ReceiptRevisionMismatch, ReceiptKeyUnavailable, ReceiptFilingUnreadable,
-  issue_store_receipt_over, store_receipt_claims, verify_store_receipt, StoreReceiptAuthentic, StoreReceiptNotAuthentic,
+  issue_store_receipt_over, store_receipt_claims,
   store_receipt_answer_over, store_receipt_request_message,
 }
 
@@ -90,67 +90,24 @@ test fn an_approved_matching_filing_mints_a_receipt_addressed_to_the_store() -> 
   }
 }
 
-// A receipt signed exactly as the mint signs one: the mint's own claim constructor, the envelope's
-// own issuance, the receipt key.
-fn sr_receipt() -> ApprovalCapability? {
-  match issue_capability(claims: store_receipt_claims(filed: sr_filed(), revision: sr_revision, decided_at: "2026-09-28T00:10:00Z", execute_by: "2026-09-28T01:00:00Z"), key: sr_receipt_key()) {
-    CapabilityIssued { capability: c } => Present { value: c }
-    CapabilityIssuanceRefused { cause: _ } => none
-  }
+// THE RECEIPT THE MINT MUST SIGN, PINNED: store_receipt_claims over the witness filing and decision,
+// with the tag HMAC-SHA256 under sr_receipt_key_hex over exactly those claims' signing input (computed
+// outside the substrate, independently of issue_capability). The store's verification of it lands
+// with the door that verifies receipts (d0_store_operation_wall PR 4).
+fn sr_claims() -> ApprovalCapabilityClaims {
+  store_receipt_claims(filed: sr_filed(), revision: sr_revision, decided_at: "2026-09-28T00:10:00Z", execute_by: "2026-09-28T01:00:00Z")
 }
 
-fn sr_verifies(receipt: ApprovalCapability?, key: MacKey, at: String) -> Bool {
-  match receipt {
-    Absent => false
-    Present { value: r } => match verify_store_receipt(receipt: r, key: key, observed_at: at) { StoreReceiptAuthentic { claims: _ } => true  _ => false }
-  }
+fn sr_receipt() -> ApprovalCapability {
+  ApprovalCapability { claims: sr_claims(), tag_b64url: "GnaJuO1EqKIUGrpRdgDdvzA7ybJIJ14WoHcC5bzK7MI=" as NonEmptyStr }
 }
 
-// THE POSITIVE CONTROL: the store's check authenticates a receipt inside its window.
-test fn the_store_authenticates_a_receipt_inside_its_window() -> Bool {
-  sr_verifies(receipt: sr_receipt(), key: sr_receipt_key(), at: "2026-09-28T00:20:00Z")
-}
-
-// THE STORE REFUSES, each at the MAC or the window and never by reading a claim for meaning: after
-// the window, under another key, and a receipt whose claims were edited after signing.
-test fn the_store_refuses_a_receipt_after_its_window() -> Bool {
-  match sr_receipt() {
-    Absent => false
-    Present { value: r } => !sr_verifies(receipt: Present { value: r }, key: sr_receipt_key(), at: "2026-09-28T01:00:01Z")
-  }
-}
-
-test fn the_store_refuses_a_receipt_under_another_key() -> Bool {
-  let other_key = MacKey { id: approval_store_receipt_mac_key_id, suite: HmacSha256, material: sr_submission_key_hex as Secret }
-  match sr_receipt() {
-    Absent => false
-    Present { value: r } => !sr_verifies(receipt: Present { value: r }, key: other_key, at: "2026-09-28T00:20:00Z")
-  }
-}
-
-test fn the_store_refuses_a_receipt_edited_after_signing() -> Bool {
-  match sr_receipt() {
-    Absent => false
-    Present { value: r } => {
-      let c = r.claims
-      let edited = ApprovalCapability {
-        claims: ApprovalCapabilityClaims { protocol: c.protocol, issuer: c.issuer, audience: c.audience, authority: c.authority, escalation_id: "esc-other" as NonEmptyStr, request_revision: c.request_revision, decision: c.decision, attempt: c.attempt, issued_at: c.issued_at, expires_at: c.expires_at, key_id: c.key_id },
-        tag_b64url: r.tag_b64url,
-      }
-      !sr_verifies(receipt: Present { value: edited }, key: sr_receipt_key(), at: "2026-09-28T00:20:00Z")
-    }
-  }
-}
-
-// THE WIRE'S SIGNING INPUT READS BACK AS THE SAME CLAIMS (the parser the store uses).
-test fn a_receipt_signing_input_reads_back_as_its_claims() -> Bool {
-  match sr_receipt() {
-    Absent => false
-    Present { value: r } =>
-      match parse_approval_capability_signing_input(text: approval_capability_signing_input(c: r.claims) as String) {
-        Present { value: back } => (approval_capability_signing_input(c: back) as String) == (approval_capability_signing_input(c: r.claims) as String)
-        Absent => false
-      }
+// THE PINNED RECEIPT IS WHAT ISSUANCE PRODUCES: the envelope's own issuance over the mint's claims
+// and the receipt key yields exactly the pinned tag.
+test fn issuance_over_the_receipt_claims_yields_the_pinned_tag() -> Bool {
+  match issue_capability(claims: sr_claims(), key: sr_receipt_key()) {
+    CapabilityIssued { capability: c } => (c.tag_b64url as String) == (sr_receipt().tag_b64url as String)
+    CapabilityIssuanceRefused { cause: _ } => false
   }
 }
 
