@@ -265,7 +265,7 @@ test fn equality_predicate_atom_derives_equality_predicate_type_holds() -> Bool 
 
 test fn undeclared_predicate_atom_stays_on_the_frontier_holds() -> Bool {
   let undeclared = predicate_atom(id: ^ordering_predicate_is_between)
-  match infer(tree: undeclared) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: undeclared)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match inferred.facts.lookup(undeclared) {

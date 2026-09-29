@@ -273,11 +273,11 @@ test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
 // Each row asserts the ROUTE (the annotation is not the kernel binding, or resolve refused for this
 // reason) as well as the verdict. The controls are (5b), and the route row below: an undeclared
 // `Int` still binds the kernel type.
-fn bla_declared_int_literal() -> Outcome<Node> {
+fn bla_declared_int_literal() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
 }
 
-fn bla_declared_bool_literal() -> Outcome<Node> {
+fn bla_declared_bool_literal() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n")
 }
 
@@ -312,7 +312,7 @@ fn bla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitne
 
 // Subject module p over peer modules, admitted with no admission-level imports: p's own `import`
 // lines are what bind the peers' names.
-fn bla_assemble_with_peers(p_src: String, peers: List<DagSourceReadWitness>) -> Outcome<Node> {
+fn bla_assemble_with_peers(p_src: String, peers: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: bla_source(src: p_src, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu),
@@ -324,7 +324,7 @@ fn bla_assemble_with_peers(p_src: String, peers: List<DagSourceReadWitness>) -> 
 }
 
 // p imports q's own `type Int = | Mine`.
-fn bla_imported_int_literal() -> Outcome<Node> {
+fn bla_imported_int_literal() -> Outcome<ResolvedTree> {
   bla_assemble_with_peers(
     p_src: "module p\n\nimport q { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
     peers: [bla_source(src: "module q\n\ntype Int = | Mine\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
@@ -332,7 +332,7 @@ fn bla_imported_int_literal() -> Outcome<Node> {
 }
 
 // p imports `Int` from two user modules: the name is ambiguous and neither is the kernel's.
-fn bla_ambiguous_imported_int_literal() -> Outcome<Node> {
+fn bla_ambiguous_imported_int_literal() -> Outcome<ResolvedTree> {
   bla_assemble_with_peers(
     p_src: "module p\n\nimport q { Int }\nimport r { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
     peers: [
@@ -345,7 +345,7 @@ fn bla_ambiguous_imported_int_literal() -> Outcome<Node> {
 // p imports `Int` from the two kernel declarations (v2.std.integer and std.integer, as
 // v2.extdeps.languages.dag dag_kernel_type_declaration_binding_optional lists them): ambiguous by
 // name, one kernel type by declaration.
-fn bla_ambiguous_kernel_int_literal() -> Outcome<Node> {
+fn bla_ambiguous_kernel_int_literal() -> Outcome<ResolvedTree> {
   bla_assemble_with_peers(
     p_src: "module p\n\nimport v2.std.integer { Int }\nimport std.integer { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
     peers: [
@@ -355,7 +355,7 @@ fn bla_ambiguous_kernel_int_literal() -> Outcome<Node> {
   )
 }
 
-fn bla_refuses_at_the_annotation(o: Outcome<Node>, inferred: Outcome<Bool>) -> Bool {
+fn bla_refuses_at_the_annotation(o: Outcome<ResolvedTree>, inferred: Outcome<Bool>) -> Bool {
   tpb_accepts(o: o)
     && match inferred {
       Accepted { value: _, diagnostics: _ } => false
@@ -364,7 +364,7 @@ fn bla_refuses_at_the_annotation(o: Outcome<Node>, inferred: Outcome<Bool>) -> B
     }
 }
 
-fn bla_annotation_is(o: Outcome<Node>, id: Symbol) -> Bool {
+fn bla_annotation_is(o: Outcome<ResolvedTree>, id: Symbol) -> Bool {
   match bla_annotation_identity(o: o) {
     Present { value: s } => s == id
     Absent => false
@@ -399,7 +399,7 @@ test fn bla_ambiguous_kernel_declarations_bind_the_kernel_type() -> Bool {
 // foreign declaration there while the admitted route above bound it (review 5342739525). Each row
 // asserts the resolve verdict and the annotation's route: the local Int/Bool bind the module's
 // declaration, and an undeclared Int still binds the kernel.
-fn bla_single_tree_resolved(text: String) -> Outcome<Node> {
+fn bla_single_tree_resolved(text: String) -> Outcome<ResolvedTree> {
   match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: t, diagnostics: _ } =>
@@ -417,15 +417,15 @@ fn bla_single_tree_admitted(text: String) -> Node {
   }
 }
 
-fn bla_single_tree_declared_int() -> Outcome<Node> {
+fn bla_single_tree_declared_int() -> Outcome<ResolvedTree> {
   bla_single_tree_resolved(text: "module m.t\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = x\n  x\n}\n")
 }
 
-fn bla_single_tree_declared_bool() -> Outcome<Node> {
+fn bla_single_tree_declared_bool() -> Outcome<ResolvedTree> {
   bla_single_tree_resolved(text: "module m.t\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = x\n  x\n}\n")
 }
 
-fn bla_single_tree_undeclared_int() -> Outcome<Node> {
+fn bla_single_tree_undeclared_int() -> Outcome<ResolvedTree> {
   bla_single_tree_resolved(text: "module m.t\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  x\n}\n")
 }
 

@@ -138,7 +138,7 @@ fn rdt_unevaluable_application(body: Node) -> Node {
 
 fn rdt_discharged_unevaluable(body: Node) -> Optional<Outcome<InferredTree>> {
   let app = rdt_unevaluable_application(body: body)
-  match infer(tree: app) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: app)) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: t, diagnostics: _ } =>
       optional_present(value: discharge_refinement_obligations(t: ObligatedInferredTree {
