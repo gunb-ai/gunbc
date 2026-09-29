@@ -1,6 +1,6 @@
 module v2.workflow.bash_command_fold_serialize
 
-import v2.compiler.target_serialize { target_serialize_source_from_model }
+import v2.compiler.target_serialize { target_serialize_source_from_model, target_serialize_source_from_selected_row }
 import v2.extdeps.languages.bash {
   bash_stmt_andor_emitted,
   bash_stmt_andor_target_model,
@@ -28,7 +28,9 @@ import v2.extdeps.languages.bash_build {
 import v2.extdeps.languages.bash_orch_if { bash_stmt_if_else_emitted, bash_stmt_if_else_target_model }
 import v2.extdeps.languages.bash_command_fold {
   bash_fold_serialize_refused,
-  bash_fold_target_model_for_emitted_witness,
+  bash_fold_relation_row_witness,
+  bash_fold_target_model_for_row,
+  bash_fold_translation_rules_budget_for_row,
   bash_fold_unsupported_variant_diagnostic
 }
 import v2.std.algebra {
@@ -92,21 +94,44 @@ fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
   }
 }
 
+// ONE ROW PER LEAF. The row is derived from the emitted node once, the target model is spelled from
+// it, and the serializer is handed that row rather than asked to select it again from rules built
+// out of it (v2.compiler.target_serialize target_serialize_source_from_selected_row).
 fn bash_fold_serialize_leaf_node(
   emitted: Node,
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Outcome<String> {
-  match bash_fold_target_model_for_emitted_witness(
-    emitted: emitted,
-    source_literal: ^bash_fold_dynamic_source_literal,
-    source_text: "",
-    production_binding: production_binding,
-    rule_name: rule_name
-  ) {
-    Holds { value: target } =>
-      bash_fold_serialize_emit_from_node(emitted: emitted, target: target)
+  match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
+    Holds { value: row } =>
+      match bash_fold_target_model_for_row(
+        row: row,
+        source_literal: ^bash_fold_dynamic_source_literal,
+        source_text: "",
+        production_binding: production_binding,
+        rule_name: rule_name
+      ) {
+        Holds { value: target } =>
+          bash_fold_serialize_selected_row(emitted: emitted, target: target, row: row)
+        Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+      }
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+fn bash_fold_serialize_selected_row(emitted: Node, target: TargetModel, row: Node) -> Outcome<String> {
+  match target_serialize_source_from_selected_row(
+    target: target,
+    emitted: emitted,
+    row: row,
+    rules_budget: bash_fold_translation_rules_budget_for_row(row: row)
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 

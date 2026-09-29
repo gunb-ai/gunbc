@@ -11,13 +11,8 @@ import std.algebra { Cons, Empty }
 import v2.std.anonymous_binder { anonymous_param_label }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order,
-  lower_list_introduction
-}
+import v2.std.list_introduction { lower_list_introduction }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -48,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: the declared parameter order an Arrow carries on its ^arrow_signature_order_edge -- minted
 // with the domain by v2.std.anonymous_binder anonymous_binder_mint_parameter_list, built by
-// v2.std.compilers.body_lowering signature_order_edge, walled by v2.std.node
+// v2.std.arrow_signature signature_order_edge, walled by v2.std.node
 // arrow_signature_order_conforms, read by v2.std.compilers.body_lowering
 // arrow_declared_parameter_order, and consumed by positional binding in v2.compiler.infer
 // infer_application_formals and v2.compiler.eval eval_param_labels_in_declared_order.

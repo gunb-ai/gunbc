@@ -18,7 +18,8 @@ data carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_w
 
   evidence: [
     DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_value_read", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_refusal", decl_name: "an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_carried_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_refusal", decl_name: "an_unlowerable_match_arm_body_refuses_at_the_body_not_as_navigation_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_direct", decl_name: "an_unrecognised_production_refuses_value_unlowered_at_itself", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_direct", decl_name: "a_lowerable_operand_is_not_refused_value_unlowered", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_read_refusal", decl_name: "a_function_valued_field_initializer_lowers_whole_holds", field: WholeDeclaration },
   ],
 }
