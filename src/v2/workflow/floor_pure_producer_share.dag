@@ -620,6 +620,9 @@ import v2.std.collection { List }
 // mals_third_arm_malformed each tokenize and parse one inline module and call one producer
 // (body_lower_match_arms_optional) on its match capture; the stored value is the lowered arm list
 // (Nodes, no resolution context and no closure), portable for the same reason vpw_normalized is.
+// THE XL-2 RETURN-TAIL-POSITION ROW IS THE SAME GROUND AT NINE SPECIMENS:
+// v2.test.claim.namespace_xl0.return_tail_position rtp_outcomes drives one front end over nine inline
+// modules and stores one verdict arm per module, portable for the same reason cav_outcomes is.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -731,6 +734,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
+  "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",

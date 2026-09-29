@@ -3212,13 +3212,26 @@ fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 // find the first primary expression inside an else-less `if` -- its condition -- and return THAT as
 // the body, silently discarding the guard and every statement after it. So the fn refuses the whole
 // declaration when its subtree holds one, with the same typed cause the statement arm raises.
+// The fn declaration's own fn_body is the first fn_body shell in its captured sequence (the same
+// search body_lower_body_from_fn_captured makes); its tail statement is the one return it may hold.
+fn body_lower_fn_decl_tail_statement_optional(captured: Node) -> Optional<Node> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_fn_body) {
+    Present { value: fn_body } => body_lower_fn_body_tail_statement_optional(fn_body: fn_body)
+    Absent => optional_absent()
+  }
+}
+
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
       match body_lower_find_captured(root: captured, emitted: ^dag_surface_else_less_if_stmt) {
         ParseSubtreeFound { captured: guard } => body_lowering_lowered(o: body_lower_else_less_if_reject(shell: guard))
-        ParseSubtreeAbsent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+        ParseSubtreeAbsent =>
+          match body_lower_return_outside_tail_optional(root: captured, tail: body_lower_fn_decl_tail_statement_optional(captured: captured)) {
+            Present { value: refused } => body_lowering_lowered(o: refused)
+            Absent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+          }
       }
   }
 }
@@ -3358,6 +3371,9 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
               match body_lower_body_after_eq_token(captured: captured) {
                 Absent => body_lower_wrapper_retained_shell(shell: shell)
                 Present { value: expr } =>
+                  match body_lower_return_outside_tail_optional(root: expr, tail: optional_absent()) {
+                    Present { value: refused } => body_lowering_lowered(o: refused)
+                    Absent =>
                   match body_lower_data_initializer_body(expr: expr) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                     Accepted { value: body_opt, diagnostics: bd0 } =>
@@ -3401,6 +3417,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                               }
                           }
                       }
+                  }
                   }
               }
           }
@@ -3948,9 +3965,13 @@ fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional
   match body {
     FunctionLiteralExprBody { expr: e } => body_lower_function_value_lowered_whole(o: body_lower_fold(node: body_lower_deep_unwrap_optional(node: e)))
     FunctionLiteralBlockBody { fn_body: b } =>
-      match body_lower_fn_body_stmt_seq_optional(fn_body: b) {
-        Absent => outcome_accepted(value: optional_absent())
-        Present { value: stmt_seq } => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: stmt_seq))
+      match body_lower_return_outside_tail_optional(root: b, tail: body_lower_fn_body_tail_statement_optional(fn_body: b)) {
+        Present { value: refused } => body_lower_function_value_lowered_whole(o: refused)
+        Absent =>
+          match body_lower_fn_body_stmt_seq_optional(fn_body: b) {
+            Absent => outcome_accepted(value: optional_absent())
+            Present { value: stmt_seq } => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: stmt_seq))
+          }
       }
   }
 }
@@ -6680,16 +6701,19 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
       )
     Present { value: head } =>
       match body_lower_stmt_spine_rest_optional(spine: spine) {
-        Absent => body_lower_value_read(value: head)
+        Absent => body_lower_tail_statement_read(stmt: head)
         Present { value: rest } =>
           match body_lower_stmt_spine_head_optional(spine: rest) {
-            Absent => body_lower_value_read(value: head)
+            Absent => body_lower_tail_statement_read(stmt: head)
             Present { value: _ } =>
               match body_lower_statement_let_captured_optional(stmt: head) {
                 Absent =>
                   outcome_rejected(
                     d: body_lower_diagnostic(
-                      reason: ^body_lowering_reason_statement_precedes_without_binding,
+                      reason: match body_lower_return_statement_expr_optional(stmt: head) {
+                        Present { value: _ } => ^body_lowering_reason_return_not_in_tail_position
+                        Absent => ^body_lowering_reason_statement_precedes_without_binding
+                      },
                       n: head
                     )
                   )
@@ -6783,11 +6807,24 @@ fn body_lower_sole_function_value_statement(spine: Node) -> Outcome<Optional<Nod
   }
 }
 
+// A one-statement spine whose statement is a return is read by the spine, which recognises it,
+// rather than by the expression walkers, which search past the keyword.
+fn body_lower_stmt_spine_head_is_return(spine: Node) -> Bool {
+  match body_lower_stmt_spine_head_optional(spine: spine) {
+    Present { value: head } =>
+      match body_lower_return_statement_expr_optional(stmt: head) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn body_lower_try_statement_spine(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_stmt_seq) {
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
     ParseSubtreeFound { captured: spine } =>
-      if body_lower_stmt_spine_has_successor(spine: spine) {
+      if body_lower_stmt_spine_has_successor(spine: spine) || body_lower_stmt_spine_head_is_return(spine: spine) {
         bind_outcome(
           o: body_lower_stmt_spine(spine: spine),
           f: fn(lowered) { outcome_accepted(value: optional_present(value: lowered)) }
@@ -8671,6 +8708,116 @@ fn body_lower_else_less_if_reject(shell: Node) -> Outcome<Node> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_else_less_if_unlowered, n: shell)
   )
+}
+
+// A `return` IS RECOGNISED, NEVER SEARCHED PAST. The dag grammar's stmt admits seq(`return`, expr)
+// (v2.extdeps.languages.dag dag_grammar_stmt_expr), and no reader here named the keyword: a deep
+// first-match search answered the statement with its expression, so the exit was dropped. In tail
+// position that was the right value by luck; anywhere else it was a wrong answer -- `let x = if c {
+// return j } else { k }` lowered to x = Branch(c, j, k), the function continuing where it should
+// have exited (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail).
+//
+// So a return lowers in exactly ONE position, the tail statement of a function's own body (a fn
+// declaration's, or a fn value's block body), where "exit with e" and "the body's value is e" are
+// the same fact. Every other return refuses, located at it, as return_not_in_tail_position: a
+// structured tail-return in an if or match arm, and the else-less guard, need the tail position
+// carried through the value readers, which this lowering does not have yet (the same row's trigger).
+// Answers the returned expression when `stmt` -- a stmt shell or its captured sequence -- is one.
+fn body_lower_return_statement_expr_optional(stmt: Node) -> Optional<Node> {
+  let captured = match parse_production_captured_child_optional(node: stmt) {
+    Present { value: c } => c
+    Absent => stmt
+  }
+  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: id } =>
+          if id == ^dag_token_kw_return { optional_present(value: pair.right) } else { optional_absent() }
+        Absent => optional_absent()
+      }
+  }
+}
+
+// Every return statement under `root`, in pre-order, up to a function value's boundary: a nested
+// function value owns its own returns (body_lower_find_captured_prunable).
+fn body_lower_return_statement_sites(root: Node) -> FreeMonoid<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if body_lower_find_captured_prunable(id: id) {
+        Empty
+      } else if id == ^dag_surface_stmt {
+        match body_lower_return_statement_expr_optional(stmt: root) {
+          Present { value: _ } => Cons { head: root, tail: body_lower_return_statement_sites_under(root: root) }
+          Absent => body_lower_return_statement_sites_under(root: root)
+        }
+      } else {
+        body_lower_return_statement_sites_under(root: root)
+      }
+    Absent => body_lower_return_statement_sites_under(root: root)
+  }
+}
+
+fn body_lower_return_statement_sites_under(root: Node) -> FreeMonoid<Node> {
+  fold(root.children, init: Empty, f: fn(acc, e) {
+    list_append(left: acc, right: body_lower_return_statement_sites(root: e.target))
+  })
+}
+
+// The last statement of a statement spine (body_lower_stmt_spine's shape).
+fn body_lower_stmt_spine_last_optional(spine: Node) -> Optional<Node> {
+  match body_lower_stmt_spine_head_optional(spine: spine) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      if body_lower_stmt_spine_has_successor(spine: spine) {
+        match body_lower_stmt_spine_rest_optional(spine: spine) {
+          Present { value: rest } => body_lower_stmt_spine_last_optional(spine: rest)
+          Absent => optional_present(value: head)
+        }
+      } else {
+        optional_present(value: head)
+      }
+  }
+}
+
+// The one return a function body may hold: its tail statement, read positionally from the fn_body
+// (seq(`{`, seq(stmt_seq, `}`)), body_lower_fn_body_stmt_seq_optional).
+fn body_lower_fn_body_tail_statement_optional(fn_body: Node) -> Optional<Node> {
+  match body_lower_fn_body_stmt_seq_optional(fn_body: fn_body) {
+    Absent => optional_absent()
+    Present { value: stmt_seq } =>
+      match body_lower_unwrap_captured(shell: stmt_seq) {
+        Absent => optional_absent()
+        Present { value: spine } => body_lower_stmt_spine_last_optional(spine: spine)
+      }
+  }
+}
+
+// THE WALL: the first return under `root` that is not `tail` refuses, located at it.
+fn body_lower_return_outside_tail_optional(root: Node, tail: Optional<Node>) -> Optional<Outcome<Node>> {
+  fold_list(xs: body_lower_return_statement_sites(root: root), empty: optional_absent(), cons: fn(acc, site) {
+    let is_tail = match tail {
+      Present { value: t } => t == site
+      Absent => false
+    }
+    if is_tail {
+      acc
+    } else {
+      optional_present(
+        value: outcome_rejected(
+          d: body_lower_diagnostic(reason: ^body_lowering_reason_return_not_in_tail_position, n: site)
+        )
+      )
+    }
+  })
+}
+
+// A statement read as a value in the tail of a function body: a return lowers to what it returns.
+fn body_lower_tail_statement_read(stmt: Node) -> Outcome<Node> {
+  match body_lower_return_statement_expr_optional(stmt: stmt) {
+    Present { value: e } => body_lower_value_read(value: e)
+    Absent => body_lower_value_read(value: stmt)
+  }
 }
 
 fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
