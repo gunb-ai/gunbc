@@ -1,5 +1,7 @@
 module tools.e0599_probe_census
 
+import v2.std.algebra { skip }
+
 import std.types { Bool, Int, String, list_length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
