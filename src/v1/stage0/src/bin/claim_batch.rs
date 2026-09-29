@@ -553,7 +553,7 @@ fn print_eval_profile(function: &str) {
             eprintln!("[fn-steps] {function} {n} self_steps={selfs}");
         }
         st.sort_by(|a, b| b.2.cmp(&a.2));
-        for (n, _, incl) in st.iter().take(80) {
+        for (n, _, incl) in st.iter().filter(|r| r.0.contains('>')).take(400) {
             eprintln!("[fn-incl] {function} {n} incl_steps={incl}");
         }
         let mut v2 = v.clone();

@@ -6051,6 +6051,10 @@ fn call_function_dispatch(
     let steps_started = evaluator_steps();
     DAG_PROF_CHILD_STACK.with(|s| s.borrow_mut().push(0));
     DAG_PROF_CHILD_STEPS.with(|s| s.borrow_mut().push(0));
+    let parent_name = DAG_PROF_NAME_STACK
+        .with(|s| s.borrow().last().cloned())
+        .unwrap_or_default();
+    DAG_PROF_NAME_STACK.with(|s| s.borrow_mut().push(fn_node.name.to_string()));
     let result = call_function_inner(ctx, fn_node, args, env);
     let elapsed = started.elapsed().as_nanos() as u64;
     let steps = evaluator_steps().wrapping_sub(steps_started);
@@ -6066,6 +6070,12 @@ fn call_function_dispatch(
             *parent += steps;
         }
     });
+    DAG_PROF_NAME_STACK.with(|s| s.borrow_mut().pop());
+    let recursive =
+        DAG_PROF_NAME_STACK.with(|s| s.borrow().iter().any(|n| n.as_str() == &*fn_node.name));
+    if !recursive {
+        record_dag_fn_self_steps(&format!("{}>{}", parent_name, fn_node.name), 0, steps);
+    }
     record_dag_fn_self_steps(&fn_node.name, steps.saturating_sub(child_steps), steps);
     record_dag_fn_self_time(&fn_node.name, elapsed.saturating_sub(child_nanos));
     result
@@ -22876,6 +22886,7 @@ fn record_dag_fn_self_time(name: &str, self_nanos: u64) {
 }
 
 thread_local! {
+    static DAG_PROF_NAME_STACK: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
     static DAG_PROF_CHILD_STEPS: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 static DAG_FN_SELF_STEPS: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u64)>>> =
