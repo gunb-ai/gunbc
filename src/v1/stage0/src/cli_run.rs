@@ -1586,11 +1586,15 @@ mod process_cwd_mutation_reachability_gate {
         // Raw strings span lines and suppress every escape, so the open hash count has to
         // survive across lines exactly the way a block comment does.
         let mut in_raw: Option<usize> = None;
+        // An ordinary string literal spans lines too (a wrapped `format!` template), so it
+        // carries across lines exactly like a raw string. Reset per line, a `{` on a
+        // continuation line counted as code: the depth never returned to zero, declaration
+        // bodies ran to end of file, and the closure absorbed half the crate.
+        let mut in_string = false;
         for line in text.split('\n') {
             let chars: Vec<char> = line.chars().collect();
             let mut kept = String::with_capacity(line.len());
             let mut i = 0usize;
-            let mut in_string = false;
             let mut in_char = false;
             while i < chars.len() {
                 let c = chars[i];
@@ -2102,6 +2106,34 @@ mod process_cwd_mutation_reachability_gate {
     ///
     /// Each case below is asserted on a projection, not on the live file, so the control keeps its
     /// discriminating power when the file's own raw strings change.
+    #[test]
+    fn a_multi_line_string_does_not_shift_brace_depth() {
+        let wrapped = concat!(
+            "fn outer() {\n",
+            "    let s = format!(\"head {} \\\n",
+            "         tail }} {}\", a, b);\n",
+            "}\n",
+            "fn later() {\n",
+            "}\n"
+        );
+        let code = code_projection(wrapped);
+        let depths = depth_at_line_start(&code);
+        assert_eq!(
+            depths.last().copied().unwrap_or(-1),
+            0,
+            "a brace on a string's continuation line must not leak into the depth array: {depths:?}"
+        );
+        let decls = declarations(&wrapped.split('\n').collect::<Vec<_>>(), &code, &depths);
+        let outer = decls
+            .iter()
+            .find(|d| d.name == "outer")
+            .expect("outer declared");
+        assert_eq!(
+            outer.end, 4,
+            "outer's body must close at its own brace: {depths:?}"
+        );
+    }
+
     #[test]
     fn a_raw_string_neither_shifts_brace_depth_nor_seeds_a_call_edge() {
         let unbalanced = concat!(
@@ -28164,7 +28196,8 @@ impl ShardStyle {
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        floor_diff_edits_from_diff_text_with_base_names, list_value_from_vec,
+        floor_diff_edits_from_diff_text_with_base_names,
+        floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
         parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
         rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
@@ -28512,18 +28545,20 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         (src, dest, diff.to_string())
     }
 
-    // The enrolment reads the destination's declarations from the LIVE tree, so the census a
-    // rename carries is derived from that file rather than listed: a listed set goes stale the
-    // moment the file gains a test (#12199 added two) and then reports those as enrolled.
-    fn live_test_names_at(dest: &str) -> HashSet<String> {
-        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
-            .expect("the rename destination is a live file");
-        let names: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
-        assert!(
-            names.contains("gate_green_synthetic_shape_from_catalog_call"),
-            "the fixture's held-out name must still be declared at {dest}"
+    // The rename destination's new-side content, SUPPLIED rather than read from the live
+    // tree (DESIGN §3 witness rule): the live file has since gained further test fns, which
+    // the fixed base census does not name, so reading it enrolled them and the fixture no
+    // longer isolated the rename. The two test fns sit at the lines the diff's hunks name.
+    fn machine_shape_rename_dest_sources(dest: &str) -> std::collections::HashMap<String, String> {
+        let mut content = String::from("module v2.test.claim.machine_shape_construction_wall\n");
+        while content.lines().count() < 80 {
+            content.push('\n');
+        }
+        content.push_str(
+            "test fn gate_red_synthetic_machine_shape_call() -> Bool {\n  true\n}\n\n\n\n\n\n\
+             test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {\n  true\n}\n",
         );
-        names
+        std::collections::HashMap::from([(dest.to_string(), content)])
     }
 
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
@@ -28537,10 +28572,19 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             "fixture must carry git's rename-from so this control can fail the dest-only lookup"
         );
         let mut at_base = std::collections::HashMap::new();
-        at_base.insert(src.to_string(), live_test_names_at(dest));
+        at_base.insert(
+            src.to_string(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("a rename-destination diff must attribute, not refuse");
+        let sources = machine_shape_rename_dest_sources(dest);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index, &diff, &at_base, &sources,
+        )
+        .expect("a rename-destination diff must attribute, not refuse");
         let enrolled: HashSet<String> = edits
             .enrolled_test_fns
             .iter()
@@ -28559,12 +28603,16 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     fn rename_still_enrols_a_name_absent_from_the_source() {
         let (src, dest, diff) = machine_shape_rename_diff();
         let mut at_base = std::collections::HashMap::new();
-        let mut source_names = live_test_names_at(dest);
-        source_names.remove("gate_green_synthetic_shape_from_catalog_call");
-        at_base.insert(src.to_string(), source_names);
+        at_base.insert(
+            src.to_string(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
-            .expect("a rename-destination diff must attribute, not refuse");
+        let sources = machine_shape_rename_dest_sources(dest);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index, &diff, &at_base, &sources,
+        )
+        .expect("a rename-destination diff must attribute, not refuse");
         let enrolled: HashSet<String> = edits
             .enrolled_test_fns
             .iter()
@@ -35099,8 +35147,12 @@ mod nfr_tests {
             .iter()
             .map(|s| s.as_str())
             .collect();
+        // POPULATION BOUND (rung honesty, DESIGN §4b(1)): the census scans matches whose scrutinee
+        // is a closed-coproduct PARAMETER; a match on a local binding or a field is not scanned, so
+        // this receipt's green covers that population only (bound stated on the roster's
+        // registration in gunbc.roster_registry).
         eprintln!(
-            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            "nfr_roster_receipt (scope: parameter-scrutinee matches only): unrostered={} stale={} live={}",
             non_fold_residue_unrostered_count(),
             non_fold_residue_stale_roster_count(),
             live.len()
