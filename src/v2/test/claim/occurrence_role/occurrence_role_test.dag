@@ -251,7 +251,8 @@ test fn the_binder_productions_are_neither_unread_nor_refused_holds() -> Bool {
 
 // A PARSED list with one readable binder and one the typed-parameter reader cannot read. No source
 // spelling makes a parseable binder unreadable, so the fault is PLANTED AT THE INTERFACE: the binder
-// token `zz_plant` of the parsed tree is rewritten to a lexer-token identity, which
+// token `zz_plant` of the parsed tree is rewritten to the bare token-class identity dag_token_ident
+// (not a branded binding, and a lexer-token symbol), which
 // v2.compiler.body_lowering_fold body_lower_param_binding_atom_optional refuses. Everything else is
 // the real parse. The role reader must count ONE reader refusal at param_list and record no binder
 // from that list -- a readable prefix reported as NamesFound is the fail-open this control reddens.
@@ -260,7 +261,7 @@ data mixed_param_list_source: String = "module v2.test.occurrence_role_mixed_par
 fn plant_unreadable_binder(n: Node) -> Node {
   let kind = match n.kind {
     TypeNode { connective: Atom { identity: s } } =>
-      if s == symbol_intern_lexeme(lexeme: "zz_plant") { TypeNode { connective: Atom { identity: ^dag_token_comma } } } else { n.kind }
+      if s == symbol_intern_lexeme(lexeme: "zz_plant") { TypeNode { connective: Atom { identity: ^dag_token_ident } } } else { n.kind }
     _ => n.kind
   }
   node_with_occurrence_id(
