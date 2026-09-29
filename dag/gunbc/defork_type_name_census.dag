@@ -282,7 +282,7 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   ResolvedSharedTypeName {
     names: ["Bool"],
     resolution: ResolvedByDeletingV2 { reason: "per-name de-fork ruling A (neat-boar-16, 2026-09-28): `std.types` `Bool` survives because `v2.std.logic` already reaches `std.types` through its imports, so only that direction is acyclic; the coproduct and the host bool are a bijection, so the structural route it carried (BooleanUnfold literal row, declared-connective rows) was a second representation of one fact and was deleted with it" },
-    change: 0
+    change: 12583
   },
   ResolvedSharedTypeName {
     names: ["ProjectionKind"],
