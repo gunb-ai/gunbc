@@ -47,7 +47,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data d0fd_listener_fixture: String = "import http.server, os, socketserver, sys, threading, time\nstatus = int(sys.argv[1]) if sys.argv[1] != 'hang' else 0\nlifetime = float(sys.argv[2])\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        if status == 0:\n            time.sleep(lifetime)\n            return\n        self.send_response(status)\n        self.send_header('Content-Length', '0')\n        self.end_headers()\n    def log_message(self, *a):\n        pass\nsocketserver.TCPServer.allow_reuse_address = True\nsrv = socketserver.TCPServer(('127.0.0.1', 0), H)\nport = srv.server_address[1]\npid = os.fork()\nif pid:\n    sys.stdout.write('%d %d\\n' % (port, pid))\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\ntime.sleep(lifetime)\nos._exit(0)\n"
 
-data d0fd_kill_fixture: String = "import os, signal, sys\nos.kill(int(sys.argv[1]), signal.SIGTERM)\n"
+// A SIGNAL SENT IS NOT A PORT VACATED. SIGTERM is delivered asynchronously, so returning after
+// os.kill left the listener able to answer the very next connect on a loaded runner (srv4-15,
+// merge-group run 36575660396). The fixture now OBSERVES the premise the vacated-port claim needs:
+// the pid is gone and the port refuses a connect, each bounded; it exits nonzero otherwise, and
+// d0fd_vacated_port then yields no port rather than an assumed one.
+data d0fd_kill_fixture: String = "import errno, os, signal, socket, sys, time\npid = int(sys.argv[1])\nport = int(sys.argv[2])\nos.kill(pid, signal.SIGTERM)\ndeadline = time.time() + 10\nwhile True:\n    try:\n        os.kill(pid, 0)\n    except ProcessLookupError:\n        break\n    if time.time() > deadline:\n        sys.exit('listener pid %d still alive after SIGTERM' % pid)\n    time.sleep(0.05)\nwhile True:\n    s = socket.socket()\n    rc = s.connect_ex(('127.0.0.1', port))\n    s.close()\n    if rc == errno.ECONNREFUSED:\n        break\n    if time.time() > deadline:\n        sys.exit('port %d not refusing after listener exit (connect_ex=%d)' % (port, rc))\n    time.sleep(0.05)\n"
 
 type D0fdListener {
   port: Int
@@ -94,7 +99,7 @@ fn d0fd_with_listener(dir: FilePath, status: String, scenario: fn(D0fdListener) 
         Absent => false
         Present { value: l } => {
           let observed = scenario(l)
-          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid), to_string(l.port)])
           observed && killed.success
         }
       }
@@ -215,7 +220,7 @@ fn d0fd_vacated_port(dir: FilePath) -> Int? {
       match d0fd_parse_listener(out: run.stdout) {
         Absent => none
         Present { value: l } => {
-          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid), to_string(l.port)])
           if killed.success { Present { value: l.port } } else { none }
         }
       }
