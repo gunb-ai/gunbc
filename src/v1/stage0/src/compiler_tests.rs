@@ -1900,8 +1900,18 @@ mod compiler_tests {
                     "hof_positional.dag",
                     "module hof_positional\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\nfn witness() -> Bool { host(cmp) }\n",
                 );
+                // ADMIT here is "no diagnostic but the advisory every function-value call owes":
+                // since #10688 a call through a function value reports its effect summary as a
+                // lower bound (EffectSummaryIncompleteAtFunctionValue, SeverityNonError). Any
+                // other diagnostic, of any severity, is still a red.
+                let only_function_value_advisory = |ds: &im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>| {
+                    ds.iter().all(|d| matches!(
+                        *d.diagnostic,
+                        crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }
+                    ) && !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                };
                 assert!(
-                    hof_positional.diagnostics.is_empty(),
+                    only_function_value_advisory(&hof_positional.diagnostics),
                     "positional function-value application must ADMIT, got: {:?}",
                     hof_positional.diagnostics
                 );
@@ -1942,7 +1952,7 @@ mod compiler_tests {
                     "module semantic_swap\nfn cmp(left: Int, right: Int) -> Bool { left < right }\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\nfn correct_order() -> Bool { host(cmp, 1, 2) }\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\n",
                 );
                 assert!(
-                    semantic.diagnostics.is_empty(),
+                    only_function_value_advisory(&semantic.diagnostics),
                     "swapped positional controls must compile clean for semantic RED, got: {:?}",
                     semantic.diagnostics
                 );
@@ -4117,6 +4127,7 @@ mod compiler_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
@@ -4445,6 +4456,7 @@ mod compiler_tests {
                 match_pattern: None,
                 module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
                 declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+                declaration: None,
                 expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
             })
         }
@@ -4908,6 +4920,64 @@ mod compiler_tests {
         );
     }
 
+    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.
+    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept
+    // only its properties, so the typed tree's field reference named no declaration.
+    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run
+    // the REAL route, parse through resolve through infer, via the census entry. Each row reads two
+    // columns: decl_identity (the production reading, which must stay UNCHANGED while
+    // Node.declaration is in shadow) and recorded_declaration (the shadow slot resolve wrote).
+    // THE RED is the first row: without the writer recorded_declaration reads none. The control keeps
+    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint
+    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.
+    #[test]
+    fn declaration_field_reference_names_its_declaration() {
+        use crate::v1_compiler_compile::SourceFile;
+        let sources = vec![
+            std::rc::Rc::new(SourceFile {
+                path: "fixtures/field_identity/a.dag".to_string(),
+                content: "module fid.a\n\ntype Leaf {\n  count: Int\n}\n".to_string(),
+            }),
+            std::rc::Rc::new(SourceFile {
+                path: "fixtures/field_identity/b.dag".to_string(),
+                content:
+                    "module fid.b\n\nimport fid.a { Leaf }\n\ntype Holder {\n  leaf: Leaf\n}\n"
+                        .to_string(),
+            }),
+        ];
+        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
+            std::rc::Rc::new(sources.into()),
+        );
+        assert!(
+            !receipt.starts_with("REFUSED"),
+            "the census must compile the fixture: {receipt}"
+        );
+        let decl_identity = |enclosing: &str, authored: &str| -> Vec<String> {
+            receipt
+                .lines()
+                .skip(1)
+                .map(|l| l.split('\t').collect::<Vec<_>>())
+                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == authored)
+                .map(|c| format!("{}|{}", c[8], c[12]))
+                .collect()
+        };
+        // (1) THE RED: a field naming another module's record.
+        assert_eq!(
+            decl_identity("Holder", "Leaf"),
+            vec![
+                "Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf"
+                    .to_string()
+            ],
+            "{receipt}"
+        );
+        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.
+        assert_eq!(
+            decl_identity("Leaf", "Int"),
+            vec!["Kernel:Int|none".to_string()],
+            "{receipt}"
+        );
+    }
+
     fn item_of_kind(
         name: &str,
         kind: crate::v1_std_core::ParsedModuleItemKind,
@@ -4921,6 +4991,7 @@ mod compiler_tests {
             properties: std::rc::Rc::new(props),
             module_item_kind: kind,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             ..(*shaped_type_node(name, Vec::new())).clone()
         })
     }

@@ -36,7 +36,10 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  edge_contributes_to_cost_fold,
+  CostEdgeComposed,
+  CostEdgeNotPriced,
+  CostEdgePricedOnce,
+  cost_edge_role,
   Named,
   Node,
   NodeFold,
@@ -93,10 +96,19 @@ type CostCompositionMode
   | AlternativeCost
   | IterativeCost
 
+// `once` is the work a node performs a single time BESIDE its composed children: a Loop's domain
+// (v2.std.node cost_edge_role CostEdgePricedOnce) is evaluated once, so it is summed with the iteration rather than
+// multiplied into it. It is kept apart from `cost` so the answer does not depend on where a producer
+// placed the domain edge among the loop's children; symbolic_cost_fold_total joins the two.
 type SymbolicCostFoldState {
   mode: CostCompositionMode
   cost: SymbolicCost
+  once: SymbolicCost
   parent: Node
+}
+
+fn symbolic_cost_fold_total(s: SymbolicCostFoldState) -> SymbolicCost {
+  symbolic_sequential(a: s.cost, b: s.once)
 }
 
 fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
@@ -209,12 +221,14 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
       SymbolicCostFoldState {
         mode: cost_mode_for_connective(c: c),
         cost: base_cost_for_connective(c: c, n: n),
+        once: zero_cost(),
         parent: n
       }
     ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_behavior(b: b),
         cost: base_cost_for_behavior(b: b, n: n),
+        once: zero_cost(),
         parent: n
       }
   }
@@ -396,19 +410,32 @@ fn compose_child_cost(
   }
 }
 
+fn cost_fold_composed(acc: SymbolicCostFoldState, child: SymbolicCostFoldState) -> SymbolicCostFoldState {
+  SymbolicCostFoldState {
+    mode: acc.mode,
+    cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: symbolic_cost_fold_total(s: child)),
+    once: acc.once,
+    parent: acc.parent
+  }
+}
+
+// Each edge is priced as v2.std.node cost_edge_role says: composed under the parent's mode, priced
+// once beside that composition, or not priced.
 fn cost_fold_step(
   acc: SymbolicCostFoldState,
   e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  if edge_contributes_to_cost_fold(parent: acc.parent, e: e) {
-    SymbolicCostFoldState {
-      mode: acc.mode,
-      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
-      parent: acc.parent
-    }
-  } else {
-    acc
+  match cost_edge_role(parent: acc.parent, e: e) {
+    CostEdgeComposed => cost_fold_composed(acc: acc, child: child)
+    CostEdgePricedOnce =>
+      SymbolicCostFoldState {
+        mode: acc.mode,
+        cost: acc.cost,
+        once: symbolic_sequential(a: acc.once, b: symbolic_cost_fold_total(s: child)),
+        parent: acc.parent
+      }
+    CostEdgeNotPriced => acc
   }
 }
 
@@ -424,7 +451,7 @@ fn symbolic_cost_fold_state(n: Node) -> SymbolicCostFoldState {
 }
 
 fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
-  symbolic_cost_fold_state(n: n).cost
+  symbolic_cost_fold_total(s: symbolic_cost_fold_state(n: n))
 }
 
 fn cost_lens(n: Node) -> Witness<SymbolicCost> {

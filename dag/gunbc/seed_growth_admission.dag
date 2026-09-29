@@ -26,6 +26,7 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
 import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
+import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
 import gunbc.kind_reflection_seed_growth { kind_reflection_seed_growth_justification }
 import gunbc.typed_module_store_seed_growth { typed_module_store_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
@@ -41,6 +42,7 @@ import gunbc.emit_rust_reference_derived_rows_bridge_seed_growth { emit_rust_ref
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
+import gunbc.red_lib_population_seed_growth { red_lib_population_seed_growth_justification }
 import gunbc.interpreter_error_location_seed_growth { interpreter_error_location_seed_growth_justification }
 import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
@@ -269,6 +271,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     ambiguity_ban_seed_growth_justification,
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
+    red_lib_population_seed_growth_justification,
     interpreter_error_location_seed_growth_justification,
     claim_unwind_seed_growth_justification,
     claim_batch_function_preflight_seed_growth_justification,
@@ -278,6 +281,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     gen_one_executable_keep_seed_growth_justification,
     native_claim_program_seed_growth_justification,
     census_memo_seed_growth_justification,
+    fabric_door_socket_seed_growth_justification,
     kind_reflection_seed_growth_justification,
     typed_module_store_seed_growth_justification,
     data_eval_counters_seed_growth_justification,

@@ -103,15 +103,23 @@ fn binding_pool_edge_from_numbers(
 
 fn edge_is_cross_project(edge: GcpEstateEdge) -> Bool {
   match edge {
+    ProjectHostsPool { project_number: _, pool_id: _ } => false
+    PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => false
+    BindingDependsOnAccount { account: _, role: _, member: _ } => false
+    BindingDependsOnSameProjectPool { account: _, pool_project_number: _, member: _ } => false
     BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => true
-    _ => false
+    BindingPrincipalSetUnparsed { account: _, member: _ } => false
   }
 }
 
 fn edge_is_unparsed_principal_set(edge: GcpEstateEdge) -> Bool {
   match edge {
+    ProjectHostsPool { project_number: _, pool_id: _ } => false
+    PoolHostsProvider { project_number: _, pool_id: _, provider_id: _ } => false
+    BindingDependsOnAccount { account: _, role: _, member: _ } => false
+    BindingDependsOnSameProjectPool { account: _, pool_project_number: _, member: _ } => false
+    BindingDependsOnCrossProjectPool { account: _, account_project_number: _, pool_project_number: _, member: _ } => false
     BindingPrincipalSetUnparsed { account: _, member: _ } => true
-    _ => false
   }
 }
 

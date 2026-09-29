@@ -450,7 +450,7 @@ fn shape_codex_exec_argv_for_program(
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
-    env_program: env_path_resolved_program as String,
+    env_program: env_path_resolved_program().invocation as String,
     program: program,
     codex_home: codex_home,
     cwd: cwd,
