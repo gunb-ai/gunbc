@@ -670,7 +670,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
                 diagnostic: ds.head
               )
           }
-        Accepted { value: _, diagnostics: Some { diagnostics: _ } } =>
+        Accepted { value: _, diagnostics: _ } =>
           verdict_run_failed(
             actual: host_exit_failure_outcome(exit: host_receipt.exit),
             diagnostic: emit_host_run_failed_diagnostic()
