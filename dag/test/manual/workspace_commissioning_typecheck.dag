@@ -1,0 +1,8 @@
+module test.manual.workspace_commissioning_typecheck
+
+import gunbc.workspace_commissioning_controller { workspace_commissioning_reconcile }
+import gunbc.workspace_offer_producer { workspace_offer_from_observations }
+import std.process { ProcessExit, ExitSuccess }
+
+// Closure qualification only: no host observation, readiness publication or commissioning claim.
+fn workspace_commissioning_typecheck() -> ProcessExit { ExitSuccess }
