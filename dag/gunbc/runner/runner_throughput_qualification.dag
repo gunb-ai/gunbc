@@ -120,9 +120,9 @@ fn workspace_bytes_locus(backing: WorkspaceBacking) -> WorkspaceBytesLocus {
 
 fn workspace_locus_eq(a: WorkspaceBytesLocus, b: WorkspaceBytesLocus) -> Bool {
   match a {
-    OnSubjectChargedToSlot => match b { OnSubjectChargedToSlot => true _ => false }
-    OnSubjectUncharged => match b { OnSubjectUncharged => true _ => false }
-    OffSubject { peer: p } => match b { OffSubject { peer: q } => (p as String) == (q as String) _ => false }
+    OnSubjectChargedToSlot => match b { OnSubjectChargedToSlot => true  OnSubjectUncharged => false  OffSubject { peer: _ } => false }
+    OnSubjectUncharged => match b { OnSubjectChargedToSlot => false  OnSubjectUncharged => true  OffSubject { peer: _ } => false }
+    OffSubject { peer: p } => match b { OnSubjectChargedToSlot => false  OnSubjectUncharged => false  OffSubject { peer: q } => (p as String) == (q as String) }
   }
 }
 
@@ -650,21 +650,26 @@ fn sampling_refusal(policy: SamplingPolicy, observed_runs: Int) -> List<Throughp
 fn throughput_refusal(s: ThroughputStanding) -> List<ThroughputRefusal> {
   match s {
     ThroughputMeetsPin { measured: _, pinned: _ } => []
-    _ => [ThroughputDidNotHold { standing: s }]
+    ThroughputBelowPin { measured: _, pinned: _ } => [ThroughputDidNotHold { standing: s }]
+    ThroughputUnread { because: _ } => [ThroughputDidNotHold { standing: s }]
   }
 }
 
 fn memory_refusal(s: MemoryEnvelopeStanding) -> List<ThroughputRefusal> {
   match s {
     PeakWithinSlotHigh { peak: _, high: _ } => []
-    _ => [MemoryEnvelopeDidNotHold { standing: s }]
+    PeakExceedsSlotHigh { peak: _, high: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    SlotHighBelowFloorMinimum { high: _, minimum: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    MemoryUnread { reason: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
   }
 }
 
 fn phase_roster_refusal(s: PhaseRosterStanding) -> List<ThroughputRefusal> {
   match s {
     PhaseRosterComplete => []
-    _ => [PhaseRosterDidNotHold { standing: s }]
+    PhaseMissing { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
+    PhaseDuplicated { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
+    PhaseRosterNotAssessed { because: _ } => [PhaseRosterDidNotHold { standing: s }]
   }
 }
 
@@ -672,7 +677,7 @@ fn phase_wall_refusal(s: PhaseWallStanding) -> List<ThroughputRefusal> {
   match s {
     PhaseWallsNotAssessed => []
     PhaseWallsWithinCeilings => []
-    _ => [PhaseWallDidNotHold { standing: s }]
+    PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => [PhaseWallDidNotHold { standing: s }]
   }
 }
 

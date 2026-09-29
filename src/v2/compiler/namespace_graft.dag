@@ -555,7 +555,7 @@ fn namespace_graft_body_for_graft(root: Node) -> NamespaceGraftBody {
   }
   NamespaceGraftBody {
     edges: edges,
-    loss: namespace_graft_subtree_count_atom(n: working, sym: ^dag_surface_top_level_item)
+    loss: namespace_graft_subtree_count_emitted(n: working, sym: ^dag_surface_top_level_item)
       > (count(units) + count(flattened))
   }
 }
@@ -580,13 +580,19 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
 // An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
 // (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
 // and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
-fn namespace_graft_subtree_count_atom(n: Node, sym: Symbol) -> Int {
-  let here = match n.kind {
-    TypeNode { connective: Atom { identity: id } } => if id == sym { 1 } else { 0 }
-    _ => 0
+// A MARKER IS COUNTED BY ITS EMISSION, NEVER BY A BARE ATOM IDENTITY. A top-level item is a
+// production whose emitted identity (the atom under ^grammar_production_identity_node_projection,
+// read by v2.extdeps.languages.dag parse_production_emitted_identity_optional) is the marker. A bare
+// atom spelled the same way is authored text -- an identifier, or a caret symbol's name -- and
+// counting it inflated `loss` and refused a module whose declarations were all carried
+// (gunbc.recurring_failure_mode authored_lexeme_read_as_a_grammar_marker).
+fn namespace_graft_subtree_count_emitted(n: Node, sym: Symbol) -> Int {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => if id == sym { 1 } else { 0 }
+    Absent => 0
   }
   fold(n.children, init: here, f: fn(acc, e) {
-    acc + namespace_graft_subtree_count_atom(n: e.target, sym: sym)
+    acc + namespace_graft_subtree_count_emitted(n: e.target, sym: sym)
   })
 }
 
