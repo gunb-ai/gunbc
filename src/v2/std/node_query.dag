@@ -209,9 +209,11 @@ fn pattern_wildcard_name() -> Symbol {
 // special-case its spelling -- resolve looked it up as a reference
 // (gunbc.recurring_failure_mode a_wildcard_match_arm_resolves_as_an_unbound_name). Lowering
 // (v2.compiler.body_lowering_fold body_lower_pattern_lowered) mints this identity for an authored `_`
-// pattern, and `<` is not an identifier character, so no authored name can spell it: the form names
-// nothing BY CONSTRUCTION, the anonymous-slot precedent (v2.std.anonymous_binder
-// anonymous_param_label). THE ONE MINT; is_wildcard_pattern is the one recogniser.
+// pattern, and `<` is not an identifier character, so no authored name can spell it -- the
+// anonymous-slot precedent (v2.std.anonymous_binder anonymous_param_label). It is still an Atom told
+// apart by identity, so a reader that must not treat it as a name asks is_wildcard_pattern; a typed
+// pattern carrier with a wildcard variant is the next rung (the row above). THE ONE MINT;
+// is_wildcard_pattern is the one recogniser.
 fn wildcard_pattern_identity() -> Symbol {
   symbol_intern_lexeme(lexeme: "<wildcard-pattern>")
 }
