@@ -25059,6 +25059,7 @@ mod map_shell_outputs_optional_stream_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -25140,6 +25141,7 @@ mod map_shell_outputs_optional_stream_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -25165,6 +25167,7 @@ mod map_shell_outputs_optional_stream_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });

@@ -135,7 +135,7 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgv(
-          program: over.program,
+          program: over.program.invocation,
           arguments: process_argv_expansion(
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
@@ -240,7 +240,7 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgv(
-          program: over.program,
+          program: over.program.invocation,
           arguments: process_argv_expansion(
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
@@ -260,13 +260,13 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
       ProcessNotSpawned {
-        program: command.program,
+        program: command.program.invocation,
         cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
       }
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgvOutcome(
-          program: over.program,
+          program: over.program.invocation,
           arguments: process_argv_expansion(
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
