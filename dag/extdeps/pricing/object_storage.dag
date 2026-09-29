@@ -744,7 +744,7 @@ fn evaluate_reliability(row: ObjectStorageClassRow, req: ReliabilityRequirement)
       } else {
         evaluate_redundancy_only(row: row, req: req)
       }
-    _ =>
+    Absent =>
       if req.min_durability_nines > 0 {
         RequirementUnknown { unstated_axis: "durability" }
       } else {
@@ -763,9 +763,9 @@ fn evaluate_redundancy_only(row: ObjectStorageClassRow, req: ReliabilityRequirem
           } else {
             FailsRequirement { axis: "redundancy" }
           }
-        _ => RequirementUnknown { unstated_axis: "redundancy" }
+        Absent => RequirementUnknown { unstated_axis: "redundancy" }
       }
-    _ => MeetsRequirement
+    Absent => MeetsRequirement
   }
 }
 
