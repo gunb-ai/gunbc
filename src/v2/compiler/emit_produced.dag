@@ -63,7 +63,37 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
             )
           }
       }
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+    TypeNode { connective: Disj } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+    TypeNode { connective: Arrow } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+    TypeNode { connective: Cardinality } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+    TypeNode { connective: Instantiation } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+        )
+      }
+    ComputationNode { behavior: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
@@ -103,7 +133,12 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
     Named { name: _ } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } => true
-        _ => false
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
     Positional => false
   }
@@ -154,7 +189,12 @@ fn produced_module_member_is_bodied_decl(edge: Edge) -> Bool {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
-        _ => false
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
     Positional => false
   }

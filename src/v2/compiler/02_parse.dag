@@ -1926,7 +1926,12 @@ fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
   match expr {
     Choice { left: left, right: right } =>
       list_append(left: flatten_choice_exprs(expr: left), right: flatten_choice_exprs(expr: right))
-    _ => Cons { head: expr, tail: std.algebra.Empty }
+    Terminal { token_class: _, stamp: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    LiteralTerminal { token_class: _, lexeme: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    Nonterminal { production: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    Sequence { left: _, right: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    Optional { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    Repeat { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
   }
 }
 
@@ -1959,7 +1964,12 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
       match right {
         PreparedTerminal { token_class: rc, stamp: rs } =>
           (lc == rc) && prepared_stamp_eq(left: ls, right: rs)
-        _ => false
+        PreparedLiteralTerminal { token_class: _, lexeme: _ } => false
+        PreparedNonterminal { production: _ } => false
+        PreparedSequence { left: _, right: _ } => false
+        PreparedChoice { plan: _, first: _ } => false
+        PreparedOptional { element: _ } => false
+        PreparedRepeat { element: _ } => false
       }
     PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
       match right {
@@ -1967,14 +1977,27 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
           left: FirstExactWord { token_class: lc, lexeme: lw },
           right: FirstExactWord { token_class: rc, lexeme: rw }
         )
-        _ => false
+        PreparedTerminal { token_class: _, stamp: _ } => false
+        PreparedNonterminal { production: _ } => false
+        PreparedSequence { left: _, right: _ } => false
+        PreparedChoice { plan: _, first: _ } => false
+        PreparedOptional { element: _ } => false
+        PreparedRepeat { element: _ } => false
       }
     PreparedNonterminal { production: lp } =>
       match right {
         PreparedNonterminal { production: rp } => lp == rp
-        _ => false
+        PreparedTerminal { token_class: _, stamp: _ } => false
+        PreparedLiteralTerminal { token_class: _, lexeme: _ } => false
+        PreparedSequence { left: _, right: _ } => false
+        PreparedChoice { plan: _, first: _ } => false
+        PreparedOptional { element: _ } => false
+        PreparedRepeat { element: _ } => false
       }
-    _ => false
+    PreparedSequence { left: _, right: _ } => false
+    PreparedChoice { plan: _, first: _ } => false
+    PreparedOptional { element: _ } => false
+    PreparedRepeat { element: _ } => false
   }
 }
 
@@ -1985,9 +2008,17 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
         PreparedTerminal { token_class: _, stamp: _ } => optional_present(value: left)
         PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_present(value: left)
         PreparedNonterminal { production: _ } => optional_present(value: left)
-        _ => optional_absent()
+        PreparedSequence { left: _, right: _ } => optional_absent()
+        PreparedChoice { plan: _, first: _ } => optional_absent()
+        PreparedOptional { element: _ } => optional_absent()
+        PreparedRepeat { element: _ } => optional_absent()
       }
-    _ => optional_absent()
+    PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
+    PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
+    PreparedNonterminal { production: _ } => optional_absent()
+    PreparedChoice { plan: _, first: _ } => optional_absent()
+    PreparedOptional { element: _ } => optional_absent()
+    PreparedRepeat { element: _ } => optional_absent()
   }
 }
 
@@ -2110,9 +2141,17 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
                 Absent => optional_absent()
               }
             }
-          _ => optional_absent()
+          PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
+          PreparedNonterminal { production: _ } => optional_absent()
+          PreparedSequence { left: _, right: _ } => optional_absent()
+          PreparedChoice { plan: _, first: _ } => optional_absent()
+          PreparedOptional { element: _ } => optional_absent()
+          PreparedRepeat { element: _ } => optional_absent()
         }
-      _ => optional_absent()
+      PreparedNonterminal { production: _ } => optional_absent()
+      PreparedChoice { plan: _, first: _ } => optional_absent()
+      PreparedOptional { element: _ } => optional_absent()
+      PreparedRepeat { element: _ } => optional_absent()
     }
   }
 }
@@ -2225,7 +2264,12 @@ fn choice_shared_prefix_suffixes_from(
           } else {
             optional_absent()
           }
-        _ => optional_absent()
+        PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
+        PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
+        PreparedNonterminal { production: _ } => optional_absent()
+        PreparedChoice { plan: _, first: _ } => optional_absent()
+        PreparedOptional { element: _ } => optional_absent()
+        PreparedRepeat { element: _ } => optional_absent()
       }
   }
 }

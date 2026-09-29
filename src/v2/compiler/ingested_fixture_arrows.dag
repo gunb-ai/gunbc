@@ -71,7 +71,42 @@ fn ingested_fixture_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+    TypeNode { connective: Disj } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+    TypeNode { connective: Cardinality } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+    TypeNode { connective: Instantiation } =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+    ComputationNode { behavior: _ } =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc

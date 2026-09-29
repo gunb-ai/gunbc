@@ -207,7 +207,12 @@ fn authored_atom_population_empty() -> AuthoredAtomPopulation {
 fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -501,7 +506,9 @@ fn refusal_cover_add(cover: RefusalCover, d: Diagnostic) -> RefusalCover {
           RefusalCover { anchored: cover.anchored, ranges: list_snoc_item(xs: cover.ranges, item: ByteRange { start: s, end: e }) }
         WholeFile => cover
       }
-    _ => cover
+    SourcePortLocus { anchor: _, file: _, extent: _ } => cover
+    InvariantPortLocus { anchor: _, invariant: _ } => cover
+    DeclarationLocus { declaration: _ } => cover
   }
 }
 
@@ -523,7 +530,10 @@ fn range_encloses_atom(range: RefusalRange, atom: AuthoredAtom) -> Bool {
         ByteRange { start: s, end: e } => range.start <= s && e <= range.end
         WholeFile => false
       }
-    _ => false
+    NodeLocus { anchor: _ } => false
+    SourcePortLocus { anchor: _, file: _, extent: _ } => false
+    InvariantPortLocus { anchor: _, invariant: _ } => false
+    DeclarationLocus { declaration: _ } => false
   }
 }
 
@@ -1199,7 +1209,10 @@ fn authored_atom_extent_text(atom: AuthoredAtom) -> String {
           integer_int_to_decimal_string(value: s) + "-" + integer_int_to_decimal_string(value: e)
         WholeFile => "whole-file"
       }
-    _ => "unlocated"
+    NodeLocus { anchor: _ } => "unlocated"
+    SourcePortLocus { anchor: _, file: _, extent: _ } => "unlocated"
+    InvariantPortLocus { anchor: _, invariant: _ } => "unlocated"
+    DeclarationLocus { declaration: _ } => "unlocated"
   }
 }
 

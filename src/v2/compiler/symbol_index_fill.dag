@@ -205,7 +205,37 @@ fn symbol_index_fill_containment_node(
               fold(domain.children, init: index, f: fn(acc, edge) {
                 symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
               })
-            _ =>
+            TypeNode { connective: Atom { identity: _ } } =>
+              symbol_index_fill_containment_node(
+                index: index,
+                path: path,
+                node: domain
+              )
+            TypeNode { connective: Disj } =>
+              symbol_index_fill_containment_node(
+                index: index,
+                path: path,
+                node: domain
+              )
+            TypeNode { connective: Arrow } =>
+              symbol_index_fill_containment_node(
+                index: index,
+                path: path,
+                node: domain
+              )
+            TypeNode { connective: Cardinality } =>
+              symbol_index_fill_containment_node(
+                index: index,
+                path: path,
+                node: domain
+              )
+            TypeNode { connective: Instantiation } =>
+              symbol_index_fill_containment_node(
+                index: index,
+                path: path,
+                node: domain
+              )
+            ComputationNode { behavior: _ } =>
               symbol_index_fill_containment_node(
                 index: index,
                 path: path,
@@ -214,7 +244,19 @@ fn symbol_index_fill_containment_node(
           }
         FirstPositionalAbsent => index
       }
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      fold(node.children, init: index, f: fn(acc, edge) {
+        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+      })
+    TypeNode { connective: Cardinality } =>
+      fold(node.children, init: index, f: fn(acc, edge) {
+        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+      })
+    TypeNode { connective: Instantiation } =>
+      fold(node.children, init: index, f: fn(acc, edge) {
+        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+      })
+    ComputationNode { behavior: _ } =>
       fold(node.children, init: index, f: fn(acc, edge) {
         symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
       })
@@ -249,7 +291,12 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
               Positional => c
             }
           })
-        _ => counts
+        TypeNode { connective: Atom { identity: _ } } => counts
+        TypeNode { connective: Conj } => counts
+        TypeNode { connective: Arrow } => counts
+        TypeNode { connective: Cardinality } => counts
+        TypeNode { connective: Instantiation } => counts
+        ComputationNode { behavior: _ } => counts
       }
     }
   )
@@ -406,7 +453,12 @@ fn symbol_index_fill_unique_variant_aliases(
               Positional => a2
             }
           })
-        _ => acc
+        TypeNode { connective: Atom { identity: _ } } => acc
+        TypeNode { connective: Conj } => acc
+        TypeNode { connective: Arrow } => acc
+        TypeNode { connective: Cardinality } => acc
+        TypeNode { connective: Instantiation } => acc
+        ComputationNode { behavior: _ } => acc
       }
     }
   )

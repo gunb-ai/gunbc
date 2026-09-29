@@ -78,7 +78,39 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFideli
           }
         )
       }
-    _ =>
+    TypeNode { connective: Disj } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_disposition_malformed,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Arrow } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_disposition_malformed,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Cardinality } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_disposition_malformed,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_disposition_malformed,
+          at: node_locus(node: node),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    ComputationNode { behavior: _ } =>
       outcome_rejected(
         Diagnostic {
           reason: ^target_carriers_fidelity_disposition_malformed,
@@ -114,7 +146,47 @@ fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> 
           }
         }
       )
-    _ =>
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Disj } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Arrow } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Cardinality } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^target_carriers_fidelity_quotient_malformed,
+          at: node_locus(node: quotient),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+    ComputationNode { behavior: _ } =>
       outcome_rejected(
         Diagnostic {
           reason: ^target_carriers_fidelity_quotient_malformed,
