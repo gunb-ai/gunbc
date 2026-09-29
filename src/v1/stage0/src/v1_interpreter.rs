@@ -8420,13 +8420,15 @@ fn dispatch_modeled_operation(
                     .map_err(&harness_fault)
                     .map(|shell| shell_result_projection(shell, op_node, ctx))
             } else {
-                let path = match param_env.lookup(ctx.sym("path")) {
-                    Some(Value::Str(p)) => p.to_string(),
-                    _ => String::new(),
-                };
-                file_result_of_observation(&observation, &path, ctx)
-                    .map_err(&harness_fault)
-                    .map(|file| map_file_outputs(&file, op_node, ctx))
+                // Every file-transport operation declares its path; one dispatched without a string
+                // path is a malformed dispatch and refuses, never an empty path the projection would
+                // report as if the operation had named one.
+                match param_env.lookup(ctx.sym("path")) {
+                    Some(Value::Str(p)) => file_result_of_observation(&observation, &p, ctx),
+                    _ => Err("a file operation was dispatched without a string path".to_string()),
+                }
+                .map_err(&harness_fault)
+                .map(|file| map_file_outputs(&file, op_node, ctx))
             };
             let projected = projected?;
             log(
@@ -8500,9 +8502,18 @@ fn file_result_of_observation(
     };
     match file_arm.as_str() {
         "FileOperationSucceeded" => {
-            let byte_count = match ctx.field(&file_fields, "byte_count") {
-                Some(Value::Int(n)) => *n,
-                _ => return Err("the file observation carries no byte_count".to_string()),
+            let bytes = ctx
+                .field(&file_fields, "byte_count")
+                .cloned()
+                .ok_or("the file observation carries no byte_count")?;
+            let byte_count = match run_in_context_with_args(
+                ctx,
+                "file_observation_byte_count",
+                &[(Some("bytes".to_string()), bytes)],
+                false,
+            ) {
+                Ok(Value::Int(n)) => n,
+                _ => return Err("the file observation's byte_count is not a byte size".to_string()),
             };
             Ok(FileResult {
                 success: true,
@@ -21745,6 +21756,10 @@ macro_rules! v1_builtin_arms {
                     expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
                 let exclude_substrings =
                     expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts",
+                    &pool_roots.iter().chain(importer_roots.iter()).cloned().collect::<Vec<_>>(),
+                )?;
                 // Reference-first exact union through the ONE dedup authority, then the
                 // import_module -> target_module rename. Both halves are the host twin of what
                 // `v2.lens.module_graph` composed in the interpreter; moved because it measured
@@ -21752,6 +21767,41 @@ macro_rules! v1_builtin_arms {
                 let facts = crate::cli_run::dependency_resolution_facts(
                     &pool_roots,
                     &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), str_value(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), str_value(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
+            arm "free_call.dependency_resolution_facts_at" { "dependency_resolution_facts_at" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts_at")?;
+                let importer_path =
+                    expect_value_str($positional.get(1).copied(), "dependency_resolution_facts_at")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts_at")?;
+                // The pool roots are anchored as directories, so they refuse typed here like the
+                // population read's. The importer is a FILE path by contract and is never anchored:
+                // it is a key into the population's importer grouping, not a root to walk.
+                refuse_roots_that_are_not_walkable_directories(
+                    "dependency_resolution_facts_at",
+                    &pool_roots,
+                )?;
+                // Same row shape as the population read, so a `.dag` consumer switching to the keyed
+                // form changes its source of rows and not its fold.
+                let facts = crate::cli_run::dependency_resolution_facts_at(
+                    &pool_roots,
+                    importer_path.as_str(),
                     &exclude_substrings,
                 );
                 let mut items: Vec<Value> = Vec::new();
@@ -24078,6 +24128,74 @@ fn expect_byte_vec(val: Option<&Value>, context: &str) -> InterpResult<Vec<u8>> 
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a Bytes argument", context),
         }),
+    }
+}
+
+/// A ROOT THAT IS NOT A WALKABLE DIRECTORY REFUSES HERE, TYPED AND LOCATED, before the host anchors
+/// it. `cli_run` `anchor_source_root` panics on a file, which crossed the builtin boundary as a
+/// process abort rather than an answer the caller can read (DESIGN section 5). The classification is
+/// `coproduct_reflection` `pool_root_defects`, the one the parse-only pool walks already refuse with,
+/// so a file root reads `NamesFile` here exactly as it does there.
+fn refuse_roots_that_are_not_walkable_directories(
+    caller: &'static str,
+    roots: &[String],
+) -> InterpResult<()> {
+    let defects = crate::coproduct_reflection::pool_root_defects(roots);
+    if defects.is_empty() {
+        return Ok(());
+    }
+    Err(InterpError::PoolRootContributesNothing {
+        caller,
+        declared: roots.len(),
+        defects,
+    })
+}
+
+#[cfg(test)]
+mod walkable_root_refusal_tests {
+    use super::{refuse_roots_that_are_not_walkable_directories, InterpError};
+    use crate::coproduct_reflection::PoolRootDefect;
+
+    fn repo_path(rel: &str) -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(rel)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    // THE RED: a module FILE handed where a root directory is owed refuses NamesFile, naming it.
+    #[test]
+    fn a_file_path_root_refuses_names_file() {
+        let file = repo_path("dag/gunbc/auth/approval_broker_serve.dag");
+        match refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[file.clone()],
+        ) {
+            Err(InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            }) => {
+                assert_eq!(caller, "dependency_resolution_facts");
+                assert_eq!(declared, 1);
+                assert_eq!(defects.len(), 1);
+                assert_eq!(defects[0].0, file);
+                assert!(matches!(defects[0].1, PoolRootDefect::NamesFile));
+            }
+            other => panic!("expected PoolRootContributesNothing(NamesFile), got {other:?}"),
+        }
+    }
+
+    // THE POSITIVE CONTROL: a directory holding .dag files is admitted, so the red above is the
+    // file-ness of the root and not a refusal of every root.
+    #[test]
+    fn a_directory_root_with_dag_files_is_admitted() {
+        assert!(refuse_roots_that_are_not_walkable_directories(
+            "dependency_resolution_facts",
+            &[repo_path("dag/gunbc/auth")]
+        )
+        .is_ok());
     }
 }
 

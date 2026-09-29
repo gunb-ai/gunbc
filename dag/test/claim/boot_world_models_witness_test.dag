@@ -11,7 +11,7 @@ import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import gunbc.wall_clock_model { ModeledWallClock, iso8601_utc, wall_clock_unix }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile, remote_request, remote_answer }
-import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_parent, fs_write, fs_list }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_parent, fs_write, fs_list, fs_read }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,4 +91,18 @@ test fn a_power_restore_keeps_the_sol_drop_it_schedules() -> Bool {
   bmc_power_is_on(world: at_ten) && at_ten.sol_session_open && count(at_ten.fired) == 1 && count(at_ten.pending) == 1
     && bmc_power_is_on(world: at_forty) && !at_forty.sol_session_open && bmc_sol_drop_fired(world: at_forty)
     && count(at_forty.fired) == 2 && count(at_forty.pending) == 0
+}
+
+// A READ REPORTS UTF-8 BYTES, NOT CODE POINTS (review 72309): the realization's own file read reports
+// content.len(), so the model must too. `é` is one code point and two bytes.
+fn read_byte_count(fs: ModeledFilesystem, path: String) -> Int {
+  match fs_read(fs: fs, path: path) {
+    extdeps.transports.file.FileOperationSucceeded { byte_count: b, content: _ } => extdeps.transports.file.file_observation_byte_count(bytes: b)
+    _ => 0 - 1
+  }
+}
+
+test fn a_modeled_read_counts_utf8_bytes() -> Bool {
+  let fs = ModeledFilesystem { directories: ["/", "/t"], files: [ModeledFile { path: "/t/a", content: "é" }, ModeledFile { path: "/t/b", content: "abc" }], refused_reads: [] }
+  read_byte_count(fs: fs, path: "/t/a") == 2 && read_byte_count(fs: fs, path: "/t/b") == 3
 }
