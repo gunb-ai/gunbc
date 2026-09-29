@@ -235,11 +235,15 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
 ]
 
 // THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
-// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Eight identities, each running the real boot
-// entry end to end over the dry operation realization, which is the subject #12423 requires. The
-// matrix cases whose own subject stops before the boot's long loops -- the unit hold, the SOL acquire,
-// the share and listing refusals, the interrupted attempt -- measure under the budget and are not
-// members.
+// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Each member runs the real boot entry end to
+// end over the dry operation realization, which is the subject #12423 requires: the eight rows from
+// gunbc#12533, then five from gunbc#12555. Four of those five are the interrupted-attempt cases
+// (recovered, live holder, unobservable holder, other pid namespace), which run the entry TWICE -- the
+// killed run up to StartMedia, then the next run over the world it left -- so they exceed the budget
+// although each run alone stops early. The fifth, the duplicate-listing refusal, sat just under the
+// budget until #12555's hold acquire added its procfs and readlink reads to every run. The cases whose
+// own subject stops before the boot's long loops and runs once -- the held unit, the SOL acquire, the
+// share refusal -- still measure under the budget and are not members.
 data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_host_that_never_prints_a_census_refuses_at_the_deadline" as NonEmptyStr,
