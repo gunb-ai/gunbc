@@ -1,5 +1,7 @@
 module extdeps.systemd.systemd_run
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
@@ -40,6 +42,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data systemd_run_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
 // THE PROPERTY WORDS ARE RENDERED IN EXACTLY ONE PLACE, and that is the whole point of this
 // function existing beside the full-line authority rather than inside it. A systemd unit property
@@ -139,7 +143,7 @@ fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command:
   let with_properties = fold(systemd_run_property_argv(properties: properties), init: head, f: (acc, word) => list_push(acc, word))
   let with_separator = list_push(with_properties, "--")
   argv_command(
-    program: "systemd-run" as NonEmptyStr,
+    program: systemd_run_program(),
     arguments: fold(argv_words(command: command), init: with_separator, f: (acc, arg) => list_push(acc, arg)),
   )
 }
