@@ -1,5 +1,6 @@
 module v2.test.claim.body_cast_node
 
+import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.coercion { NoTargetCandidate }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -10,7 +11,7 @@ import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_node_from_lexeme, dag_type_atom_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations, claim_inferred_facts_from_nodes }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
 import v2.std.collection { List }
@@ -61,73 +62,73 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body_lowering_reason_type_annotation_not_carried at `T` (the as-cast refusal), and before that
 // they were Accepted with `T` dropped: no cast node, so the count in bcn_one_cast_to_int was 0.
 
-fn bcn_tail_cast() -> Outcome<Node> {
+fn bcn_tail_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
 }
 
-fn bcn_let_value_cast() -> Outcome<Node> {
+fn bcn_let_value_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
 }
 
 // The `in` form of the let: its value was located by a depth-first search that stopped inside the
 // cast's own `as T` spine, so on main this refused body_lowering_reason_let_navigation_refused.
-fn bcn_let_in_value_cast() -> Outcome<Node> {
+fn bcn_let_in_value_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int in y\n}\n")
 }
 
-fn bcn_call_argument_cast() -> Outcome<Node> {
+fn bcn_call_argument_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n")
 }
 
-fn bcn_if_arm_cast() -> Outcome<Node> {
+fn bcn_if_arm_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Int } else { x }\n}\n")
 }
 
-fn bcn_match_arm_cast() -> Outcome<Node> {
+fn bcn_match_arm_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n")
 }
 
-fn bcn_call_operand_cast() -> Outcome<Node> {
+fn bcn_call_operand_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n")
 }
 
-fn bcn_tail_undeclared() -> Outcome<Node> {
+fn bcn_tail_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
 }
 
-fn bcn_match_arm_undeclared() -> Outcome<Node> {
+fn bcn_match_arm_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n")
 }
 
-fn bcn_generic_cast() -> Outcome<Node> {
+fn bcn_generic_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  x as T\n}\n")
 }
 
-fn bcn_value_param_as_type() -> Outcome<Node> {
+fn bcn_value_param_as_type() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  Q as Q\n}\n")
 }
 
-fn bcn_int_sum_as_int() -> Outcome<Node> {
+fn bcn_int_sum_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  (x + x) as Int\n}\n")
 }
 
-fn bcn_int_sum_as_bool() -> Outcome<Node> {
+fn bcn_int_sum_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n")
 }
 
-fn bcn_into_refinement() -> Outcome<Node> {
+fn bcn_into_refinement() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n")
 }
 
-fn bcn_out_of_refinement() -> Outcome<Node> {
+fn bcn_out_of_refinement() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
 }
 
-fn bcn_refinement_param_as_bool() -> Outcome<Node> {
+fn bcn_refinement_param_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Bool {\n  x as Bool\n}\n")
 }
 
-fn bcn_refinement_identity_cast() -> Outcome<Node> {
+fn bcn_refinement_identity_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n")
 }
 
@@ -150,11 +151,11 @@ fn bcn_atom_identity(n: Node) -> Optional<Symbol> {
 
 // Accepted, with exactly one cast node whose target is a resolved atom: the lowering built the node
 // and resolve kept T.
-fn bcn_one_cast(o: Outcome<Node>) -> Bool {
+fn bcn_one_cast(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: t, tail: Empty } =>
           match bcn_atom_identity(n: t) {
             Present { value: _ } => true
@@ -165,11 +166,11 @@ fn bcn_one_cast(o: Outcome<Node>) -> Bool {
   }
 }
 
-fn bcn_cast_target_identity(o: Outcome<Node>) -> Optional<Symbol> {
+fn bcn_cast_target_identity(o: Outcome<ResolvedTree>) -> Optional<Symbol> {
   match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: t, tail: Empty } => bcn_atom_identity(n: t)
         _ => Absent
       }
@@ -186,7 +187,7 @@ fn bcn_atom_in(n: Node, id: Symbol) -> Bool {
 }
 
 // Refused with `reason`, located at a node spelling `id` and not at the fn or the `as` token.
-fn bcn_refused_at(o: Outcome<Node>, reason: Symbol, id: Symbol) -> Bool {
+fn bcn_refused_at(o: Outcome<ResolvedTree>, reason: Symbol, id: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -268,7 +269,7 @@ fn bcn_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
 }
 
-fn bcn_infers(o: Outcome<Node>) -> Outcome<Bool> {
+fn bcn_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
   match o {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: root, diagnostics: _ } =>
