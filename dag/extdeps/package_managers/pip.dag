@@ -19,7 +19,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.package_managers.pip",
-      decl_name: "pip_program.invocation",
+      decl_name: "pip_program",
       field: WholeDeclaration
     }
   },

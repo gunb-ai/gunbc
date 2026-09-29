@@ -22,7 +22,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tools.stat",
-      decl_name: "stat_program.invocation",
+      decl_name: "stat_program",
       field: WholeDeclaration
     }
   },

@@ -438,7 +438,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/gunbc/design_argument.dag", name: "Axiom", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/design_argument.dag", name: "NonLogicalAxiom", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/design_argument.dag", name: "Proposition", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/gunbc/devboot/build.dag", name: "host", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/gunbc/devboot/build.dag", name: "host", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/gunbc/dissolution_migration_census.dag", name: "append", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/dissolution_migration_census.dag", name: "contains", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/gunbc/dissolution_migration_census.dag", name: "length", standing: ActiveDebt },

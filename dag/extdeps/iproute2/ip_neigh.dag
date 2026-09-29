@@ -19,7 +19,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.iproute2.ip_neigh",
-      decl_name: "ip_program.invocation",
+      decl_name: "ip_program",
       field: WholeDeclaration
     }
   },

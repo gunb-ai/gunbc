@@ -21,7 +21,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tools.e2fsprogs",
-      decl_name: "mke2fs_program.invocation",
+      decl_name: "mke2fs_program",
       field: WholeDeclaration
     }
   },

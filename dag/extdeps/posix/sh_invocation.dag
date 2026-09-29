@@ -19,7 +19,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.posix.sh_invocation",
-      decl_name: "posix_sh_program.invocation",
+      decl_name: "posix_sh_program",
       field: WholeDeclaration
     }
   },

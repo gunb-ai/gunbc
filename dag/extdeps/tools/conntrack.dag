@@ -21,7 +21,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tools.conntrack",
-      decl_name: "conntrack_program.invocation",
+      decl_name: "conntrack_program",
       field: WholeDeclaration
     }
   },
