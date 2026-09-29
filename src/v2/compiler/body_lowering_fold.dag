@@ -1847,6 +1847,10 @@ fn body_lower_param_binding_optional(node: Node) -> Optional<Symbol> {
 // The same read, answered as the atom that carries the name: lowered from the token it was read
 // from (v2.std.node node_lowered_from), so a caller that places the name in the tree keeps its
 // minted occurrence. The name-only reader above is this one's projection, not a second reader.
+// A BINDER IS NEVER AN OPERATOR EXPRESSION: an operand the reader refuses is not a binder, so
+// the answer is "not a binder" and the enclosing construct refuses at its own locus. The
+// refusal is not carried because this position returns no Outcome; the binder readers'
+// callers are the named remaining gap of lowering_accessor_collapses_a_sequence_operand.
 fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
   match dag_binding_branded_atom_identity(node: node) {
     Present { value: binding } =>
@@ -1860,10 +1864,6 @@ fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
             optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
           }
         Absent =>
-          // A BINDER IS NEVER AN OPERATOR EXPRESSION: an operand the reader refuses is not a binder, so
-          // the answer is "not a binder" and the enclosing construct refuses at its own locus. The
-          // refusal is not carried because this position returns no Outcome; the binder readers'
-          // callers are the named remaining gap of lowering_accessor_collapses_a_sequence_operand.
           match body_lower_operand_ref_read(node: node) {
             OperandRefLowered { lowered: ref_node } =>
               match node_atom_identity_optional(node: ref_node) {
