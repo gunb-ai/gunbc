@@ -636,6 +636,15 @@ fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat
 // equality, exactly as `render_heartbeat_line_mirror_matches_seed_oracle` does for the heartbeat.
 // Nothing here asserts byte-equality on its own; the seed's test is where the two representations
 // are held against each other.
+//
+// THAT HOLDING IS AT THE FIXTURE BOUNDARY, NOT ON THE MERGE PATH, and saying so is part of the
+// claim (review 72597). The test is a `--lib` test; the job that runs that population is
+// `continue-on-error` and is not read by the required `witnesses` aggregate --
+// gunbc.rung_drop rust_unit_tests_off_the_merge_path, whose text says no CI step executes them.
+// So semantic drift between the two representations can land on main green. What the required
+// path does buy is attribution: this test module compiles under `cargo clippy --all-targets
+// -- -D warnings` on the `generated` lane, which IS required, so deleting the mirror or its call
+// sites cannot land silently; only a change in what they RENDER can.
 
 fn seed_file_subject(intent: NonEmptyStr) -> ObservationSubject {
   ObservationSubject { segments: [ PhaseSegment { name: intent } ] }

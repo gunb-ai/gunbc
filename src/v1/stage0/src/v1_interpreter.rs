@@ -15634,10 +15634,16 @@ pub const FILE_CENSUS_MARKER: &str = "[file]";
 /// write. Passing the rendered clause rather than a count-plus-flag keeps the mirror from
 /// inventing a second representation of the payload sum the authority declares.
 ///
-/// ORACLE RED: the seed test `file_effect_begin_mirror_matches_seed_oracle` renders this fn's
-/// .dag counterpart through the interpreter on the same inputs and asserts byte-equality, so the
-/// format authority stays in `ci_file_effect_line` and any drift reds (the same pairing
-/// `render_shell_effect_*_line_mirror` and `render_heartbeat_line_mirror` carry).
+/// ORACLE RED, AT A STATED RUNG: the seed test `file_effect_begin_mirror_matches_seed_oracle`
+/// renders this fn's .dag counterpart through the interpreter on the same inputs and asserts
+/// byte-equality, so the format authority stays in `ci_file_effect_line` (the same pairing
+/// `render_shell_effect_*_line_mirror` and `render_heartbeat_line_mirror` carry). That test is a
+/// `--lib` test and the job running that population is `continue-on-error`, NOT read by the
+/// required aggregate -- see `gunbc.rung_drop` `rust_unit_tests_off_the_merge_path`, and review
+/// 72597 for why this comment states the rung rather than the stronger claim: a semantic drift
+/// between the two representations can land green. What the required path does buy is
+/// ATTRIBUTION: this module compiles under the required `generated` lane's clippy step, so
+/// deleting or renaming these declarations and their call sites still cannot land silently.
 pub fn render_file_effect_begin_line_mirror(
     intent: &str,
     path: &str,
