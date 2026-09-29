@@ -49,7 +49,7 @@ fn service_atom_conj_tree() -> Node {
         label: Positional,
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+            connective: Atom { identity: ^dag_token_ident }
           },
           children: [],
           occurrence_id: OccurrenceSynthetic
@@ -86,7 +86,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
           label: Named { name: ^anchor_decl_first },
           target: Node {
             kind: TypeNode {
-              connective: Atom { identity: ^dag_c3_surface_sugar_service }
+              connective: Atom { identity: ^dag_token_ident }
             },
             children: [],
             occurrence_id: OccurrenceSynthetic
@@ -96,7 +96,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
           label: Named { name: ^anchor_decl_second },
           target: Node {
             kind: TypeNode {
-              connective: Atom { identity: ^dag_c3_surface_sugar_type }
+              connective: Atom { identity: ^dag_token_colon }
             },
             children: [],
             occurrence_id: OccurrenceSynthetic
@@ -127,7 +127,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
-                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
+                    connective: Atom { identity: ^dag_token_lbrace }
                   },
                   children: [],
                   occurrence_id: OccurrenceSynthetic
@@ -137,7 +137,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
-                    connective: Atom { identity: ^dag_c3_surface_sugar_service }
+                    connective: Atom { identity: ^dag_token_ident }
                   },
                   children: [],
                   occurrence_id: OccurrenceSynthetic
@@ -147,7 +147,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                 label: Positional,
                 target: Node {
                   kind: TypeNode {
-                    connective: Atom { identity: ^dag_c3_surface_sugar_fn }
+                    connective: Atom { identity: ^dag_token_lbrace }
                   },
                   children: [],
                   occurrence_id: OccurrenceSynthetic
@@ -196,7 +196,7 @@ fn resolve_imported_module_root() -> Node {
         label: Named { name: ^anchor_imported_decl },
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+            connective: Atom { identity: ^dag_token_ident }
           },
           children: [],
           occurrence_id: OccurrenceSynthetic

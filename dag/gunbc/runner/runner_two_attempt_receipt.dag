@@ -137,13 +137,20 @@ fn still_open_from_axis_standing(axis: JitAdmissionAxis) -> List<NonEmptyStr> {
     AxisRequired { checker: HostMintAdmission } => match axis {
       SignatureAxis => ["signature: admitted only from the host App-JWT mint (gunbc.runner_attempt_launch admit_jit_credential); not yet executed by the lifecycle controller"]
       ExpiryAxis => ["expiry: fresh by construction from a per-attempt host mint; not yet executed by the lifecycle controller"]
-      _ => ["host mint admission not yet executed by the lifecycle controller"]
+      ReplayAxis => host_mint_admission_still_open()
+      UnitBindingAxis => host_mint_admission_still_open()
+      BootBindingAxis => host_mint_admission_still_open()
+      AttemptBindingAxis => host_mint_admission_still_open()
     }
     AxisRequired { checker: GitHubMintRequestName } =>
       ["attempt binding still required on the mint name"]
     AxisDeferred { trigger: t } => [t]
     AxisDissolvedInto { into: _ } => []
   }
+}
+
+fn host_mint_admission_still_open() -> List<NonEmptyStr> {
+  ["host mint admission not yet executed by the lifecycle controller"]
 }
 
 data still_open: List<NonEmptyStr> = concat(

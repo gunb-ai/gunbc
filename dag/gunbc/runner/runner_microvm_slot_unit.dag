@@ -303,7 +303,8 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
           string_contains(s: c as String, pattern: join(["--function ", microvm_slot_controller_entry_function], ""))
         _ => false
       })
-    _ => false
+    TimerUnitFile { unit: _, timer: _, install: _ } => false
+    SliceUnitFile { unit: _, slice: _, install: _ } => false
   }
 }
 

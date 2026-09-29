@@ -62,9 +62,21 @@ data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 // never by guessing which user is which.
 data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-approval-publisher"
 data approval_ntfy_operator_user: NonEmptyStr = "gunbc-approval-operator"
-// The packaged server's CLI (the upstream .deb installs /usr/bin/ntfy). Absolute because it runs
-// under sudo as the server's principal; an absent binary is a failed readback, which refuses.
-data approval_ntfy_binary_path: NonEmptyStr = "/usr/bin/ntfy"
+// THE SERVER BINARY THE HOST ACTUALLY RUNS. Absolute because it runs under sudo as the server's
+// principal; an absent binary is a failed readback, which refuses. The readback compares the running
+// process's executable against THIS row, and that comparison is only a check because the row is not
+// read from the host it checks: deriving it from the unit's ExecStart would admit a swapped unit.
+//
+// THE PREVIOUS VALUE WAS A BET ABOUT THE PACKAGING, and the host falsified it. It read "/usr/bin/ntfy"
+// on the ground that the upstream .deb installs there. But no model member installs this binary
+// (gunbc.auth.approval_ntfy_converge names it as outside its roster), and srv1's server was installed
+// 2026-09-07 at /usr/local/bin/ntfy. gunbc-ntfy.service ExecStart names that path, as read on the host
+// by proud-deer-538 on 2026-09-28 while running issue_device_enrolment_code by hand. The readback then
+// refused before minting by stat-ing a path the server does not run. So the row is the observed install,
+// and it stays a declaration: an install moved elsewhere refuses loudly here until the row moves with
+// it, which is the intended wall. Its dissolution is an installer member that places the binary, at
+// which point this row is that member's destination rather than a transcription of the host.
+data approval_ntfy_binary_path: NonEmptyStr = "/usr/local/bin/ntfy"
 
 // LOOPBACK, AND THAT IS THE SECURITY BOUNDARY RATHER THAN A DEFAULT. The server binds 127.0.0.1
 // and reaches the tailnet only through tailscale serve, which is what makes the tailnet identity
