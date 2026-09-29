@@ -408,6 +408,13 @@ fn host_converge_slice1_tasks_headroom_refuses(current: Int, target: Int) -> Boo
   current >= target
 }
 
+fn host_converge_slice1_tasks_current_unbounded_or_unparseable(unit: NonEmptyStr) -> HostConvergeSlice1TasksGuardOutcome {
+  HostConvergeSlice1TasksUnknown {
+    unit: unit,
+    reason: "host_converge_slice1: live TasksCurrent read unbounded or unparseable; cannot bound usage against target cap; fail-closed",
+  }
+}
+
 fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> HostConvergeSlice1TasksGuardOutcome {
   match parse_int(s: target_value) {
     Present { value: target } =>
@@ -420,11 +427,8 @@ fn host_converge_slice1_tasks_guard(unit: NonEmptyStr, target_value: String) -> 
               } else {
                 HostConvergeSlice1TasksSafe { unit: unit, current_count: current }
               }
-            _ =>
-              HostConvergeSlice1TasksUnknown {
-                unit: unit,
-                reason: "host_converge_slice1: live TasksCurrent read unbounded or unparseable; cannot bound usage against target cap; fail-closed",
-              }
+            TaskLimitUnbounded => host_converge_slice1_tasks_current_unbounded_or_unparseable(unit: unit)
+            TaskLimitAbsent => host_converge_slice1_tasks_current_unbounded_or_unparseable(unit: unit)
           }
         Absent =>
           HostConvergeSlice1TasksUnknown {
