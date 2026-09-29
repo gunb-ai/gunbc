@@ -632,6 +632,25 @@ fn run_microvm_network_apply(
   }
 }
 
+fn unstaged_microvm_network_apply_run(
+  subject: MicrovmNetworkApplySubject,
+  privilege: AdministratorPrivilege,
+  prerequisites: List<HostToolPrerequisite>,
+  dir: RunnerHostPathMetadata,
+) -> MicrovmNetworkApplyRun
+{
+  MicrovmNetworkApplyRun {
+    subject: subject,
+    privilege: privilege,
+    prerequisites: prerequisites,
+    staging_dir: dir,
+    staged: [],
+    staged_root_only: PathsNotApplicable,
+    operations: [],
+    readback: RulesetNotListed { reason: "the staging root or one of its ancestors is not root-only, so no bytes were staged" },
+  }
+}
+
 fn run_privileged_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
@@ -652,17 +671,30 @@ fn run_privileged_microvm_network_apply(
   match dir {
     PathsRootOnly =>
       run_staged_microvm_network_apply(subject: subject, context: context, privilege: privilege, prerequisites: prerequisites, dir: dir)
-    _ =>
-      MicrovmNetworkApplyRun {
-        subject: subject,
-        privilege: privilege,
-        prerequisites: prerequisites,
-        staging_dir: dir,
-        staged: [],
-        staged_root_only: PathsNotApplicable,
-        operations: [],
-        readback: RulesetNotListed { reason: "the staging root or one of its ancestors is not root-only, so no bytes were staged" },
-      }
+    PathsNotRootOnly { paths: _, detail: _ } => unstaged_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir)
+    PathsUnobservable { reason: _ } => unstaged_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir)
+    PathsNotApplicable => unstaged_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir)
+  }
+}
+
+fn uninstalled_microvm_network_apply_run(
+  subject: MicrovmNetworkApplySubject,
+  privilege: AdministratorPrivilege,
+  prerequisites: List<HostToolPrerequisite>,
+  dir: RunnerHostPathMetadata,
+  staged: List<StagedWriteResult>,
+  staged_meta: RunnerHostPathMetadata,
+) -> MicrovmNetworkApplyRun
+{
+  MicrovmNetworkApplyRun {
+    subject: subject,
+    privilege: privilege,
+    prerequisites: prerequisites,
+    staging_dir: dir,
+    staged: staged,
+    staged_root_only: staged_meta,
+    operations: [],
+    readback: RulesetNotListed { reason: "the staged bytes were not established as root-only, so nothing was installed from them" },
   }
 }
 
@@ -705,17 +737,9 @@ fn run_staged_microvm_network_apply(
         },
       }
     }
-    _ =>
-      MicrovmNetworkApplyRun {
-        subject: subject,
-        privilege: privilege,
-        prerequisites: prerequisites,
-        staging_dir: dir,
-        staged: staged,
-        staged_root_only: staged_meta,
-        operations: [],
-        readback: RulesetNotListed { reason: "the staged bytes were not established as root-only, so nothing was installed from them" },
-      }
+    PathsNotRootOnly { paths: _, detail: _ } => uninstalled_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir, staged: staged, staged_meta: staged_meta)
+    PathsUnobservable { reason: _ } => uninstalled_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir, staged: staged, staged_meta: staged_meta)
+    PathsNotApplicable => uninstalled_microvm_network_apply_run(subject: subject, privilege: privilege, prerequisites: prerequisites, dir: dir, staged: staged, staged_meta: staged_meta)
   }
 }
 
