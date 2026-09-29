@@ -2507,14 +2507,7 @@ fn rust_trait_derive_surface_binding_for_coproduct(coproduct: Node) -> Outcome<S
       } else {
         outcome_accepted(value: ^rust_decl_derive_enum_binding)
       }
-    TypeNode { connective: _ } =>
-      outcome_rejected(
-        d: rust_trait_derive_coproduct_diagnostic(
-          reason: ^rust_trait_derive_coproduct_connective_unsupported,
-          node: coproduct
-        )
-      )
-    ComputationNode { behavior: _ } =>
+    _ =>
       outcome_rejected(
         d: rust_trait_derive_coproduct_diagnostic(
           reason: ^rust_trait_derive_coproduct_connective_unsupported,
