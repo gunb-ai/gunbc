@@ -109,11 +109,13 @@ test fn the_clean_control_conserves_every_authored_atom_holds() -> Bool {
 
 // The numbers are separate and together account for the whole population: a check that found
 // nothing to conserve, or that summed one disposition into another, cannot pass this. The clean
-// control has an atom in every one: conserved references, locus-erased binders the role producer
-// does not read yet (its parameters), role-excluded declarations and labels, and the header.
+// control has conserved references, role-excluded declarations, labels and parameters, and the
+// header -- and, now that the parameter lists are read (v2.compiler.occurrence_role
+// ReadParamListBinders), no locus-erased atom: before that reader its parameters were the
+// locus-erased number, so a zero here is the reader's receipt, not an empty disposition.
 test fn the_clean_control_accounts_for_its_population_in_three_separate_numbers_holds() -> Bool {
   let r = clean_control_report()
-  r.conserved > 0 && r.locus_erased > 0 && r.role_excluded > 0 && r.header_channel > 0
+  r.conserved > 0 && r.locus_erased == 0 && r.role_excluded > 0 && r.header_channel > 0
     && r.conserved + r.locus_erased + r.role_excluded + r.header_channel == r.authored
 }
 

@@ -2,17 +2,26 @@ module v2.test.claim.probe_scratch.qualified_field_type_attribution
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.reference_site_collector { collect_reference_sites }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
 import v2.std.integer { Int }
 import v2.std.grammar { grammar_atom }
 import v2.std.qualified_name { qualified_name_from_node, qualified_name_to_dotted_string }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.namespace_alias { module_binding_source_roots }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // SCRATCH PROBE (deleted before the PR is handed off): where is a qualified field type lost?
 data probe_source: String = "module qft.consumer\n\ntype Wrapper { f: qa.qb.FieldQ }\n\nfn uses(x: qa.qb.ParamQ) -> Int { 0 }\n"
@@ -65,3 +74,41 @@ test fn probe_sites_param_holds() -> Bool { site_count(spelling: "qa.qb.ParamQ")
 test fn probe_sites_field_holds() -> Bool { site_count(spelling: "qa.qb.FieldQ") == 1 }
 test fn probe_sites_field_bare_holds() -> Bool { site_count(spelling: "FieldQ") >= 1 }
 test fn probe_sites_field_head_bare_holds() -> Bool { site_count(spelling: "qa") >= 1 }
+
+// ---- the claim's own route: two fixture files through program assembly ----------------------------
+fn two_module_roots() -> FreeMonoid<Node> {
+  match module_roots_from_source_root_ingest(
+    ingest: Cons { head: probe_read(path: "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag", unit: ^qft_provider), tail: Cons { head: probe_read(path: "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag", unit: ^qft_consumer), tail: Empty } },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: normalized, diagnostics: _ } => module_binding_source_roots(sources: normalized_tree_roots_to_binding_sources(roots: normalized))
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn probe_read(path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: V2Tree
+  }
+}
+
+fn two_module_spine_count(spelling: String) -> Int {
+  fold_list(xs: two_module_roots(), empty: 0, cons: fn(acc, r) { acc + spine_count(n: r, spelling: spelling) })
+}
+
+fn two_module_site_count(spelling: String) -> Int {
+  fold_list(xs: collect_reference_sites(roots: two_module_roots()).sites, empty: 0, cons: fn(acc, s) {
+    if qualified_name_to_dotted_string(qn: s.spelling) == spelling { acc + 1 } else { acc }
+  })
+}
+
+test fn probe_two_module_roots_present_holds() -> Bool { length(xs: two_module_roots()) == 2 }
+test fn probe_two_module_param_spine_holds() -> Bool { two_module_spine_count(spelling: "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker") >= 1 }
+test fn probe_two_module_field_spine_holds() -> Bool { two_module_spine_count(spelling: "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker") >= 1 }
+test fn probe_two_module_field_atom_holds() -> Bool { fold_list(xs: two_module_roots(), empty: 0, cons: fn(acc, r) { acc + atom_count(n: r, lexeme: "ProvidedFieldMarker") }) >= 2 }
+test fn probe_two_module_wrapper_atom_holds() -> Bool { fold_list(xs: two_module_roots(), empty: 0, cons: fn(acc, r) { acc + atom_count(n: r, lexeme: "Wrapper") }) >= 1 }
+test fn probe_two_module_param_site_holds() -> Bool { two_module_site_count(spelling: "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker") == 1 }
+test fn probe_two_module_field_site_holds() -> Bool { two_module_site_count(spelling: "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker") == 1 }
