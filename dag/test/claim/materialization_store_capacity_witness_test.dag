@@ -1,0 +1,60 @@
+module test.claim.materialization_store_capacity_witness
+
+import std.types { Bool, String }
+import std.measure { ByteSize, byte_size }
+import std.materialization_store_grant { DurableHostVolumeRoot, UserCacheRoot, WitnessScratchRoot }
+import extdeps.freedesktop.xdg_base_directory { XdgCacheHomeResolved, XdgCacheHomeRefused, xdg_cache_home }
+import gunbc.materialization_store_capacity {
+  StoreCeilingResolution, StoreCeilingDeclared, StoreCeilingUndeclared,
+  materialization_store_byte_ceiling,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HERMETIC CONTROLS FOR THE ONE HOME OF THE STORE'S BYTE CEILING, gunbc.materialization_store_capacity:
+// the ceiling each root answers, in the unit its field names (apparent file bytes), and the one root
+// that answers no number. The ceiling is asked of the ROOT, so each claim constructs a root the way
+// its production path will -- a UserCacheRoot only through xdg_cache_home -- and never names a
+// ceiling beside it.
+
+fn capacity_witness_declares(r: StoreCeilingResolution, bytes: ByteSize) -> Bool {
+  match r {
+    StoreCeilingDeclared { ceiling: c } => c.apparent_file_bytes == bytes
+    StoreCeilingUndeclared { root_path: _ } => false
+  }
+}
+
+fn capacity_witness_user_cache_ceiling(cache_variable: String) -> StoreCeilingResolution {
+  match xdg_cache_home(cache_variable: Present { value: cache_variable }, home_variable: none) {
+    XdgCacheHomeResolved { cache_home: h, basis: _ } => materialization_store_byte_ceiling(root: UserCacheRoot { cache_home: h })
+    XdgCacheHomeRefused { home: _, variable: _ } => StoreCeilingUndeclared { root_path: "<no cache home>" }
+  }
+}
+
+// THE USER-CACHE CEILING IS THE OPERATOR'S 2 GiB POLICY (spec gunbc#12581 section 9.1 Q11: "2 GiB
+// (2,147,483,648 bytes)"). The literal is grounded in that ruling, not measured from this tree. And it
+// does not vary with where the cache home is: two different homes answer the same policy. RED if the
+// value moved without the ruling moving, or if the ceiling were derived from the path.
+test fn the_user_cache_root_ceiling_is_two_gibibytes_of_apparent_file_bytes() -> Bool {
+  capacity_witness_declares(r: capacity_witness_user_cache_ceiling(cache_variable: "/srv/cache"), bytes: byte_size(count: 2147483648))
+    && capacity_witness_declares(r: capacity_witness_user_cache_ceiling(cache_variable: "/home/u/.cache"), bytes: byte_size(count: 2147483648))
+}
+
+// A WITNESS ROOT ANSWERS ITS OWN FIXTURE FIELD. Two fixtures, two answers. RED if the scratch arm
+// returned a constant (either fixture would then fail) or borrowed the user-cache policy.
+test fn a_witness_root_ceiling_is_its_fixture_field() -> Bool {
+  let small = materialization_store_byte_ceiling(root: WitnessScratchRoot { root: "/tmp/gunbc_cap_a", ceiling: byte_size(count: 100) })
+  let other = materialization_store_byte_ceiling(root: WitnessScratchRoot { root: "/tmp/gunbc_cap_b", ceiling: byte_size(count: 7) })
+  capacity_witness_declares(r: small, bytes: byte_size(count: 100)) && capacity_witness_declares(r: other, bytes: byte_size(count: 7))
+}
+
+// THE FLEET HOST VOLUME HAS NO DECLARED CEILING, AND SAYS SO. It answers StoreCeilingUndeclared,
+// naming its root, rather than a number. RED if any number came back: a commit there would then evict
+// under a size nobody chose.
+test fn the_durable_host_volume_ceiling_is_undeclared_and_named() -> Bool {
+  match materialization_store_byte_ceiling(root: DurableHostVolumeRoot) {
+    StoreCeilingDeclared { ceiling: _ } => false
+    StoreCeilingUndeclared { root_path: p } => p == "/var/lib/gunbc/materialization-store"
+  }
+}

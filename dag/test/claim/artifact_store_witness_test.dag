@@ -31,6 +31,7 @@ import std.artifact_store {
   StoreHit, StoreMiss, store_get,
   StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
   store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
+  ArtifactOccupancyRow, artifact_store_from_occupancy,
 }
 import extdeps.realization.emit_on_demand_host {
   ObservedToolIdentity,
@@ -491,4 +492,97 @@ test fn store_put_artifact_exactly_at_budget_is_admitted_holds() -> Bool {
   store_put_is_admitted(
     outcome: store_put(store: oversize_store(), key: key_of(toolchain: "exact"), artifact_bytes: byte_size(count: 100))
   )
+}
+
+// artifact_store_from_occupancy (M1.c landing unit L5a): the store a persistent commit rebuilds from
+// the entries it finds on disk. The rows are supplied values -- the census that observes them is
+// landing unit L5b's, and the real-filesystem run of that census is its inhabitance claim, owed there.
+
+fn occupancy_witness_row(toolchain: String, bytes: Int) -> ArtifactOccupancyRow {
+  ArtifactOccupancyRow { key: key_of(toolchain: toolchain), artifact_bytes: byte_size(count: bytes) }
+}
+
+fn occupancy_witness_ordinal_of(store: ArtifactStore, key: ContentHash) -> Int {
+  fold(store.rows, init: 0, f: (acc, r) => if r.key == key { r.last_use_ordinal } else { acc })
+}
+
+// ROWS IN RECENCY ORDER, LEAST RECENT FIRST: the i-th observed row takes ordinal i + 1, the next
+// ordinal is one past the last, and the ceiling is the store's budget. RED if ordinals were assigned
+// in reverse, from 0, or left to a caller, or if next_ordinal could collide with an observed row.
+test fn occupancy_rows_become_a_store_in_recency_order() -> Bool {
+  let store = artifact_store_from_occupancy(
+    ceiling: byte_size(count: 100),
+    occupancy: [occupancy_witness_row(toolchain: "old", bytes: 10), occupancy_witness_row(toolchain: "mid", bytes: 20), occupancy_witness_row(toolchain: "new", bytes: 30)]
+  )
+  occupancy_witness_ordinal_of(store: store, key: key_of(toolchain: "old")) == 1
+    && occupancy_witness_ordinal_of(store: store, key: key_of(toolchain: "mid")) == 2
+    && occupancy_witness_ordinal_of(store: store, key: key_of(toolchain: "new")) == 3
+    && store.next_ordinal == 4
+    && (store.rows |> count) == 3
+    && store.budget == byte_size(count: 100)
+    && store_bytes_used(store: store) == 60
+}
+
+fn occupancy_witness_evicted_by_putting(store: ArtifactStore, toolchain: String, bytes: Int) -> List<ContentHash> {
+  store_put_evicted_keys(outcome: store_put(store: store, key: key_of(toolchain: toolchain), artifact_bytes: byte_size(count: bytes)))
+}
+
+// THE OBSERVED ORDER IS THE ORDER EVICTION CONSULTS: the same two entries listed in opposite orders
+// lose opposite victims to the same put. RED if construction ignored position (both orders would
+// evict the same key) or evicted the most recent.
+test fn occupancy_order_decides_the_eviction_victim() -> Bool {
+  let a_then_b = artifact_store_from_occupancy(ceiling: byte_size(count: 100), occupancy: [occupancy_witness_row(toolchain: "a", bytes: 40), occupancy_witness_row(toolchain: "b", bytes: 40)])
+  let b_then_a = artifact_store_from_occupancy(ceiling: byte_size(count: 100), occupancy: [occupancy_witness_row(toolchain: "b", bytes: 40), occupancy_witness_row(toolchain: "a", bytes: 40)])
+  occupancy_witness_evicted_by_putting(store: a_then_b, toolchain: "c", bytes: 40) == [key_of(toolchain: "a")]
+    && occupancy_witness_evicted_by_putting(store: b_then_a, toolchain: "c", bytes: 40) == [key_of(toolchain: "b")]
+}
+
+// A SERVE'S RECENCY TOUCH SURVIVES THE REBUILD: after a get bumps the least recent observed entry, the
+// next put evicts the other one. This is the hermetic half of the spec's wet witness (commit A and
+// B, touch A, add C: only B is evicted). RED if the constructed store's ordinals did not interleave
+// with store_get's (A would be evicted despite the touch).
+test fn a_touched_occupancy_row_survives_the_next_eviction() -> Bool {
+  let observed = artifact_store_from_occupancy(ceiling: byte_size(count: 100), occupancy: [occupancy_witness_row(toolchain: "a", bytes: 40), occupancy_witness_row(toolchain: "b", bytes: 40)])
+  let touched = match store_get(store: observed, key: key_of(toolchain: "a")) {
+    StoreHit { store: s, row: _ } => s
+    StoreMiss { store: s } => ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+  }
+  occupancy_witness_evicted_by_putting(store: touched, toolchain: "c", bytes: 40) == [key_of(toolchain: "b")]
+}
+
+// OVER-CEILING OCCUPANCY IS KEPT, NOT REPLAYED: 180 observed bytes under a 100-byte ceiling build a
+// store holding all three rows, and the ONE put that follows evicts least-recent rows until the store
+// is within the ceiling, every eviction counted in that put's receipt. RED under per-row replay: a
+// store_put per observed row would already have evicted a and b during construction, so the store
+// would hold one row and the put's receipt would count no eviction at all.
+test fn over_ceiling_occupancy_is_kept_until_the_one_put_evicts_it() -> Bool {
+  let store = artifact_store_from_occupancy(
+    ceiling: byte_size(count: 100),
+    occupancy: [occupancy_witness_row(toolchain: "a", bytes: 60), occupancy_witness_row(toolchain: "b", bytes: 60), occupancy_witness_row(toolchain: "c", bytes: 60)]
+  )
+  let kept_all = (store.rows |> count) == 3 && store_bytes_used(store: store) == 180
+  kept_all && store_put_fold(
+    outcome: store_put(store: store, key: key_of(toolchain: "d"), artifact_bytes: byte_size(count: 10)),
+    did_not_fit: (a, b) => false,
+    admitted: (packed, evicted) =>
+      evicted == [key_of(toolchain: "a"), key_of(toolchain: "b")]
+        && store_bytes_used(store: packed) == 70
+        && store_bytes_used(store: packed) <= measure_count(m: packed.budget)
+  )
+}
+
+// AN ARTIFACT LARGER THAN THE CEILING DOES NOT FIT, EVEN OVER AN OVER-CEILING STORE, AND EVICTS
+// NOTHING. RED if the put reached eviction before the fit test (it would have dropped observed rows
+// for an artifact that cannot be stored).
+test fn over_ceiling_occupancy_evicts_nothing_for_an_artifact_that_does_not_fit() -> Bool {
+  let store = artifact_store_from_occupancy(
+    ceiling: byte_size(count: 100),
+    occupancy: [occupancy_witness_row(toolchain: "a", bytes: 60), occupancy_witness_row(toolchain: "b", bytes: 60)]
+  )
+  let outcome = store_put(store: store, key: key_of(toolchain: "huge"), artifact_bytes: byte_size(count: 101))
+  store_put_fold(
+    outcome: outcome,
+    admitted: (s, e) => false,
+    did_not_fit: (a, b) => a == byte_size(count: 101) && b == byte_size(count: 100)
+  ) && store_put_evicted_keys(outcome: outcome) == []
 }

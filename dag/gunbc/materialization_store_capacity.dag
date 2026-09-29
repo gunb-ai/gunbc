@@ -1,0 +1,69 @@
+module gunbc.materialization_store_capacity
+
+import std.types { String }
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import std.materialization_store_grant {
+  MaterializationStoreRoot,
+  DurableHostVolumeRoot,
+  UserCacheRoot,
+  WitnessScratchRoot,
+  materialization_store_root_path,
+}
+
+// THE ONE HOME OF THE MATERIALIZATION STORE'S BYTE CEILING (M1.c, spec gunbc#12581 revision 3,
+// section 9.1 Q11; precedent gunbc.typed_module_cache_capacity). A store commit sizes its eviction
+// by this number, and a number that bounds eviction has to live in exactly one place: a second copy
+// in the commit, the catalog row or a receipt would let them disagree about which entries are
+// allowed to survive. Every other site asks materialization_store_byte_ceiling.
+//
+// THE UNIT IS APPARENT FILE BYTES of the manifests plus blobs -- the length a metadata read reports,
+// not allocated blocks. It bounds what the store puts on disk, and a census can total it from
+// metadata alone without decoding a manifest. The unit is carried in the field's own name
+// (StoreCeiling.apparent_file_bytes) so a consumer comparing a different measure against it has to
+// spell the wrong name.
+//
+// THE VALUE PER ROOT, and the one root that has none.
+//   UserCacheRoot         2 GiB initially: about 170 compilers at the ~12.4 MB executable U0
+//                         measured. An operator policy value, adjusted from the census line each
+//                         commit prints (spec section 7.2) -- that line, not this comment, is the
+//                         instrument, so no measured occupancy is transcribed here.
+//   WitnessScratchRoot    the fixture's own ceiling field, so a witness can drive eviction under a
+//                         ceiling it chose without a second ceiling authority existing for tests.
+//   DurableHostVolumeRoot NO CEILING IS DECLARED, and the answer is StoreCeilingUndeclared rather
+//                         than a number. The host volume is not attached to any runner yet
+//                         (std.materialization_store_grant's declared frontier), so its size is not
+//                         a fact anyone holds; a borrowed 2 GiB would be a fabricated policy for a
+//                         fleet store nobody has sized. A commit to that root therefore refuses on
+//                         this arm. This is a stated departure from the spec's signature
+//                         `materialization_store_byte_ceiling(root) -> StoreCeiling`, which names
+//                         only the user-cache and witness roots.
+//
+// StoreCeiling is sole_constructor: no consumer can mint a ceiling this module did not answer.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Today's consumer is test.claim.materialization_store_capacity_witness,
+// which executes every arm. The production consumers land in M1.c landing unit L5b -- the commit
+// (census, then std.artifact_store artifact_store_from_occupancy over this ceiling, then one
+// store_put) and the local store catalog's retention row, whose RuntimeDerivedLimit names this
+// function as its authority -- and in L8, whose store root is a UserCacheRoot. TRIGGER: L5b's
+// local_store_commit calls materialization_store_byte_ceiling.
+
+type StoreCeiling sole_constructor {
+  apparent_file_bytes: ByteSize
+}
+
+type StoreCeilingResolution
+  = StoreCeilingDeclared { ceiling: StoreCeiling }
+  | StoreCeilingUndeclared { root_path: String }
+
+data user_cache_root_byte_ceiling: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 2))
+
+fn materialization_store_byte_ceiling(root: MaterializationStoreRoot) -> StoreCeilingResolution {
+  match root {
+    UserCacheRoot { cache_home: _ } =>
+      StoreCeilingDeclared { ceiling: StoreCeiling { apparent_file_bytes: user_cache_root_byte_ceiling } }
+    WitnessScratchRoot { root: _, ceiling: fixture } =>
+      StoreCeilingDeclared { ceiling: StoreCeiling { apparent_file_bytes: fixture } }
+    DurableHostVolumeRoot =>
+      StoreCeilingUndeclared { root_path: materialization_store_root_path(root: root) }
+  }
+}

@@ -1,0 +1,137 @@
+module extdeps.freedesktop.xdg_base_directory
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE XDG BASE DIRECTORY SPECIFICATION, VERSION 0.8 (publication date 08 May 2021), AS THE ONE
+// AUTHORITY FOR WHERE A USER'S CACHE HOME IS. Before this module the corpus named no such authority
+// (`git grep XDG_CACHE_HOME -- '*.dag'` found only prose), so a per-user store root would have had
+// to take a path from its caller or restate the spec's rule at the call site.
+//
+// THE UPSTREAM'S OWN WORDS, section "Environment variables": "$XDG_CACHE_HOME defines the base
+// directory relative to which user-specific non-essential data files should be stored. If
+// $XDG_CACHE_HOME is either not set or empty, a default equal to $HOME/.cache should be used." And:
+// "All paths set in these environment variables must be absolute. If an implementation encounters a
+// relative path in any of these variables it should consider the path invalid and ignore it."
+// xdg_cache_home is exactly those three rules and nothing else; every arm of its result names which
+// rule decided it.
+//
+// WHAT THE SPEC DOES NOT SAY, AND WHAT THIS MODULE DOES THERE. The default is "$HOME/.cache", which
+// presumes a usable HOME; the spec does not say what an implementation does without one. Here an
+// unset, empty or relative HOME REFUSES (XdgCacheHomeRefused). It is never answered with a
+// substitute directory: a relative HOME would derive a relative base directory, which is the very
+// thing the spec calls invalid, and inventing a location (the working directory, /tmp) would put a
+// user's cache somewhere the spec never named. This is the one rule in this module that is not a
+// transcription, and it is stated as such.
+//
+// XdgCacheHome IS sole_constructor, so the only way to hold one is through xdg_cache_home: no
+// consumer can name a cache home the spec's rules did not select from the readings it was handed.
+// The readings themselves are supplied by the caller (they are the process environment, which only
+// a host can read); what is closed by construction is the RULE, not the observation.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Consumers today: std.materialization_store_grant
+// UserCacheRoot carries an XdgCacheHome and projects its store root through xdg_cache_path, and
+// test.claim.xdg_base_directory_witness executes every arm below. The production reader of the two
+// environment variables lands with M1.c's store root (landing unit L8: the route root reads
+// XDG_CACHE_HOME and HOME as observations and mints the root through this function), and the
+// spec's directory-creation rule ("create it with permission 0700 ... If the destination directory
+// exists already the permissions should not be changed", section "Referencing this specification")
+// lands with its only consumer, the store's first-use initialization in landing unit L5b. TRIGGER:
+// L8's route root calls xdg_cache_home with the process's own readings; L5b's first-use
+// initialization creates a missing root under this module's 0700 rule.
+//
+// READ 2026-09-29 by this session: the locator below answered HTTP 200 (the older spelling
+// basedir-spec/0.8/ answers 301 to it), and the three quotations above are read from it.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "specifications.freedesktop.org/basedir/0.8/"
+  }
+}
+
+data xdg_base_directory_specification_version: NonEmptyStr = "0.8"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.freedesktop.xdg_base_directory",
+      decl_name: "xdg_base_directory_specification_version",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type XdgCacheHome sole_constructor {
+  path: String
+}
+
+// What XDG_CACHE_HOME said when it did NOT decide the answer. Unset and empty are the spec's
+// "either not set or empty"; a relative value is its "invalid and ignore it". Three arms rather than
+// one, because a receipt that reports "the cache moved to $HOME/.cache" should say which of the
+// three sent it there -- a relative value the user thinks is honoured is the one worth naming.
+type XdgVariableStanding
+  = XdgVariableUnset
+  | XdgVariableEmpty
+  | XdgVariableRelativeIgnored { value: String }
+
+type XdgCacheHomeBasis
+  = CacheHomeFromVariable
+  | CacheHomeDefaultUnderHome { variable: XdgVariableStanding }
+
+type HomeUnusable
+  = HomeUnset
+  | HomeEmpty
+  | HomeNotAbsolute { value: String }
+
+type XdgCacheHomeResolution
+  = XdgCacheHomeResolved { cache_home: XdgCacheHome, basis: XdgCacheHomeBasis }
+  | XdgCacheHomeRefused { home: HomeUnusable, variable: XdgVariableStanding }
+
+data xdg_cache_home_default_relative_path: String = ".cache"
+
+// "relative to which ... files should be stored": the one join of a base directory and a relative
+// path, so a base that already ends in "/" (HOME=/ for root, or a trailing slash on the variable)
+// does not produce a doubled separator in one consumer and not in another.
+fn xdg_base_join(base: String, relative: String) -> String {
+  if base.ends_with(suffix: "/") { concat(base, relative) } else { concat(base, "/", relative) }
+}
+
+fn xdg_cache_path(cache_home: XdgCacheHome, relative: String) -> String {
+  xdg_base_join(base: cache_home.path, relative: relative)
+}
+
+fn xdg_cache_home(cache_variable: String?, home_variable: String?) -> XdgCacheHomeResolution {
+  match cache_variable {
+    Absent => xdg_cache_home_default(variable: XdgVariableUnset, home_variable: home_variable)
+    Present { value: v } =>
+      if v == "" {
+        xdg_cache_home_default(variable: XdgVariableEmpty, home_variable: home_variable)
+      } else if v.starts_with(prefix: "/") {
+        XdgCacheHomeResolved { cache_home: XdgCacheHome { path: v }, basis: CacheHomeFromVariable }
+      } else {
+        xdg_cache_home_default(variable: XdgVariableRelativeIgnored { value: v }, home_variable: home_variable)
+      }
+  }
+}
+
+fn xdg_cache_home_default(variable: XdgVariableStanding, home_variable: String?) -> XdgCacheHomeResolution {
+  match home_variable {
+    Absent => XdgCacheHomeRefused { home: HomeUnset, variable: variable }
+    Present { value: h } =>
+      if h == "" {
+        XdgCacheHomeRefused { home: HomeEmpty, variable: variable }
+      } else if h.starts_with(prefix: "/") {
+        XdgCacheHomeResolved {
+          cache_home: XdgCacheHome { path: xdg_base_join(base: h, relative: xdg_cache_home_default_relative_path) },
+          basis: CacheHomeDefaultUnderHome { variable: variable }
+        }
+      } else {
+        XdgCacheHomeRefused { home: HomeNotAbsolute { value: h }, variable: variable }
+      }
+  }
+}

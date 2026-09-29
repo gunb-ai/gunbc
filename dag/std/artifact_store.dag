@@ -198,6 +198,48 @@ fn store_from_limit(provider: CacheProvider, l: CapacityLimit) -> StoreConstruct
   }
 }
 
+// A STORE THAT ALREADY HAS CONTENTS, BUILT FROM WHAT IS ON DISK (M1.c, spec gunbc#12581 revision 3,
+// section 7.2). A persistent store's accounting does not survive the process: each commit re-reads
+// the entries that exist and must rebuild this fold's state from them before its one store_put.
+// The input is one row per stored entry, its key and its apparent file bytes, listed in RECENCY
+// ORDER, LEAST RECENTLY USED FIRST; row i (from 0) takes last_use_ordinal i + 1, and next_ordinal is
+// one past the last. So the order the census observed IS the order eviction will consult, and
+// least_recent_row picks the first row.
+//
+// NO PER-ROW REPLAY. Building the store by store_put-ing each observed row would re-run eviction
+// while merely READING the disk: a lowered ceiling would silently drop entries during construction,
+// and those evictions would appear in no receipt, because a put's receipt belongs to the put that
+// made it. Here construction decides nothing. Every observed row is kept, even when the total
+// already exceeds the ceiling (the operator lowered it, for instance), and the ONE
+// store_put the commit then makes packs the store back within the ceiling by its ordinary
+// least-recent eviction, with every eviction counted in that put's receipt. An artifact larger than
+// the whole ceiling is StorePutDidNotFit before anything is evicted, over-ceiling occupancy included.
+//
+// KEY UNIQUENESS IS THE CENSUS'S. A stored entry is named by its key, so a directory listing yields
+// each key once; this fold does not re-check it.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Today's consumer is test.claim.artifact_store_witness. The
+// production consumer is the local store commit in M1.c landing unit L5b
+// (extdeps.realization.materialization_store_local: census, reclaim dead classes,
+// artifact_store_from_occupancy over gunbc.materialization_store_capacity's ceiling, one store_put).
+// TRIGGER: L5b's local_store_commit calls artifact_store_from_occupancy.
+type ArtifactOccupancyRow {
+  key: ContentHash
+  artifact_bytes: ByteSize
+}
+
+fn artifact_store_from_occupancy(ceiling: ByteSize, occupancy: List<ArtifactOccupancyRow>) -> ArtifactStore {
+  ArtifactStore {
+    budget: ceiling,
+    next_ordinal: (occupancy |> count) + 1,
+    rows: enumerate(occupancy) |> map(pair => ArtifactRow {
+      key: pair.second.key,
+      artifact_bytes: pair.second.artifact_bytes,
+      last_use_ordinal: pair.first + 1
+    })
+  }
+}
+
 type StoreLookup
   = StoreHit { store: ArtifactStore, row: ArtifactRow }
   | StoreMiss { store: ArtifactStore }

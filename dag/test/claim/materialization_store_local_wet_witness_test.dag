@@ -4,6 +4,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
+import std.measure { ByteSize, byte_size }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, ArtifactManifest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
@@ -52,6 +53,11 @@ import extdeps.realization.materialization_store_local {
 // executed at the primitive by v1_interpreter write_file_create_new_tests
 // concurrent_same_target_creates_produce_one_winner_and_no_residue, which also pins every loser to
 // the already_exists channel value.
+
+// The byte ceiling a WitnessScratchRoot carries (gunbc.materialization_store_capacity returns it for
+// the root). No control in this file commits under capacity pressure, so it is only a fixture value,
+// sized far above anything these controls write.
+data wet_witness_store_ceiling: ByteSize = byte_size(count: 1048576)
 
 fn h(v: String) -> Fnv1a64Structural {
   content_hash_atom(value: v as NonEmptyStr)
@@ -130,7 +136,7 @@ fn opened(root: MaterializationStoreRoot) -> OpenedMaterializationStore? {
 // commit + exact read-back; a fresh read of the committed name serves the same bytes.
 test fn commit_then_read_back_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
@@ -150,7 +156,7 @@ test fn commit_then_read_back_by_real_execution() -> Bool {
 // corruption -> integrity refusal, and the refusal is not a miss (nothing may recompute past it).
 test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
@@ -172,7 +178,7 @@ test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
 // name is evaluation_preimage_mismatch (dry: a_foreign_object_refuses_as_evaluation_preimage_mismatch).
 test fn wrong_kind_refuses_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let lookup = bundle_req(module: "a")
   let universe = prepared_object(req: universe_req(), payloads: universe_payloads())
   let forged = replace(universe, evaluation_preimage_wire(req: universe_req()), evaluation_preimage_wire(req: lookup))
@@ -194,7 +200,7 @@ test fn wrong_kind_refuses_by_real_execution() -> Bool {
 // rather than substring-filtering a complete object (that also deletes the result_preimage header).
 test fn incomplete_refuses_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
@@ -229,7 +235,7 @@ test fn incomplete_refuses_by_real_execution() -> Bool {
 // the one verified content.
 test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
@@ -254,7 +260,7 @@ test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() 
 // artifact is untouched and is what every reader gets.
 test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
@@ -276,7 +282,7 @@ test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_executio
 // nothing is answered as a miss, and nothing is written anywhere to stand in for it.
 test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let open_refused = match local_store_open(root: root) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c {
       LocalStoreNotInitialized { marker_path: _ } => true
@@ -288,7 +294,7 @@ test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() ->
     LocalStoreBatchUnavailable { root_path: _, cause: _ } => true
     LocalStoreBatchLooked { store: _, lookups: _ } => false
   }
-  let ungranted = match local_store_open(root: WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root" }) {
+  let ungranted = match local_store_open(root: WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root", ceiling: wet_witness_store_ceiling }) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c {
       LocalStoreGrantRefused { verb: _, target: _, frame: _ } => true
       _ => false
@@ -304,7 +310,7 @@ test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() ->
 // batch: one open, one exact read per request -- a committed request hits, an uncommitted one misses.
 test fn a_batch_answers_each_request_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
-  let root = WitnessScratchRoot { root: root_path }
+  let root = WitnessScratchRoot { root: root_path, ceiling: wet_witness_store_ceiling }
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
