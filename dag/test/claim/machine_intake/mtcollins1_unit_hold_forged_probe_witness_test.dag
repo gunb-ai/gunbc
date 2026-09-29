@@ -18,7 +18,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // callers; this witness hands that source to the compiler through the diagnostic-census harness and
 // requires the refusal CLASS at each SUBJECT by name -- an identity join, so a probe refusing for any
 // other reason measures another wall. The harness control shows the census ran.
-
 data probe_dir: String = "dag/test/probe/"
 
 fn probe_source(name: String) -> String {
@@ -75,6 +74,8 @@ test fn a_forged_unit_hold_proof_is_refused_at_the_literal() -> Bool {
 test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_drive_handoff") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_handoff_when_media_ready") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_observe_presentation") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_attach_diskless_image") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_boot_handoff") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_power_action_after_confirmed_selection") >= 1
@@ -90,4 +91,17 @@ test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool 
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_actuate") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "unit_hold_acquire") >= 1
+}
+
+// THE HOLD'S OBSERVATIONS ARE ORDERED BEFORE ITS RELEASE BY CONSTRUCTION (side chat on gunbc#12263,
+// review 5326689644). Boot parameter 5 before and after and the final power reading are sealed to
+// mtcollins1_boot_actuate, which returns -- carrying all three frozen in its record -- before
+// mtcollins1_boot_under_live_unit_hold applies unit_hold_release to the same proof. So none of them
+// can be taken after the release: each outside call below is refused at compile time.
+test fn the_hold_observations_cannot_be_taken_outside_the_actuation() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_param5_under_hold") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_power_after_poll") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_param5") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_chassis_power") >= 1
 }

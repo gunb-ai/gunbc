@@ -13,13 +13,8 @@ import extdeps.systemd.unit_file {
   slice_cpu_quota_unbounded,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  gunbc_runner_slot_desired_for,
-  RunnerSlotCpuQuota,
-  CpuQuotaResolved,
-  SlotCpuQuotaUnbounded,
-}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired_for }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.membership_reconcile {
   MemberAction,
   MemberAdded,

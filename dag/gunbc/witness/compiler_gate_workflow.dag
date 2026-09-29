@@ -25,6 +25,7 @@ module gunbc.compiler_gate_workflow
 // reused across runs, or preparation scoped to a diff's closure) and its runtime fits the fleet;
 // then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
 
+import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
@@ -79,6 +80,8 @@ import gunbc.witness_floor_workflow {
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
+  hosted_runner_memory_cgroup_bind_commands,
+  hosted_arm_runner_cgroup_memory_max,
   gunbc_ci_generated_artifact_verify_invoke,
   gunbc_ci_generated_artifact_regen_verified_invoke,
   gunbc_ci_heal_repair_declaration_invoke,
@@ -95,7 +98,7 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -193,6 +196,75 @@ fn compiler_gate_bound_steps() -> List<CompilerGateBoundStep> {
 data compiler_gate_clippy_job_id: String = "clippy"
 data compiler_gate_clippy_step_name: String = "Lint every target"
 
+// THE v1 UNIT TESTS RUN HERE, AFTER THE LINT (operator ruling 2026-09-27). That ruling orders ONE
+// wall-time measurement on this runner BEFORE the step is required, so it lands NON-REQUIRED
+// (continue_on_error) under its own job timeout long enough to complete once. The first run was
+// cancelled at the shared 45-minute cap (the first run on PR #12450), and
+// tests were red on main -- the harm gunbc.rung_drop rust_unit_tests_off_the_merge_path records. That drop stays
+// Standing until the population is green and the complete wall is measured; then this step turns
+// required and the drop retires in the same change. It is a STEP on the hosted lane, so it adds no
+// job to the closed roster and claims no fleet slot.
+//
+// THE BOUND IS REAL, NOT DECLARED. The regeneration-host tests read their budget through
+// gunbc.host_budget_source and refuse HostBudgetUnreadable where no cgroup binds the process, which
+// is every hosted runner. GUNBC_MEMORY_BUDGET_BYTES would be the escape hatch that refusal exists to
+// refuse, so the step's shell moves itself into a leaf with memory.max set -- the same bind the heal
+// publisher performs, at the one hosted-runner bound gunbc.ci_spec hosted_arm_runner_cgroup_memory_max
+// -- and cargo, and every test binary it starts, inherits it.
+data compiler_gate_unit_test_step_name: String = "Run the v1 unit tests"
+data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
+data compiler_gate_unit_test_cgroup_name: String = "gunbc-unit-tests"
+// THE UNIT STEP CARRIES ITS OWN CAP, AND THE JOB CAP IS DERIVED FROM IT. continue_on_error covers a
+// step FAILURE, not a JOB timeout: with the step uncapped, a slow unit run consumed the whole job cap,
+// GitHub cancelled the clippy job inside the non-required step, and the required witnesses aggregate
+// failed on it (merge_group run 36431733521). A step-level timeout expires as a step failure, which
+// continue_on_error does cover, so the job's conclusion no longer depends on the unit step's wall.
+// The job cap is the sum of the step cap and a reserve for everything before it, so the step ends
+// inside the job by construction rather than by two literals agreeing. Both are sized from the
+// clippy job records of witnesses runs 36424259908 and 36434277095 (completed unit walls) and
+// 36431733521 (a unit wall past the job cap), re-read there rather than copied here; they are
+// re-derived when the step turns required or the live-tree tests are reshaped.
+fn compiler_gate_unit_test_timeout() -> Minute {
+  minute(count: 50)
+}
+
+// Checkout, toolchain install and the lint run before the unit step; their measured sum is a small
+// fraction of this reserve.
+fn compiler_gate_clippy_pre_unit_reserve() -> Minute {
+  minute(count: 10)
+}
+
+fn compiler_gate_clippy_timeout() -> Minute {
+  minute(count: minute_count(compiler_gate_unit_test_timeout()) + minute_count(compiler_gate_clippy_pre_unit_reserve()))
+}
+
+fn compiler_gate_unit_test_command() -> String {
+  join(
+    list_append(
+      hosted_runner_memory_cgroup_bind_commands(
+        cgroup_name: compiler_gate_unit_test_cgroup_name,
+        memory_max: hosted_arm_runner_cgroup_memory_max(),
+      ),
+      [repo_self_test_command()],
+    ),
+    "; "
+  )
+}
+
+fn compiler_gate_unit_test_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_unit_test_step_name },
+    id: Present { value: compiler_gate_unit_test_step_id },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: compiler_gate_unit_test_command()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: Present { value: true },
+    timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_timeout()) }
+  }
+}
+
 fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
   [
     CompilerGateBoundStep {
@@ -223,6 +295,11 @@ fn compiler_gate_clippy_bound_steps() -> List<CompilerGateBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: compiler_gate_clippy_step_name,
     },
+    CompilerGateBoundStep {
+      step: compiler_gate_unit_test_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_unit_test_step_name,
+    },
   ]
 }
 
@@ -248,7 +325,7 @@ fn compiler_gate_clippy_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: Present { value: compiler_gate_timeout_minutes },
+    timeout_minutes: Present { value: minute_count(compiler_gate_clippy_timeout()) },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: compiler_gate_permissions }
@@ -388,7 +465,7 @@ fn compiler_gate_floor_run_step() -> Step {
 }
 
 // THE STEP NAME STATES ITS POPULATION, AND THE POPULATION IS NARROWER THAN "GENERATED ARTIFACTS".
-// generated_artifact_gate main reads gunbc.generated_artifact committed_generated_artifacts only. The
+// generated_artifact_gate main reads gunbc.generated_artifact_registry committed_generated_artifacts only. The
 // ~157 stage0 mirrors (src/v1/stage0/src/std_measure.rs and the rest of the compile_stage0 emitted
 // population) are adjudicated by claim_executor's GeneratedArtifact phase, which routes to
 // --required-lane build, and no job has invoked that lane since #11742. The earlier name,
@@ -397,10 +474,29 @@ fn compiler_gate_floor_run_step() -> Step {
 // gunbc.rung_drop.witness_floor_off_the_required_gate. Row:
 // gunbc.recurring_failure_mode.generated_population_split_across_two_unjoined_rosters.
 //
-// WHERE THE STAGE0 PHASES MAY RUN, measured rather than assumed: this job's floor process already
-// peaks AT its slot's memory.high (run 35716368507: peak 26847006720 against high 26843545600,
-// high events 1109), and the generated-artifact pass peaks near 12.9 GiB. They fit only as a
-// SEPARATE process in a later step, after the floor exits -- never inside the floor's invocation.
+// WHERE THE STAGE0 PHASES MAY RUN, measured rather than assumed: the floor process peaks AT its
+// slot's memory.high (run 35716368507: peak 26847006720 against high 26843545600, high events
+// 1109), and the generated-artifact pass peaks near 12.9 GiB. They never share one process, and
+// since the 2026-09-27 ruling they do not share one slot either: this step and the stage0 step run
+// on compiler_gate_generated_job, beside the floor rather than after it.
+//
+// NOT ON THE MERGE QUEUE, because there the build lane already answers this step's question. The
+// lane's GeneratedArtifact phase adjudicates the same gunbc.generated_artifact registry
+// (committed_generated_artifacts, read through the seed's boundary host) beside the stage0 mirrors,
+// so running this step on merge_group would be a second verdict on one population at one revision
+// (DESIGN section 2), paid serially in front of the lane. It runs on pull_request and
+// workflow_dispatch, where the build lane does not, and the repair chain stays bound to it because
+// a repair candidate describes a pull request head.
+fn compiler_gate_drift_condition() -> String {
+  concat(
+    witness_step_status_guard(),
+    concat(
+      concat("github.event_name != '", concat(github_event_name_merge_group, "' && ")),
+      "steps.build_witness_fold.outcome == 'success'"
+    )
+  )
+}
+
 fn compiler_gate_drift_step() -> Step {
   RunStep {
     name: Present { value: "Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here" },
@@ -409,7 +505,7 @@ fn compiler_gate_drift_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: Present { value: concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'") },
+    if_condition: Present { value: compiler_gate_drift_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -431,12 +527,13 @@ fn compiler_gate_drift_step() -> Step {
 // whole lane, both generations, took 22.5 min, and the floor job ~58 min against
 // compiler_gate_floor_timeout_minutes.
 //
-// A STEP ON THIS JOB, NOT A NEW JOB. The floor lane already checks out and builds claim_executor
-// from this tree; a separate job would pay that prelude again on every queued landing.
-//
-// A SEPARATE PROCESS AFTER THE FLOOR EXITS, which is the measured constraint rather than a
-// preference: the floor process peaks at its slot's memory.high (run 35716368507) and the stage0
-// pass near 12.9 GiB, so the two fit sequentially and never additively.
+// A STEP ON ITS OWN JOB, BESIDE THE FLOOR -- operator ruling 2026-09-27, which supersedes the
+// earlier "a step on this job, not a new job" placement. That placement saved one checkout and
+// build per queued landing and paid for it in latency: the lane ran after the witnesses fold and
+// the drift gate, so a landing waited for the SUM of three independent verdicts (see
+// compiler_gate_generated_job). The measured memory constraint -- the floor process peaks at its
+// slot's memory.high (run 35716368507) and the stage0 pass near 12.9 GiB, so the two never fit
+// additively -- is met by a separate slot as fully as by a later step.
 //
 // MERGE_GROUP ONLY BECAUSE A PULL REQUEST DOES NOT LAND. The queue's run judges the sha that
 // becomes main; the price is that an author learns of drift at queue time. `!cancelled()` rather
@@ -576,7 +673,21 @@ fn compiler_gate_candidate_upload_step() -> Step {
 }
 
 fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
-  concat([
+  concat(compiler_gate_fleet_prelude_bound_steps(), concat([
+    CompilerGateBoundStep {
+      step: compiler_gate_floor_run_step(),
+      role: consumes_only(capabilities: [RustfmtCapability]),
+      step_name: "Nominal witnesses (one prepared subject, one fold)",
+    },
+  ], compiler_gate_floor_measurement_bound_steps()))
+}
+
+// THE PRELUDE BOTH FLEET JOBS NEED, ONE LIST RATHER THAN TWO COPIES: the head checkout, isolated
+// toolchain homes, a pinned default, and claim_executor plus gunbc built from the judged tree. The
+// build step keeps its id, build_witness_fold, in both jobs because every downstream condition in
+// each job reads that id; step ids are per job, so the two never collide.
+fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
+  [
     CompilerGateBoundStep {
       step: compiler_gate_floor_checkout_step(),
       role: capability_neutral,
@@ -610,12 +721,11 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
       role: capability_neutral,
       step_name: "Require isolated toolchain homes",
     },
-    CompilerGateBoundStep {
-      step: compiler_gate_floor_run_step(),
-      role: consumes_only(capabilities: [RustfmtCapability]),
-      step_name: "Nominal witnesses (one prepared subject, one fold)",
-    },
-  ], concat(compiler_gate_floor_measurement_bound_steps(), [
+  ]
+}
+
+fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(compiler_gate_fleet_prelude_bound_steps(), [
     CompilerGateBoundStep {
       step: compiler_gate_drift_step(),
       role: capability_neutral,
@@ -646,7 +756,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
       role: capability_neutral,
       step_name: "Upload the sealed repair candidate",
     },
-  ]))
+  ])
 }
 
 // THE RECEIPT'S THREE CONSUMERS, TAKEN FROM THE ONE AUTHORITY THAT DECLARES THEM. D0-MEASURE seals
@@ -697,6 +807,61 @@ fn compiler_gate_floor_job() -> Job {
         kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
         kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path)),
         kv(key: "GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND", value: yaml_string(s: required_floor_cross_claim_demand_path))
+      ]
+    },
+    outputs: none,
+    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    timeout_minutes: Present { value: compiler_gate_floor_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: compiler_gate_permissions }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE GENERATED-ARTIFACT LANE: A JOB BESIDE THE FLOOR, NOT STEPS AFTER IT.
+//
+// OPERATOR RULING 2026-09-27, which grows the closed roster by exactly this one job. Its steps used
+// to run on the floor job after the witnesses fold exited, so a run waited for the SUM of three
+// verdicts that do not read one another -- the witnesses fold, the registry drift gate and, on the
+// merge queue, the stage0 build lane. Merge-queue run 36339106604 is the receipt: those three steps
+// took 46, 9 and 29 minutes in series, and the job 87. On its own slot the lane runs concurrently
+// with the floor, the memory constraint that kept the passes apart is met by placement (each
+// process has a slot to itself), and a run waits for the longer lane instead of the total.
+//
+// THE PRICE IS ONE MORE CHECKOUT AND SEED BUILD PER RUN, on the fleet, which is why the roster
+// needed a ruling rather than an edit. The total work is otherwise the same steps; the merge-queue
+// drift step is removed rather than moved (compiler_gate_drift_condition), so a queued landing runs
+// one generated-artifact adjudication instead of two.
+//
+// FORK CODE DOES NOT RUN HERE EITHER, and the guard is the floor's own condition, not a second
+// spelling of it: both jobs check out the judged head on a persistent self-hosted runner.
+data compiler_gate_generated_job_id: String = "generated"
+
+fn compiler_gate_generated_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: compiler_gate_generated_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+// THE TIMEOUT IS THE FLOOR'S BOUND, one authority for how long a fleet lane may hold a slot, not a
+// second literal: this lane's measured wall is well under it on both events.
+fn compiler_gate_generated_job() -> Job {
+  Job {
+    id: compiler_gate_generated_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
+    steps: list_map(xs: compiler_gate_generated_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: Present {
+      value: [
+        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
       ]
     },
     outputs: none,
@@ -1143,6 +1308,15 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
         unobserved_error: "the fleet lane produced no success"
       }
     },
+    CompilerGateLaneRow {
+      job_id: compiler_gate_generated_job_id,
+      var_name: "GENERATED",
+      standing: LaneBlocks,
+      arm: GateArmSkippableOnFork {
+        notice: "the generated-artifact lane is skipped for a fork pull request: no generated-artifact verdict for this head",
+        unobserved_error: "the generated-artifact lane produced no success"
+      }
+    },
   ]
 }
 
@@ -1244,7 +1418,7 @@ data compiler_gate_workflow: Workflow = Workflow {
     kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_aggregate_job()]
+  jobs: [compiler_gate_job(), compiler_gate_clippy_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a floor script is not renderable, or the workflow runs a job that compiler_gate_lane_rows does not roster. No workflow yaml was emitted. Fix the step roles in the lane's bound steps, or add the job's row. The gate's needs, env bindings and every conditional are FOLDED from that roster, so they cannot disagree with it and this refusal has nothing to say about them."
@@ -1258,7 +1432,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() {
+          if compiler_gate_capability_closure_holds() && compiler_gate_clippy_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }

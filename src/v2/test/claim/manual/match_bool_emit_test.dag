@@ -20,11 +20,8 @@ import v2.extdeps.languages.dag {
   dag_pick_arrow_domain_conj_node
 }
 import v2.compiler.source_authority { source_authority_node_equal }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  target_serialize_source_from_model,
-  translate_emitted_node
-}
+import v2.compiler.translate { coerce_grounded_node, translate_emitted_node }
+import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.collection {
   Map,
   list_at_optional

@@ -2,6 +2,10 @@ module tools.self_host_module_behavioral_transport_roster
 
 import tools.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedClaimRun,
+  CsslReceiptOutcome,
+  CsslBehaviorHeld,
+  CsslBehaviorDiverged,
+  CsslSetupRefused,
   cssl_seed_linked_behavioral_receipt
 }
 import v2.std.algebra { fold_list }
@@ -18,6 +22,7 @@ import v2.std.optional {
 import v2.std.logic { Bool }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,
+  EvidenceSubjectUnreached,
   EvidenceSubjectCompleted,
   SubjectEvidence,
   subject_evidence_establishes
@@ -29,8 +34,8 @@ import v2.std.text { String }
 // (compiler_module_behavioral_receipt_for) replacing the 16 hand-authored
 // tools.self_host_<mod>_behavioral_transport.dag files this roster supersedes (00_compile,
 // 01_tokenize, 02_parse, 03_body_producer, 03_ingest, 03_normalize, 03_resolve, 04_infer,
-// 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks,
-// program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data
+// 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks
+// (since deleted with its module), program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data
 // only (module path, driver path, pass marker, supplementary claim-runs); the hand shim paths the
 // rows once carried are deleted with the fields that held them (see
 // gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module), so every row links the whole
@@ -138,17 +143,6 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
-    module_path: "src/v2/compiler/parse_engine_hooks.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_parse_engine_hooks_shims/witness_main.rs",
-    pass_marker: "SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS",
-    claim_runs: [
-      CuratedSeedLinkedClaimRun {
-        entry_rel: "src/v2/test/claim/parse_engine_hooks_test.dag",
-        function: "parse_engine_hooks_symbols_match_grammar_productions"
-      }
-    ]
-  },
-  ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_assembly.dag",
     driver_rel: "dag/gunbc/instruments/self_host_program_assembly_shims/witness_main.rs",
     pass_marker: "SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS",
@@ -220,22 +214,22 @@ fn module_behavioral_transport_config_for(module_path: String) -> Optional<Modul
 // long as it did: refusing to fabricate a PASS is necessary and says nothing about whether the false
 // it returns instead is readable. Fail-closed and unaliased are different properties.
 //
-// WHAT THIS DOES NOT REPAIR, stated because the variant name would otherwise imply it. Inside the
-// Completed arm the outcome is still derived from cssl_seed_linked_behavioral_receipt's own Bool, and
-// that Bool has its own aliasing -- notably a planted-fault arm established by an exit status. That
-// repair belongs to the lane already holding it and is deliberately not duplicated here; this change
-// closes the arm ABOVE it without touching its signature.
+// THE COMPLETED ARM NO LONGER ALIASES A SETUP FAILURE AS A DIVERGENCE. cssl_seed_linked_behavioral_receipt
+// answers a typed CsslReceiptOutcome: a step that did not produce what the drive needs (a missing or
+// unbuilt witness artifact, a failed emit or cargo build) is EvidenceSubjectUnreached with the located
+// step, never BehavioralReceiptRefuted -- which is reserved for a drive that RAN and did not hold.
 type CompilerModuleReceiptNoVerdict
   = BehavioralTransportConfigAbsent { module_path: String }
+  | BehavioralReceiptSetupRefused { module_path: String, step: String }
 
 type CompilerModuleReceiptOutcome
   = BehavioralReceiptHeld
-  | BehavioralReceiptRefuted
+  | BehavioralReceiptRefuted { observed: String }
 
 fn compiler_module_receipt_outcome_licenses(outcome: CompilerModuleReceiptOutcome) -> Bool {
   match outcome {
     BehavioralReceiptHeld => true
-    BehavioralReceiptRefuted => false
+    BehavioralReceiptRefuted { observed: _ } => false
   }
 }
 
@@ -243,16 +237,16 @@ fn compiler_module_behavioral_receipt_evidence(
   module_path: String
 ) -> SubjectEvidence<CompilerModuleReceiptNoVerdict, CompilerModuleReceiptOutcome> {
   match module_behavioral_transport_config_for(module_path: module_path) {
-    Present { value: cfg } => EvidenceSubjectCompleted {
-      outcome: if cssl_seed_linked_behavioral_receipt(
-        source_rel: cfg.module_path,
-        driver_rel: cfg.driver_rel,
-        pass_marker: cfg.pass_marker,
-        claim_runs: cfg.claim_runs
-      ) {
-        BehavioralReceiptHeld
-      } else {
-        BehavioralReceiptRefuted
+    Present { value: cfg } => match cssl_seed_linked_behavioral_receipt(
+      source_rel: cfg.module_path,
+      driver_rel: cfg.driver_rel,
+      pass_marker: cfg.pass_marker,
+      claim_runs: cfg.claim_runs
+    ) {
+      CsslBehaviorHeld => EvidenceSubjectCompleted { outcome: BehavioralReceiptHeld }
+      CsslBehaviorDiverged { observed } => EvidenceSubjectCompleted { outcome: BehavioralReceiptRefuted { observed: observed } }
+      CsslSetupRefused { step: refused_step } => EvidenceSubjectUnreached {
+        cause: BehavioralReceiptSetupRefused { module_path: cfg.module_path, step: refused_step }
       }
     }
     Absent => EvidenceInstrumentRefused {
