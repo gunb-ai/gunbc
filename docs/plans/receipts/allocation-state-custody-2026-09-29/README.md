@@ -39,3 +39,12 @@ Further bounded checks used the existing typed-module cache cap of one and
 generator (1822 original modules plus a harness) ended with systemd
 `Result=oom-kill`, before results. These were still 6 GiB/no swap; no further
 identical local retry is planned. The integrated CI run uses its existing budget.
+
+CI run 36512302394 passed floor, compiler, clippy and emit-build; generated
+projection drift remained. PR run 36513776136 regenerated and verified the
+workflow successfully. Its repair artifact intentionally excludes workflow files.
+The emitted YAML was therefore read from that exact unchanged CI source checkout
+over the modeled srv3 access path, checking HEAD before and after and requiring
+an empty dag/src/v2 diff. Only the credential dropdown changes. The emitted bytes
+and their provenance are now retained; the updated branch still needs its checks.
+No credential installation was performed.
