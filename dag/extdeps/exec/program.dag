@@ -151,6 +151,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
+    decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
