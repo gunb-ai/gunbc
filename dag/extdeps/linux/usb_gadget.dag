@@ -230,40 +230,27 @@ fn configfs_name_verdict(name: NonEmptyStr) -> ConfigfsNameVerdict {
   }
 }
 
-// ---- THE SEALED GADGET NAME (review at 51c4ca9e3e, blocker 2) ----
+// ---- THE SEALED GADGET NAME (review at 51c4ca9e3e, blocker 2; review 72848, finding 2) ----
 
 // `usb_gadget_dir` is derived by JOINING the gadget's name under the class root, so a gadget
 // named `a/b` would define its own containment boundary: every path staged against it carries
 // the `<mount>/usb_gadget/a/b/` prefix and self-validates as inside a gadget directory the name
-// itself redefined. A bare `NonEmptyStr` cannot carry the "one segment" fact -- the fact has to
-// be minted before any path is derived, so the name field carries `UsbGadgetName`, whose
-// construction is confined to this file: the only in-file mints are the verdict's well-formed
-// arm (for names authored at runtime) and the named data row below (for the estate's constant).
-// Every module outside this one receives a name already proven to be one segment; the proof is
-// the field's type, not a guard a caller can forget, and no `UsbGadget` reaching staging can
-// carry an unvalidated name because no unvalidated spelling constructs the carrier at all.
+// itself redefined. A bare `NonEmptyStr` cannot carry the "one segment" fact, so the name field
+// carries `UsbGadgetName`, whose construction is confined to this file. THE ENFORCEMENT IS THE
+// SEAL, stated plainly (review 72848, finding 2): a name outside this module can only be one
+// constructed here, and the only construction here is the authored estate constant below. There
+// is no runtime name verdict beside the seal, because a check nothing on the production path
+// calls is decoration, and a mint that cannot refuse -- this language has no bottom, so a
+// carrier-producing fn over a two-arm verdict needs an impossible fallback -- would duplicate
+// `configfs_name_verdict`'s law in a second copy. The segment law for names lives in exactly one
+// place, `configfs_name_verdict`, gating link and configuration names; the gadget's name is one
+// segment by this file's reviewed authorship, and the shell witness's cross-module probe proves
+// the boundary: authoring the carrier around `a/b` from outside is a compile-time refusal.
 type UsbGadgetName sole_constructor { segment: NonEmptyStr }
 
-type UsbGadgetNameVerdict
-  = UsbGadgetNameWellFormed { name: UsbGadgetName }
-  | UsbGadgetNameNotASegment { name: NonEmptyStr }
-
-// The same segment law `configfs_name_verdict` applies to link and configuration names, applied
-// to the gadget's own name: not empty, no `/`, not a dot segment, no leading dot. The empty
-// spelling is refused one rung earlier still, by the type checker, which declines to author it
-// as a NonEmptyStr at all.
-fn usb_gadget_name_verdict(name: NonEmptyStr) -> UsbGadgetNameVerdict {
-  let n = name as String
-  if n == "" || string_contains(s: n, pattern: "/") || n == "." || n == ".." || starts_with(s: n, prefix: ".") {
-    UsbGadgetNameNotASegment { name: name }
-  } else {
-    UsbGadgetNameWellFormed { name: UsbGadgetName { segment: name } }
-  }
-}
-
-// THE ESTATE'S GADGET NAME, minted here where construction is confined (review at 51c4ca9e3e,
-// blocker 2): consumers import the value instead of authoring the spelling, so the constant's
-// well-formedness is established once, at the module that owns the segment law.
+// THE ESTATE'S GADGET NAME, authored here -- directly, where the segment law lives and where
+// alone the carrier can be constructed (review 72848, finding 2). Consumers import the value
+// instead of authoring the spelling.
 data gunbcvm_gadget_name: UsbGadgetName = UsbGadgetName { segment: "gunbcvm" }
 
 // THE VALIDATED SEMANTIC OPERATIONS staging returns: the same five operations with their paths

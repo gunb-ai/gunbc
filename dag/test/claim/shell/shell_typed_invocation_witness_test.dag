@@ -24,14 +24,10 @@ import extdeps.linux.usb_gadget {
   ConfigfsNameVerdict,
   ConfigfsNameWellFormed,
   ConfigfsNameNotASegment,
-  UsbGadgetNameVerdict,
-  UsbGadgetNameWellFormed,
-  UsbGadgetNameNotASegment,
   gunbcvm_gadget_name,
   configfs_staging_of,
   configfs_path_verdict,
   configfs_name_verdict,
-  usb_gadget_name_verdict,
   usb_gadget_dir,
   usb_gadget_setup_ops,
   usb_gadget_teardown_ops,
@@ -397,43 +393,19 @@ test fn usb_gadget_teardown_walks_detach_unlink_then_five_rmdirs_inside_the_gadg
     })) == 1
 }
 
-// ---- THE SEALED GADGET NAME (review at 51c4ca9e3e, blocker 2) ----
-
-// RED, by argument: a gadget name carrying a slash is not one segment, and neither is a dot
-// segment -- the verdict refuses both with the same law `configfs_name_verdict` applies to link
-// names. POSITIVE, by argument and by fixture: the estate's single-segment spelling passes the
-// verdict and is the same value the authority mints as the estate constant, so the fixture's
-// name and the verdict's well-formed arm agree on one spelling. The empty spelling is refused
-// one rung earlier still, by the type checker, which declines to author it as a NonEmptyStr at
-// all (the same fact the link-name guard test records).
-test fn gadget_name_must_be_a_single_well_formed_segment() -> Bool {
-  let slash = usb_gadget_name_verdict(name: "a/b")
-  let dotdot = usb_gadget_name_verdict(name: "..")
-  let good = usb_gadget_name_verdict(name: "gunbcvm")
-  match slash {
-    UsbGadgetNameNotASegment { name: _ } =>
-      match dotdot {
-        UsbGadgetNameNotASegment { name: _ } =>
-          match good {
-            UsbGadgetNameWellFormed { name: w } =>
-              (w.segment as String) == "gunbcvm"
-                && (gunbcvm_gadget_name.segment as String) == "gunbcvm"
-            UsbGadgetNameNotASegment { name: _ } => false
-          }
-        UsbGadgetNameWellFormed { name: _ } => false
-      }
-    UsbGadgetNameWellFormed { name: _ } => false
-  }
-}
-
-// ---- CROSS-MODULE NEGATIVE CONTROLS (review at 51c4ca9e3e, blockers 1 and 2) ----
+// ---- CROSS-MODULE NEGATIVE CONTROLS (review at 51c4ca9e3e, blockers 1 and 2; review 72848) ----
 
 // The typed tests above prove the honest route works; they do not prove the bypass is
 // unwritable. These probes compile FOREIGN module sources through the guarantee probe corpus --
 // the same harness dag/test/claim/operation_admit_callers_inert_witness_test.dag uses -- and
 // assert the compiler refuses the hand-authored construction. The sources are compiled as DATA,
 // not as modules of this tree: a bypass that resolved would refuse inside the probe's own
-// compilation, never in this file.
+// compilation, never in this file. PROBE 2 IS ALSO THE GADGET-NAME RED (review at 51c4ca9e3e,
+// blocker 2): the sealed carrier constructed around the slash spelling from outside is a
+// SoleConstructorViolation, which is the whole enforcement surface the seal claims -- there is
+// no runtime name verdict beside it (review 72848, finding 2), and the ordinary-name positive is
+// the estate constant itself, authored inside the authority module, staging READY in every typed
+// test above.
 
 // PROBE 1, the exact spelling the review sketched: a foreign module authors the prepared link
 // by hand -- public disposition, a gadget_dir it chose -- and hands it straight to the
