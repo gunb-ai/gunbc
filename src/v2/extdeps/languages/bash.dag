@@ -3,11 +3,9 @@ module v2.extdeps.languages.bash
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, list_flat_map, list_map }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
   grammar_formal_production,
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
@@ -114,19 +112,7 @@ fn bash_lhs_exact_relation_row_witness(
 ) -> Witness<Node> {
   let production = bash_formal_production_from_fixture(lhs: lhs, tokens: tokens)
   let productions = [production]
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: selected } =>
-      derive_grammar_relation_row_node(
-        production: selected,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn bash_empty_translation_rules_node() -> Node {

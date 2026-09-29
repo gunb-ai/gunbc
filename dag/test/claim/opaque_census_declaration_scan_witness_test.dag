@@ -1,8 +1,10 @@
 module test.claim.opaque_census_declaration_scan_witness
 
 import tools.opaque_realization_census {
-  DeclarationBodyStanding, DeclaredOpaque, DeclaredWithBody, declaration_body_standing_in
+  DeclarationBodyStanding, DeclaredOpaque, DeclaredWithBody, declaration_body_standing_in,
+  EmittedByThisRun, OpaqueCensusUnestablished, census_compiler_binary_unestablished, census_stage_text
 }
+import tools.host_prelude { WitnessBinArtifactNotExecutable, WitnessBinArtifactEmpty }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 
@@ -60,4 +62,29 @@ test fn opaque_census_declaration_scan_witnesses() -> Bool {
     && witness_body_on_the_following_line_is_a_body()
     && witness_a_genuinely_bodyless_declaration_is_still_opaque()
     && witness_a_same_line_body_is_still_a_body()
+}
+
+// A compiler binary that could not be made Ready is carried into the census's own
+// OpaqueCensusUnestablished with its bin, path and WitnessBinRefusalReason. The refusal is supplied
+// (its producer's arms are probed on disk by tools.build_step_transport); two reasons are asserted
+// so a cause that ignored the reason would go red on one of them.
+fn opaque_census_binary_cause_names(reason_name: String, other_name: String, empty: Bool) -> Bool {
+  match census_compiler_binary_unestablished(
+    provenance: EmittedByThisRun { entry: "probe_entry" },
+    bin_name: "gunbc",
+    path: "/probe/target/release/gunbc",
+    reason: if empty { WitnessBinArtifactEmpty } else { WitnessBinArtifactNotExecutable }
+  ) {
+    OpaqueCensusUnestablished { provenance: _, stage: s, cause: c } =>
+      census_stage_text(stage: s) == "binaries"
+        && string_contains(s: c, pattern: "/probe/target/release/gunbc")
+        && string_contains(s: c, pattern: concat("(", concat(reason_name, ")")))
+        && !string_contains(s: c, pattern: concat("(", concat(other_name, ")")))
+    _ => false
+  }
+}
+
+test fn opaque_census_binary_refusal_carries_its_reason() -> Bool {
+  opaque_census_binary_cause_names(reason_name: "artifact-empty", other_name: "artifact-not-executable", empty: true)
+    && opaque_census_binary_cause_names(reason_name: "artifact-not-executable", other_name: "artifact-empty", empty: false)
 }
