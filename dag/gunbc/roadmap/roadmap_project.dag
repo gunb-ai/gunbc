@@ -10,10 +10,24 @@ type ProjectMembership
   | MembershipMember { arc: String }
   | MembershipAmbiguous { arcs: List<String> }
 
+// Duplicate rows for the SAME (member, project) pair are not a fork -- the ownership question is
+// which PROJECT owns the node, so arcs dedupe by project; whether the duplicated rows agree on the
+// contribution argument is the contribution read's question (gunbc.roadmap.roadmap_alignment
+// alignment_membership_contribution_read), never this one's.
+fn project_distinct_strings(items: List<String>) -> List<String> {
+  fold(items, init: [] as List<String>, f: fn(acc, item) {
+    if any(acc, x => x == item) {
+      acc
+    } else {
+      concat(acc, [item])
+    }
+  })
+}
+
 fn node_project_membership(node_id: String, memberships: List<RoadmapMembership>) -> ProjectMembership {
-  let arcs = memberships
+  let arcs = project_distinct_strings(items: memberships
     |> filter(e => e.member == node_id)
-    |> map(e => e.project)
+    |> map(e => e.project))
   if count(arcs) == 0 {
     MembershipStandalone
   } else if count(arcs) == 1 {

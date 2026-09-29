@@ -166,6 +166,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
   AlignmentChained, AlignmentChainLink, AlignmentChainForked, AlignmentRowUndeclared,
+  AlignmentWalkUnrooted, AlignmentEdgeContributionRefused, AlignmentNestingCyclic,
   alignment_resolve, alignment_resolve_chain, alignment_base_cadence_state, alignment_refusal_reason,
 }
 import std.decl_ref { decl_ref }
@@ -1244,6 +1245,7 @@ test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
           AlignmentWalkUnrooted { at, walked } =>
             at == "namespace-occurrence-transport" && count(walked) == 0
           AlignmentChainForked { at: _, dependents: _, walked: _ } => false
+          AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false
           AlignmentRowUndeclared { node_id: _ } => false
           AlignmentNestingCyclic { node_id: _ } => false
         })
@@ -1306,7 +1308,8 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     && cont.contains("\nAlignment (re-checked at every checkpoint adjudication):\n")
     && cont.contains(continuation_alignment_ask)
     && (match fresh_resolution {
-      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentChainForked { at: _, dependents: _, walked: _ } => false  AlignmentWalkUnrooted { at: _, walked: _ } => false  AlignmentNestingCyclic { node_id: _ } => false })
+      AlignmentUnresolved { cause } => (match cause { AlignmentRowUndeclared { node_id } => node_id == "ts-alignment-fresh"  AlignmentChainForked { at: _, dependents: _, walked: _ } => false  AlignmentWalkUnrooted { at: _, walked: _ } => false
+        AlignmentEdgeContributionRefused { member: _, project: _, detail: _ } => false  AlignmentNestingCyclic { node_id: _ } => false })
       AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
     })
 }

@@ -12,7 +12,7 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, harness_tool_contract_wire,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
   harness_outcome_detail,
 }
@@ -263,11 +263,16 @@ fn harness_probe_outcome(backend_url: String, model: NonEmptyStr, unit: HarnessS
 // happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
 // correctness: that is external verification's subject, and a harness that graded its own worker's
 // answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
+// CHECKPOINT-DUE IS A CONTROL TRANSFER, NOT A FAILURE (review 5358022153): it gets its own admitted
+// exit standing (3) rather than the generic failure code, so a consumer matching on 1 never reads a
+// planned adjudication handoff as a crash. The belt's authority remains the provider event stream.
 fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
+    TurnAlignmentCheckpointDue { steps_taken: _ } =>
+      ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
     _ =>
       ExitFailure {
         code: 1,
@@ -636,8 +641,6 @@ fn harness_reviewer_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    // Reviewers, auditors and supervisors carry no alignment chain: their budgets stay hard
-    // terminals, which an empty fingerprint selects (gunbc.harness.harness_turn HarnessTurnConfig).
     alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
@@ -720,8 +723,6 @@ fn harness_auditor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    // Reviewers, auditors and supervisors carry no alignment chain: their budgets stay hard
-    // terminals, which an empty fingerprint selects (gunbc.harness.harness_turn HarnessTurnConfig).
     alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
@@ -813,8 +814,6 @@ fn harness_supervisor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    // Reviewers, auditors and supervisors carry no alignment chain: their budgets stay hard
-    // terminals, which an empty fingerprint selects (gunbc.harness.harness_turn HarnessTurnConfig).
     alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,

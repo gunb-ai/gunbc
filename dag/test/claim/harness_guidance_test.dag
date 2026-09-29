@@ -9,10 +9,11 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   RoundsRemaining,
   ChangeTheTreeWithTheTool, VerifyWithTheTool, ReadingAloneCompletesNothing,
   grounded, harness_conclusions, harness_guidance_prose,
-  harness_guidance_segments, harness_guidance_prose_from_segments,
+  harness_guidance_segments, harness_guidance_prose_from_segments, harness_conclusion_nodes,
+  HarnessConclusionNode, harness_conclusion_key,
   harness_worker_guidance, harness_probe_guidance,
 }
-import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput }
+import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput, prompt_segment_required }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
@@ -428,17 +429,18 @@ test fn the_segments_and_the_prose_are_one_population() -> Bool {
     && (match segments.first() {
       Present { value: s } =>
         (match s.source {
-          AuthorityInput { declaration: _, revision } => revision == "rev-fixture"
+          AuthorityInput { declaration: _, revision, required } => revision == "rev-fixture" && required
           _ => false
         })
-          && s.required
+          && prompt_segment_required(segment: s)
           && s.content_digest != ""
       Absent => false
     })
     && (match segments.last() {
       Present { value: s } =>
         match s.source {
-          DerivedConclusionInput { conclusion: _, grounds } => count(grounds) == count(rows)
+          DerivedConclusionInput { conclusion_key, grounds, required } =>
+            conclusion_key != "" && required && count(grounds) > 0 && count(grounds) <= count(rows)
           _ => false
         }
       Absent => false
@@ -458,11 +460,11 @@ test fn a_moved_revision_moves_the_segment_inputs() -> Bool {
           sa.content == sb.content
             && sa.content_digest == sb.content_digest
             && (match sa.source {
-              AuthorityInput { declaration: _, revision } => revision == "rev-a"
+              AuthorityInput { declaration: _, revision, required: _ } => revision == "rev-a"
               _ => false
             })
             && (match sb.source {
-              AuthorityInput { declaration: _, revision } => revision == "rev-b"
+              AuthorityInput { declaration: _, revision, required: _ } => revision == "rev-b"
               _ => false
             })
       }
