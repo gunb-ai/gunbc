@@ -26,3 +26,18 @@ The acceptance run subsequently completed its release build and its observer
 GitHub OIDC authentication step successfully. The plan/file/wait step remains
 in progress; approval delivery, apply authentication, and apply/readback have
 not yet been established.
+
+Attempt 1 subsequently passed request approval and writer GitHub OIDC
+impersonation. Apply accepted a Namecheap provider creation, then refused because
+the created subject was not yet visible on immediate readback. No later effects
+were applied. This is a partial cloud change, not a successful estate convergence.
+
+Attempt 2 reruns the failed job on the same source, with a fresh run-attempt
+identity and a freshly observed plan. It has passed approval and writer OIDC
+impersonation and is executing apply/readback. No administrator token is involved.
+
+Attempt 2 completed successfully. The existing approval app admitted the fresh
+request; the apply identity was minted only afterward, and the existing workflow
+completed its approved effects and readback. Run: https://github.com/gunb-ai/gunbc/actions/runs/36505895733/attempts/2 .
+This closes the ordinary GCP IAM workflow acceptance case, not host credential
+custody, protected storage commissioning, or VM acceptance.
