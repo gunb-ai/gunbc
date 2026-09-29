@@ -1,5 +1,6 @@
 module v2.test.execution.self_host_candidate_generation_stage_verdicts
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.compiler.self_host.candidate_generation_stage_verdicts {
   CandidateGenerationStageVerdicts,
@@ -45,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn add_slice_stage_verdicts() -> CandidateGenerationStageVerdicts {
   candidate_generation_stage_verdicts(
-    resolved_module: dag_add_emitted_root,
+    resolved_module: claim_resolved_tree_without_declarations(root: dag_add_emitted_root),
     dag_target: dag_add_target_model
   )
 }

@@ -37,7 +37,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Declaring one is a modeling act on this module's own subject rather than part of removing the
 // fork, so it stays with this module's owner.
 data sha256sum_cli_tool: CliTool = CliTool {
-  name: sha256sum_program as String,
+  name: sha256sum_program().invocation as String,
   min_version: none,
   installable_via: [SourceCoreutils],
 }

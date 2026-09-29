@@ -1,5 +1,7 @@
 module extdeps.tools.ldd
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -17,7 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ldd_program: NonEmptyStr = "ldd"
+fn ldd_program() -> ProgramIdentity = uncataloged_program(invocation: "ldd")
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -32,5 +34,5 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 fn ldd_command(binary: String) -> ArgvCommand {
-  argv_command(program: ldd_program, arguments: [binary])
+  argv_command(program: ldd_program(), arguments: [binary])
 }
