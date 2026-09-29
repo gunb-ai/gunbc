@@ -62,11 +62,16 @@ data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as 
 // installed with `auth-file: /var/lib/gunbc-ntfy/auth.db` in /etc/gunbc-ntfy/server.yml, and that file
 // exists while user.db does not. proud-deer-538 read this on 2026-09-29 running
 // issue_device_enrolment_code by hand against release 02568b3046, and the readback refused before
-// minting. The name is now the observed one. Changing it also changes the exact stat argv that
-// approval_ntfy_deployment's human step asks the operator to grant, so srv1's sudoers line for that
-// stat must be re-issued naming auth.db, or every issuance refuses at that read. Nothing installs this
-// server from the model yet (gunbc.auth.approval_ntfy_converge names it as outside its roster); the
-// row becomes that installer's destination when one exists.
+// minting. The name is now the observed one, and it changes the exact stat argv that this module's
+// human step asks the operator to grant.
+//
+// THAT GRANT DOES NOT EXIST ON srv1 TODAY, and the stat still runs. proud-deer-538 read srv1 on
+// 2026-09-29: sudoers.d holds only the broker-helpers grant, and the stat of auth.db succeeds under
+// the operator account's own broader sudo. The narrow, exact-argv grant this module asks for is
+// therefore an unmet posture, not a failing read. The earlier refusal was the missing user.db, not a
+// missing grant. Nothing installs this server or that grant from the model yet
+// (gunbc.auth.approval_ntfy_converge names the server as outside its roster). This row becomes that
+// installer's destination when one exists, and the grant becomes its sudoers member.
 data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/auth.db"], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
