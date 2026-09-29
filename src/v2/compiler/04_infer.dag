@@ -1072,6 +1072,11 @@ fn infer_arrow_domain_type_for_binding(arrow: Node, binding: Symbol) -> Optional
 // Consumers: infer_node_facts' parameter arm (the grounding every cast, add, application, branch,
 // match and loop operand reads) and infer_branch_operand_resolved_type_in_tree.
 // interim: dissolve-on the SymbolIndex / ResolvedTree.bindings lookup, as before.
+// This is a SECOND LEXICAL-SCOPE AUTHORITY beside resolve's scope frames: resolve re-emits a
+// parameter reference as spelling plus authored occurrence and names no binder, so infer re-derives
+// the binder here. It is not extended, and the facts table's subject key (v2.compiler.inferred_tree
+// authored_occurrence_id) does not consume it: inside one tree the binder is a function of the
+// authored occurrence, so the key needs no binder component. Its dissolution is the trigger above.
 type InferParameterScopeSearch
   = ParameterReferenceNotHere
   | ParameterReferenceUnbound
