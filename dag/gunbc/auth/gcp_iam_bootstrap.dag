@@ -368,14 +368,14 @@ fn iam_bootstrap_is_forbidden(outcome: RestOutcome) -> Bool {
 // Readback uses a temporary, exact-account token permission for the verified operator.
 // Its grant is retired before workflow trust; no signing permission or account key is added.
 fn iam_bootstrap_privilege_readback(token: Secret) -> String {
-  match iam_bootstrap_probe_token(token: token, account: iam_converge_service_account, remaining: 30) {
+  match iam_bootstrap_probe_token(token: token, account: iam_converge_service_account, remaining: 85) {
     BootstrapProbeTokenRefused { reason } => concat("apply-account readback credential unavailable; workflow trust withheld: ", reason)
     BootstrapProbeTokenReady { access_token: apply_token } => {
       let positive = iam_bootstrap_positive_probes(token: apply_token)
       if positive != "" { positive } else {
         let negative = iam_bootstrap_negative_probes(token: apply_token)
         if negative != "" { negative } else {
-          match iam_bootstrap_probe_token(token: token, account: iam_observe_service_account, remaining: 30) {
+          match iam_bootstrap_probe_token(token: token, account: iam_observe_service_account, remaining: 85) {
             BootstrapProbeTokenRefused { reason } => concat("observer readback credential unavailable; workflow trust withheld: ", reason)
             BootstrapProbeTokenReady { access_token: observer_token } => match observe_and_plan_estate(token: observer_token) {
               GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
@@ -407,7 +407,7 @@ fn iam_bootstrap_probe_token(token: Secret, account: ServiceAccountEmail, remain
       expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp }
     let live = match approval_instant_now() { Absent => false Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) }
     if bootstrap_deny_retry_admitted(outcome: generated.outcome, remaining: remaining, live: live) {
-      if sleep_delay_seconds_second_carrier_projection(duration: second(count: 2)) {
+      if sleep_delay_seconds_second_carrier_projection(duration: second(count: 5)) {
         iam_bootstrap_probe_token(token: token, account: account, remaining: remaining - 1)
       } else { BootstrapProbeTokenRefused { reason: "probe permission propagation wait failed" } }
     } else { BootstrapProbeTokenRefused { reason: rest_refusal_text(o: generated.outcome) } }

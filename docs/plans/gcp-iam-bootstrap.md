@@ -260,8 +260,13 @@ publication election, etag update and cleanup machinery. No signing, key-creatio
 policy-write or project-wide impersonation permission is included.
 
 Google documents the [access-token permission](https://docs.cloud.google.com/iam/docs/service-account-permissions).
-Permission propagation retries accept only explicit HTTP 403, at most 30 attempts
-with two-second waits, and stop at the original deadline. Other failures are not
+Permission propagation retries accept only explicit HTTP 403, at most 85 attempts
+with five-second waits (seven minutes of waiting), and stop at the original deadline. Other failures are not
 converted to propagation. `iam_bootstrap_probe_cleanup` can recover both exact
 grants without rerunning bootstrap; keep its journal and original environment.
 Trust requires cleanup success. A retired probe operation cannot grant again.
+
+The first probe lease was removed after 30 token-mint refusals over roughly one
+minute. That did not establish a permission-design defect: Google documents policy
+propagation as typically two minutes, potentially seven or longer. The bounded
+retry now permits seven minutes within the original lease; no role is widened.
