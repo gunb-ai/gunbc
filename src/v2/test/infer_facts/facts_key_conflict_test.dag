@@ -8,7 +8,7 @@ import v2.compiler.infer {
   infer_facts_lookup_miss_diagnostic
 }
 import v2.compiler.inferred_tree { GroundingNotDerived, InferredFacts, InferredFactsEntry }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.optional { Absent, Present }
 import v2.std.witness { Violates }
@@ -47,7 +47,7 @@ fn fkc_entry(facts: InferredFacts) -> InferredFactsEntry {
 // for any other cause does not green this.
 test fn fkc_differing_facts_under_one_key_refuse() -> Bool {
   match facts_map_from_entries(entries: [fkc_entry(facts: fkc_facts_a()), fkc_entry(facts: fkc_facts_b())]) {
-    Rejected { diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_facts_key_conflict)
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_facts_key_conflict)
     Accepted { value: _, diagnostics: _ } => false
   }
 }
