@@ -1,0 +1,31 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/workspace-commissioning-production
+✓ typecheck v2.std.compilers.target_model done in 21 seconds
+[pre-entry] phase=workspace_discovery ms=13 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=14 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4052 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1389 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1556 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=25 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=40 scale=closure
+[pre-entry] phase=closure_load ms=1861 scale=closure
+[pre-entry] phase=closure_parse ms=7322 scale=closure
+[pre-entry] phase=closure_resolve ms=258 scale=closure
+[pre-entry] phase=closure_normalize ms=831 scale=closure
+[pre-entry] phase=closure_typecheck ms=66465 scale=closure
+[pre-entry] phase=closure_parent_envs ms=7 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=134 scale=closure
+[pre-entry] phase=closure_ownership ms=983 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=102496 scale=closure
+[pre-entry] population pool_modules=624 closure_files=624
+[pre-entry] process_cpu user_ms=100229 sys_ms=1896 max_rss_kib=4047092
+PASS initial_sanitation_requires_every_existing_lifecycle_fact
+PASS an_empty_final_cgroup_does_not_erase_prior_survivors
+PASS unreadable_cgroup_cannot_become_clean_after_retry
+PASS missing_storage_is_not_an_empty_slot
+PASS a_legacy_credential_beside_attempts_is_residue
+PASS an_empty_installed_attempt_directory_is_clean_storage
+PASS unreadable_mount_table_does_not_confirm_mount_removal
+PASS a_process_appearing_during_observation_refuses_readiness
+PASS unreadable_tap_ownership_cannot_publish_readiness
+PASS a_mount_inside_an_old_attempt_is_initial_residue

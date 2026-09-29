@@ -9,7 +9,7 @@ import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceAbsent, ResourcePresent, ResourceUnreadable,
 }
-import gunbc.runner_microvm_network { SlotNetworkConfirmed }
+import gunbc.runner_microvm_network { SlotNetworkConfirmed, SlotNetworkUnobservable, TapUnheldFact }
 import product.fabric.sanitation { CellId, SlotScopedNetwork, cell_readiness_from_observations, CellReady, CellQuarantined }
 
 fn clean_initial_readings() -> WorkspaceInitialSanitationReadings {
@@ -65,6 +65,29 @@ test fn an_empty_installed_attempt_directory_is_clean_storage() -> Bool {
 test fn unreadable_mount_table_does_not_confirm_mount_removal() -> Bool {
   match workspace_initial_mount_reading(root: "/opt/fabric-cells/srv1-13", success: false, content: "") {
     ResourceUnreadable { reason: _ } => true
+    _ => false
+  }
+}
+
+
+test fn a_process_appearing_during_observation_refuses_readiness() -> Bool {
+  !initial_readings_ready(readings: WorkspaceInitialSanitationReadings {
+    cgroup_before: CgroupSubtreeEmpty,
+    cgroup_after: CgroupSubtreePopulated { pids: [99], cgroups: ["cell" as NonEmptyStr] },
+    mounts: ResourceAbsent, storage: ResourceAbsent, network: SlotNetworkConfirmed })
+}
+
+test fn unreadable_tap_ownership_cannot_publish_readiness() -> Bool {
+  !initial_readings_ready(readings: WorkspaceInitialSanitationReadings {
+    cgroup_before: CgroupSubtreeEmpty, cgroup_after: CgroupSubtreeEmpty,
+    mounts: ResourceAbsent, storage: ResourceAbsent,
+    network: SlotNetworkUnobservable { fact: TapUnheldFact, reason: "fd census denied" as NonEmptyStr } })
+}
+
+test fn a_mount_inside_an_old_attempt_is_initial_residue() -> Bool {
+  match workspace_initial_mount_reading(root: "/opt/fabric-cells/srv1-13", success: true,
+    content: "40 22 0:34 / /opt/fabric-cells/srv1-13/attempts/old/jail/root/dev rw - devtmpfs udev rw\n") {
+    ResourcePresent { detail: _ } => true
     _ => false
   }
 }

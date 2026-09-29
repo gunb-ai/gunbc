@@ -8,3 +8,5 @@ Both runs used binary SHA256 `717e9b4159dc7bc722e94a235325e6760f5acd246e63d8bed1
 These are source qualification, not privileged commissioning, concurrent acquisition, full serving startup, or live VM acceptance. The reviewed fleet commissioning plan/apply and its exclusion/recovery boundary remain unfinished. No commissioning installation is authorized by these receipts alone.
 
 An earlier manual invocation omitted `--function workspace_commissioning_typecheck`; it completed typechecking but failed with NoSuchFunction main. The corrected composition run above is the successful execution receipt.
+
+The subsequent sanitation run passed all ten claims under the same 6 GiB/no-swap settings, exit zero, max RSS 4,047,092 KiB. Its separate manifest covers late process appearance, unreadable TAP ownership, and an actual mountinfo-shaped old-attempt mount. These remain supplied-boundary controls, not a live sanitation receipt.
