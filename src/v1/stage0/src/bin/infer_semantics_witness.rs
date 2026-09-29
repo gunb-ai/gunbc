@@ -1427,7 +1427,7 @@ fn structural_method_first_on_list_returns_optional_element() {
     );
 }
 
-fn structural_method_count_on_list_returns_int() {
+fn structural_method_count_on_list_returns_nat() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
         list_string,
@@ -1438,7 +1438,12 @@ fn structural_method_count_on_list_returns_int() {
     .as_ref()
     .expect("count must resolve on List<String>")
     .clone();
-    assert_eq!(result.result_type.name, "Int", "count should return Int");
+    // A count is never negative, so it returns std.nat.Nat by its declarer (#12227); an Int
+    // here would mean the refinement regressed to the unrefined carrier.
+    assert_eq!(
+        result.result_type.name, "std.nat.Nat",
+        "count should return std.nat.Nat"
+    );
 }
 
 fn structural_method_lookup_resolves_all_int_ring_methods() {
@@ -2276,8 +2281,8 @@ fn main() -> ExitCode {
             structural_method_first_on_list_returns_optional_element,
         ),
         (
-            "structural_method_count_on_list_returns_int",
-            structural_method_count_on_list_returns_int,
+            "structural_method_count_on_list_returns_nat",
+            structural_method_count_on_list_returns_nat,
         ),
         (
             "structural_method_lookup_resolves_all_int_ring_methods",
