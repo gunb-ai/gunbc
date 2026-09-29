@@ -3946,6 +3946,12 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
+  let carrier_verdict = if is_container_type(name: declared_name) {
+    kernel_container_carrier_verdict(
+      formal: declared,
+      owner: type_reference_declaration_ref(n: produced, source_indices: source_indices, env: scope.type_env),
+      scope: scope)
+  } else { none }
   let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
   let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
     Present { value: TypeVariable { id: _ } } => true
@@ -3961,6 +3967,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if carrier_verdict == Present { value: true } {
+    Inhabits
+  } else if carrier_verdict == Present { value: false } {
+    InhabitanceRefused { reason: RefusedDistinctProductConstructor }
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     Inhabits
@@ -4689,12 +4699,23 @@ fn structured_literal_constructs_formal_carrier(formal_peeled: Node, lit_name: S
 // owns a different declaration and is refused at List<Int>. Absent when the formal is not a kernel
 // container or the owner cannot be recovered, so the existing route decides as before.
 fn structured_kernel_container_identity_verdict(formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool? {
-  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal_peeled)
+  kernel_container_carrier_verdict(
+    formal: formal_peeled,
+    owner: structured_literal_owner_declaration(lit_name: lit_name, scope: scope),
+    scope: scope)
+}
+
+// THE ONE DECISION BOTH SEAMS ASK (the record-literal application site and the declared-type
+// obligation): is this owning declaration the kernel container's std.algebra carrier? Present only
+// when the formal is a kernel container spelling AND the owner is recoverable; the answer is then
+// identity alone. Absent leaves the calling seam's existing route to decide.
+fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope: InferScope) -> Bool? {
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: formal)
   if !is_container_type(name: name) { return none }
-  match structured_formal_carrier_declaration(formal_peeled: formal_peeled, scope: scope) {
+  match structured_formal_carrier_declaration(formal_peeled: formal, scope: scope) {
     Present { value: carrier } =>
-      match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
-        Present { value: owner } => Present { value: declaration_ref_eq(a: carrier, b: owner) }
+      match owner {
+        Present { value: o } => Present { value: declaration_ref_eq(a: carrier, b: o) }
         Absent => none
       }
     Absent => none
