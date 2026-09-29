@@ -7324,10 +7324,14 @@ pub fn run_required_floor(
             for site in &verdict.walk.undetermined_sites {
                 eprintln!(
                     "[floor-plan] NonFoldResidueScrutineeTypeUndetermined site={site} -- a wildcard \
-                     arm whose scrutinee carries no resolved inferred type; counted, not judged"
+                     arm whose scrutinee carries no resolved inferred type; refuses unless the site \
+                     carries its own roster row"
                 );
             }
-            if !verdict.unrostered.is_empty() || !verdict.stale.is_empty() {
+            if !verdict.unrostered.is_empty()
+                || !verdict.stale.is_empty()
+                || !verdict.undetermined_unrostered.is_empty()
+            {
                 let mut lines: Vec<String> = verdict
                     .unrostered
                     .iter()
@@ -7339,14 +7343,21 @@ pub fn run_required_floor(
                         .iter()
                         .map(|s| format!("  stale roster entry: {s}")),
                 );
+                lines.extend(
+                    verdict
+                        .undetermined_unrostered
+                        .iter()
+                        .map(|s| format!("  undetermined scrutinee type, no row of its own: {s}")),
+                );
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterDiverged unrostered={} \
-                     stale={} -- a wildcard arm whose scrutinee's inferred type is a closed \
+                     stale={} undetermined={} -- a wildcard arm whose scrutinee's inferred type is a closed \
                      coproduct needs its own row (reason + dissolution) in \
                      gunbc.non_fold_residue non_fold_residue_frontier, and a row whose site no \
                      longer carries one deletes:\n{}",
                     verdict.unrostered.len(),
                     verdict.stale.len(),
+                    verdict.undetermined_unrostered.len(),
                     lines.join("\n")
                 ));
             }

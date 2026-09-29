@@ -392,6 +392,8 @@ pub(crate) struct TypedFallbackArmWalk {
     pub covered_paths: BTreeSet<String>,
     /// Module paths of every non-test module the walk covered.
     pub covered_modules: BTreeSet<String>,
+    /// Repo-relative path -> module path, for every covered module.
+    pub module_of_path: BTreeMap<String, String>,
 }
 
 impl TypedFallbackArmWalk {
@@ -422,6 +424,7 @@ pub(crate) fn typed_fallback_arm_walk(
             continue;
         }
         walk.covered_paths.insert(rel.clone());
+        walk.module_of_path.insert(rel.clone(), module_path.clone());
         walk.covered_modules.insert(module_path);
         for item in tm.items.iter() {
             let Some(body) = item.body.as_ref() else {
@@ -513,6 +516,9 @@ pub(crate) struct NonFoldResidueDiffVerdict {
     pub scoped_but_untyped: Vec<String>,
     pub unrostered: Vec<String>,
     pub stale: Vec<String>,
+    /// Scoped sites whose wildcard scrutinee carries no resolved inferred type and no roster row
+    /// of their own: closedness is undecided, so they refuse rather than pass as open.
+    pub undetermined_unrostered: Vec<String>,
 }
 
 pub(crate) fn non_fold_residue_diff_verdict(
@@ -532,12 +538,19 @@ pub(crate) fn non_fold_residue_diff_verdict(
         .cloned()
         .collect();
     let (unrostered, stale) = non_fold_residue_roster_diff(&walk);
+    let undetermined_unrostered = walk
+        .undetermined_sites
+        .iter()
+        .filter(|s| !non_fold_residue_site_is_rostered(s))
+        .cloned()
+        .collect();
     NonFoldResidueDiffVerdict {
         scoped_modules: scoped_modules.len(),
         walk,
         scoped_but_untyped,
         unrostered,
         stale,
+        undetermined_unrostered,
     }
 }
 
@@ -745,8 +758,10 @@ mod nfr_whole_corpus_census {
         let resolved =
             v1_compiler_compile::compile_to_resolved_with_options(Rc::new(closure.into()), options);
         let mut blocked: BTreeSet<String> = BTreeSet::new();
+        let mut blocked_modules: BTreeSet<String> = BTreeSet::new();
         for d in resolved.diagnostics.iter() {
             if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                blocked_modules.insert(d.module_name.clone());
                 blocked.insert(format!(
                     "blocked-module {} {}",
                     d.module_name,
@@ -777,7 +792,27 @@ mod nfr_whole_corpus_census {
             walk.undetermined_sites.len(),
             blocked.len()
         )];
-        lines.extend(unrostered.iter().map(|s| format!("unrostered {s}")));
+        // A site in a module carrying a blocking diagnostic was read from a possibly partial
+        // typing: it is tagged, never listed as an ordinary site (nor its absence read as clean).
+        let in_blocked = |site: &String| {
+            let path = site.split("::").next().unwrap_or("");
+            walk.module_of_path
+                .get(path)
+                .is_some_and(|m| blocked_modules.contains(m))
+        };
+        lines.extend(unrostered.iter().map(|s| {
+            if in_blocked(s) {
+                format!("unrostered-in-blocked-module {s}")
+            } else {
+                format!("unrostered {s}")
+            }
+        }));
+        lines.extend(
+            blocked_modules
+                .iter()
+                .filter(|m| walk.covered_modules.contains(*m))
+                .map(|m| format!("blocked-module-typed-partially {m}")),
+        );
         lines.extend(stale.iter().map(|s| format!("stale {s}")));
         lines.extend(
             walk.undetermined_sites
