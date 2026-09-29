@@ -1,4 +1,10 @@
 module v2.std.decl_index
+import v2.std.arrow_signature { declared_signature }
+import std.algebra { Empty, list_snoc_item }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
+import v2.std.node { Arrow, Conj, Edge, Named, Node, Positional, TypeNode }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { Absent, Present, list_at_optional }
 type ItemKind
   = FnItem
   | TypeItem
@@ -53,6 +59,78 @@ fn type_declarer_qualified_names(pool_roots: List<String>, bare_name: String) ->
 
 fn export_signature_facts(pool_roots: List<String>) -> List<DeclFact> {
   export_signature_facts(pool_roots: pool_roots)
+}
+
+// THE EXPORTED SIGNATURE, IN THE ONE ARROW ENCODING. The host seam above hands a function's Arrow as
+// [domain, return]: the domain a Conj of Named edges, one per value parameter, labelled with its
+// authored name, in authored order, and no order edge. This lifts it through
+// v2.std.arrow_signature declared_signature, the one constructor of a domain and its declared order,
+// so an anonymous `_` becomes its minted binder and parameter order is carried by the order edge
+// rather than by the Conj's sequence. The seam mints no second constructor; every consumer of an
+// exported signature reads it here.
+fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<DeclFact>> {
+  fold(export_signature_facts(pool_roots: pool_roots), init: outcome_accepted(value: Empty), f: fn(acc, fact) {
+    bind_outcome(o: acc, f: fn(facts) {
+      match fact.kind {
+        FnItem =>
+          bind_outcome(o: export_signature_declared_arrow(arrow: fact.node), f: fn(node) {
+            outcome_accepted(value: list_snoc_item(xs: facts, item: DeclFact {
+              qualified_name: fact.qualified_name,
+              name: fact.name,
+              kind: fact.kind,
+              node: node,
+              rel_path: fact.rel_path
+            }))
+          })
+        _ => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+      }
+    })
+  })
+}
+
+// The host's shape is exactly [domain Conj, return]; anything else REFUSES at the Arrow's locus rather
+// than passing through, so a host that regresses to positional types cannot reach a fingerprint.
+fn export_signature_declared_arrow(arrow: Node) -> Outcome<Node> {
+  let targets = node_positional_child_targets(node: arrow)
+  match list_at_optional(xs: targets, index: 0) {
+    Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } =>
+          match list_at_optional(xs: targets, index: 1) {
+            Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+            Present { value: ret } =>
+              if (count(targets) != 2) || !all_edges_named(children: domain.children) {
+                outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+              } else {
+                let signature = declared_signature(params: domain.children, source: domain)
+                outcome_accepted(value: Node {
+                  kind: TypeNode { connective: Arrow },
+                  children: [signature.domain, Edge { label: Positional, target: ret }, signature.order],
+                  occurrence_id: arrow.occurrence_id
+                })
+              }
+          }
+        _ => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+      }
+  }
+}
+
+fn all_edges_named(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => acc
+      Positional => false
+    }
+  })
+}
+
+fn export_signature_host_shape_diagnostic(arrow: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^export_signature_host_arrow_not_named_domain,
+    at: node_locus(node: arrow),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 // A top-level `data` declaration with its DECLARED TYPE, keyed at declaration identity.

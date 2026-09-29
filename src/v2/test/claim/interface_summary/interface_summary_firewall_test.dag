@@ -11,7 +11,18 @@ import v2.lens.interface_summary {
 import v2.lens.module_graph { ImportResolutionFact }
 import std.algebra { Empty }
 import v2.std.collection { Present, Absent, optional_absent }
-import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
+import v2.std.decl_index {
+  DeclFact,
+  export_signature_declared_arrow,
+  export_signature_declared_facts,
+  export_signature_facts,
+  export_signature_facts_host_scaffold_dissolution_trigger
+}
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, arrow_declared_parameter_order }
+import v2.std.anonymous_binder { anonymous_param_label }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Arrow, Atom, Edge, Node, Positional, TypeNode, symbol_intern_lexeme }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -24,7 +35,9 @@ fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
     module_path: module_path,
     pool_roots: firewall_fixture_roots
   ) {
-    Present { value: summary } =>
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: Absent, diagnostics: _ } => Absent
+    Accepted { value: Present { value: summary }, diagnostics: _ } =>
       fold(summary.exports, init: optional_absent(), f: fn(found, entry) {
         match found {
           Present { value: _ } => found
@@ -35,7 +48,6 @@ fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
             }
         }
       })
-    Absent => Absent
   }
 }
 
@@ -103,5 +115,65 @@ test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool 
   ) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// PROGRAM P CONTROL: AN EXPORTED SIGNATURE ARRIVES IN THE ONE ARROW ENCODING. The fixture declares
+// `firewall_ordered(b, _, a)`: its lifted Arrow carries the declared order [b, <anonymous-parameter-2>, a]
+// -- authored order, not label order, with the `_` slot minted by v2.std.anonymous_binder -- read
+// through the one reader, v2.std.arrow_signature arrow_declared_parameter_order.
+data firewall_order_roots: List<String> = ["src/v2/test/fixture/export_signature_order"]
+
+fn firewall_ordered_fact(facts: List<DeclFact>) -> DeclFact? {
+  fold(facts, init: optional_absent(), f: fn(found, fact) {
+    match found {
+      Present { value: _ } => found
+      Absent => if fact.name == "firewall_ordered" { Present { value: fact } } else { found }
+    }
+  })
+}
+
+test fn exported_signature_carries_named_binders_and_declared_order() -> Bool {
+  match export_signature_declared_facts(pool_roots: firewall_order_roots) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: facts, diagnostics: _ } =>
+      match firewall_ordered_fact(facts: facts) {
+        Absent => false
+        Present { value: fact } =>
+          match arrow_declared_parameter_order(arrow: fact.node) {
+            ArrowParameterOrderDeclared { labels: labels } =>
+              labels == [symbol_intern_lexeme(lexeme: "b"), anonymous_param_label(slot: 2), symbol_intern_lexeme(lexeme: "a")]
+            _ => false
+          }
+      }
+  }
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER: the host seam's own Arrow carries no order edge, so the order above
+// exists only because the lift passed it through declared_signature. Deleting the lift reddens the
+// claim above; this one pins that the host did not mint a second order constructor.
+test fn export_signature_host_seam_mints_no_order_edge() -> Bool {
+  match firewall_ordered_fact(facts: export_signature_facts(pool_roots: firewall_order_roots)) {
+    Absent => false
+    Present { value: fact } =>
+      match arrow_declared_parameter_order(arrow: fact.node) {
+        ArrowParameterOrderAbsent => true
+        _ => false
+      }
+  }
+}
+
+// A HOST ARROW IN THE RETIRED POSITIONAL-TYPES SHAPE [Int, Int] REFUSES: its first positional child is
+// a type, not a Conj of named binders, so it never reaches a fingerprint.
+test fn export_signature_positional_types_arrow_refuses() -> Bool {
+  let int_atom = Node { kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: "Int") } }, children: [], occurrence_id: OccurrenceSynthetic }
+  let positional = Node {
+    kind: TypeNode { connective: Arrow },
+    children: [Edge { label: Positional, target: int_atom }, Edge { label: Positional, target: int_atom }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match export_signature_declared_arrow(arrow: positional) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

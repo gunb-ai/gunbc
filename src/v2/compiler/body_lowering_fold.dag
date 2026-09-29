@@ -74,7 +74,7 @@ import v2.std.compilers.body_lowering {
   lower_unary_prefix
 }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.arrow_signature { declared_signature, signature_order_edge }
+import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -2038,14 +2038,10 @@ fn body_lower_fn_type_lowered_optional(fn_type_shell: Node) -> Optional<Node> {
                                     Absent => Absent
                                     Present { value: codomain_type } =>
                                       optional_present(
-                                        value: node_with_occurrence_id(
-                                          kind: TypeNode { connective: Arrow },
-                                          children: fold(
-                                            list_append(left: domain_types, right: [codomain_type]),
-                                            init: Empty,
-                                            f: fn(acc, t) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: t }) }
-                                          ),
-                                          occurrence_id: fn_type_shell.occurrence_id
+                                        value: anonymous_signature_arrow(
+                                          domain_types: domain_types,
+                                          codomain: codomain_type,
+                                          source: fn_type_shell
                                         )
                                       )
                                   }

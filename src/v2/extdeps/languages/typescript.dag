@@ -1,5 +1,6 @@
 module v2.extdeps.languages.typescript
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.witness { Holds, Violates, Witness }
@@ -200,7 +201,8 @@ import v2.std.host_transport {
 }
 import v2.std.logic { Bool, bool_boolean_algebra, bool_node }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, fold_list, free_monoid_type_node, ordered_ring_type_node }
+import v2.std.algebra { BooleanAlgebra, fold_list }
+import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_type_node, boolean_algebra_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
 
 type TsNumberPrimitiveFacts {
@@ -532,15 +534,7 @@ fn ts_selection_policy_node() -> Node {
 }
 
 fn ts_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() },
-      Edge { label: Positional, target: ts_inhabitant_number_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [ts_inhabitant_number_node(), ts_inhabitant_number_node()], codomain: ts_inhabitant_number_node(), source: ts_inhabitant_number_node())
 }
 
 
@@ -1776,14 +1770,11 @@ fn ts_sg2_arrow_mixed_wire_emitted() -> Node {
 }
 
 fn ts_sg2_arrow_source_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(
+    domain_types: [ts_sg2_atom_node(binding: ^ts_binding_sg2_x)],
+    codomain: ts_sg2_atom_node(binding: ^ts_binding_sg2_y),
+    source: ts_sg2_atom_node(binding: ^ts_binding_sg2_x)
+  )
 }
 
 fn ts_sg2_binary_fn_source_type_node() -> Node {
@@ -1793,11 +1784,14 @@ fn ts_sg2_binary_fn_source_type_node() -> Node {
   )
 }
 
+// THE RETIRED POSITIONAL-TYPES ARROW [x, y], built by hand because it has no producer: no domain
+// binders and no order edge. Program P's control that such an Arrow refuses at projection.
 fn ts_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) }
+      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
+      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
     ],
     occurrence_id: OccurrenceSynthetic
 }

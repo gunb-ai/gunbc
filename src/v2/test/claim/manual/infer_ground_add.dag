@@ -2,6 +2,7 @@ module v2.test.manual.infer_ground_add
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -333,24 +334,14 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
     children: [
       Edge {
         label: Named { name: ^fixture_add_name },
-        target: Node {
-          kind: TypeNode { connective: Arrow },
-          children: [
-            Edge {
-              label: Positional,
-              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
-            },
-            Edge {
-              label: Positional,
-              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
-            },
-            Edge {
-              label: Positional,
-              target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
-            }
+        target: anonymous_signature_arrow(
+          domain_types: [
+            fixture_int_type_node(atom: ^fixture_add_int_atom),
+            fixture_int_type_node(atom: ^fixture_add_int_atom)
           ],
-          occurrence_id: OccurrenceSynthetic
-}
+          codomain: fixture_int_type_node(atom: ^fixture_add_body_int_atom),
+          source: fixture_int_type_node(atom: ^fixture_add_int_atom)
+        )
       }
     ],
     occurrence_id: OccurrenceSynthetic
