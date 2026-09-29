@@ -167,7 +167,9 @@ fn fold_encoding_carries_each_operand_at_its_authored_occurrence_verdict() -> Bo
 // positional arguments sit one place earlier (v2.compiler.fold_lowering fold_call_lowering_piped).
 // A pipe fold that refused here would refuse its whole FILE on the native route, which is how one
 // such refusal in std.algebra dropped std.algebra.FreeMonoid, and with it every `[]`, from the index
-// (gunbc#12550 native census).
+// (gunbc#12550 native census). The corpus-grain check -- std files the native route must admit whole --
+// is a separate follow-up (a native must-admit roster); a whole-file normalize is beyond one per-PR
+// witness's budget.
 
 fn fe_pipe_slots_hold(source: String) -> Bool {
   match fe_normalized(source: source) {
