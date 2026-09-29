@@ -542,7 +542,7 @@ test fn bla_translate_gate_is_the_annotations() -> Bool {
 }
 
 // (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
-// PositionalPlusOneNamedEdges): the annotation first or last is one node.
+// canonicalize_positional_then_named): the annotation first or last is one node.
 test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
   let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
   let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
