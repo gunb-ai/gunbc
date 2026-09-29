@@ -972,66 +972,39 @@ fn diagnose_srv3_install(
 
   match router {
     Srv3OsLeasePresent => OsInstalled
-    Srv3OsLeaseAbsent =>
-      match observation.actuator_serve {
-        ServeUnknown =>
-          if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
-            && !install_has_progress_evidence(sol: sol, router: router) {
-            InconclusiveNeedsServeObservation
-          } else {
-            Inconclusive
-          }
-        ServeObserved { process: _, port: _, session: _, iso: _ } =>
-          diagnose_srv3_install_when_serve_observed(
-            intent: intent,
-            observation: observation,
-            serve_readiness: serve_readiness,
-            redfish: redfish,
-            sol: sol,
-            router: router,
-            elapsed: elapsed,
-          )
+    Srv3OsLeaseAbsent => diagnose_srv3_install_when_router_not_installed(intent: intent, observation: observation, serve_readiness: serve_readiness, redfish: redfish, sol: sol, router: router, elapsed: elapsed)
+    WrongHostnameLeasePresent => diagnose_srv3_install_when_router_not_installed(intent: intent, observation: observation, serve_readiness: serve_readiness, redfish: redfish, sol: sol, router: router, elapsed: elapsed)
+    OnlyBmcLeasePresent => diagnose_srv3_install_when_router_not_installed(intent: intent, observation: observation, serve_readiness: serve_readiness, redfish: redfish, sol: sol, router: router, elapsed: elapsed)
+  }
+}
+
+fn diagnose_srv3_install_when_router_not_installed(
+  intent: OsInstallAttemptIntent,
+  observation: Srv3InstallDebugObservation,
+  serve_readiness: NbdServeReadinessVerdict,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+  elapsed: Milliseconds,
+) -> Srv3InstallDiagnostic {
+  match observation.actuator_serve {
+    ServeUnknown =>
+      if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
+        && !install_has_progress_evidence(sol: sol, router: router) {
+        InconclusiveNeedsServeObservation
+      } else {
+        Inconclusive
       }
-    WrongHostnameLeasePresent =>
-      match observation.actuator_serve {
-        ServeUnknown =>
-          if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
-            && !install_has_progress_evidence(sol: sol, router: router) {
-            InconclusiveNeedsServeObservation
-          } else {
-            Inconclusive
-          }
-        ServeObserved { process: _, port: _, session: _, iso: _ } =>
-          diagnose_srv3_install_when_serve_observed(
-            intent: intent,
-            observation: observation,
-            serve_readiness: serve_readiness,
-            redfish: redfish,
-            sol: sol,
-            router: router,
-            elapsed: elapsed,
-          )
-      }
-    OnlyBmcLeasePresent =>
-      match observation.actuator_serve {
-        ServeUnknown =>
-          if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
-            && !install_has_progress_evidence(sol: sol, router: router) {
-            InconclusiveNeedsServeObservation
-          } else {
-            Inconclusive
-          }
-        ServeObserved { process: _, port: _, session: _, iso: _ } =>
-          diagnose_srv3_install_when_serve_observed(
-            intent: intent,
-            observation: observation,
-            serve_readiness: serve_readiness,
-            redfish: redfish,
-            sol: sol,
-            router: router,
-            elapsed: elapsed,
-          )
-      }
+    ServeObserved { process: _, port: _, session: _, iso: _ } =>
+      diagnose_srv3_install_when_serve_observed(
+        intent: intent,
+        observation: observation,
+        serve_readiness: serve_readiness,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+        elapsed: elapsed,
+      )
   }
 }
 
