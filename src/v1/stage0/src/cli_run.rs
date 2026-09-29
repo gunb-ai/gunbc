@@ -17381,6 +17381,13 @@ pub struct HeadsReadingDifferential {
     pub narrowed: Vec<String>,
     pub regressed: Vec<String>,
     pub both_refused: Vec<String>,
+    /// Modules whose two readings differ ONLY in occurrence identities. Not a disagreement about
+    /// the grammar: an occurrence id is minted in allocation order within one source graph
+    /// (`std.occurrence_identity`), and the heads reading builds no body, so it mints fewer ids
+    /// and every later declaration's id shifts. `divergent` compares the readings modulo that
+    /// field; this population keeps the drift COUNTED rather than silently absorbed, so a consumer
+    /// that ever starts joining a census node's id to a full-reading id has a number to read.
+    pub occurrence_identity_only: Vec<String>,
     /// Modules both readings accept whose DECLARATION NAMES differ (the population the pool
     /// name census reads), each with the names only one reading carries. Narrower than
     /// `divergent`, which compares whole stripped nodes: a reading can differ in a field no
@@ -17407,6 +17414,33 @@ impl HeadsReadingDifferential {
     }
 }
 
+/// A node's serialized form with every `occurrence_identity` removed, at every depth -- the
+/// comparison `heads_reading_differential` makes between two readings. Taken over the serialized
+/// form rather than a hand-written walk so no node-bearing field (`inferred`, `match_pattern`,
+/// `expr_data`, ...) can be missed and later compared with its ids still in it. A node that fails
+/// to serialize is a refusal of the comparison, not an equality.
+fn node_without_occurrence_identities(node: &Rc<Node>) -> Result<serde_json::Value, String> {
+    fn strip(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(map) => {
+                map.remove("occurrence_identity");
+                for child in map.values_mut() {
+                    strip(child);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for child in items.iter_mut() {
+                    strip(child);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut value = serde_json::to_value(node.as_ref()).map_err(|e| e.to_string())?;
+    strip(&mut value);
+    Ok(value)
+}
+
 /// Read every indexed module both ways and classify. Deterministic (sorted paths).
 pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDifferential {
     let index = build_multi_entry_index(source_roots);
@@ -17418,6 +17452,7 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
         narrowed: Vec::new(),
         regressed: Vec::new(),
         both_refused: Vec::new(),
+        occurrence_identity_only: Vec::new(),
         declaration_names_divergent: Vec::new(),
         full_reading_nanos: 0,
         heads_reading_nanos: 0,
@@ -17446,7 +17481,18 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
                     ));
                 }
                 if full != heads {
-                    out.divergent.push(path);
+                    let same_modulo_ids = matches!(
+                        (
+                            node_without_occurrence_identities(&full),
+                            node_without_occurrence_identities(&heads),
+                        ),
+                        (Ok(a), Ok(b)) if a == b
+                    );
+                    if same_modulo_ids {
+                        out.occurrence_identity_only.push(path);
+                    } else {
+                        out.divergent.push(path);
+                    }
                 }
             }
             (Err(_), Ok(_)) => out.narrowed.push(path),
@@ -22907,6 +22953,7 @@ mod closure_bare_disposition_tests {
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
             declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {
