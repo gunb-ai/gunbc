@@ -1,5 +1,7 @@
 module extdeps.sudo.elevation
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -35,7 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // PATH-resolved spelling would let the caller's own PATH decide which binary crosses the privilege
 // boundary, which is the opposite of what elevation is for. It is also the spelling sudo_elevate
 // above already used, so the alternative was two spellings of one binary inside one module.
-data sudo_binary_path: NonEmptyStr = "/usr/bin/sudo"
+fn sudo_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/sudo")
 
 // ELEVATION IS A FACT ABOUT AN INVOCATION, AND IT WAS BEING SPELLED FOUR TIMES AS TWO LITERALS.
 // Every privileged leaf in gunbc.host_effect_realize carried `bin_path: "/usr/bin/sudo"` beside an
@@ -73,7 +75,7 @@ data sudo_non_interactive_flag: NonEmptyStr = "-n"
 // is assembled, so its n is whatever a future caller's argv turns out to be.
 fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
   ElevatedInvocation {
-    bin_path: sudo_binary_path as String,
+    bin_path: sudo_program().invocation as String,
     args: list_append(left: [sudo_non_interactive_flag as String], right: command),
   }
 }
@@ -86,7 +88,7 @@ data sudo_run_as_user_flag: NonEmptyStr = "-u"
 
 fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocation {
   ElevatedInvocation {
-    bin_path: sudo_binary_path as String,
+    bin_path: sudo_program().invocation as String,
     args: list_append(left: [sudo_non_interactive_flag as String, sudo_run_as_user_flag as String, user as String], right: command),
   }
 }
@@ -96,13 +98,13 @@ fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocati
 // sudo_elevate_as, not a second spelling of it: the argv is sudo_elevate_as's own.
 fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
   let elevated = sudo_elevate_as(user: user, command: command)
-  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+  argv_command(program: sudo_program(), arguments: elevated.args)
 }
 
 // sudo_elevate as a command: root, non-interactive.
 fn sudo_elevate_command(command: List<String>) -> ArgvCommand {
   let elevated = sudo_elevate(command: command)
-  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+  argv_command(program: sudo_program(), arguments: elevated.args)
 }
 
 // THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the
@@ -128,7 +130,7 @@ data sudo_preserve_environment_flag: NonEmptyStr = "-E"
 
 fn sudo_preserve_environment_command(command: List<String>) -> ArgvCommand {
   argv_command(
-    program: sudo_binary_path,
+    program: sudo_program(),
     arguments: list_append(left: [sudo_preserve_environment_flag as String], right: command),
   )
 }
