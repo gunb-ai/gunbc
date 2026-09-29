@@ -452,24 +452,8 @@ fn verify_capability(
   mac_result: MacVerification,
   observed_at: Timestamp,
 ) -> CapabilityVerification {
-  verify_capability_presented(capability: capability, presented: approval_capability_signing_input(c: capability.claims), expectation: expectation, mac_result: mac_result, observed_at: observed_at)
-}
-
-// The same verification for a caller that already holds the signing input -- the one it computed the
-// MAC over -- so the input is projected once per verification, not once for the MAC and again here.
-// THE CALLER'S OBLIGATION, stated because this function cannot check it: `presented` MUST be
-// approval_capability_signing_input of this capability's claims. The MAC is compared against
-// `presented`, not re-derived from the claims, so a `presented` that matched some other message would
-// authenticate claims nobody signed. Its one caller (gunbc.auth.approval_store_receipt
-// verify_store_receipt) computes it from the claims it passes, in the same expression.
-fn verify_capability_presented(
-  capability: ApprovalCapability,
-  presented: NonEmptyStr,
-  expectation: CapabilityExpectation,
-  mac_result: MacVerification,
-  observed_at: Timestamp,
-) -> CapabilityVerification {
   let c = capability.claims
+  let presented = approval_capability_signing_input(c: c)
   match mac_result {
     MacVerified { verified: v } =>
       if v.message != presented {
