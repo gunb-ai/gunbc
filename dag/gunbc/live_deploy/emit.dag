@@ -117,7 +117,7 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
 }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint,
@@ -548,7 +548,7 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
         " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
-        " --host 127.0.0.1 --port ", to_string(fabric_storage_listen_port),
+        " --unix-socket ", fabric_storage_door_socket() as String,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
