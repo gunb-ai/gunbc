@@ -4,7 +4,7 @@ import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow, ubicloud_standard_16_a
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner }
 import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow }
 import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_slot_allocation { RunnerSlotDesired, gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import std.measure { ByteSize }

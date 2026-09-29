@@ -65,8 +65,17 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { declared_signature, lower_binary_infix, lower_list_introduction, signature_order_edge, lower_branch, lower_bind, lower_bind_annotated, lower_loop, lower_match, lower_unary_prefix }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.compilers.body_lowering {
+  lower_binary_infix,
+  lower_branch,
+  lower_bind,
+  lower_bind_annotated,
+  lower_loop,
+  lower_match,
+  lower_unary_prefix
+}
+import v2.std.list_introduction { lower_list_introduction }
+import v2.std.arrow_signature { declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
@@ -117,7 +126,9 @@ import v2.std.node {
   node_lowered_from,
   node_rebuild,
   node_synthetic,
-  node_with_occurrence_id
+  node_with_occurrence_id,
+  symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.node_query {
@@ -3383,7 +3394,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 }
 
 // THE DECLARED ORDER, CARRIED ON THE ARROW. Every Arrow built from a declared signature carries one
-// ^arrow_signature_order_edge (v2.std.compilers.body_lowering signature_order_edge) whose target is
+// ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge) whose target is
 // the language's canonical FreeMonoid introduction (lower_list_introduction) of the parameter labels as childless
 // Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
@@ -5739,25 +5750,14 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
   }
 }
 
-// AN ARROW WHOSE BODY IS ITSELF A FUNCTION VALUE HAS NO BODY FORM YET. `fn f() -> fn(A) -> B {
-// fn(a) { .. } }` and `x => y => ..` lower their inner function value to an Arrow, and
-// v2.std.node classify_arrow_body_form admits an Atom, a record Conj or a computation as a body --
-// not an Arrow. Passing it through handed normalize an Arrow its well-formedness gate refused with
-// no cause (post_normalize_not_well_formed). It refuses HERE instead, located at the inner function
-// value, with its own reason. A function value under a Bind (`let ..; fn(a) { .. }`) is a Bind body
-// and is unaffected. THE ONE REFUSAL SITE for the class: both the named-fn Arrow
-// (body_lower_fn_decl_to_arrow_admitted) and every function-value Arrow
-// (body_lower_function_value_arrow) reify their body through this function. DISSOLVE-ON: the
-// substrate's function-valued body arm (v2.std.node ArrowBodyForm FunctionValueBody, zesty-stag-363)
-// lands; this arm is then deleted, not widened.
+// A BODY THAT IS ITSELF A FUNCTION VALUE (`fn f() -> fn(A) -> B { fn(a) { .. } }`, `x => y => ..`)
+// passes through as its lowered Arrow: v2.std.node classify_arrow_body_form admits it as the
+// v2.std.node ArrowBodyForm arm (not the grammar-level body sum of v2.compiler.fold_lowering), and
+// the inner Arrow is well-formed by its own Arrow arm.
 fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
     ComputationNode { behavior: Branch } => body_lower_reify_branch_body(body: body)
-    TypeNode { connective: Arrow } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_arrow_body_is_function_value_unmodeled, n: body)
-      )
     _ => outcome_accepted(value: body)
   }
 }
@@ -8144,10 +8144,11 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
 
 // SERVICE DECLARATIONS, AT DECLARATION GRADE. A service is an interface (DESIGN section 3): a named
 // product of function types. `service S { operation Op { input { a: A } output { b: B } } }` lowers
-// onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { a: A }, Conj { b: B }) } }`,
-// the same Arrow a function TYPE lowers to (body_lower_fn_type_lowered_optional) -- so the graft
-// flattens it like a record and the symbol index sees the service, its operations and their
-// payload fields. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
+// onto existing connectives only -- `Conj { S: Conj { Op: Arrow(Conj { operation_input: Conj { a: A } },
+// Conj { b: B }, order [operation_input]) } }`, a one-parameter declared signature whose parameter is
+// the input record (body_lower_operation_params) -- so the graft flattens it like a record and the
+// symbol index sees the service, its operations and their payload fields under
+// `S.Op.operation_input`. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
 // node_minimal's TransportSlot is NOT promoted: transport is a realization handler, not a node field).
 //
 // WHAT IS NOT LOWERED IS SET ASIDE, TYPED AND LOCATED, UNDER TWO COUNTED REASONS:
@@ -8354,6 +8355,21 @@ fn body_lower_service_member_unread<T>(member: Node) -> Outcome<T> {
 }
 
 // An operation that declares no input (or no output) block exchanges the empty product.
+// AN OPERATION TAKES ONE INPUT, OF A RECORD TYPE: its domain is a parameter list with the one binder
+// ^operation_input whose target is the input payload, never the payload's fields standing in the
+// domain's place. A payload Conj at domain position reads, to every domain reader (v2.std.node
+// arrow_domain_binder_labels, v2.compiler.resolve add_arrow_domain_named_params), as one parameter
+// per field -- bound by name, with no declared order, and scoped as locals of an Arrow that has no
+// body. Built through v2.std.arrow_signature declared_signature like every other signature,
+// so the operation's domain and its order come from one mint. An operation with no input block has
+// an empty parameter list, not an empty payload argument.
+fn body_lower_operation_params(input: Optional<Node>) -> List<Edge> {
+  match input {
+    Present { value: payload } => [Edge { label: Named { name: ^operation_input }, target: payload }]
+    Absent => []
+  }
+}
+
 fn body_lower_io_payload_or_empty(o: Optional<Node>, source: Node) -> Node {
   match o {
     Present { value: payload } => payload
@@ -8380,6 +8396,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
               f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
             ),
             f: fn(a) {
+              let signature = declared_signature(params: body_lower_operation_params(input: a.input), source: shell)
               outcome_accepted(
                 value: BodyLowerOperation {
                   edge: Edge {
@@ -8387,8 +8404,9 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                     target: node_with_occurrence_id(
                       kind: TypeNode { connective: Arrow },
                       children: [
-                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.input, source: shell) },
-                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) }
+                        signature.domain,
+                        Edge { label: Positional, target: body_lower_io_payload_or_empty(o: a.output, source: shell) },
+                        signature.order
                       ],
                       occurrence_id: shell.occurrence_id
                     )
