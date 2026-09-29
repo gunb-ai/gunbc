@@ -32,7 +32,7 @@ import v2.std.optional { Absent, Present }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ENROLLED CONTROLS FOR THE PRODUCT-INTRODUCTION DERIVATION (`v2.compiler.infer`
-// infer_gather_product_row_on_entries): a non-roster Conj or Arrow whose every child carries
+// infer_gather_product_row): a non-roster Conj or Arrow whose every child carries
 // DerivedGrounding derives, its evidence the same shape re-formed over the children's grounding
 // evidence. The specimen is the direct-rust-door fixture's ingest -- the corpus's smallest
 // real-ingest dag module. The census pins that the witness actually saw the population: four

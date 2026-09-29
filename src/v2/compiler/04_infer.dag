@@ -253,18 +253,32 @@ fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
   }
 }
 
-type InferGatherFoldAcc {
-  node: Node
-  entries: List<InferredFactsEntry>
+// THE GATHER THREADS ONE FACTS MAP THROUGH THE WHOLE TREE (DESIGN section 6, bare minimum cost).
+// fold_node is a catamorphism, so a child's result never sees its parent's accumulator; when that
+// result was an entries LIST, every parent joined its children's lists and scanned them per lookup,
+// quadratic in the tree. The carrier is instead a function over the state: each node's `run` takes
+// the incoming map, runs its children's `run`s in edge order, then enters its own facts. The node's
+// shape (which row it awaits, how many children remain) is decided at fold time; only the facts are
+// threaded. Entry order is the order the entries list had, and inferred_facts_map_enter keeps the
+// FIRST entry for a repeated node, so the map the run ends with is the one facts_map_from_entries
+// built from that list. A lookup now sees every entry entered before it rather than only its own
+// subtree's; the two differ only for a node repeated elsewhere, and the threaded answer is the one
+// the final map returns.
+type InferGatherState {
+  facts: Map<Node, InferredFacts>
   failed: Bool
   pending: Diagnostics
+}
+
+type InferGatherFoldAcc {
+  node: Node
   await_branch_row: Bool
   await_match_row: Bool
   await_loop_row: Bool
   await_transform_row: Bool
   children_remaining: Int
+  run: fn(InferGatherState) -> InferGatherState
 }
-
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_facts_lookup_miss,
@@ -515,15 +529,6 @@ fn empty_inferred_facts_entry_list() -> List<InferredFactsEntry> {
   []
 }
 
-fn concat_inferred_facts_entries(
-  a: List<InferredFactsEntry>,
-  b: List<InferredFactsEntry>,
-) -> List<InferredFactsEntry> {
-  fold(b, init: a, f: fn(acc, entry) {
-    list_snoc_item(xs: acc, item: entry)
-  })
-}
-
 // infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the
 // constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts &&
 // candidate == source_facts) with algebra bound to the root itself — so the witness search reduced
@@ -560,7 +565,7 @@ fn concat_inferred_facts_entries(
 // namespace migration's completed state — at which point this lookup deletes in favor of consuming
 // resolution output.
 
-// THE CLOSED INGEST SET'S ROSTER-KIND INDEXES, DERIVED ONCE PER INFER RUN (infer_entries_for_tree)
+// THE CLOSED INGEST SET'S ROSTER-KIND INDEXES, DERIVED ONCE PER INFER RUN (infer_facts_for_tree)
 // and threaded to every node query beside `partials`: a member's kind is a fact about the rosters,
 // fixed before the run starts, so no node query re-walks a roster (DESIGN section 6, bare minimum
 // cost). They are consulted in ingest order (dag, python, typescript): the first roster that
@@ -644,11 +649,11 @@ fn infer_roster_member_declared_type(n: Node) -> Optional<Node> {
 // not values, so the derived type carries that edge unchanged (see infer_arrow_signature_order_edge).
 fn infer_product_child_evidence_edges(
   children: List<Edge>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
 ) -> Optional<List<Edge>> {
   infer_formation_child_evidence_edges(
     children: children,
-    entries: entries,
+    known: known,
     is_metadata: fn(edge) { edge_label_of(e: edge) == arrow_signature_order_label }
   )
 }
@@ -659,7 +664,7 @@ fn infer_product_child_evidence_edges(
 // never forms.
 fn infer_formation_child_evidence_edges(
   children: List<Edge>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   is_metadata: fn(Edge) -> Bool,
 ) -> Optional<List<Edge>> {
   fold(
@@ -672,7 +677,7 @@ fn infer_formation_child_evidence_edges(
           if is_metadata(edge) {
             optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
           } else {
-          match lookup_inferred_facts_in_entries(entries: entries, key: edge.target) {
+          match map_lookup(m: known, key: edge.target) {
             Absent => optional_absent()
             Present { value: child_facts } =>
               match inferred_facts_resolved_type(facts: child_facts) {
@@ -706,7 +711,7 @@ fn infer_arrow_body_does_not_inhabit_declared_return_diagnostic(body: Node) -> D
   }
 }
 
-fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+fn infer_arrow_body_inhabits_declared_return(node: Node, known: Map<Node, InferredFacts>) -> Outcome<Bool> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: node.children) {
@@ -715,7 +720,7 @@ fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredF
           match infer_arrow_declared_return_type(arrow: node) {
             Absent => outcome_accepted(value: true)
             Present { value: declared } =>
-              match lookup_inferred_facts_in_entries(entries: entries, key: body) {
+              match map_lookup(m: known, key: body) {
                 Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body))
                 Present { value: body_facts } =>
                   match inferred_facts_resolved_type(facts: body_facts) {
@@ -744,16 +749,16 @@ fn infer_arrow_body_inhabits_declared_return(node: Node, entries: List<InferredF
 // Conj or Arrow is product introduction, and a Disj of Named alternatives is SUM FORMATION -- the same
 // kind-preserving construction over its alternatives' evidence. Forming a sum type grants no
 // introduction or elimination: it says nothing about a value inhabiting one arm.
-fn infer_formation_facts_from_entries(
+fn infer_formation_facts_from_known(
   node: Node,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
   match type_decl_view(target: node) {
-    TypeAlias { binders: _, aliased: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
-    GenericTypeDecl { binders: _, member: _ } => infer_declaration_wrapper_facts_from_entries(node: node, entries: entries, partials: partials)
+    TypeAlias { binders: _, aliased: _ } => infer_declaration_wrapper_facts_from_known(node: node, known: known, partials: partials)
+    GenericTypeDecl { binders: _, member: _ } => infer_declaration_wrapper_facts_from_known(node: node, known: known, partials: partials)
     OpaqueTypeDecl { binders: _ } => infer_opaque_declaration_facts(node: node, partials: partials)
-    PlainTypeDecl { member: _ } => infer_product_facts_from_entries(node: node, entries: entries, partials: partials)
+    PlainTypeDecl { member: _ } => infer_product_facts_from_known(node: node, known: known, partials: partials)
   }
 }
 
@@ -764,9 +769,9 @@ fn infer_formation_facts_from_entries(
 // only when that right-hand side or member derives: a generic alias whose right-hand side names its own
 // binder (`type Id<T> = T`) has no symbolic grounding route for `T` yet and stays on the frontier,
 // never substituted or instantiated here.
-fn infer_declaration_wrapper_facts_from_entries(
+fn infer_declaration_wrapper_facts_from_known(
   node: Node,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -778,7 +783,7 @@ fn infer_declaration_wrapper_facts_from_entries(
         Holds { value: descent_proof } =>
           match infer_formation_child_evidence_edges(
             children: node.children,
-            entries: entries,
+            known: known,
             is_metadata: fn(edge) { edge_is_type_params(e: edge) }
           ) {
             Absent =>
@@ -828,9 +833,9 @@ fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<I
   }
 }
 
-fn infer_product_facts_from_entries(
+fn infer_product_facts_from_known(
   node: Node,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   partials: List<Node>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -840,7 +845,7 @@ fn infer_product_facts_from_entries(
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
-          match infer_product_child_evidence_edges(children: node.children, entries: entries) {
+          match infer_product_child_evidence_edges(children: node.children, known: known) {
             Absent =>
               bind_outcome_accepted(
                 od: cd,
@@ -851,7 +856,7 @@ fn infer_product_facts_from_entries(
               )
             Present { value: evidence_edges } =>
               bind_outcome(
-                o: infer_arrow_body_inhabits_declared_return(node: node, entries: entries),
+                o: infer_arrow_body_inhabits_declared_return(node: node, known: known),
                 f: fn(_checked) {
                   bind_outcome_accepted(
                     od: cd,
@@ -946,27 +951,6 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
   }
 }
 
-fn lookup_inferred_facts_in_entries(
-  entries: List<InferredFactsEntry>,
-  key: Node,
-) -> Optional<InferredFacts> {
-  fold(
-    entries,
-    init: optional_absent(),
-    f: fn(acc, entry) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if entry.node == key {
-            optional_present(value: entry.facts)
-          } else {
-            acc
-          }
-      }
-    }
-  )
-}
-
 // THE FACTS MAP IS A NODE-KEYED MAP, BUILT ONCE PER RUN (DESIGN section 6, bare minimum cost): a
 // lookup against the admitted entries list was a scan, so every lookup was linear in the tree and
 // a consumer walking the tree paid quadratic. Entry order still decides a repeated node: the FIRST
@@ -997,13 +981,17 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<PartialF
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: admitted, diagnostics: d } =>
       Accepted {
-        value: PartialFunction {
-          lookup: fn(key) {
-            map_lookup(m: admitted, key: key)
-          }
-        },
+        value: inferred_facts_partial_function(facts: admitted),
         diagnostics: d
       }
+  }
+}
+
+fn inferred_facts_partial_function(facts: Map<Node, InferredFacts>) -> PartialFunction<Node, InferredFacts> {
+  PartialFunction {
+    lookup: fn(key) {
+      map_lookup(m: facts, key: key)
+    }
   }
 }
 
@@ -1323,7 +1311,7 @@ fn infer_match_bool_arm_body_type(
 fn infer_match_bool_arm_rows_accept(
   node: Node,
   partials: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   first_arm_target: Node,
   second_arm_target: Node,
   cd: Diagnostics,
@@ -1331,14 +1319,14 @@ fn infer_match_bool_arm_rows_accept(
 ) -> Outcome<InferredFacts> {
   match infer_match_bool_arm_row(
     arm: first_arm_target,
-    entries: entries,
+    known: known,
     scrutinee_type: scrutinee_type
   ) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: first_row, diagnostics: fd } =>
       match infer_match_bool_arm_row(
         arm: second_arm_target,
-        entries: entries,
+        known: known,
         scrutinee_type: scrutinee_type
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1410,7 +1398,7 @@ fn infer_unify_branch_arm_types(
 fn infer_branch_bool_if_else(
   node: Node,
   partials: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
@@ -1425,13 +1413,13 @@ fn infer_branch_bool_if_else(
             match list_at_optional(xs: positional_targets, index: 2) {
               Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
               Present { value: else_target } =>
-                match lookup_inferred_facts_in_entries(entries: entries, key: cond_target) {
+                match map_lookup(m: known, key: cond_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
                   Present { value: cond_facts } =>
-                    match lookup_inferred_facts_in_entries(entries: entries, key: then_target) {
+                    match map_lookup(m: known, key: then_target) {
                       Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
                       Present { value: then_facts } =>
-                        match lookup_inferred_facts_in_entries(entries: entries, key: else_target) {
+                        match map_lookup(m: known, key: else_target) {
                           Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: else_target))
                           Present { value: else_facts } =>
                             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -1550,7 +1538,7 @@ fn infer_bool_literal_exhaustiveness_merge(
 
 fn infer_match_bool_arm_row(
   arm: Node,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   scrutinee_type: Node
 ) -> Outcome<InferMatchArmRow> {
   match arm.kind {
@@ -1568,7 +1556,7 @@ fn infer_match_bool_arm_row(
                   outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
                 _ =>
                   let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
-                  match lookup_inferred_facts_in_entries(entries: entries, key: body_target) {
+                  match map_lookup(m: known, key: body_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
                     Present { value: body_facts } =>
                       match infer_match_bool_arm_body_type(
@@ -1597,7 +1585,7 @@ fn infer_match_bool_arm_row(
 fn infer_match_bool(
   node: Node,
   partials: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   tree: Node,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
@@ -1613,7 +1601,7 @@ fn infer_match_bool(
             match list_at_optional(xs: positional_targets, index: 2) {
               Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
               Present { value: second_arm_target } =>
-                match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
+                match map_lookup(m: known, key: scrutinee_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
                   Present { value: scrutinee_facts } =>
                     match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -1631,7 +1619,7 @@ fn infer_match_bool(
                               infer_match_bool_arm_rows_accept(
                                 node: node,
                                 partials: partials,
-                                entries: entries,
+                                known: known,
                                 first_arm_target: first_arm_target,
                                 second_arm_target: second_arm_target,
                                 cd: infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
@@ -1671,8 +1659,8 @@ fn infer_loop_iteration_fold_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn infer_loop_body_type_at(target: Node, entries: List<InferredFactsEntry>) -> Outcome<Node> {
-  match lookup_inferred_facts_in_entries(entries: entries, key: target) {
+fn infer_loop_body_type_at(target: Node, known: Map<Node, InferredFacts>) -> Outcome<Node> {
+  match map_lookup(m: known, key: target) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: target))
     Present { value: facts } =>
       match infer_branch_operand_resolved_type(node: target, facts: facts) {
@@ -1689,19 +1677,19 @@ fn infer_loop_body_type_at(target: Node, entries: List<InferredFactsEntry>) -> O
 fn infer_loop_fixpoint_carrier(
   node: Node,
   body_targets: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
 ) -> Outcome<Node> {
   match list_at_optional(xs: body_targets, index: 0) {
     Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
     Present { value: first_body } =>
       bind_outcome(
-        o: infer_loop_body_type_at(target: first_body, entries: entries),
+        o: infer_loop_body_type_at(target: first_body, known: known),
         f: fn(carrier) {
           fold(body_targets, init: Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
             match acc {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: c, diagnostics: _ } =>
-                match infer_loop_body_type_at(target: target, entries: entries) {
+                match infer_loop_body_type_at(target: target, known: known) {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   Accepted { value: t, diagnostics: _ } =>
                     if infer_branch_type_atoms_equal(a: c, b: t) {
@@ -1720,7 +1708,7 @@ fn infer_loop_fixpoint_carrier(
 fn infer_loop_iteration(
   node: Node,
   partials: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1728,7 +1716,7 @@ fn infer_loop_iteration(
       match infer_loop_fixpoint_carrier(
         node: node,
         body_targets: infer_loop_iteration_fold_child_targets(node: node),
-        entries: entries
+        known: known
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: carrier, diagnostics: ud } =>
@@ -1759,7 +1747,7 @@ fn infer_loop_iteration(
 // recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
 // (03_resolve.resolve_transform_operator_child). Every reached Transform awaits the transform row
 // so application-argument inhabitance runs; add-shape result derivation is selected inside
-// infer_gather_transform_row_on_entries, and non-add Transforms stay GroundingNotDerived as the
+// infer_gather_transform_row, and non-add Transforms stay GroundingNotDerived as the
 // application's result type after the inhabitance judgment. dissolve-on: general operator/operand
 // typing table subsumes the add-only result rule.
 
@@ -1998,7 +1986,7 @@ fn infer_inhabitance_undecidable_accepted(
 
 fn infer_judge_application_argument(
   application: Node,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   formal: InhabitanceFormal,
   arg: Node
 ) -> Outcome<Bool> {
@@ -2009,7 +1997,7 @@ fn infer_judge_application_argument(
         reason: reason
       )
     Absent =>
-  match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+  match map_lookup(m: known, key: arg) {
     Absent =>
       infer_inhabitance_undecidable_accepted(
         application: application,
@@ -2063,7 +2051,7 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
 // stays the counted frontier it is for any formal, and instantiates nothing.
 fn infer_judge_application_argument_instantiating(
   application: Node,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
@@ -2071,7 +2059,7 @@ fn infer_judge_application_argument_instantiating(
 ) -> Outcome<List<TypeVariableInstance>> {
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: _ } =>
-      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg) {
+      match infer_judge_application_argument(application: application, known: known, formal: formal, arg: arg) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
@@ -2080,7 +2068,7 @@ fn infer_judge_application_argument_instantiating(
         Present { value: instance } =>
           match infer_judge_application_argument(
             application: application,
-            entries: entries,
+            known: known,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
             arg: arg
           ) {
@@ -2088,7 +2076,7 @@ fn infer_judge_application_argument_instantiating(
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
           }
         Absent =>
-          match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+          match map_lookup(m: known, key: arg) {
             Absent =>
               match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -2114,7 +2102,7 @@ fn infer_judge_application_argument_instantiating(
 
 fn infer_application_argument_inhabitance(
   node: Node,
-  entries: List<InferredFactsEntry>
+  known: Map<Node, InferredFacts>
 ) -> Outcome<Bool> {
   match infer_application_formals(node: node) {
     FormalsUnresolved =>
@@ -2151,7 +2139,7 @@ fn infer_application_argument_inhabitance(
               Accepted { value: instances, diagnostics: pd } =>
                 match infer_judge_application_argument_instantiating(
                   application: node,
-                  entries: entries,
+                  known: known,
                   formal: pair.formal,
                   arg: pair.arg,
                   type_params: type_params,
@@ -2177,7 +2165,7 @@ fn infer_application_argument_inhabitance(
 fn infer_transform_binary_infix(
   node: Node,
   partials: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   tree: Node,
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
@@ -2196,10 +2184,10 @@ fn infer_transform_binary_infix(
                 if !infer_transform_operator_is_int_add(op_node: op_target) {
                   outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
                 } else {
-                  match lookup_inferred_facts_in_entries(entries: entries, key: left_target) {
+                  match map_lookup(m: known, key: left_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
                     Present { value: left_facts } =>
-                      match lookup_inferred_facts_in_entries(entries: entries, key: right_target) {
+                      match map_lookup(m: known, key: right_target) {
                         Absent =>
                           outcome_rejected(infer_facts_lookup_miss_diagnostic(key: right_target))
                         Present { value: right_facts } =>
@@ -2250,70 +2238,61 @@ fn infer_transform_binary_infix(
   }
 }
 
-fn infer_gather_fold_acc_failed(
-  node: Node,
-  pending: NonEmptyDiagnostics,
-  await_branch_row: Bool,
-  await_match_row: Bool,
-  await_loop_row: Bool,
-  await_transform_row: Bool,
-  children_remaining: Int,
-) -> InferGatherFoldAcc {
-  InferGatherFoldAcc {
-    node: node,
-    entries: empty_inferred_facts_entry_list(),
-    failed: true,
-    pending: Some { diagnostics: pending },
-    await_branch_row: await_branch_row,
-    await_match_row: await_match_row,
-    await_loop_row: await_loop_row,
-    await_transform_row: await_transform_row,
-    children_remaining: children_remaining
-  }
-}
-
-fn infer_gather_fold_acc_ok(
-  node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
-  await_branch_row: Bool,
-  await_match_row: Bool,
-  await_loop_row: Bool,
-  await_transform_row: Bool,
-  children_remaining: Int,
-) -> InferGatherFoldAcc {
-  InferGatherFoldAcc {
-    node: node,
-    entries: entries,
+fn infer_gather_state_empty() -> InferGatherState {
+  InferGatherState {
+    facts: empty_map(),
     failed: false,
-    pending: pending,
-    await_branch_row: await_branch_row,
-    await_match_row: await_match_row,
-    await_loop_row: await_loop_row,
-    await_transform_row: await_transform_row,
-    children_remaining: children_remaining
+    pending: None
   }
 }
 
-fn infer_gather_acc_to_outcome(acc: InferGatherFoldAcc) -> Outcome<List<InferredFactsEntry>> {
-  if acc.failed {
-    match acc.pending {
-      None =>
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: infer_canonical_grounding_incoherent_diagnostic(node: infer_gather_fold_failure_node())
-          )
-        }
-      Some { diagnostics: nds } => Rejected { diagnostics: nds }
-    }
+fn infer_gather_state_failed(state: InferGatherState, rejected: NonEmptyDiagnostics) -> InferGatherState {
+  InferGatherState {
+    facts: state.facts,
+    failed: true,
+    pending: Some { diagnostics: rejected_with_pending(pending: state.pending, rejected: rejected) }
+  }
+}
+
+fn infer_gather_state_pending(state: InferGatherState, diagnostics: Diagnostics) -> InferGatherState {
+  InferGatherState {
+    facts: state.facts,
+    failed: state.failed,
+    pending: diagnostics_merge(outer: state.pending, inner: diagnostics)
+  }
+}
+
+fn infer_gather_state_enter(state: InferGatherState, entry: InferredFactsEntry, diagnostics: Diagnostics) -> InferGatherState {
+  InferGatherState {
+    facts: inferred_facts_map_enter(facts: state.facts, entry: entry),
+    failed: state.failed,
+    pending: diagnostics_merge(outer: state.pending, inner: diagnostics)
+  }
+}
+
+// A ROW'S DERIVATION ENTERS THE NODE'S OWN FACTS, admitted against the node, or fails the run.
+fn infer_gather_state_admit(state: InferGatherState, node: Node, derived: Outcome<InferredFacts>) -> InferGatherState {
+  match derived {
+    Rejected { diagnostics: r } => infer_gather_state_failed(state: state, rejected: r)
+    Accepted { value: facts, diagnostics: d } =>
+      match admitted_inferred_facts_entry(node: node, facts: facts) {
+        Rejected { diagnostics: r } => infer_gather_state_failed(state: state, rejected: r)
+        Accepted { value: entry, diagnostics: ed } =>
+          infer_gather_state_enter(state: state, entry: entry, diagnostics: diagnostics_merge(outer: d, inner: ed))
+      }
+  }
+}
+
+fn infer_gather_state_to_outcome(state: InferGatherState) -> Outcome<Map<Node, InferredFacts>> {
+  if state.failed {
+    Rejected { diagnostics: infer_gather_failed_non_empty(state: state) }
   } else {
     Accepted {
-      value: acc.entries,
-      diagnostics: acc.pending
+      value: state.facts,
+      diagnostics: state.pending
     }
   }
 }
-
 fn infer_gather_fold_failure_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^infer_gather_fold_failure } },
@@ -2322,197 +2301,43 @@ fn infer_gather_fold_failure_node() -> Node {
   }
 }
 
-fn infer_gather_branch_row_on_entries(
-  node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
-  partials: List<Node>,
-) -> InferGatherFoldAcc {
-  match infer_branch_bool_if_else(node: node, partials: partials, entries: entries) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: node,
-            pending: rejected_with_pending(pending: pending, rejected: r),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: node,
-            entries: list_snoc_item(xs: entries, item: entry),
-            pending: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: d),
-              inner: ed
-            ),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
-  }
+fn infer_gather_branch_row(node: Node, state: InferGatherState, partials: List<Node>) -> InferGatherState {
+  infer_gather_state_admit(
+    state: state,
+    node: node,
+    derived: infer_branch_bool_if_else(node: node, partials: partials, known: state.facts)
+  )
 }
 
-fn infer_gather_match_row_on_entries(
-  node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
-  partials: List<Node>,
-  tree: Node,
-) -> InferGatherFoldAcc {
-  match infer_match_bool(node: node, partials: partials, entries: entries, tree: tree) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: node,
-            pending: rejected_with_pending(pending: pending, rejected: r),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: node,
-            entries: list_snoc_item(xs: entries, item: entry),
-            pending: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: d),
-              inner: ed
-            ),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
-  }
+fn infer_gather_match_row(node: Node, state: InferGatherState, partials: List<Node>, tree: Node) -> InferGatherState {
+  infer_gather_state_admit(
+    state: state,
+    node: node,
+    derived: infer_match_bool(node: node, partials: partials, known: state.facts, tree: tree)
+  )
 }
 
-fn infer_gather_loop_row_on_entries(
-  node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
-  partials: List<Node>,
-) -> InferGatherFoldAcc {
-  match infer_loop_iteration(node: node, partials: partials, entries: entries) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: node,
-            pending: rejected_with_pending(pending: pending, rejected: r),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: node,
-            entries: list_snoc_item(xs: entries, item: entry),
-            pending: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: d),
-              inner: ed
-            ),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
-  }
+fn infer_gather_loop_row(node: Node, state: InferGatherState, partials: List<Node>) -> InferGatherState {
+  infer_gather_state_admit(
+    state: state,
+    node: node,
+    derived: infer_loop_iteration(node: node, partials: partials, known: state.facts)
+  )
 }
 
-fn infer_gather_transform_frontier_on_entries(
+fn infer_gather_transform_frontier(
   node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  state: InferGatherState,
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-) -> InferGatherFoldAcc {
-  match infer_node_facts(n: node, partials: partials, kinds: kinds, tree: tree) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: node,
-            pending: rejected_with_pending(pending: pending, rejected: r),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: node,
-            entries: list_snoc_item(xs: entries, item: entry),
-            pending: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: d),
-              inner: ed
-            ),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
-  }
+) -> InferGatherState {
+  infer_gather_state_admit(
+    state: state,
+    node: node,
+    derived: infer_node_facts(n: node, partials: partials, kinds: kinds, tree: tree)
+  )
 }
-
 // THE FREE-MONOID INTRODUCTION: A LIST LITERAL'S ONE INFER CASE. v2 body lowering writes
 // `[e1, .., en]` as ONE flat Transform whose head is the reference to std.algebra FreeMonoid's
 // declaration and whose remaining positional children are the elements in order
@@ -2533,8 +2358,8 @@ fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: a, candidate: b)
 }
 
-fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Node> {
-  match lookup_inferred_facts_in_entries(entries: entries, key: element) {
+fn infer_list_element_type(element: Node, known: Map<Node, InferredFacts>, tree: Node) -> Outcome<Node> {
+  match map_lookup(m: known, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
     Present { value: facts } =>
       match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, tree: tree) {
@@ -2548,17 +2373,17 @@ fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tre
 // refusal of the first element that differs.
 fn infer_list_elements_unified_type(
   elements: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   tree: Node
 ) -> Optional<Outcome<Node>> {
   match elements {
     Empty => Absent
     Cons { head: first, tail: rest } =>
       Present {
-        value: bind_outcome(o: infer_list_element_type(element: first, entries: entries, tree: tree), f: fn(t) {
+        value: bind_outcome(o: infer_list_element_type(element: first, known: known, tree: tree), f: fn(t) {
           fold(rest, init: outcome_accepted(value: t), f: fn(acc, element) {
             bind_outcome(o: acc, f: fn(unified) {
-              bind_outcome(o: infer_list_element_type(element: element, entries: entries, tree: tree), f: fn(et) {
+              bind_outcome(o: infer_list_element_type(element: element, known: known, tree: tree), f: fn(et) {
                 if infer_type_equal_ignoring_provenance(a: unified, b: et) {
                   outcome_accepted(value: unified)
                 } else {
@@ -2587,10 +2412,10 @@ fn infer_freemonoid_type_of(element_type: Node) -> Node {
 fn infer_transform_freemonoid_introduction(
   node: Node,
   elements: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   tree: Node
 ) -> Optional<Outcome<InferredFacts>> {
-  match infer_list_elements_unified_type(elements: elements, entries: entries, tree: tree) {
+  match infer_list_elements_unified_type(elements: elements, known: known, tree: tree) {
     Absent => Absent
     Present { value: unified } =>
       Present {
@@ -2609,143 +2434,50 @@ fn infer_transform_freemonoid_introduction(
   }
 }
 
-fn infer_gather_transform_row_on_entries(
+fn infer_gather_transform_row(
   node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  state: InferGatherState,
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-) -> InferGatherFoldAcc {
+) -> InferGatherState {
   match list_introduction_elements_optional(node: node) {
     Absent =>
-      infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, tree: tree)
+      infer_gather_application_row(node: node, state: state, partials: partials, kinds: kinds, tree: tree)
     Present { value: elements } =>
-    match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, tree: tree) {
-      Absent =>
-        infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, tree: tree)
-      Present { value: introduced } =>
-        match introduced {
-          Rejected { diagnostics: r } =>
-            infer_gather_fold_acc_failed(
-              node: node,
-              pending: rejected_with_pending(pending: pending, rejected: r),
-              await_branch_row: false,
-              await_match_row: false,
-              await_loop_row: false,
-              await_transform_row: false,
-              children_remaining: 0
-            )
-          Accepted { value: facts, diagnostics: d } =>
-            match admitted_inferred_facts_entry(node: node, facts: facts) {
-              Rejected { diagnostics: r } =>
-                infer_gather_fold_acc_failed(
-                  node: node,
-                  pending: rejected_with_pending(pending: pending, rejected: r),
-                  await_branch_row: false,
-                  await_match_row: false,
-                  await_loop_row: false,
-                  await_transform_row: false,
-                  children_remaining: 0
-                )
-              Accepted { value: entry, diagnostics: ed } =>
-                infer_gather_fold_acc_ok(
-                  node: node,
-                  entries: list_snoc_item(xs: entries, item: entry),
-                  pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: ed),
-                  await_branch_row: false,
-                  await_match_row: false,
-                  await_loop_row: false,
-                  await_transform_row: false,
-                  children_remaining: 0
-                )
-            }
-        }
-    }
-  }
-}
-
-fn infer_gather_application_row_on_entries(
-  node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
-  partials: List<Node>,
-  kinds: List<RosterKindIndex>,
-  tree: Node,
-) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: _, diagnostics: id } =>
-      let merged_pending = diagnostics_merge(outer: pending, inner: id)
-      match infer_transform_derived_optional(
-        node: node,
-        partials: partials,
-        entries: entries,
-        tree: tree,
-        arguments_decided: infer_diagnostics_none(d: id)
-      ) {
-        Present { value: derived } =>
-        match derived {
-          Rejected { diagnostics: r } =>
-            infer_gather_fold_acc_failed(
-              node: node,
-              pending: rejected_with_pending(pending: merged_pending, rejected: r),
-              await_branch_row: false,
-              await_match_row: false,
-              await_loop_row: false,
-              await_transform_row: false,
-              children_remaining: 0
-            )
-          Accepted { value: facts, diagnostics: d } =>
-            match admitted_inferred_facts_entry(node: node, facts: facts) {
-              Rejected { diagnostics: r } =>
-                infer_gather_fold_acc_failed(
-                  node: node,
-                  pending: rejected_with_pending(pending: merged_pending, rejected: r),
-                  await_branch_row: false,
-                  await_match_row: false,
-                  await_loop_row: false,
-                  await_transform_row: false,
-                  children_remaining: 0
-                )
-              Accepted { value: entry, diagnostics: ed } =>
-                infer_gather_fold_acc_ok(
-                  node: node,
-                  entries: list_snoc_item(xs: entries, item: entry),
-                  pending: diagnostics_merge(
-                    outer: diagnostics_merge(outer: merged_pending, inner: d),
-                    inner: ed
-                  ),
-                  await_branch_row: false,
-                  await_match_row: false,
-                  await_loop_row: false,
-                  await_transform_row: false,
-                  children_remaining: 0
-                )
-            }
-        }
+      match infer_transform_freemonoid_introduction(node: node, elements: elements, known: state.facts, tree: tree) {
         Absent =>
-        infer_gather_transform_frontier_on_entries(
-          node: node,
-          entries: entries,
-          pending: merged_pending,
-          partials: partials,
-          kinds: kinds,
-          tree: tree
-        )
+          infer_gather_transform_frontier(node: node, state: state, partials: partials, kinds: kinds, tree: tree)
+        Present { value: introduced } =>
+          infer_gather_state_admit(state: state, node: node, derived: introduced)
       }
   }
 }
 
+fn infer_gather_application_row(
+  node: Node,
+  state: InferGatherState,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherState {
+  match infer_application_argument_inhabitance(node: node, known: state.facts) {
+    Rejected { diagnostics: r } => infer_gather_state_failed(state: state, rejected: r)
+    Accepted { value: _, diagnostics: id } =>
+      let decided = infer_gather_state_pending(state: state, diagnostics: id)
+      match infer_transform_derived_optional(
+        node: node,
+        partials: partials,
+        known: decided.facts,
+        tree: tree,
+        arguments_decided: infer_diagnostics_none(d: id)
+      ) {
+        Present { value: derived } => infer_gather_state_admit(state: decided, node: node, derived: derived)
+        Absent =>
+          infer_gather_transform_frontier(node: node, state: decided, partials: partials, kinds: kinds, tree: tree)
+      }
+  }
+}
 // AN ANNOTATED LET CHECKS ITS BOUND VALUE AGAINST THE ANNOTATION. `let x: T = e` is Bind[x, e, body]
 // + <type-annotation> T (v2.std.type_binder); it awaits its children, then asks v2.std.coercion --
 // the one inhabitance authority, the fold a cast's crossing also asks -- whether e's derived
@@ -2754,14 +2486,14 @@ fn infer_gather_application_row_on_entries(
 // not derived leaves the check unjudged and the Bind on the counted frontier, as an unannotated Bind
 // is: the check is neither admitted nor skipped silently.
 
-fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>) -> Outcome<Bool> {
+fn infer_bind_annotation_check(node: Node, known: Map<Node, InferredFacts>) -> Outcome<Bool> {
   match type_annotation_optional(n: node) {
     Absent => outcome_accepted(true)
     Present { value: annotation } =>
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
         Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
         Present { value: bound } =>
-          match lookup_inferred_facts_in_entries(entries: entries, key: bound) {
+          match map_lookup(m: known, key: bound) {
             Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: bound))
             Present { value: bound_facts } =>
               match bound_facts.grounding {
@@ -2795,37 +2527,25 @@ fn infer_bind_annotation_refusal(annotation: Node, cause: NonEmptyDiagnostics) -
   }
 }
 
-fn infer_gather_bind_annotation_row_on_entries(
+fn infer_gather_bind_annotation_row(
   node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
+  state: InferGatherState,
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-) -> InferGatherFoldAcc {
-  match infer_bind_annotation_check(node: node, entries: entries) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
+) -> InferGatherState {
+  match infer_bind_annotation_check(node: node, known: state.facts) {
+    Rejected { diagnostics: r } => infer_gather_state_failed(state: state, rejected: r)
     Accepted { value: _, diagnostics: d } =>
-      infer_gather_transform_frontier_on_entries(
+      infer_gather_transform_frontier(
         node: node,
-        entries: entries,
-        pending: diagnostics_merge(outer: pending, inner: d),
+        state: infer_gather_state_pending(state: state, diagnostics: d),
         partials: partials,
         kinds: kinds,
         tree: tree
       )
   }
 }
-
 // THE TRANSFORMS WHOSE TYPE IS DERIVED, by shape: the binary Int add, and a cast whose operand's
 // grounding is derived. Absent is the counted frontier (GroundingNotDerived), never an admission.
 fn infer_diagnostics_none(d: Diagnostics) -> Bool {
@@ -2841,16 +2561,16 @@ fn infer_diagnostics_none(d: Diagnostics) -> Bool {
 fn infer_transform_derived_optional(
   node: Node,
   partials: List<Node>,
-  entries: List<InferredFactsEntry>,
+  known: Map<Node, InferredFacts>,
   tree: Node,
   arguments_decided: Bool,
 ) -> Optional<Outcome<InferredFacts>> {
   if infer_transform_is_binary_infix_int_add_shape(node: node) {
-    optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, tree: tree))
+    optional_present(value: infer_transform_binary_infix(node: node, partials: partials, known: known, tree: tree))
   } else if infer_transform_is_cast(node: node) {
-    infer_transform_cast_optional(node: node, entries: entries)
+    infer_transform_cast_optional(node: node, known: known)
   } else if arguments_decided {
-    infer_transform_application_optional(node: node, entries: entries)
+    infer_transform_application_optional(node: node, known: known)
   } else {
     optional_absent()
   }
@@ -2862,11 +2582,11 @@ fn infer_transform_derived_optional(
 // derived -- so arrow introduction has checked its body against that return. An underived callee,
 // a non-Arrow operator, or a return the language join does not denote stays on the counted
 // frontier: Absent here, never an admission.
-fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+fn infer_transform_application_optional(node: Node, known: Map<Node, InferredFacts>) -> Optional<Outcome<InferredFacts>> {
   match infer_application_callee_arrow(node: node) {
     Absent => optional_absent()
     Present { value: arrow } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: arrow) {
+      match map_lookup(m: known, key: arrow) {
         Absent => optional_absent()
         Present { value: arrow_facts } =>
           if !inferred_facts_grounding_derived(facts: arrow_facts) {
@@ -2905,7 +2625,7 @@ fn infer_transform_is_cast(node: Node) -> Bool {
   }
 }
 
-fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+fn infer_transform_cast_optional(node: Node, known: Map<Node, InferredFacts>) -> Optional<Outcome<InferredFacts>> {
   if !infer_transform_is_cast(node: node) {
     optional_absent()
   } else {
@@ -2915,7 +2635,7 @@ fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) 
         match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
           Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
           Present { value: operand } =>
-            match lookup_inferred_facts_in_entries(entries: entries, key: operand) {
+            match map_lookup(m: known, key: operand) {
               Absent => optional_present(value: outcome_rejected(infer_facts_lookup_miss_diagnostic(key: operand)))
               Present { value: operand_facts } =>
                 match operand_facts.grounding {
@@ -2949,16 +2669,38 @@ fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>) 
 // -- never defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction).
 
 fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> InferGatherFoldAcc {
-  infer_gather_transform_frontier_on_entries(
+  InferGatherFoldAcc {
     node: n,
-    entries: empty_inferred_facts_entry_list(),
-    pending: None,
-    partials: partials,
-    kinds: kinds,
-    tree: tree
-  )
+    await_branch_row: false,
+    await_match_row: false,
+    await_loop_row: false,
+    await_transform_row: false,
+    children_remaining: 0,
+    run: fn(state) {
+      infer_gather_transform_frontier(node: n, state: state, partials: partials, kinds: kinds, tree: tree)
+    }
+  }
 }
 
+// A NODE THAT AWAITS ITS CHILDREN enters nothing before them; the step that settles its last child
+// runs the row the flags name (infer_gather_settle).
+fn infer_gather_fold_awaiting(
+  n: Node,
+  await_branch_row: Bool,
+  await_match_row: Bool,
+  await_loop_row: Bool,
+  await_transform_row: Bool,
+) -> InferGatherFoldAcc {
+  InferGatherFoldAcc {
+    node: n,
+    await_branch_row: await_branch_row,
+    await_match_row: await_match_row,
+    await_loop_row: await_loop_row,
+    await_transform_row: await_transform_row,
+    children_remaining: length(xs: n.children),
+    run: fn(state) { state }
+  }
+}
 // THE CONJ ARM READS A RESOLVED CORPUS-DECLARATION REFERENCE FIRST, BECAUSE IT IS CONJ-SHAPED AND
 // NOT A RECORD. Resolution carries a reference to a declaration as its declaring path
 // (v2.compiler.resolve resolved_reference_node), a qualified-name spine that shares the Conj
@@ -2970,74 +2712,32 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<Rost
 fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, tree: Node) -> InferGatherFoldAcc {
   match n.kind {
     ComputationNode { behavior: Branch } =>
-      infer_gather_fold_acc_ok(
-        node: n,
-        entries: empty_inferred_facts_entry_list(),
-        pending: None,
-        await_branch_row: true,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: length(xs: n.children)
-      )
+      infer_gather_fold_awaiting(n: n, await_branch_row: true, await_match_row: false, await_loop_row: false, await_transform_row: false)
     ComputationNode { behavior: Match } =>
-      infer_gather_fold_acc_ok(
-        node: n,
-        entries: empty_inferred_facts_entry_list(),
-        pending: None,
-        await_branch_row: false,
-        await_match_row: true,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: length(xs: n.children)
-      )
+      infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: true, await_loop_row: false, await_transform_row: false)
     ComputationNode { behavior: Loop } =>
-      infer_gather_fold_acc_ok(
-        node: n,
-        entries: empty_inferred_facts_entry_list(),
-        pending: None,
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: true,
-        await_transform_row: false,
-        children_remaining: length(xs: n.children)
-      )
+      infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: false, await_loop_row: true, await_transform_row: false)
     ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
     ComputationNode { behavior: Transform } =>
       if length(xs: n.children) == 0 {
-        infer_gather_transform_row_on_entries(
+        InferGatherFoldAcc {
           node: n,
-          entries: empty_inferred_facts_entry_list(),
-          pending: None,
-          partials: partials,
-          kinds: kinds,
-          tree: tree
-        )
-      } else {
-        infer_gather_fold_acc_ok(
-          node: n,
-          entries: empty_inferred_facts_entry_list(),
-          pending: None,
           await_branch_row: false,
           await_match_row: false,
           await_loop_row: false,
-          await_transform_row: true,
-          children_remaining: length(xs: n.children)
-        )
+          await_transform_row: false,
+          children_remaining: 0,
+          run: fn(state) {
+            infer_gather_transform_row(node: n, state: state, partials: partials, kinds: kinds, tree: tree)
+          }
+        }
+      } else {
+        infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: false, await_loop_row: false, await_transform_row: true)
       }
     ComputationNode { behavior: Bind } =>
       match type_annotation_optional(n: n) {
         Present { value: _ } =>
-          infer_gather_fold_acc_ok(
-            node: n,
-            entries: empty_inferred_facts_entry_list(),
-            pending: None,
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: length(xs: n.children)
-          )
+          infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: false, await_loop_row: false, await_transform_row: false)
         Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
       }
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
@@ -3045,48 +2745,21 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       match declaration_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
         Absent =>
-      if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
-        infer_gather_fold_acc_ok(
-          node: n,
-          entries: empty_inferred_facts_entry_list(),
-          pending: None,
-          await_branch_row: false,
-          await_match_row: false,
-          await_loop_row: false,
-          await_transform_row: false,
-          children_remaining: length(xs: n.children)
-        )
-      } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
-      }
+          if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
+            infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: false, await_loop_row: false, await_transform_row: false)
+          } else {
+            infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
+          }
       }
     TypeNode { connective: Disj } =>
       if infer_disj_is_named_sum(n: n) && !infer_node_declared_in_language_inhabitants_bool(kinds: kinds, n: n) {
-        infer_gather_fold_acc_ok(
-          node: n,
-          entries: empty_inferred_facts_entry_list(),
-          pending: None,
-          await_branch_row: false,
-          await_match_row: false,
-          await_loop_row: false,
-          await_transform_row: false,
-          children_remaining: length(xs: n.children)
-        )
+        infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: false, await_loop_row: false, await_transform_row: false)
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
       }
     TypeNode { connective: Arrow } =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
-        infer_gather_fold_acc_ok(
-          node: n,
-          entries: empty_inferred_facts_entry_list(),
-          pending: None,
-          await_branch_row: false,
-          await_match_row: false,
-          await_loop_row: false,
-          await_transform_row: false,
-          children_remaining: length(xs: n.children)
-        )
+        infer_gather_fold_awaiting(n: n, await_branch_row: false, await_match_row: false, await_loop_row: false, await_transform_row: false)
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, tree: tree)
       }
@@ -3095,8 +2768,8 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
   }
 }
 
-fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics {
-  match acc.pending {
+fn infer_gather_failed_non_empty(state: InferGatherState) -> NonEmptyDiagnostics {
+  match state.pending {
     Some { diagnostics: nds } => nds
     None =>
       diagnostics_singleton(
@@ -3228,74 +2901,29 @@ fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEnt
   )
 }
 
-fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEntry>) -> Bool {
+fn infer_gather_acc_awaits_product_row(node: Node, known: Map<Node, InferredFacts>) -> Bool {
   match node.kind {
-    TypeNode { connective: Conj } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    TypeNode { connective: Arrow } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    TypeNode { connective: Disj } =>
-      match lookup_inferred_facts_in_entries(entries: entries, key: node) {
-        Absent => true
-        Present { value: _ } => false
-      }
+    TypeNode { connective: Conj } => infer_gather_known_absent(node: node, known: known)
+    TypeNode { connective: Arrow } => infer_gather_known_absent(node: node, known: known)
+    TypeNode { connective: Disj } => infer_gather_known_absent(node: node, known: known)
     _ => false
   }
 }
 
-fn infer_gather_product_row_on_entries(
-  node: Node,
-  entries: List<InferredFactsEntry>,
-  pending: Diagnostics,
-  partials: List<Node>,
-) -> InferGatherFoldAcc {
-  match infer_formation_facts_from_entries(node: node, entries: entries, partials: partials) {
-    Rejected { diagnostics: r } =>
-      infer_gather_fold_acc_failed(
-        node: node,
-        pending: rejected_with_pending(pending: pending, rejected: r),
-        await_branch_row: false,
-        await_match_row: false,
-        await_loop_row: false,
-        await_transform_row: false,
-        children_remaining: 0
-      )
-    Accepted { value: facts, diagnostics: d } =>
-      match admitted_inferred_facts_entry(node: node, facts: facts) {
-        Rejected { diagnostics: r } =>
-          infer_gather_fold_acc_failed(
-            node: node,
-            pending: rejected_with_pending(pending: pending, rejected: r),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-        Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: node,
-            entries: list_snoc_item(xs: entries, item: entry),
-            pending: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: d),
-              inner: ed
-            ),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
-          )
-      }
+fn infer_gather_known_absent(node: Node, known: Map<Node, InferredFacts>) -> Bool {
+  match map_lookup(m: known, key: node) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
+fn infer_gather_product_row(node: Node, state: InferGatherState, partials: List<Node>) -> InferGatherState {
+  infer_gather_state_admit(
+    state: state,
+    node: node,
+    derived: infer_formation_facts_from_known(node: node, known: state.facts, partials: partials)
+  )
+}
 // A PAYLOADLESS ALTERNATIVE IS THE EMPTY PRODUCT, AND IT IS GROUNDED BY ITS SUM, NOT BY ITS OWN
 // SHAPE. A coproduct lowers to a Disj whose Named arms carry each alternative's payload, and a
 // nullary alternative (`Allowed`) carries a childless Conj: the product of zero fields. The Disj fixes
@@ -3364,80 +2992,37 @@ fn infer_gather_fold_step(
   kinds: List<RosterKindIndex>,
   tree: Node,
 ) -> InferGatherFoldAcc {
-  if acc.failed {
-    acc
-  } else if infer_arrow_signature_order_edge(parent: acc.node, edge: edge) || infer_declaration_binder_edge(parent: acc.node, edge: edge) {
-    infer_gather_fold_step_merged(
-      acc: acc,
-      merged_entries: acc.entries,
-      merged_pending: acc.pending,
-      partials: partials,
-      kinds: kinds,
-      tree: tree
-    )
-  } else if child.failed {
-    infer_gather_fold_acc_failed(
-      node: acc.node,
-      pending: rejected_with_pending(
-        pending: acc.pending,
-        rejected: infer_gather_failed_non_empty(acc: child)
-      ),
-      await_branch_row: acc.await_branch_row,
-      await_match_row: acc.await_match_row,
-      await_loop_row: acc.await_loop_row,
-      await_transform_row: acc.await_transform_row,
-      children_remaining: acc.children_remaining
-    )
-  } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining)
-    || infer_sum_nullary_payload_edge(parent: acc.node, edge: edge) {
-    match infer_empty_product_entry(domain: edge.target) {
-      Rejected { diagnostics: r } =>
-        infer_gather_fold_acc_failed(
-          node: acc.node,
-          pending: rejected_with_pending(pending: acc.pending, rejected: r),
-          await_branch_row: acc.await_branch_row,
-          await_match_row: acc.await_match_row,
-          await_loop_row: acc.await_loop_row,
-          await_transform_row: acc.await_transform_row,
-          children_remaining: acc.children_remaining
-        )
-      Accepted { value: domain_entry, diagnostics: _ } =>
-        infer_gather_fold_step_merged(
-          acc: acc,
-          merged_entries: list_snoc_item(xs: acc.entries, item: domain_entry),
-          merged_pending: acc.pending,
-          partials: partials,
-          kinds: kinds,
-          tree: tree
-        )
+  InferGatherFoldAcc {
+    node: acc.node,
+    await_branch_row: acc.await_branch_row,
+    await_match_row: acc.await_match_row,
+    await_loop_row: acc.await_loop_row,
+    await_transform_row: acc.await_transform_row,
+    children_remaining: acc.children_remaining - 1,
+    run: fn(state) {
+      infer_gather_step_run(acc: acc, edge: edge, child: child, state: state, partials: partials, kinds: kinds, tree: tree)
     }
-  } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
-    match infer_literal_payload_entries(payload: edge.target) {
-      Rejected { diagnostics: r } =>
-        infer_gather_fold_acc_failed(
-          node: acc.node,
-          pending: rejected_with_pending(pending: acc.pending, rejected: r),
-          await_branch_row: acc.await_branch_row,
-          await_match_row: acc.await_match_row,
-          await_loop_row: acc.await_loop_row,
-          await_transform_row: acc.await_transform_row,
-          children_remaining: acc.children_remaining
-        )
-      Accepted { value: payload_entries, diagnostics: _ } =>
-        infer_gather_fold_step_merged(
-          acc: acc,
-          merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
-          merged_pending: acc.pending,
-          partials: partials,
-          kinds: kinds,
-          tree: tree
-        )
-    }
+  }
+}
+
+// THE EARLIER CHILDREN RUN FIRST, THEN THIS EDGE, THEN -- ON THE LAST CHILD -- THE AWAITED ROW. A
+// failed state is never run further: the first refusal is the run's verdict.
+fn infer_gather_step_run(
+  acc: InferGatherFoldAcc,
+  edge: Edge,
+  child: InferGatherFoldAcc,
+  state: InferGatherState,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherState {
+  let before = acc.run(state)
+  if before.failed {
+    before
   } else {
-    infer_gather_fold_step_merged(
+    infer_gather_step_settle(
       acc: acc,
-      merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
-      merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
+      state: infer_gather_edge_run(parent: acc.node, edge: edge, child: child, children_remaining: acc.children_remaining, state: before),
       partials: partials,
       kinds: kinds,
       tree: tree
@@ -3445,59 +3030,76 @@ fn infer_gather_fold_step(
   }
 }
 
-fn infer_gather_fold_step_merged(
+fn infer_gather_step_settle(
   acc: InferGatherFoldAcc,
-  merged_entries: List<InferredFactsEntry>,
-  merged_pending: Diagnostics,
+  state: InferGatherState,
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-) -> InferGatherFoldAcc {
-  let children_remaining = acc.children_remaining - 1
-  if acc.await_branch_row && children_remaining == 0 {
-    infer_gather_branch_row_on_entries(
-      node: acc.node,
-      entries: merged_entries,
-      pending: merged_pending,
-      partials: partials
-    )
-  } else if acc.await_match_row && children_remaining == 0 {
-    infer_gather_match_row_on_entries(
-      node: acc.node,
-      entries: merged_entries,
-      pending: merged_pending,
-      partials: partials,
-      tree: tree
-    )
-  } else if acc.await_loop_row && children_remaining == 0 {
-    infer_gather_loop_row_on_entries(
-      node: acc.node,
-      entries: merged_entries,
-      pending: merged_pending,
-      partials: partials
-    )
-  } else if acc.await_transform_row && children_remaining == 0 {
-    infer_gather_transform_row_on_entries(
-      node: acc.node,
-      entries: merged_entries,
-      pending: merged_pending,
-      partials: partials,
-      kinds: kinds,
-      tree: tree
-    )
-  } else if children_remaining == 0 {
-    infer_gather_settled_row(acc: acc, merged_entries: merged_entries, merged_pending: merged_pending, partials: partials, kinds: kinds, tree: tree)
+) -> InferGatherState {
+  if state.failed || acc.children_remaining - 1 != 0 {
+    state
+  } else if acc.await_branch_row {
+    infer_gather_branch_row(node: acc.node, state: state, partials: partials)
+  } else if acc.await_match_row {
+    infer_gather_match_row(node: acc.node, state: state, partials: partials, tree: tree)
+  } else if acc.await_loop_row {
+    infer_gather_loop_row(node: acc.node, state: state, partials: partials)
+  } else if acc.await_transform_row {
+    infer_gather_transform_row(node: acc.node, state: state, partials: partials, kinds: kinds, tree: tree)
   } else {
-    infer_gather_fold_acc_ok(
-      node: acc.node,
-      entries: merged_entries,
-      pending: merged_pending,
-      await_branch_row: acc.await_branch_row,
-      await_match_row: acc.await_match_row,
-      await_loop_row: acc.await_loop_row,
-      await_transform_row: acc.await_transform_row,
-      children_remaining: children_remaining
-    )
+    infer_gather_settled_row(node: acc.node, state: state, partials: partials, kinds: kinds, tree: tree)
+  }
+}
+
+// WHAT ONE EDGE CONTRIBUTES. A metadata edge (an Arrow's declared order, a declaration's binders)
+// contributes nothing, and its subtree is never run. A payload edge the parent's model grounds (a
+// nullary Arrow's empty domain, a sum's nullary alternative, an int literal's magnitude) enters the
+// facts that model derives instead of the child's -- but the child still refuses if its own subtree
+// does, so it is run against an empty state that is then discarded. Every other edge runs its child.
+fn infer_gather_edge_run(
+  parent: Node,
+  edge: Edge,
+  child: InferGatherFoldAcc,
+  children_remaining: Int,
+  state: InferGatherState,
+) -> InferGatherState {
+  if infer_arrow_signature_order_edge(parent: parent, edge: edge) || infer_declaration_binder_edge(parent: parent, edge: edge) {
+    state
+  } else if infer_arrow_empty_domain_edge(parent: parent, edge: edge, children_remaining: children_remaining)
+    || infer_sum_nullary_payload_edge(parent: parent, edge: edge)
+    || infer_literal_edge_diagnostics_derived(parent: parent, edge: edge) {
+    infer_gather_payload_edge_run(parent: parent, edge: edge, child: child, children_remaining: children_remaining, state: state)
+  } else {
+    child.run(state)
+  }
+}
+
+fn infer_gather_payload_edge_run(
+  parent: Node,
+  edge: Edge,
+  child: InferGatherFoldAcc,
+  children_remaining: Int,
+  state: InferGatherState,
+) -> InferGatherState {
+  let isolated = child.run(infer_gather_state_empty())
+  if isolated.failed {
+    infer_gather_state_failed(state: state, rejected: infer_gather_failed_non_empty(state: isolated))
+  } else if infer_arrow_empty_domain_edge(parent: parent, edge: edge, children_remaining: children_remaining)
+    || infer_sum_nullary_payload_edge(parent: parent, edge: edge) {
+    match infer_empty_product_entry(domain: edge.target) {
+      Rejected { diagnostics: r } => infer_gather_state_failed(state: state, rejected: r)
+      Accepted { value: domain_entry, diagnostics: _ } =>
+        infer_gather_state_enter(state: state, entry: domain_entry, diagnostics: None)
+    }
+  } else {
+    match infer_literal_payload_entries(payload: edge.target) {
+      Rejected { diagnostics: r } => infer_gather_state_failed(state: state, rejected: r)
+      Accepted { value: payload_entries, diagnostics: _ } =>
+        fold(payload_entries, init: state, f: fn(entered, entry) {
+          infer_gather_state_enter(state: entered, entry: entry, diagnostics: None)
+        })
+    }
   }
 }
 
@@ -3505,42 +3107,20 @@ fn infer_gather_fold_step_merged(
 // type_annotation_optional) checks its bound value against the annotation; a product or Arrow still
 // missing its own entry takes the product row; anything else stays as folded.
 fn infer_gather_settled_row(
-  acc: InferGatherFoldAcc,
-  merged_entries: List<InferredFactsEntry>,
-  merged_pending: Diagnostics,
+  node: Node,
+  state: InferGatherState,
   partials: List<Node>,
   kinds: List<RosterKindIndex>,
   tree: Node,
-) -> InferGatherFoldAcc {
-  match type_annotation_optional(n: acc.node) {
+) -> InferGatherState {
+  match type_annotation_optional(n: node) {
     Present { value: _ } =>
-      infer_gather_bind_annotation_row_on_entries(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        partials: partials,
-        kinds: kinds,
-        tree: tree
-      )
+      infer_gather_bind_annotation_row(node: node, state: state, partials: partials, kinds: kinds, tree: tree)
     Absent =>
-      if infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
-        infer_gather_product_row_on_entries(
-          node: acc.node,
-          entries: merged_entries,
-          pending: merged_pending,
-          partials: partials
-        )
+      if infer_gather_acc_awaits_product_row(node: node, known: state.facts) {
+        infer_gather_product_row(node: node, state: state, partials: partials)
       } else {
-        infer_gather_fold_acc_ok(
-          node: acc.node,
-          entries: merged_entries,
-          pending: merged_pending,
-          await_branch_row: acc.await_branch_row,
-          await_match_row: acc.await_match_row,
-          await_loop_row: acc.await_loop_row,
-          await_transform_row: acc.await_transform_row,
-          children_remaining: 0
-        )
+        state
       }
   }
 }
@@ -3555,37 +3135,31 @@ fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>,
     }
   }
 }
-
 fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   canonical_grounding_admits_infer_facts(grounding: grounding)
 }
 
-fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+fn infer_facts_for_tree(tree: ResolvedTree) -> Outcome<Map<Node, InferredFacts>> {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree)
   let kinds = infer_language_inhabitants_kind_index()
-  infer_gather_acc_to_outcome(
-    acc: fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree))
-  )
+  let gather = fold_node(n: tree, algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, tree: tree))
+  infer_gather_state_to_outcome(state: gather.run(infer_gather_state_empty()))
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
 // discharge_refinement_obligations is the one route onward. No obligation is recorded yet -- the
 // producer is the literal-into-refinement cast arm, which lands once where-predicates bind to their
 // declarations (node adhoc-46630399-82b); until then every tree discharges with nothing to evaluate.
 fn infer(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
-  match infer_entries_for_tree(tree: tree) {
+  match infer_facts_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: entries, diagnostics: d } =>
-      match facts_map_from_entries(entries: entries) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: facts_map, diagnostics: md } =>
-          Accepted {
-            value: ObligatedInferredTree {
-              root: tree,
-              facts: facts_map,
-              obligations: Empty
-            },
-            diagnostics: diagnostics_merge(outer: d, inner: md)
-          }
+    Accepted { value: known, diagnostics: d } =>
+      Accepted {
+        value: ObligatedInferredTree {
+          root: tree,
+          facts: inferred_facts_partial_function(facts: known),
+          obligations: Empty
+        },
+        diagnostics: d
       }
   }
 }

@@ -15,7 +15,7 @@ import v2.test.claim.type_param_binder_frame { tpb_assemble }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A LOWERED TYPE DECLARATION GROUNDS, BY THE FORMATION ITS SHAPE STATES (v2.compiler.infer
-// infer_formation_facts_from_entries): a coproduct forms a SUM over its Named alternatives, a payloadless
+// infer_formation_facts_from_known): a coproduct forms a SUM over its Named alternatives, a payloadless
 // alternative is the empty product because its sum says so (infer_sum_nullary_payload_edge), an alias or
 // generic member re-forms its wrapper with the binder edge carried as metadata
 // (infer_declaration_binder_edge), and a bodyless declaration derives the type-denotation kind and
