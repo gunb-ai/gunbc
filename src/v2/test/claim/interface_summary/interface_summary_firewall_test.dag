@@ -10,7 +10,7 @@ import v2.lens.interface_summary {
 }
 import v2.lens.module_graph { ImportResolutionFact }
 import std.algebra { Empty }
-import v2.std.collection { Present, Absent, optional_absent }
+import v2.std.collection { Present, Absent, optional_absent, optional_present }
 import v2.std.decl_index {
   DeclFact,
   export_signature_declared_arrow,
@@ -128,7 +128,7 @@ fn firewall_ordered_fact(facts: List<DeclFact>) -> DeclFact? {
   fold(facts, init: optional_absent(), f: fn(found, fact) {
     match found {
       Present { value: _ } => found
-      Absent => if fact.name == "firewall_ordered" { Present { value: fact } } else { found }
+      Absent => if fact.name == "firewall_ordered" { optional_present(value: fact) } else { found }
     }
   })
 }
