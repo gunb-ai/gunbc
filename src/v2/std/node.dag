@@ -361,11 +361,43 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
+// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar §2.2).
+// The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
+// is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
+// ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's
+// initial value lives on an enclosing Bind. Any other named label is LoopEdgeUnrecognized, which no
+// conforming Loop holds, so a consumer that matches every role is exhaustive over a conforming Loop.
+type LoopEdgeRole
+  = LoopIteratedBody
+  | LoopDomainValue
+  | LoopBoundMeasure
+  | LoopCarrierBinder
+  | LoopEdgeUnrecognized
+
+fn loop_edge_role(e: Edge) -> LoopEdgeRole {
+  match e.label {
+    Positional => LoopIteratedBody
+    Named { name: sym } =>
+      if sym == ^loop_domain_edge {
+        LoopDomainValue
+      } else if sym == ^loop_bound_edge {
+        LoopBoundMeasure
+      } else if sym == ^loop_carrier_edge {
+        LoopCarrierBinder
+      } else {
+        LoopEdgeUnrecognized
+      }
+  }
+}
+
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
-    match e.label {
-      Positional => acc
-      Named { name: sym } => acc && ((sym == ^loop_bound_edge) || (sym == ^loop_carrier_edge))
+    match loop_edge_role(e: e) {
+      LoopIteratedBody => acc
+      LoopDomainValue => acc
+      LoopBoundMeasure => acc
+      LoopCarrierBinder => acc
+      LoopEdgeUnrecognized => false
     }
   })
 }
@@ -373,8 +405,10 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
+  let domain_edges = name_occurrences(name: ^loop_domain_edge, children: children)
   (bound_edges == 1)
   && (carrier_edges <= 1)
+  && (domain_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -585,8 +619,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_conj_conforms(t: Node) -> Bool {
   match t.kind {
     TypeNode { connective: Conj } =>
-      (count(t.children) >= 1)
-        && all_names_distinct(children: t.children)
+      all_names_distinct(children: t.children)
         && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_conforms(e: e) })
     _ => false
   }
@@ -795,12 +828,17 @@ fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
 }
 
+// Of a Loop's edges only the iterated body repeats: the domain is evaluated once, the bound is a
+// measure and the carrier is a binder. Each consumer matches loop_edge_role itself.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
-      match e.label {
-        Positional => true
-        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => true
+        LoopDomainValue => false
+        LoopBoundMeasure => false
+        LoopCarrierBinder => false
+        LoopEdgeUnrecognized => false
       }
     _ =>
       match e.label {
@@ -810,31 +848,37 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   }
 }
 
-// Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type
-// positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries
-// the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the
-// iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to
-// use that function directly.
+// HOW THE SYMBOLIC COST FOLD PRICES ONE EDGE, answered in one place (Wave 1 Gate 1 C1: the fold
+// prices only runtime work). CostEdgeComposed children compose under the parent's mode;
+// CostEdgePricedOnce is work evaluated once beside that composition (a Loop's domain, never multiplied
+// into its iteration and never dropped); CostEdgeNotPriced is not runtime work. An Arrow's signature
+// and type edges are not priced -- only ^arrow_body_edge carries the body (general-body-producer-design
+// Stage C prerequisite). A Loop's edges are priced by their role (loop_edge_role). Every other edge
+// of every other node composes.
+type CostEdgeRole
+  = CostEdgeComposed
+  | CostEdgePricedOnce
+  | CostEdgeNotPriced
 
-fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
-      match e.label {
-        Positional => true
-        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      match loop_edge_role(e: e) {
+        LoopIteratedBody => CostEdgeComposed
+        LoopDomainValue => CostEdgePricedOnce
+        LoopBoundMeasure => CostEdgeNotPriced
+        LoopCarrierBinder => CostEdgeNotPriced
+        LoopEdgeUnrecognized => CostEdgeNotPriced
       }
     TypeNode { connective: Arrow } =>
       match e.label {
-        Positional => false
-        Named { name: sym } => sym == ^arrow_body_edge
+        Positional => CostEdgeNotPriced
+        Named { name: sym } => if sym == ^arrow_body_edge { CostEdgeComposed } else { CostEdgeNotPriced }
       }
-    _ =>
-      match e.label {
-        Positional => true
-        Named { name: _ } => true
-      }
+    _ => CostEdgeComposed
   }
 }
+
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
