@@ -5518,6 +5518,21 @@ pub fn declared_type_inhabitance(
             crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
         let produced_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
+        let carrier_verdict = if (crate::std_types::is_container_type(declared_name.clone())
+            && !crate::std_types::is_container_type(produced_name.clone()))
+        {
+            kernel_container_carrier_verdict(
+                declared.clone(),
+                crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                    produced.clone(),
+                    source_indices.clone(),
+                    scope.type_env.clone(),
+                ),
+                scope.clone(),
+            )
+        } else {
+            std::option::Option::None
+        };
         let either_optional = ((declared.return_cardinality.clone() == Cardinality::CardOptional)
             || (produced.return_cardinality.clone() == Cardinality::CardOptional));
         let declared_is_generic = (((declared.params.clone().len() as i64) > 0)
@@ -5552,41 +5567,49 @@ pub fn declared_type_inhabitance(
                                     InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
                             })
                         } else {
-                            if declared_realizes_as_kernel_numeric(
-                                declared.clone(),
-                                produced.clone(),
-                                source_indices.clone(),
-                            ) {
+                            if (carrier_verdict.clone() == Some(true)) {
                                 Rc::new(InhabitanceVerdict::Inhabits)
                             } else {
-                                if collection_versus_established_identity(
-                                    declared.clone(),
-                                    produced.clone(),
-                                    scope.clone(),
-                                ) {
+                                if (carrier_verdict.clone() == Some(false)) {
                                     Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
+    reason: InhabitanceRefusalReason::RefusedDistinctProductConstructor,
 })
                                 } else {
-                                    if record_at_scalar_needs_identity(
+                                    if declared_realizes_as_kernel_numeric(
                                         declared.clone(),
                                         produced.clone(),
-                                        scope.clone(),
+                                        source_indices.clone(),
                                     ) {
-                                        Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
-    reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
-})
+                                        Rc::new(InhabitanceVerdict::Inhabits)
                                     } else {
-                                        if coproduct_at_record_declared_type(
+                                        if collection_versus_established_identity(
                                             declared.clone(),
                                             produced.clone(),
                                             scope.clone(),
                                         ) {
                                             Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
+    reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
 })
                                         } else {
-                                            match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
+                                            if record_at_scalar_needs_identity(
+                                                declared.clone(),
+                                                produced.clone(),
+                                                scope.clone(),
+                                            ) {
+                                                Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
+})
+                                            } else {
+                                                if coproduct_at_record_declared_type(
+                                                    declared.clone(),
+                                                    produced.clone(),
+                                                    scope.clone(),
+                                                ) {
+                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
+})
+                                                } else {
+                                                    match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
     Some(RefinementInhabitance::RefinementWidensToDeclaredBase) => Rc::new(InhabitanceVerdict::Inhabits),
     Some(RefinementInhabitance::RefinementNarrowsToDeclaredBrand) => Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
     reason: InhabitanceUndecidableReason::UndecidableRefinementIntroduction,
@@ -5595,24 +5618,26 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableRefinementPeerChains,
 }),
     std::option::Option::None => if kernel_value_declared_type_mismatch(declared.clone(), produced.clone(), scope.type_env.clone(), source_indices.clone()) {
-                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
 })
-                                            } else {
-                                                if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
-                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                    } else {
+                                                        if coproduct_payload_where_parent_required(declared.clone(), produced.clone(), scope.clone()) {
+                                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
 })
-                                                } else {
-                                                    match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
+                                                        } else {
+                                                            match nominal_product_inhabitance_refusal(declared.clone(), produced.clone(), scope.clone()) {
     Some(r) => Rc::new(InhabitanceVerdict::InhabitanceRefused {
     reason: r.clone(),
 }),
     std::option::Option::None => Rc::new(InhabitanceVerdict::Inhabits),
 }
-                                                }
-                                            },
+                                                        }
+                                                    },
 }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -6393,24 +6418,34 @@ pub fn structured_kernel_container_identity_verdict(
     lit_name: String,
     scope: Rc<InferScope>,
 ) -> Option<bool> {
+    kernel_container_carrier_verdict(
+        formal_peeled.clone(),
+        structured_literal_owner_declaration(lit_name.clone(), scope.clone()),
+        scope.clone(),
+    )
+}
+
+pub fn kernel_container_carrier_verdict(
+    formal: Rc<Node>,
+    owner: Option<Rc<DeclarationRef>>,
+    scope: Rc<InferScope>,
+) -> Option<bool> {
     {
         let name = crate::v1_std_core::authored_name_at(
             scope.type_env.clone().source_indices.clone(),
-            formal_peeled.clone(),
+            formal.clone(),
         );
         if !crate::std_types::is_container_type(name.clone()) {
             return std::option::Option::None;
         }
-        match structured_formal_carrier_declaration(formal_peeled.clone(), scope.clone()) {
-            Some(carrier) => {
-                match structured_literal_owner_declaration(lit_name.clone(), scope.clone()) {
-                    Some(owner) => Some(crate::std_decl_ref::declaration_ref_eq(
-                        carrier.clone(),
-                        owner.clone(),
-                    )),
-                    std::option::Option::None => std::option::Option::None,
-                }
-            }
+        match structured_formal_carrier_declaration(formal.clone(), scope.clone()) {
+            Some(carrier) => match owner.clone() {
+                Some(o) => Some(crate::std_decl_ref::declaration_ref_eq(
+                    carrier.clone(),
+                    o.clone(),
+                )),
+                std::option::Option::None => std::option::Option::None,
+            },
             std::option::Option::None => std::option::Option::None,
         }
     }
