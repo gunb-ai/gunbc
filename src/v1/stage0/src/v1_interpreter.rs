@@ -15614,9 +15614,69 @@ fn trace_emit(channel: OutputChannel, line: &str) {
 /// the observation_emit_census roster cannot go stale.
 pub const SHELL_CENSUS_MARKER: &str = "[shell]";
 
+/// Census hygiene marker for the `[file]` emit family — the mirror of SHELL_CENSUS_MARKER,
+/// kept for the same reason: the `[file]` raw shape is gone from the seed and
+/// `gunbc.observation_emit_census`'s `file_trace_site` row must still find its producer
+/// symbol, or the bidirectional roster check goes stale without reddening.
+pub const FILE_CENSUS_MARKER: &str = "[file]";
+
 /// Collapse argv into one readable line — runs of whitespace become a single space —
 /// so a multiline `sh -c` script reads as one command. Used in Failed.error (uncapped:
 /// an anomaly expands fully). Ambient subjects are named intents, not argv.
+/// Mirror of `gunbc.observation_seed_render.seed_file_effect_begin_line`.
+///
+/// The `[file]` family's seven emit sites all fire BEFORE their effect, so the subject is the
+/// named intent from `extdeps.filesystem.filesystem_io`'s operation roster and the path is the
+/// operand — never the raw verb. Keeping the path on the line is load-bearing rather than
+/// decorative: the pre-attempt trace is what made twelve failed publication writes (srv1,
+/// 2026-08-19) log exactly like successes, so a projection that dropped the operand would
+/// re-create that defect. `bytes_known` is false for the path-only operations (delete, list,
+/// read), which omit the size clause rather than claiming an unreadable measurement.
+///
+/// ORACLE RED: the seed test `file_effect_begin_mirror_matches_seed_oracle` renders this fn's
+/// .dag counterpart through the interpreter on the same inputs and asserts byte-equality, so the
+/// format authority stays in `ci_file_effect_line` and any drift reds (the same pairing
+/// `render_shell_effect_*_line_mirror` and `render_heartbeat_line_mirror` carry).
+pub fn render_file_effect_begin_line_mirror(
+    intent: &str,
+    path: &str,
+    bytes: u64,
+    bytes_known: bool,
+    mode_octal: &str,
+    emoji: bool,
+) -> String {
+    let _ = FILE_CENSUS_MARKER;
+    let glyph = if emoji { "🔄" } else { "◐" };
+    let size = if bytes_known {
+        format!("{bytes} bytes")
+    } else {
+        String::new()
+    };
+    let mode = if mode_octal.is_empty() {
+        String::new()
+    } else {
+        format!("mode {mode_octal}")
+    };
+    let detail = match (size.is_empty(), mode.is_empty()) {
+        (false, false) => format!("{size}, {mode}"),
+        (false, true) => size,
+        (true, false) => mode,
+        (true, true) => String::new(),
+    };
+    if detail.is_empty() {
+        format!("{glyph} started {intent} {path}")
+    } else {
+        format!("{glyph} started {intent} {path} ({detail})")
+    }
+}
+
+/// The octal spelling of a mode, for `Filesystem.WriteCreateNewWithMode`'s operand clause. The
+/// authoring surface states the mode as an Int; the line states it as the octal a reader
+/// recognizes (`600`), matching `password`-style modes everywhere else in the corpus.
+fn file_mode_octal(mode: u32) -> String {
+    format!("{mode:o}")
+}
+
 fn shell_argv_collapsed(argv: &[String]) -> String {
     argv.join(" ")
         .split_whitespace()
@@ -17124,7 +17184,14 @@ fn dispatch_file(
             "delete" => {
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] delete {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.Delete",
+                        &path,
+                        0,
+                        false,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::remove_file(&path) {
                     Ok(()) => Ok(FileResult {
@@ -17148,7 +17215,14 @@ fn dispatch_file(
             "list" => {
                 trace_emit(
                     OutputChannel::Instrumentation,
-                    &format!("[file] list {}", path),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.List",
+                        &path,
+                        0,
+                        false,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match std::fs::read_dir(&path) {
                     Ok(entries) => match collect_listing_entry_names(entries) {
@@ -17198,7 +17272,14 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_owner_only {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteOwnerOnly",
+                        &path,
+                        byte_count as u64,
+                        true,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_owner_only(&path, content.as_bytes()) {
                     Ok(()) => Ok(FileResult {
@@ -17234,7 +17315,14 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!("[file] write_create_new {} ({} bytes)", path, byte_count),
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNew",
+                        &path,
+                        byte_count as u64,
+                        true,
+                        "",
+                        shell_obs_emoji(),
+                    ),
                 );
                 return match write_file_create_new(&path, content.as_bytes(), None) {
                     Ok(()) => Ok(FileResult {
@@ -17291,9 +17379,13 @@ fn dispatch_file(
                 let byte_count = content.len() as i64;
                 trace_emit(
                     OutputChannel::ShellTrace,
-                    &format!(
-                        "[file] write_create_new_with_mode {} ({} bytes, mode {:o})",
-                        path, byte_count, mode
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.WriteCreateNewWithMode",
+                        &path,
+                        byte_count as u64,
+                        true,
+                        &file_mode_octal(mode),
+                        shell_obs_emoji(),
                     ),
                 );
                 return match write_file_create_new(&path, content.as_bytes(), Some(mode)) {
@@ -17345,7 +17437,14 @@ fn dispatch_file(
         let byte_count = content.len() as i64;
         trace_emit(
             OutputChannel::ShellTrace,
-            &format!("[file] write {} ({} bytes)", path, byte_count),
+            &render_file_effect_begin_line_mirror(
+                "Filesystem.Write",
+                &path,
+                byte_count as u64,
+                true,
+                "",
+                shell_obs_emoji(),
+            ),
         );
         match std::fs::write(&path, content.as_bytes()) {
             Ok(()) => Ok(FileResult {
@@ -17368,7 +17467,14 @@ fn dispatch_file(
     } else {
         trace_emit(
             OutputChannel::Instrumentation,
-            &format!("[file] read {}", path),
+            &render_file_effect_begin_line_mirror(
+                "Filesystem.Read",
+                &path,
+                0,
+                false,
+                "",
+                shell_obs_emoji(),
+            ),
         );
         match std::fs::read_to_string(&path) {
             Ok(s) => Ok(FileResult {
@@ -24388,6 +24494,91 @@ mod dispatch_rest_decision_tests {
         assert!(!rest_auth_authority_conflict(true, false));
         assert!(!rest_auth_authority_conflict(false, true));
         assert!(!rest_auth_authority_conflict(false, false));
+    }
+}
+
+#[cfg(test)]
+mod file_effect_trace_tests {
+    use super::file_mode_octal;
+    use super::render_file_effect_begin_line_mirror;
+
+    /// THE ORACLE RED for `render_file_effect_begin_line_mirror`. The mirror must carry what the
+    /// RAW line carried, and the discriminating half is the operand: the retired raw shape named
+    /// its target path and byte count, and the incident this family's census row is built on
+    /// (gunbc.roadmap_dispatch_actuator, srv1 2026-08-19) is twelve failed publication writes
+    /// that logged exactly like successes BECAUSE that line fired before the attempt. A mirror
+    /// that dropped the path would pass any test that only checked the intent, so every case
+    /// below asserts the path is present. THE RETIRED SPELLING IS NOT QUOTED HERE, deliberately:
+    /// the census provenance probe asserts the raw shape is ABSENT from the seed sources, and a
+    /// substring test cannot tell a call from a mention -- the same limitation that note records.
+    /// Writing it in a comment would red the probe it is describing.
+    #[test]
+    fn file_effect_begin_mirror_keeps_the_operand() {
+        let write = render_file_effect_begin_line_mirror(
+            "Filesystem.Write",
+            "dag/gunbc/observation_emit_census.dag",
+            166,
+            true,
+            "",
+            true,
+        );
+        assert_eq!(
+            write,
+            "🔄 started Filesystem.Write dag/gunbc/observation_emit_census.dag (166 bytes)"
+        );
+        assert!(write.contains("observation_emit_census.dag"));
+
+        let unicode = render_file_effect_begin_line_mirror(
+            "Filesystem.Write",
+            "dag/x.dag",
+            166,
+            true,
+            "",
+            false,
+        );
+        assert_eq!(unicode, "◐ started Filesystem.Write dag/x.dag (166 bytes)");
+    }
+
+    #[test]
+    fn file_effect_begin_mirror_omits_absent_clauses() {
+        // Path-only operations have no payload size BY CONSTRUCTION, so the clause is absent
+        // rather than rendering `unreadable (...)`: claiming a failed measurement where none was
+        // attempted is the fabricated-cause failure observation law 2 names.
+        let read =
+            render_file_effect_begin_line_mirror("Filesystem.Read", "foo.dag", 0, false, "", true);
+        assert_eq!(read, "🔄 started Filesystem.Read foo.dag");
+        assert!(!read.contains("unreadable"));
+        assert!(!read.contains("0 bytes"));
+
+        let deleted = render_file_effect_begin_line_mirror(
+            "Filesystem.Delete",
+            "oof.dag",
+            0,
+            false,
+            "",
+            true,
+        );
+        assert_eq!(deleted, "🔄 started Filesystem.Delete oof.dag");
+    }
+
+    #[test]
+    fn file_effect_begin_mirror_states_the_published_mode() {
+        // FileMode constructors may accept additional parameters in future variants; the mode
+        // clause must stay in the one authority that renders it.
+        let with_mode = render_file_effect_begin_line_mirror(
+            "Filesystem.WriteCreateNewWithMode",
+            "dag/x.dag",
+            12,
+            true,
+            &file_mode_octal(0o600),
+            true,
+        );
+        assert_eq!(
+            with_mode,
+            "🔄 started Filesystem.WriteCreateNewWithMode dag/x.dag (12 bytes, mode 600)"
+        );
+        assert_eq!(file_mode_octal(0o644), "644");
+        assert_eq!(file_mode_octal(0o755), "755");
     }
 }
 

@@ -612,6 +612,59 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
   }
 }
 
+// FILESYSTEM HOST-EFFECT PROJECTION (the [file] retirement). The subject is the NAMED INTENT —
+// `Filesystem.Write`, `Filesystem.Read` — exactly the spelling extdeps.filesystem.filesystem_io
+// publishes in its operation roster and its mock corpus `operation_key`, so the intent vocabulary
+// is the operation authority's and this renderer coins nothing. The OPERAND is a separate
+// argument rather than a subject segment, and that is a measured decision, not a preference: no
+// segment in std.observation names a filesystem path (the path-shaped segments are entry
+// source_path, module_path, and the two identity segments), and `ci_subject_detail_text` renders
+// at most ONE of module/phase, so folding the path into the subject would have silently dropped
+// either the path or the intent. THE OPERAND IS NEVER DROPPED, because the pre-attempt trace is
+// load-bearing: gunbc.roadmap_dispatch_actuator records a measured incident (srv1, 2026-08-19)
+// where twelve publication receipts wrote into a directory that did not exist, and the
+// `[file] write <path>` line emitted BEFORE the attempt made every one of them log exactly like a
+// success. A projection that rendered "started Filesystem.Write" with no path would restore that
+// defect in the observation vocabulary.
+//
+// Begin is the honest transition: the seed emits these traces BEFORE the effect, so no elapsed
+// exists and the line reports what the effect is ABOUT. A missing byte count is the path-only
+// operations (delete, list, read), which have no payload size by construction rather than an
+// unreadable one, so the clause is omitted instead of printing a cause that would claim a
+// measurement was attempted (observation law 2, seed_heartbeat_line's precedent). A missing mode
+// is every operation but WriteCreateNewWithMode.
+
+fn ci_file_operand_text(path: NonEmptyStr, bytes: Nat, bytes_known: Bool, mode_octal: String) -> String {
+  let size = if bytes_known { concat(to_string(bytes), " bytes") } else { "" }
+  let mode = if mode_octal == "" { "" } else { concat("mode ", mode_octal) }
+  let detail = if size != "" && mode != "" {
+    concat(size, concat(", ", mode))
+  } else if size != "" {
+    size
+  } else {
+    mode
+  }
+  if detail == "" {
+    path as String
+  } else {
+    concat(path, concat(" (", concat(detail, ")")))
+  }
+}
+
+fn ci_file_effect_line(event: ObservationEvent, operand: NonEmptyStr) -> RenderedLine {
+  let presentation = observation_presentation(c: observation_event_class(event: event))
+  let subject = ci_subject_leaf_text(subject: event.subject)
+  match event.transition {
+    Begin =>
+      RenderedLine {
+        glyph: presentation.glyph,
+        text: concat("started ", concat(subject, concat(" ", operand))),
+        attention: Ambient
+      }
+    _ => ci_event_line_at_attention(event: event, attention: Ambient)
+  }
+}
+
 data observation_ci_render_disposition: Disposition = Terminal {
   reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
 }

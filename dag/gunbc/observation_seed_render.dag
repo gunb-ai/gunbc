@@ -56,6 +56,8 @@ import gunbc.observation_ci_render {
   ci_heartbeat_line,
   ci_hold_cause_text,
   ci_measurement_rss_line,
+  ci_file_effect_line,
+  ci_file_operand_text,
   HeartbeatSample,
   RenderedLine,
 }
@@ -608,6 +610,44 @@ fn shell_effect_done_line(intent: NonEmptyStr, elapsed_ms: Nat, overhead_ms: Nat
   }
   ci_render_line(
     line: ci_event_line(event: event, basis: seed_phase_basis(overhead_ms: overhead_ms)),
+    tier: seed_tier(emoji: emoji)
+  )
+}
+
+// FILESYSTEM HOST-EFFECT PROJECTION (the [file] retirement, first slice of
+// observation-raw-print-retirement). Sibling of the shell projection above and the same class:
+// the subject is the NAMED INTENT from extdeps.filesystem.filesystem_io's operation roster, never
+// the raw verb, and the path is the operand carried beside it so the pre-attempt trace keeps
+// naming its target (gunbc.roadmap_dispatch_actuator's srv1 2026-08-19 incident: twelve receipts
+// wrote into an absent directory and every write logged like a success). Begin-only by
+// construction, because the seed emits these before the effect and has no elapsed yet; the byte
+// count is known only when a payload exists, so a path-only operation omits the clause rather
+// than claiming an unreadable measurement. Hot-path mirrors in v1_interpreter; oracle RED keeps
+// them honest.
+
+fn seed_file_subject(intent: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject { segments: [ PhaseSegment { name: intent } ] }
+}
+
+fn seed_file_effect_begin_line(
+  intent: NonEmptyStr,
+  path: NonEmptyStr,
+  bytes: Nat,
+  bytes_known: Bool,
+  mode_octal: String,
+  emoji: Bool
+) -> String {
+  let event = ObservationEvent {
+    subject: seed_file_subject(intent: intent),
+    transition: Begin,
+    durations: observation_durations_wall_unavailable(cause: "begin has no elapsed yet" as NonEmptyStr),
+    rss: MeasuredUnavailable { cause: "not sampled at a filesystem effect" as NonEmptyStr }
+  }
+  ci_render_line(
+    line: ci_file_effect_line(
+      event: event,
+      operand: ci_file_operand_text(path: path, bytes: bytes, bytes_known: bytes_known, mode_octal: mode_octal) as NonEmptyStr
+    ),
     tier: seed_tier(emoji: emoji)
   )
 }
