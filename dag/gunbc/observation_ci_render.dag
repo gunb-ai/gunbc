@@ -627,38 +627,21 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
 // success. A projection that rendered "started Filesystem.Write" with no path would restore that
 // defect in the observation vocabulary.
 //
-// Begin is the honest transition: the seed emits these traces BEFORE the effect, so no elapsed
-// exists and the line reports what the effect is ABOUT. A missing byte count is the path-only
-// operations (delete, list, read), which have no payload size by construction rather than an
-// unreadable one, so the clause is omitted instead of printing a cause that would claim a
-// measurement was attempted (observation law 2, seed_heartbeat_line's precedent). A missing mode
-// is every operation but WriteCreateNewWithMode.
+// THE PAYLOAD CLAUSE ARRIVES ALREADY RENDERED, AND THAT IS THE ONE-STATE RULE. `clause` is the
+// parenthetical body -- "" for a path-only operation, "N bytes" or "N bytes, mode M" for a write --
+// so this renderer never holds a count beside a boolean that could disagree with it (DESIGN section
+// 5: a flag pair admitting `known = true, count = 0` is unwritable when the sum supplies the text).
+// gunbc.observation_seed_render derives it from the FileEffectPayload sum.
 
-fn ci_file_operand_text(path: NonEmptyStr, bytes: Nat, bytes_known: Bool, mode_octal: String) -> String {
-  let size = if bytes_known { concat(to_string(bytes), " bytes") } else { "" }
-  let mode = if mode_octal == "" { "" } else { concat("mode ", mode_octal) }
-  let detail = if size != "" && mode != "" {
-    concat(size, concat(", ", mode))
-  } else if size != "" {
-    size
-  } else {
-    mode
-  }
-  if detail == "" {
-    path as String
-  } else {
-    concat(path, concat(" (", concat(detail, ")")))
-  }
-}
-
-fn ci_file_effect_line(event: ObservationEvent, operand: NonEmptyStr) -> RenderedLine {
+fn ci_file_effect_line(event: ObservationEvent, operand: NonEmptyStr, clause: String) -> RenderedLine {
   let presentation = observation_presentation(c: observation_event_class(event: event))
   let subject = ci_subject_leaf_text(subject: event.subject)
+  let detail = if clause == "" { "" } else { concat(" (", concat(clause, ")")) }
   match event.transition {
     Begin =>
       RenderedLine {
         glyph: presentation.glyph,
-        text: concat("started ", concat(subject, concat(" ", operand))),
+        text: concat("started ", concat(subject, concat(" ", concat(operand, detail)))),
         attention: Ambient
       }
     _ => ci_event_line_at_attention(event: event, attention: Ambient)
