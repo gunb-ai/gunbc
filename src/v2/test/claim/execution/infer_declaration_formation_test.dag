@@ -9,6 +9,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Disj, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.witness { Holds, Violates }
+import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -28,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // symbolic grounding route for `T` and is not substituted, and an authored empty record is not grounded
 // by the opaque rule.
 type FormationVerdict
-  = FormationInferred { not_derived: Int, target: Symbol }
+  = FormationInferred { not_derived: Int, target: Symbol, missing_facts: Int }
   | FormationRefused
 
 fn formation_kind_tag(n: Node) -> Symbol {
@@ -92,7 +93,13 @@ fn formation_verdict_of(src: String, name: Symbol) -> FormationVerdict {
                   }
               }
           }
-          FormationInferred { not_derived: not_derived, target: target }
+          let missing_facts = fold(node_inferred_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+            match t.facts.lookup(n) {
+              Absent => acc + 1
+              Present { value: _ } => acc
+            }
+          })
+          FormationInferred { not_derived: not_derived, target: target, missing_facts: missing_facts }
       }
   }
 }
@@ -125,7 +132,7 @@ fn formation_empty_record_verdict() -> FormationVerdict {
 // childless payload is the empty product because the Disj fixes that position.
 test fn a_payloadless_coproduct_forms_a_sum_and_grounds_holds() -> Bool {
   match formation_coproduct_verdict() {
-    FormationInferred { not_derived: n, target: t } => (n == 0) && (t == ^formation_sum)
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_sum)
     FormationRefused => false
   }
 }
@@ -133,7 +140,7 @@ test fn a_payloadless_coproduct_forms_a_sum_and_grounds_holds() -> Bool {
 // Mixed alternatives: the payloadless arm by its position, the fielded arm by product introduction.
 test fn a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds() -> Bool {
   match formation_payload_coproduct_verdict() {
-    FormationInferred { not_derived: n, target: t } => (n == 0) && (t == ^formation_sum)
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_sum)
     FormationRefused => false
   }
 }
@@ -142,7 +149,7 @@ test fn a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds() -
 // derived right-hand side -- and grounds; the empty binder list is never walked as a unit value.
 test fn a_plain_alias_forms_its_wrapper_and_grounds_holds() -> Bool {
   match formation_plain_alias_verdict() {
-    FormationInferred { not_derived: n, target: t } => (n == 0) && (t == ^formation_conj)
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_conj)
     FormationRefused => false
   }
 }
@@ -151,7 +158,7 @@ test fn a_plain_alias_forms_its_wrapper_and_grounds_holds() -> Bool {
 // not a member -- and the tree grounds.
 test fn a_bodyless_declaration_denotes_a_type_and_grounds_holds() -> Bool {
   match formation_bodyless_verdict() {
-    FormationInferred { not_derived: n, target: t } => (n == 0) && (t == ^formation_type_denotation)
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_type_denotation)
     FormationRefused => false
   }
 }
@@ -161,7 +168,7 @@ test fn a_bodyless_declaration_denotes_a_type_and_grounds_holds() -> Bool {
 // not instantiated, not closed over some outer `T`.
 test fn a_generic_alias_over_its_own_binder_stays_on_the_frontier_holds() -> Bool {
   match formation_generic_binder_alias_verdict() {
-    FormationInferred { not_derived: n, target: t } => (n > 0) && (t == ^formation_not_derived)
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n > 0) && (t == ^formation_not_derived)
     FormationRefused => false
   }
 }
@@ -170,7 +177,29 @@ test fn a_generic_alias_over_its_own_binder_stays_on_the_frontier_holds() -> Boo
 // declaration, so the opaque rule does not ground it, and a childless Conj outside a sum stays refused.
 test fn an_authored_empty_record_is_not_grounded_by_the_opaque_rule_holds() -> Bool {
   match formation_empty_record_verdict() {
-    FormationInferred { not_derived: n, target: t } => (n > 0) && (t == ^formation_not_derived)
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n > 0) && (t == ^formation_not_derived)
     FormationRefused => false
   }
+}
+
+// EVERY NODE INFER IS SAID TO COVER HAS FACTS (v2.std.type_binder node_inferred_subtree_nodes). The
+// partition closure demands a facts entry for exactly that set, so a node in it without one refuses
+// the whole program as partition_facts_miss. Infer declines a declaration's binder subtree
+// (infer_declaration_binder_edge), and the walker must decline the same subtree through the same
+// predicate: before it did, every module declaring an alias, a bodyless declaration or a generic
+// declaration refused at the partition. Read on the three wrapper shapes, whose binder edge is the
+// declined one, including a generic alias whose right-hand side stays on the frontier.
+test fn every_node_infer_covers_has_facts_for_declaration_wrappers_holds() -> Bool {
+  (match formation_plain_alias_verdict() {
+    FormationInferred { not_derived: _, target: _, missing_facts: m } => m == 0
+    FormationRefused => false
+  })
+    && (match formation_bodyless_verdict() {
+      FormationInferred { not_derived: _, target: _, missing_facts: m } => m == 0
+      FormationRefused => false
+    })
+    && (match formation_generic_binder_alias_verdict() {
+      FormationInferred { not_derived: _, target: _, missing_facts: m } => m == 0
+      FormationRefused => false
+    })
 }
