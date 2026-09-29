@@ -677,7 +677,7 @@ fn infer_formation_child_evidence_edges(
           if is_metadata(edge) {
             optional_present(value: list_snoc_item(xs: evidence_edges, item: edge))
           } else {
-          match map_lookup(m: known, key: edge.target) {
+          match infer_known_facts(known: known, key: edge.target) {
             Absent => optional_absent()
             Present { value: child_facts } =>
               match inferred_facts_resolved_type(facts: child_facts) {
@@ -720,7 +720,7 @@ fn infer_arrow_body_inhabits_declared_return(node: Node, known: Map<Node, Inferr
           match infer_arrow_declared_return_type(arrow: node) {
             Absent => outcome_accepted(value: true)
             Present { value: declared } =>
-              match map_lookup(m: known, key: body) {
+              match infer_known_facts(known: known, key: body) {
                 Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body))
                 Present { value: body_facts } =>
                   match inferred_facts_resolved_type(facts: body_facts) {
@@ -949,6 +949,12 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
           }
       }
   }
+}
+
+// A FACT THIS RUN HAS ALREADY ENTERED, by node. Declared at the carrier's own type, so every row that
+// reads a child's facts reads an InferredFacts rather than the collection's generic value.
+fn infer_known_facts(known: Map<Node, InferredFacts>, key: Node) -> Optional<InferredFacts> {
+  map_lookup(m: known, key: key)
 }
 
 // THE FACTS MAP IS A NODE-KEYED MAP, BUILT ONCE PER RUN (DESIGN section 6, bare minimum cost): a
@@ -1413,13 +1419,13 @@ fn infer_branch_bool_if_else(
             match list_at_optional(xs: positional_targets, index: 2) {
               Absent => outcome_rejected(infer_branch_shape_invalid_diagnostic(node: node))
               Present { value: else_target } =>
-                match map_lookup(m: known, key: cond_target) {
+                match infer_known_facts(known: known, key: cond_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: cond_target))
                   Present { value: cond_facts } =>
-                    match map_lookup(m: known, key: then_target) {
+                    match infer_known_facts(known: known, key: then_target) {
                       Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: then_target))
                       Present { value: then_facts } =>
-                        match map_lookup(m: known, key: else_target) {
+                        match infer_known_facts(known: known, key: else_target) {
                           Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: else_target))
                           Present { value: else_facts } =>
                             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -1556,7 +1562,7 @@ fn infer_match_bool_arm_row(
                   outcome_rejected(infer_match_pattern_not_bool_literal_diagnostic(node: arm))
                 _ =>
                   let coverage = infer_bool_literal_arm_coverage_from_pattern(pattern: pat)
-                  match map_lookup(m: known, key: body_target) {
+                  match infer_known_facts(known: known, key: body_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: body_target))
                     Present { value: body_facts } =>
                       match infer_match_bool_arm_body_type(
@@ -1601,7 +1607,7 @@ fn infer_match_bool(
             match list_at_optional(xs: positional_targets, index: 2) {
               Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
               Present { value: second_arm_target } =>
-                match map_lookup(m: known, key: scrutinee_target) {
+                match infer_known_facts(known: known, key: scrutinee_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
                   Present { value: scrutinee_facts } =>
                     match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -1660,7 +1666,7 @@ fn infer_loop_iteration_fold_child_targets(node: Node) -> List<Node> {
 }
 
 fn infer_loop_body_type_at(target: Node, known: Map<Node, InferredFacts>) -> Outcome<Node> {
-  match map_lookup(m: known, key: target) {
+  match infer_known_facts(known: known, key: target) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: target))
     Present { value: facts } =>
       match infer_branch_operand_resolved_type(node: target, facts: facts) {
@@ -1997,7 +2003,7 @@ fn infer_judge_application_argument(
         reason: reason
       )
     Absent =>
-  match map_lookup(m: known, key: arg) {
+  match infer_known_facts(known: known, key: arg) {
     Absent =>
       infer_inhabitance_undecidable_accepted(
         application: application,
@@ -2076,7 +2082,7 @@ fn infer_judge_application_argument_instantiating(
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
           }
         Absent =>
-          match map_lookup(m: known, key: arg) {
+          match infer_known_facts(known: known, key: arg) {
             Absent =>
               match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -2184,10 +2190,10 @@ fn infer_transform_binary_infix(
                 if !infer_transform_operator_is_int_add(op_node: op_target) {
                   outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
                 } else {
-                  match map_lookup(m: known, key: left_target) {
+                  match infer_known_facts(known: known, key: left_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
                     Present { value: left_facts } =>
-                      match map_lookup(m: known, key: right_target) {
+                      match infer_known_facts(known: known, key: right_target) {
                         Absent =>
                           outcome_rejected(infer_facts_lookup_miss_diagnostic(key: right_target))
                         Present { value: right_facts } =>
@@ -2359,7 +2365,7 @@ fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
 }
 
 fn infer_list_element_type(element: Node, known: Map<Node, InferredFacts>, tree: Node) -> Outcome<Node> {
-  match map_lookup(m: known, key: element) {
+  match infer_known_facts(known: known, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
     Present { value: facts } =>
       match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, tree: tree) {
@@ -2493,7 +2499,7 @@ fn infer_bind_annotation_check(node: Node, known: Map<Node, InferredFacts>) -> O
       match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
         Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
         Present { value: bound } =>
-          match map_lookup(m: known, key: bound) {
+          match infer_known_facts(known: known, key: bound) {
             Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: bound))
             Present { value: bound_facts } =>
               match bound_facts.grounding {
@@ -2586,7 +2592,7 @@ fn infer_transform_application_optional(node: Node, known: Map<Node, InferredFac
   match infer_application_callee_arrow(node: node) {
     Absent => optional_absent()
     Present { value: arrow } =>
-      match map_lookup(m: known, key: arrow) {
+      match infer_known_facts(known: known, key: arrow) {
         Absent => optional_absent()
         Present { value: arrow_facts } =>
           if !inferred_facts_grounding_derived(facts: arrow_facts) {
@@ -2635,7 +2641,7 @@ fn infer_transform_cast_optional(node: Node, known: Map<Node, InferredFacts>) ->
         match list_at_optional(xs: node_positional_child_targets(node: node), index: 1) {
           Absent => optional_present(value: outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node)))
           Present { value: operand } =>
-            match map_lookup(m: known, key: operand) {
+            match infer_known_facts(known: known, key: operand) {
               Absent => optional_present(value: outcome_rejected(infer_facts_lookup_miss_diagnostic(key: operand)))
               Present { value: operand_facts } =>
                 match operand_facts.grounding {
@@ -2911,7 +2917,7 @@ fn infer_gather_acc_awaits_product_row(node: Node, known: Map<Node, InferredFact
 }
 
 fn infer_gather_known_absent(node: Node, known: Map<Node, InferredFacts>) -> Bool {
-  match map_lookup(m: known, key: node) {
+  match infer_known_facts(known: known, key: node) {
     Absent => true
     Present { value: _ } => false
   }
