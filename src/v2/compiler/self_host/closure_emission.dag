@@ -38,7 +38,7 @@ import v2.compiler.reference_closure {
   reference_closure_neighbours,
   reference_derived_closure
 }
-import v2.compiler.resolve { ResolveWalkAccepted, ResolveWalkRefused }
+import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
@@ -327,20 +327,17 @@ fn closure_resolve_member(
   symbol_index: SymbolIndex,
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
-) -> Outcome<Node> {
+) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
     f: fn(validated) {
-      match resolve_walk_with_admission_context_policy(
+      resolved_tree_outcome(w: resolve_walk_with_admission_context_policy(
         context: outcome_accepted(value: ResolutionContext { lm: lm, roots: validated, symbol_index: symbol_index }),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty },
         index: index,
         active_roots: active_roots,
         policy: default_name_resolution_policy()
-      ) {
-        ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
-        ResolveWalkAccepted { value: resolved, diagnostics: _ } => outcome_accepted(value: resolved)
-      }
+      ), symbol_index: symbol_index)
     }
   )
 }
@@ -373,7 +370,7 @@ fn closure_member_for_fold(
             ),
             f: fn(resolved) {
               outcome_accepted(value: ReferenceClosureMember {
-                resolved: resolved,
+                resolved: resolved.root,
                 import_targets: fold_list(xs: tree.import_bindings, empty: Empty, cons: fn(acc, row) {
                   list_snoc_item(xs: acc, item: row.target)
                 }),
@@ -431,7 +428,7 @@ fn closure_member_emission(
     ),
     f: fn(resolved) {
       match reference_closure_neighbours(
-        member: ReferenceClosureMember { resolved: resolved, import_targets: visit.member.import_targets, payload: true },
+        member: ReferenceClosureMember { resolved: resolved.root, import_targets: visit.member.import_targets, payload: true },
         roster: roster
       ) {
         ReferenceClosureTargetOwnerless { target: _, at: at } =>
@@ -457,7 +454,7 @@ fn closure_member_emission(
           } else {
             outcome_rejected(d: closure_emission_diagnostic(
               reason: ^closure_emission_member_reaches_outside_closure,
-              at: resolved
+              at: resolved.root
             ))
           }
       }

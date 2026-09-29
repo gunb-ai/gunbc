@@ -2148,9 +2148,83 @@ fn receipt_3_5ee4892b_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
+// Receipt 4 (2026-09-29, operator ruling 2026-09-27, node adhoc-11684de4-07b: "take a FRESH
+// compile-phase receipt on the current tree so 'corpus emits cleanly' reflects today"). Produced by
+// the same one-entry instrument that receipt 3 names, driven through gunbc.instruments
+// compile_phase_frontier_live_gate `check`, which reported Held against receipt 3 before this row
+// existed: the live 00_compile closure carries zero diagnostic identities and gained none.
+//
+// THE HOST IS PART OF THE EPOCH, AND THIS RECEIPT WAS TAKEN ON x86_64 ON PURPOSE. The live gate pins
+// the host triple as the measured `--target`, so a run on an aarch64 host (srv1, eb5987e38f5)
+// compiles a different target and cannot extend this series without a reclassified predecessor
+// that was never observed. This run is a BuildBuddy x86_64 runner whose cargo, rustc (commit, host,
+// LLVM), pinned triple, check/dev profile and classification policy are all identical to
+// receipt 3's, so comparison_inputs_same holds, the epoch is unchanged, and the same-epoch arm
+// forbids a reclassified predecessor. None is carried.
+//
+// The census stays EMPTY across 22 days of main (5ee4892b -> e0d0e01e), over a closure that grew in
+// the meantime: no diagnostic identity was added, so newly_exposed is empty and no regression is
+// opened or closed. The working tree was clean at measurement (the gate's report records it, after
+// an explicit clean of the runner's checkout).
+data receipt_4_e0d0e01e_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt --emit stdout --edition 2021",
+  files_observed: 215,
+  refused_files: []
+}
+
+data receipt_4_e0d0e01e_raw_error_diagnostic_identities: List<String> = [
+]
+
+data receipt_4_e0d0e01e_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: receipt_4_e0d0e01e_parse_observation,
+  raw_identities: receipt_4_e0d0e01e_raw_error_diagnostic_identities
+)
+
+fn receipt_4_e0d0e01e_receipt() -> CompilePhaseFrontierReceipt {
+  let receipt_3 = receipt_3_5ee4892b_receipt()
+  seal_compile_phase_receipt(
+    sequence: 4,
+    observed_at: "2026-09-29T12:36:10Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "e0d0e01efbb48a18c5ffa2f476bb710d32a8082a" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "2916ae53f516f27bfce55b932b0636f2892ac091" } }),
+      emitted_artifact_identity: sha256_digest(hex: "561a57417f81337b6c060379d7191c2a16f72c4476824d7592c3257f139954a2" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "5ef87ece7aa363a8aa89f0b9b9c1b33da2b87650fba8cd150642678d11ec4285" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "d7072539645909cbb0466cb4258742de571feb7dce8ab4191a716b9fc086fd3e" as NonEmptyStr),
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "x86_64-unknown-linux-gnu",
+        target_selection: TargetPinnedOnInvocation,
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-x86_64-pinned-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "buildbuddy-97197327-2e0b-46a4-b74c-56ada803fc1c" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "local-8b8875a1-eac3-47b1-a041-aa04fa22b2dd" as NonEmptyStr },
+    previous_prefix_digest: Present { value: receipt_3.prefix_digest },
+    parse_evidence: ParseReached { evidence: receipt_4_e0d0e01e_parse_observation },
+    board: receipt_4_e0d0e01e_phase_board_fold.board,
+    raw_error_diagnostic_identities: receipt_4_e0d0e01e_raw_error_diagnostic_identities,
+    unplaced_identities: receipt_4_e0d0e01e_phase_board_fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
 data self_host_compile_phase_frontier_receipts: List<CompilePhaseFrontierReceipt> = [
   genesis_5006ddc6_receipt(),
   receipt_1_eced9d24_receipt(),
   receipt_2_66765317_receipt(),
-  receipt_3_5ee4892b_receipt()
+  receipt_3_5ee4892b_receipt(),
+  receipt_4_e0d0e01e_receipt()
 ]

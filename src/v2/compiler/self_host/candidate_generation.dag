@@ -1,5 +1,6 @@
 module v2.compiler.self_host.candidate_generation
 
+import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Medium }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.emit { emit }
@@ -141,7 +142,7 @@ fn generate_stage_candidate_from_ingest(
 }
 
 fn generate_translate_self_emit_candidate(
-  resolved_module: Node,
+  resolved_module: ResolvedTree,
   dag_target: TargetModel
 ) -> Outcome<StageEmissionCandidate> {
   bind_outcome(

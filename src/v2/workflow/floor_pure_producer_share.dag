@@ -620,6 +620,11 @@ import v2.std.collection { List }
 // mals_third_arm_malformed each tokenize and parse one inline module and call one producer
 // (body_lower_match_arms_optional) on its match capture; the stored value is the lowered arm list
 // (Nodes, no resolution context and no closure), portable for the same reason vpw_normalized is.
+// THE XL-2 WILDCARD-PATTERN-FORM ROW IS THE MATCH-ARM LIST ROW'S GROUND AT ONE MORE SPECIMEN:
+// v2.test.claim.body_lowering.wildcard_pattern_form wpf_patterns tokenizes and parses one inline
+// module and calls body_lower_match_arms_optional on its match capture; the stored value is the
+// lowered arm patterns (Nodes, no resolution context and no closure). Its first floor run refused all
+// five claims over the enrolment margin at ~590ms each, every one of them paying the same ingest.
 // THE XL-2 MATCH-POSITION ROW: v2.test.claim.body_lowering.match_position_structure mps_normalized
 // runs the production route (module_roots_from_source_root_ingest) over three inline modules; the
 // stored value is the normalized trees (Nodes, no resolution context and no closure), portable for
@@ -731,6 +736,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.bound_value_resolve_refusal.bvr_outcomes",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_lowered",
   "v2.test.claim.body_lowering.match_arm_list_structure.mals_third_arm_malformed",
+  "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
@@ -878,6 +884,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declared_parameter_order.dpo_a_then_b",
   "v2.test.claim.declared_parameter_order.dpo_eleven_anonymous",
   "v2.test.claim.declared_parameter_order.dpo_label_shadows_a_declaration",
+  "v2.test.claim.named_argument_binding.nab_reordered",
+  "v2.test.claim.named_argument_binding.nab_in_order",
+  "v2.test.claim.named_argument_binding.nab_positional_after_named",
+  "v2.test.claim.named_argument_binding.nab_label_repeated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_annotated",
   "v2.test.claim.body_type_annotation_refusal.btar_let_plain",
   "v2.test.claim.body_type_annotation_refusal.btar_fn_literal_annotated",
@@ -1006,7 +1016,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.data_initializer_match_scrutinee_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops.fn_body_match_scrutinee_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.anonymous_slots_subject",
-  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_predicates_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",
   "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_dropping_subject",
