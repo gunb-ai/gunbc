@@ -81,7 +81,7 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_located
 }
 import v2.compiler.normalize { normalize }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings }
 import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve {
   ObservationComplete,
@@ -3164,7 +3164,7 @@ fn native_import_target_file_refusal(context: NativeTestContext, module: Qualifi
                 match refusal.module {
                   Absent => optional_absent()
                   Present { value: refused_module } =>
-                    if any(xs: tree.import_bindings, predicate: fn(row) {
+                    if any(xs: normalized_tree_import_bindings(tree: tree), predicate: fn(row) {
                       qualified_name_init(qn: row.target) == refused_module
                     }) {
                       optional_present(value: refusal)
