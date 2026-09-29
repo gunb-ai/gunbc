@@ -1,5 +1,7 @@
 module extdeps.tools.mkdir
 
+import extdeps.exec.program { uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -83,7 +85,7 @@ fn mkdir_parents_command(path: String) -> ArgvCommand {
 // reason and says so at its own call site. The wrapper above remains the default for callers that
 // reach a modeled fleet host; it is simply not the majority-by-assertion this note once claimed.
 fn mkdir_parents_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
-  argv_command(program: mkdir_binary, arguments: ["-p", path])
+  argv_command(program: uncataloged_program(invocation: mkdir_binary), arguments: ["-p", path])
 }
 
 // THE EXACT FORM, WHICH IS POSIX'S DEFAULT AND WAS MISSING FROM THIS MODULE BY OMISSION. The cited
@@ -122,5 +124,5 @@ fn mkdir_exact_command(path: String) -> ArgvCommand {
 }
 
 fn mkdir_exact_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
-  argv_command(program: mkdir_binary, arguments: mkdir_exact_args(path: path))
+  argv_command(program: uncataloged_program(invocation: mkdir_binary), arguments: mkdir_exact_args(path: path))
 }

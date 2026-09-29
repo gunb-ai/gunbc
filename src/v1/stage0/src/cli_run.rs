@@ -9243,6 +9243,25 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
     // variant-tag identity still need it loaded.
     let mut pattern_depth: usize = 0;
     let mut just_saw_colon = false;
+    // CLAUSE-HEAD POSITION. Inside a `service` body and an `operation` body the grammar
+    // (`v1.compiler.parse` `parse_service_entries` / `parse_op_body_entries`) dispatches
+    // each entry on its head token's TEXT -- `operation`, `transport`, `input`, `output`,
+    // `exit`, `response`, `mock_response`, ... -- and never resolves it as a name. So the
+    // head of an entry in one of those two bodies is grammar structure, not a reference,
+    // whatever it spells: reading it as one made every service with a `response { .. }`
+    // block pull (and, past an import line, refuse on) any module declaring `fn response`.
+    // Tracked by the body the brace opens, not by a keyword list, so a `response(...)`
+    // call anywhere else is still a reference. Entry VALUES (`name: expr`, nested blocks)
+    // are not heads and stay references.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum BraceBody {
+        Service,
+        Operation,
+        Other,
+    }
+    let mut brace_bodies: Vec<BraceBody> = Vec::new();
+    let mut pending_body: Option<BraceBody> = None;
+    let mut at_entry_start = true;
     while i < bytes.len() {
         if bytes[i] == b'"' {
             i += 1;
@@ -9255,6 +9274,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             i += 1;
             prev_token = None;
             just_saw_colon = false;
+            at_entry_start = false;
             continue;
         }
         // `^name` is a SYMBOL LITERAL, not a reference to a declaration. Skipping it byte
@@ -9279,6 +9299,23 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             } else if bytes[i] == b'}' && pattern_depth > 0 {
                 pattern_depth -= 1;
             }
+            match bytes[i] {
+                b'{' => {
+                    brace_bodies.push(pending_body.take().unwrap_or(BraceBody::Other));
+                    at_entry_start = true;
+                }
+                b'}' => {
+                    brace_bodies.pop();
+                    pending_body = None;
+                    at_entry_start = true;
+                }
+                b'\n' => {
+                    pending_body = None;
+                    at_entry_start = true;
+                }
+                c if !c.is_ascii_whitespace() => at_entry_start = false,
+                _ => {}
+            }
             if bytes[i] == b':' {
                 just_saw_colon = true;
             } else if !bytes[i].is_ascii_whitespace() {
@@ -9293,6 +9330,25 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         let start = i;
         while i < bytes.len() && is_ident(bytes[i]) {
             i += 1;
+        }
+        let is_clause_head = at_entry_start;
+        at_entry_start = false;
+        let enclosing = brace_bodies.last().copied();
+        if is_clause_head {
+            match (enclosing, &content[start..i]) {
+                (None | Some(BraceBody::Other), "service") => {
+                    pending_body = Some(BraceBody::Service)
+                }
+                (Some(BraceBody::Service), "operation") => {
+                    pending_body = Some(BraceBody::Operation)
+                }
+                _ => {}
+            }
+            if matches!(enclosing, Some(BraceBody::Service | BraceBody::Operation)) {
+                prev_token = Some(&content[start..i]);
+                just_saw_colon = false;
+                continue;
+            }
         }
         // Part of a dotted chain → the dotted scan owns module-path chains, but
         // record the FULL chain: a service reference (`cron.Tab.List()`) is a
@@ -10379,6 +10435,54 @@ mod closure_edge_demand_tests {
             },
         )?;
         Ok(providers)
+    }
+
+    /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
+    /// dispatches on the head's text), not a reference to a pool-wide `fn response`.
+    /// Discriminating RED: before the clause-head rule, the importing service below carried
+    /// `UnimportedBareProvider { name: "response", provider: helper.dag }`. Positive control:
+    /// a genuine bare call to an unimported `fn response` in the SAME file still refuses, so
+    /// the rule is positional, not a denylist of the spelling.
+    #[test]
+    fn service_response_clause_is_not_a_bare_reference() {
+        let service = |call: &str| {
+            format!(
+                "module svc.consumer\nimport svc.types {{ Payload }}\n\n\
+                 service svc.Api {{\n  operation Get {{\n    input {{ id: Int }}\n    \
+                 output {{ id: Int from \"id\" }}\n    readonly\n    \
+                 transport rest {{ method: GET, path: \"/x\" }}\n    \
+                 response {{\n      200 => Payload\n    }}\n  }}\n}}\n{call}"
+            )
+        };
+        let helper = "module test.claim.helper\nfn response(result: String) -> String { result }\n";
+        let types = "module svc.types\ntype Payload = { id: Int }\n";
+        let clean = Fixture::new(&[
+            ("consumer.dag", service("").as_str()),
+            ("helper.dag", helper),
+            ("types.dag", types),
+        ]);
+        let index = clean.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found.iter().all(|v| v.name != "response"),
+            "a service `response` clause head was read as a reference: {found:?}"
+        );
+        let control = Fixture::new(&[
+            (
+                "consumer.dag",
+                service("fn use_it() -> String { response(result: \"x\") }\n").as_str(),
+            ),
+            ("helper.dag", helper),
+            ("types.dag", types),
+        ]);
+        let index = control.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "response" && v.provider_module == "test.claim.helper"),
+            "a genuine unimported bare `response()` call must still be reported: {found:?}"
+        );
     }
 
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
