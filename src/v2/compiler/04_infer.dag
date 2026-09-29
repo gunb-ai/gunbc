@@ -112,6 +112,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  symbol_type_node,
   Arrow,
   Atom,
   Bind,
@@ -2976,28 +2977,36 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
   }
 }
 
-// An integer literal's modeled type derives from its canonical representation, including its sole
-// named magnitude subtree. Its derivation discharges only that edge's local type frontier;
-// propagating it past the literal would report GroundingNotDerived after Int was derived. A symbol
-// literal's sole named name payload is its value, not a reference, so it is discharged the same way
-// once the literal is typed as Symbol. Boolean
-// literals are canonical only with no children, so no boolean payload can be discharged. Malformed
-// literals remain GroundingNotDerived and retain every child diagnostic.
+// WHICH LITERAL FAMILY OWNS A PAYLOAD EDGE. An integer literal's type derives from its canonical
+// representation, including its sole named magnitude subtree; a symbol literal's sole named name
+// payload is its value, not a reference. Each derivation discharges only that edge's local type
+// frontier (propagating it past the literal would report GroundingNotDerived after the literal was
+// derived), and the payload's FACTS follow the same family: the decision is typed, so the payload
+// fold below is told whose payload it is rather than assuming the integer shape (review 5348050288
+// on #12549, where a Symbol name atom was typed DecimalDigit). Boolean literals are canonical only
+// with no children, so no boolean payload can be discharged. Malformed literals remain
+// GroundingNotDerived and retain every child diagnostic.
+type InferLiteralPayload
+  = InferIntMagnitudePayload
+  | InferSymbolNamePayload
+  | InferNotALiteralPayload
 
-fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
+fn infer_literal_edge_payload(parent: Node, edge: Edge) -> InferLiteralPayload {
   match dag_canonical_literal_from_node(node: parent) {
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } =>
       match edge.label {
-        Named { name: field } => field == ^integer_literal_magnitude_field
-        Positional => false
+        Named { name: field } =>
+          if field == ^integer_literal_magnitude_field { InferIntMagnitudePayload } else { InferNotALiteralPayload }
+        Positional => InferNotALiteralPayload
       }
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
       match edge.label {
-        Named { name: field } => field == ^symbol_literal_name_field
-        Positional => false
+        Named { name: field } =>
+          if field == ^symbol_literal_name_field { InferSymbolNamePayload } else { InferNotALiteralPayload }
+        Positional => InferNotALiteralPayload
       }
-    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => InferNotALiteralPayload
+    Rejected { diagnostics: _ } => InferNotALiteralPayload
   }
 }
 
@@ -3053,23 +3062,36 @@ fn infer_arrow_empty_domain_entry(domain: Node) -> Outcome<InferredFactsEntry> {
 // representation (v2.std.integer integer_decimal_magnitude_node): a fold_list_node of digit atoms.
 // So each payload node derives with ITS OWN TYPE in that authority as the resolved type: a digit
 // atom is a DecimalDigit (integer_decimal_digit_type_node), and a cons cell or the empty tail is a
-// FreeMonoid<DecimalDigit> (integer_decimal_digits_type_node). The resolved-type field
+// FreeMonoid<DecimalDigit> (integer_decimal_digits_type_node). A symbol literal's payload is its
+// name terminal, one childless atom whose identity IS the symbol, so it derives as v2.std.node
+// Symbol (symbol_type_node) and never as a digit. The family is the typed InferLiteralPayload the
+// edge decision returns, never inferred from the member's shape. The resolved-type field
 // is never given the enclosing literal as a record of where the node came from (a meaning fork the
 // first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
 // edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
 // every child on the frontier.
-fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
-  match member.kind {
-    TypeNode { connective: Atom { identity: _ } } =>
-      optional_present(value: integer_decimal_digit_type_node())
-    TypeNode { connective: Conj } =>
-      optional_present(value: integer_decimal_digits_type_node())
-    _ => optional_absent()
+fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) -> Optional<Node> {
+  match family {
+    InferIntMagnitudePayload =>
+      match member.kind {
+        TypeNode { connective: Atom { identity: _ } } =>
+          optional_present(value: integer_decimal_digit_type_node())
+        TypeNode { connective: Conj } =>
+          optional_present(value: integer_decimal_digits_type_node())
+        _ => optional_absent()
+      }
+    InferSymbolNamePayload =>
+      match member.kind {
+        TypeNode { connective: Atom { identity: _ } } =>
+          if length(xs: member.children) == 0 { optional_present(value: symbol_type_node()) } else { optional_absent() }
+        _ => optional_absent()
+      }
+    InferNotALiteralPayload => optional_absent()
   }
 }
 
-fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
-  match infer_literal_payload_member_type(member: member) {
+fn infer_literal_payload_member_facts(family: InferLiteralPayload, member: Node) -> Outcome<InferredFacts> {
+  match infer_literal_payload_member_type(family: family, member: member) {
     Present { value: member_type } =>
       inferred_facts_from_derived_type(
         node: member,
@@ -3081,7 +3103,7 @@ fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
   }
 }
 
-fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEntry>> {
+fn infer_literal_payload_entries(family: InferLiteralPayload, payload: Node) -> Outcome<List<InferredFactsEntry>> {
   fold(
     node_subtree_nodes(root: payload),
     init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None },
@@ -3090,7 +3112,7 @@ fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEnt
         o: acc,
         f: fn(entries) {
           bind_outcome(
-            o: infer_literal_payload_member_facts(member: member),
+            o: infer_literal_payload_member_facts(family: family, member: member),
             f: fn(facts) {
               bind_outcome(
                 o: admitted_inferred_facts_entry(node: member, facts: facts),
@@ -3237,37 +3259,54 @@ fn infer_gather_fold_step(
           tree: tree
         )
     }
-  } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
-    match infer_literal_payload_entries(payload: edge.target) {
-      Rejected { diagnostics: r } =>
-        infer_gather_fold_acc_failed(
-          node: acc.node,
-          pending: rejected_with_pending(pending: acc.pending, rejected: r),
-          await_branch_row: acc.await_branch_row,
-          await_match_row: acc.await_match_row,
-          await_loop_row: acc.await_loop_row,
-          await_transform_row: acc.await_transform_row,
-          children_remaining: acc.children_remaining
-        )
-      Accepted { value: payload_entries, diagnostics: _ } =>
+  } else {
+    match infer_literal_edge_payload(parent: acc.node, edge: edge) {
+      InferNotALiteralPayload =>
         infer_gather_fold_step_merged(
           acc: acc,
-          merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
-          merged_pending: acc.pending,
+          merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
+          merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
           partials: partials,
           kinds: kinds,
           tree: tree
         )
+      InferIntMagnitudePayload =>
+        infer_gather_literal_payload_step(acc: acc, edge: edge, family: InferIntMagnitudePayload, partials: partials, kinds: kinds, tree: tree)
+      InferSymbolNamePayload =>
+        infer_gather_literal_payload_step(acc: acc, edge: edge, family: InferSymbolNamePayload, partials: partials, kinds: kinds, tree: tree)
     }
-  } else {
-    infer_gather_fold_step_merged(
-      acc: acc,
-      merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
-      merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
-      partials: partials,
-      kinds: kinds,
-      tree: tree
-    )
+  }
+}
+
+// One literal payload edge folded into the gather: its members' facts derive for THIS family.
+fn infer_gather_literal_payload_step(
+  acc: InferGatherFoldAcc,
+  edge: Edge,
+  family: InferLiteralPayload,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  match infer_literal_payload_entries(family: family, payload: edge.target) {
+    Rejected { diagnostics: r } =>
+      infer_gather_fold_acc_failed(
+        node: acc.node,
+        pending: rejected_with_pending(pending: acc.pending, rejected: r),
+        await_branch_row: acc.await_branch_row,
+        await_match_row: acc.await_match_row,
+        await_loop_row: acc.await_loop_row,
+        await_transform_row: acc.await_transform_row,
+        children_remaining: acc.children_remaining
+      )
+    Accepted { value: payload_entries, diagnostics: _ } =>
+      infer_gather_fold_step_merged(
+        acc: acc,
+        merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
+        merged_pending: acc.pending,
+        partials: partials,
+        kinds: kinds,
+        tree: tree
+      )
   }
 }
 

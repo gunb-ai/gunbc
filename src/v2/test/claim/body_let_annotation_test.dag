@@ -11,7 +11,9 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
-import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_type_atom_node }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_symbol_literal_name_optional, dag_type_atom_node }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.std.integer { integer_decimal_digit_type_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
 import v2.std.collection { List, list_at_optional }
@@ -30,7 +32,7 @@ import v2.std.diagnostic {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.node { symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
@@ -487,6 +489,90 @@ fn bla_frontier_at_symbol_literal(xs: List<Diagnostic>) -> Bool {
       _ => false
     })
   })
+}
+
+// (5e) THE SYMBOL LITERAL'S PAYLOAD IS TYPED AS ITS FAMILY'S PAYLOAD. The name terminal under `^s`
+// is the symbol itself, so infer records its resolved type as v2.std.node Symbol. RED BEFORE: the
+// payload fold assumed the integer shape and typed every payload atom as DecimalDigit (review
+// 5348050288 on #12549). These rows read the payload node's actual recorded resolved_type. The Int
+// row is the control that the integer family's payload is still a DecimalDigit.
+fn bla_inferred_tree(o: Outcome<Node>) -> Optional<InferredTree> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: t, diagnostics: _ } => optional_present(value: t)
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn bla_symbol_literal_as_symbol_tree() -> Optional<InferredTree> {
+  bla_inferred_tree(o: bla_symbol_literal_as_symbol())
+}
+
+fn bla_int_literal_as_int_tree() -> Optional<InferredTree> {
+  bla_inferred_tree(o: bla_int_literal_as_int())
+}
+
+fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
+  match t.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
+      }
+  }
+}
+
+// Every symbol-literal name payload in the tree, and whether each one's recorded type is `ty`;
+// false when the tree carries none, so an absent literal cannot pass vacuously.
+fn bla_every_symbol_payload_typed(t: InferredTree, ty: Node) -> Bool {
+  let r = fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+    match dag_symbol_literal_name_optional(node: n) {
+      Absent => acc
+      Present { value: name } => BlaPayloadCheck { seen: true, all: acc.all && bla_resolved_type_is(t: t, n: name, ty: ty) }
+    }
+  })
+  r.seen && r.all
+}
+
+fn bla_every_int_digit_typed(t: InferredTree, ty: Node) -> Bool {
+  let r = fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+    match dag_int_literal_magnitude_node_optional(node: n) {
+      Absent => acc
+      Present { value: magnitude } =>
+        fold(node_subtree_nodes(root: magnitude), init: acc, f: fn(a, m) {
+          match m.kind {
+            TypeNode { connective: Atom { identity: _ } } => BlaPayloadCheck { seen: true, all: a.all && bla_resolved_type_is(t: t, n: m, ty: ty) }
+            _ => a
+          }
+        })
+    }
+  })
+  r.seen && r.all
+}
+
+type BlaPayloadCheck {
+  seen: Bool
+  all: Bool
+}
+
+test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool {
+  match bla_symbol_literal_as_symbol_tree() {
+    Absent => false
+    Present { value: t } =>
+      bla_every_symbol_payload_typed(t: t, ty: symbol_type_node())
+        && !bla_every_symbol_payload_typed(t: t, ty: integer_decimal_digit_type_node())
+  }
+}
+
+test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool {
+  match bla_int_literal_as_int_tree() {
+    Absent => false
+    Present { value: t } => bla_every_int_digit_typed(t: t, ty: integer_decimal_digit_type_node())
+  }
 }
 
 test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
