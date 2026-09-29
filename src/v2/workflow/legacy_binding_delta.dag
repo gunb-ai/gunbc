@@ -107,14 +107,15 @@ type InsertionProvenanceDerivation
   | NotAnInsertion { target: ScopedOccurrenceRef }
   | InsertionCauseLost { target_scope: Fnv1a64Structural }
 
+// A PROJECTED OCCURRENCE WHOSE CAUSE IS IN THE TARGET'S OWN SCOPE IS NOT AN INSERTION. It is a same-graph
+// lowering member (std.occurrence_identity derive_projected_occurrence): its cause is authored in
+// the graph it lives in, so it relates to the base exactly as that cause does and yields no
+// insertion row. Only a cause in a foreign scope is a projector insertion.
 fn insertion_provenance_entry(
   target_scope: Fnv1a64Structural,
   identity: NodeOccurrenceIdentity
 ) -> InsertionProvenanceDerivation {
   match identity {
-    // A cause in the TARGET's own scope is a same-graph lowering member (std.occurrence_identity
-    // derive_projected_occurrence), not a projector insertion: its cause is authored in the graph
-    // it lives in, so it relates to the base exactly as that cause does and is no insertion row.
     OccurrenceProjected { id: id, caused_by: caused_by } =>
       if scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: target_scope) {
         NotAnInsertion {
