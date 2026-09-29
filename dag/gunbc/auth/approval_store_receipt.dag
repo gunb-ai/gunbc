@@ -5,12 +5,13 @@ import v2.std.algebra { skip, length }
 import v2.std.optional { Present, Absent }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set { cas_generation_first }
-import extdeps.crypto.mac { MacKeyId, MacVerification, MacVerified, mac_verify, mac_verification_reason }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacVerification, MacVerified, mac_verify, mac_verification_reason }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.durable_cas_file_store { CasGenerationRead, GenerationPresent, GenerationAbsent, GenerationRefused, cas_read_generation }
 import gunbc.auth.approval_capability {
   ApprovalCapability, ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol, approval_capability_signing_input,
   CapabilityIssuanceRefusal, CapabilityIssued, CapabilityIssuanceRefused, issue_capability,
+  CapabilityExpectation, CapabilityRefusal, CapabilityAuthentic, CapabilityRefused, verify_capability, capability_tag_hex,
   signing_field_separator,
 }
 import gunbc.auth.approval_request_submission { read_submission_keyring }
@@ -19,7 +20,7 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
   observe_escalation, approval_decision_store_root, parse_stored_record, StoredRequestParsed, StoredDecisionParsed, StoredRecordUnreadable,
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal, read_mac_keyring,
-  approval_capability_issuer, approval_capability_authority,
+  approval_capability_issuer, approval_capability_authority, approval_mac_key_suite,
 }
 
 // ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
@@ -165,6 +166,54 @@ fn filed_request_of(filing: CasGenerationRead) -> FiledRequestReading {
       }
   }
 }
+
+// ── THE STORE'S SIDE ──────────────────────────────────────────────────────────────────────────
+//
+// CONSUMED BY THE STORE'S DECISION: gunbc.fabric_store_operation_admission admit_store_operation
+// verifies every presented receipt through verify_store_receipt before it reads the approved intent
+// (d0_store_operation_wall PR 4; moved here from the mint's change so the verifier lands with its
+// consumer, proud-deer-538 option D).
+//
+// What the fabric store accepts, configured here and never read from the receipt (the
+// CapabilityExpectation rule): this issuer, this audience, the broker's authority, the suite. The
+// MAC is checked FIRST by verify_capability, before any claim is read.
+data approval_store_receipt_expectation: CapabilityExpectation = CapabilityExpectation {
+  issuer: approval_capability_issuer,
+  audience: approval_store_receipt_audience,
+  authority: approval_capability_authority,
+  suite: approval_mac_key_suite,
+}
+
+// THE VERIFICATION A STORE RUNS over a presented receipt: the tag decoded from its one spelling
+// (capability_tag_hex refuses any other), the MAC under the receipt key, then the claims against the
+// expectation and the observed instant. A tag with no hex spelling is refused as a MAC refusal of
+// its own kind rather than verified against something else.
+fn verify_store_receipt(receipt: ApprovalCapability, key: MacKey, observed_at: Timestamp) -> StoreReceiptVerification {
+  match capability_tag_hex(capability: receipt) {
+    Absent => StoreReceiptTagUnreadable
+    Present { value: tag } =>
+      verify_store_receipt_over(
+        receipt: receipt,
+        mac_result: mac_verify(key: key, message: approval_capability_signing_input(c: receipt.claims), tag_hex: tag),
+        observed_at: observed_at,
+      )
+  }
+}
+
+// The claims against the store's expectation and the instant, given the MAC's verdict: the part of
+// the check that is the store's own, separable from computing the MAC (the same seam
+// verify_capability takes), so its refusals are witnessed over a supplied verdict.
+fn verify_store_receipt_over(receipt: ApprovalCapability, mac_result: MacVerification, observed_at: Timestamp) -> StoreReceiptVerification {
+  match verify_capability(capability: receipt, expectation: approval_store_receipt_expectation, mac_result: mac_result, observed_at: observed_at) {
+    CapabilityRefused { cause: c } => StoreReceiptNotAuthentic { cause: c }
+    CapabilityAuthentic { claims: cl } => StoreReceiptAuthentic { claims: cl }
+  }
+}
+
+type StoreReceiptVerification
+  = StoreReceiptAuthentic { claims: ApprovalCapabilityClaims }
+  | StoreReceiptNotAuthentic { cause: CapabilityRefusal }
+  | StoreReceiptTagUnreadable
 
 // ── THE ROUTE: POST /approvals/<escalation_id>/store-receipt ────────────────────────────────────
 //
