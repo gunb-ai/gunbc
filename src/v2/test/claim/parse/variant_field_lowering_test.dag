@@ -33,7 +33,7 @@ import std.constructors { Cardinality, Required, Optional }
 import v2.std.node_query {
   DeclaredField,
   construct_field_edges,
-  construct_tag_optional,
+  construct_tag_path_optional,
   declared_field_list,
   declared_field_named,
   find_arrow_body_child,
@@ -44,6 +44,7 @@ import v2.std.node_query {
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.collection { List, list_at_optional }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -327,12 +328,12 @@ test fn vf_positional_construction_carries_its_operand() -> Bool {
   }
 }
 
-// A record construction is the construct shape: tag edge R -> Atom(R), then field v -> x.
+// A record construction is the construct shape: the marked tag edge -> the authored path R, then field v -> x.
 test fn vf_record_construction_is_the_construct_shape() -> Bool {
   match vf_fn_body_of(o: vfs_normalized_5(), fn_lexeme: "mk") {
     Absent => false
     Present { value: body } =>
-      (match construct_tag_optional(n: body) { Present { value: tag } => symbol_lexeme(sym: tag) == "R"  Absent => false })
+      (match construct_tag_path_optional(n: body) { Present { value: path } => qualified_name_to_dotted_string(qn: path) == "R"  Absent => false })
         && (count(construct_field_edges(n: body)) == 1)
         && (match list_at_optional(xs: construct_field_edges(n: body), index: 0) {
           Present { value: e } =>
@@ -370,7 +371,7 @@ fn vf_first_arm_pattern_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Opti
 }
 
 fn vf_pattern_binds(pat: Node, tag: String, field: String, binder: String) -> Bool {
-  (match construct_tag_optional(n: pat) { Present { value: t } => symbol_lexeme(sym: t) == tag  Absent => false })
+  (match construct_tag_path_optional(n: pat) { Present { value: path } => qualified_name_to_dotted_string(qn: path) == tag  Absent => false })
     && (count(construct_field_edges(n: pat)) == 1)
     && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
       Present { value: e } =>

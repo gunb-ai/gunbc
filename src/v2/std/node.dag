@@ -715,6 +715,24 @@ fn declaration_reference_marker() -> Symbol {
   declaration_reference_marker_symbol
 }
 
+// A CONSTRUCT'S TAG IS MARKED BY ITS ROLE, NOT RECOGNISED BY SPELLING. A record construct and a
+// fielded constructor pattern are one Conj whose first edge carries this marker and targets the
+// constructor as an ordinary REFERENCE: the authored qualified-name spine before resolution (a bare
+// `R` is its one-segment case) and v2.std.qualified_name declaration_reference_node after it. The
+// label used to be the constructor's own spelling, read back by comparing it with the target Atom's
+// identity; resolution rewrites that target into a declaration reference, so the comparison failed
+// for every resolved user construct (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), and a module-qualified
+// constructor had no representation at all. It is distinct from the declaration-reference marker,
+// so a nullary `R {}` never reads as a reference. It is a Core structural marker of the typed
+// EdgeLabel coproduct planned in gunbc#12473 (arm ConstructTag), declared here in the form of its
+// sibling until that cut converts both.
+data construct_tag_marker_symbol: Symbol = symbol_intern_lexeme(lexeme: "<construct-tag>")
+
+fn construct_tag_marker() -> Symbol {
+  construct_tag_marker_symbol
+}
+
 // A RESOLVED DECLARATION REFERENCE IS NOT A RECORD CONSTRUCT. `data d: D = A` lowers to a nullary
 // Arrow whose body is the initializer, and when the initializer is a reference that body is the
 // marked Conj. Before this arm the classifier read every Conj body as a record construct, whose
@@ -764,26 +782,43 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   }
 }
 
+// A Conj body that is not a marked declaration reference is one of two things, and this admits both.
+//
+// A CONSTRUCT: the tag edge is FIRST and carries v2.std.node construct_tag_marker, and its target is a
+// reference, which is a Conj in both of its forms (an authored spine, a marked declaration
+// reference); every edge is Named. Which Conj is a well-formed reference is v2.std.qualified_name's to
+// read (v2.std.node_query construct_tag_path_optional), not repeated here.
+//
+// AN AUTHORED PATH BEFORE RESOLUTION: `fn f() -> T { m.C }` has the qualified-name spine as its body
+// until resolve replaces it with the marked reference. Its first edge is Named and targets the head
+// segment's Atom. This module cannot name the spine's labels -- v2.std.algebra fold_list_node owns
+// them and imports this module -- so the admission is the one this function made before the tag
+// became a marker, stated as what it is rather than left to accident. A typed arm for an unresolved
+// reference body would let the classifier say so; it is a follow-up named in
+// docs/plans/construct-tag-reference-design.md, not a change this package makes.
 fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
       if !all_edges_named(children: node.children) {
         false
       } else {
-        fold(node.children, init: false, f: fn(seen_first_named, edge) {
-          if seen_first_named {
-            seen_first_named
+        fold(node.children, init: 0, f: fn(seen, edge) {
+          if seen != 0 {
+            seen
           } else {
             match edge.label {
-              Named { name: _ } =>
+              Named { name: label } =>
                 match edge.target.kind {
-                  TypeNode { connective: Atom { identity: _ } } => true
-                  _ => false
+                  TypeNode { connective: Conj } =>
+                    if symbol_eq(a: label, b: construct_tag_marker()) { 1 } else { 2 }
+                  TypeNode { connective: Atom { identity: _ } } =>
+                    if symbol_eq(a: label, b: construct_tag_marker()) { 2 } else { 1 }
+                  _ => 2
                 }
-              Positional => false
+              Positional => 2
             }
           }
-        })
+        }) == 1
       }
     _ => false
   }
