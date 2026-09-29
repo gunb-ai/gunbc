@@ -1,0 +1,24 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=3 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=564 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=219 scale=tree
+[pre-entry] phase=closure_name_census_build ms=217 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=4 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=15 scale=closure
+[pre-entry] phase=closure_load ms=239 scale=closure
+[pre-entry] phase=closure_parse ms=1007 scale=closure
+[pre-entry] phase=closure_resolve ms=34 scale=closure
+[pre-entry] phase=closure_normalize ms=122 scale=closure
+[pre-entry] phase=closure_typecheck ms=3829 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=20 scale=closure
+[pre-entry] phase=closure_ownership ms=127 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=8045 scale=closure
+[pre-entry] population pool_modules=103 closure_files=103
+[pre-entry] process_cpu user_ms=7720 sys_ms=303 max_rss_kib=543288
+PASS the_event_id_is_content_addressed
+PASS the_wire_form_round_trips_and_a_mismatched_id_refuses
+PASS a_linear_history_folds_in_causal_order
+PASS a_fork_and_a_missing_parent_are_their_own_standings

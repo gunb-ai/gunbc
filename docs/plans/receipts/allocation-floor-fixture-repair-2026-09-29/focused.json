@@ -1,0 +1,47 @@
+{
+  "parent_revision": "2b041b8070b7bf5662784da52aa9d9c29c4e68ae",
+  "source_diff_sha256": "aa601f2e53c046f51f055559ae3eafd065ae8c1ef5dec34e588f58ac3a7a3535",
+  "binary_sha256": "bfa5dbdaf10c93ba9f3aa9c393ab6426e97d9d419c191528682124ffcd6237e6",
+  "memory_max": "6GiB",
+  "memory_swap_max": 0,
+  "allocator_arenas": 2,
+  "suites": [
+    {
+      "suite": "events",
+      "passes": 4,
+      "failures": 0,
+      "log_sha256": "8c09add9c83f82a9efad3f4f5aff73bcb73612cdf322acbe905e548608d60b56"
+    },
+    {
+      "suite": "presentation",
+      "passes": 26,
+      "failures": 0,
+      "log_sha256": "4f182029cbb9f04ac3b9b58e8012c3246eba0b915d53cd9f38978c2492a0a6f1"
+    },
+    {
+      "suite": "progress",
+      "passes": 27,
+      "failures": 0,
+      "log_sha256": "0d56d887666f7b71fef1e6cb475a3169c468718bd5d5709ddea605dd8c738a58"
+    },
+    {
+      "suite": "systemd",
+      "passes": 7,
+      "failures": 0,
+      "log_sha256": "cfee7a19c7cd381dda0132c4d09c95f6a63fdf5048c0e56166eeba80508fb322"
+    },
+    {
+      "suite": "merge-state",
+      "passes": 1,
+      "failures": 0,
+      "log_sha256": "8a957b32ac359aa1db2c578416f8c4dd25f7d5538f520fb217cd979fa33c3f0f"
+    },
+    {
+      "suite": "recursive-workflow",
+      "passes": 1,
+      "failures": 0,
+      "log_sha256": "2f2801f9ab31848dfeedf9ef6868bdd39c41831faee21820b670e76d0a4ecea2"
+    }
+  ],
+  "integrated_floor": "pending"
+}

@@ -1,9 +1,10 @@
 module test.claim.roadmap.roadmap_event_log_witness_test
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
+import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
+  EventPrincipal, event_principal_authenticated, RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced,
   RoadmapEventEnvelope, RoadmapEventId, roadmap_event_id, roadmap_event_envelope, roadmap_event_wire_text,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
@@ -12,8 +13,12 @@ import gunbc.roadmap.roadmap_event_log {
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
 
+fn fixture_principal(subject: String) -> EventPrincipal {
+  event_principal_authenticated(ref: PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: subject as NonEmptyStr })
+}
+
 fn ev(kind: RoadmapEventKind, parent: RoadmapEventId?, author: String, at: String) -> RoadmapEventEnvelope {
-  roadmap_event_envelope(e: RoadmapEvent { node: node(), author: author as NonEmptyStr, parent: parent, kind: kind, recorded_at: at })
+  roadmap_event_envelope(e: RoadmapEvent { node: node(), author: fixture_principal(subject: author), parent: parent, kind: kind, recorded_at: at })
 }
 
 // DISCRIMINATING: the id is a function of the event's content. The same event twice is one id; a
@@ -27,7 +32,7 @@ test fn the_event_id_is_content_addressed() -> Bool {
 
 // DISCRIMINATING: the wire form round-trips, and a wire whose id does not match its content refuses.
 test fn the_wire_form_round_trips_and_a_mismatched_id_refuses() -> Bool {
-  let claimed = ev(kind: Claimed, parent: none, author: "session-a", at: "2026-09-05T20:00:00Z")
+  let claimed = ev(kind: Claimed { assignee: fixture_principal(subject: "s1"), return_to: fixture_principal(subject: "s1") }, parent: none, author: "session-a", at: "2026-09-05T20:00:00Z")
   let receipt = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "verification/86dd.json" as NonEmptyStr, verdict: "passed" as NonEmptyStr }, parent: Present { value: claimed.id }, author: "belt", at: "t2")
   let ok = match roadmap_event_decode(text: roadmap_event_wire_text(env: receipt)) {
     RoadmapEventDecoded { envelope } => (envelope.id as String) == (receipt.id as String) && (match envelope.event.parent { Present { value: p } => (p as String) == (claimed.id as String)  Absent => false })
@@ -48,7 +53,7 @@ test fn the_wire_form_round_trips_and_a_mismatched_id_refuses() -> Bool {
 // DISCRIMINATING: a linear chain folds in causal order regardless of list order; receipts do not
 // change the holder's state; release returns to open.
 test fn a_linear_history_folds_in_causal_order() -> Bool {
-  let e1 = ev(kind: Claimed, parent: none, author: "s1", at: "t1")
+  let e1 = ev(kind: Claimed { assignee: fixture_principal(subject: "s1"), return_to: fixture_principal(subject: "s1") }, parent: none, author: "s1", at: "t1")
   let e2 = ev(kind: Progress { note: "half done" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t2")
   let e3 = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "v.json" as NonEmptyStr, verdict: "failed" as NonEmptyStr }, parent: Present { value: e2.id }, author: "belt", at: "t3")
   let e4 = ev(kind: Blocked { reason: "oracle needs a fixture" as NonEmptyStr }, parent: Present { value: e3.id }, author: "s1", at: "t4")
@@ -65,7 +70,7 @@ test fn a_linear_history_folds_in_causal_order() -> Bool {
 // DISCRIMINATING: two writers on the same parent are a fork, named as such, never resolved by clock;
 // an event whose parent is absent makes the history incomplete rather than a root.
 test fn a_fork_and_a_missing_parent_are_their_own_standings() -> Bool {
-  let e1 = ev(kind: Claimed, parent: none, author: "s1", at: "t1")
+  let e1 = ev(kind: Claimed { assignee: fixture_principal(subject: "s1"), return_to: fixture_principal(subject: "s1") }, parent: none, author: "s1", at: "t1")
   let a = ev(kind: Progress { note: "a" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s1", at: "t9")
   let b = ev(kind: Progress { note: "b" as NonEmptyStr }, parent: Present { value: e1.id }, author: "s2", at: "t2")
   let forked = roadmap_node_standing(envs: [e1, a, b])

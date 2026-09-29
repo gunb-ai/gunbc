@@ -1,0 +1,79 @@
+dag/test/claim/github_merge_state_witness_test.dag
+  6: unresolved type 'MergeStateStatus'
+  7: undefined variable 'Blocked'
+  7: unresolved type 'MergeStateStatus'
+dag/test/claim/workflow_recursive_witness_test.dag
+  136: ambiguous reference 'settle': 2 candidates: gunbc.idea_pr_spine.settle, gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test.settle — qualify by containment path, alias, or rename
+  146: ambiguous reference 'settle': 2 candidates: gunbc.idea_pr_spine.settle, gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test.settle — qualify by containment path, alias, or rename
+dag/gunbc/systemd_property_directive_overlap.dag
+  119: non-exhaustive match: missing variant(s) MemoryPeak
+dag/test/claim/roadmap/roadmap_event_log_witness_test.dag
+  16: type mismatch: expected 'Coproduct(EventPrincipal)', got 'Product(NonEmptyStr)'
+  30: missing required field 'assignee' in literal of type 'Claimed'
+  30: missing required field 'return_to' in literal of type 'Claimed'
+  51: missing required field 'assignee' in literal of type 'Claimed'
+  51: missing required field 'return_to' in literal of type 'Claimed'
+  68: missing required field 'assignee' in literal of type 'Claimed'
+  68: missing required field 'return_to' in literal of type 'Claimed'
+dag/test/claim/roadmap/roadmap_validation_oracle_witness_test.dag
+  837: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  837: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+dag/test/claim/roadmap/roadmap_presentation_witness_test.dag
+  475: call shape mismatch calling 'work_row_view': missing required argument 'attempt_stale' (9 of 10 required argument(s) supplied)
+  479: call shape mismatch calling 'work_row_view': missing required argument 'attempt_stale' (9 of 10 required argument(s) supplied)
+  536: non-exhaustive match: missing variant(s) BandProject
+  543: non-exhaustive match: missing variant(s) BandProject
+  552: call shape mismatch calling 'daily_workspace_view': missing required argument 'edges' (1 of 2 required argument(s) supplied)
+  554: value does not inhabit its declared type at the direct call argument for parameter 'row': declared 'Product(WorkRowView)', produced 'Primitive(WorkBandEntry)'
+  571: missing required field 'attempt_stale' in literal of type 'WorkRowView'
+  605: call shape mismatch calling 'daily_workspace_view': missing required argument 'edges' (1 of 2 required argument(s) supplied)
+  609: non-exhaustive match: missing variant(s) BandProject
+  621: non-exhaustive match: missing variant(s) BandProject
+  629: call shape mismatch calling 'daily_workspace_view': missing required argument 'edges' (1 of 2 required argument(s) supplied)
+  631: non-exhaustive match: missing variant(s) BandProject
+  641: call shape mismatch calling 'daily_workspace_view': missing required argument 'edges' (1 of 2 required argument(s) supplied)
+  644: no field 'node_id' on type 'WorkBandEntry'
+  645: non-exhaustive match: missing variant(s) BandProject
+  653: call shape mismatch calling 'daily_workspace_view': missing required argument 'edges' (1 of 2 required argument(s) supplied)
+  657: non-exhaustive match: missing variant(s) BandProject
+dag/test/claim/roadmap/roadmap_workflow_command_witness_test.dag
+  88: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  88: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+dag/test/claim/fleet/fleet_converge_launch_environment_scope_witness_test.dag
+  120: non-exhaustive match: missing variant(s) WorkspaceAllocationOnly
+dag/test/claim/roadmap/roadmap_belt_actuate_witness_test.dag
+  1121: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  1121: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+  1209: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  1209: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+dag/test/claim/verification_evidence_addressing_witness_test.dag
+  336: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  336: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+dag/test/claim/roadmap/roadmap_workflow_progress_witness_test.dag
+  112: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  112: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+  381: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  381: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+  413: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  413: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+  443: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  443: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+  498: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  498: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+  637: missing required field 'integration' in literal of type 'WorkflowAttemptEvidence'
+  637: missing required field 'submission_capture' in literal of type 'WorkflowAttemptEvidence'
+dag/test/claim/long/roadmap_page_witness_test.dag
+  741: method 'render_work_row' cannot be resolved: receiver type 'Primitive()' establishes no method surface, so the method's existence is not established and no declared frontier row admits it
+  741: no field 'roadmap_page' on type 'gunbc'
+dag/test/claim/roadmap/roadmap_sandbox_witness_test.dag
+  153: non-exhaustive match: missing variant(s) BandProject
+  164: call shape mismatch calling 'band_entries': missing required argument 'all_rows' (1 of 2 required argument(s) supplied)
+dag/test/claim/fleet/fleet_converge_plan_witness_test.dag
+  2087: non-exhaustive match: missing variant(s) WorkspaceAllocationOnly
+  2097: non-exhaustive match: missing variant(s) WorkspaceAllocationOnly
+dag/test/claim/workflow_dispatch_input_witness_test.dag
+  617: non-exhaustive match: missing variant(s) WorkspaceAllocationOnly
+dag/test/claim/auth/approved_secret_grants_witness_test.dag
+  9: 'test.claim.auth.approved_secret_grants_witness_test.<import>' references test code 'test.claim.auth.approved_gcp_access_witness_test.witness_approval_and_workload_credential_are_both_required': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests
+  9: 'test.claim.auth.approved_secret_grants_witness_test.<import>' references test code 'test.claim.auth.approved_gcp_access_witness_test.witness_expired_approval_cannot_use_available_workload_credential': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests
+  9: 'test.claim.auth.approved_secret_grants_witness_test.<import>' references test code 'test.claim.auth.approved_gcp_access_witness_test.witness_pending_unreadable_and_other_intent_withhold_gcp_access': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests

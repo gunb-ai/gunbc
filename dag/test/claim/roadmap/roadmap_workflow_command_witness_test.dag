@@ -1,5 +1,8 @@
 module test.claim.roadmap_workflow_command_witness
 
+import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
+
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_workflow_command {
@@ -86,6 +89,8 @@ test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool {
 
 test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
   let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    submission_capture: CaptureAbsent,
+    integration: IntegrationReceiptAbsent,
     node_id: "legacy-node",
     attempt_key: "",
     branch: "dispatch/legacy-node",

@@ -1,0 +1,27 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=0 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=124 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=51 scale=tree
+[pre-entry] phase=closure_name_census_build ms=51 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=1 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=1 scale=closure
+[pre-entry] phase=closure_load ms=55 scale=closure
+[pre-entry] phase=closure_parse ms=211 scale=closure
+[pre-entry] phase=closure_resolve ms=8 scale=closure
+[pre-entry] phase=closure_normalize ms=25 scale=closure
+[pre-entry] phase=closure_typecheck ms=567 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=4 scale=closure
+[pre-entry] phase=closure_ownership ms=19 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=1493 scale=closure
+[pre-entry] population pool_modules=30 closure_files=27
+[pre-entry] process_cpu user_ms=1410 sys_ms=88 max_rss_kib=121588
+PASS a_settable_knob_and_a_read_only_observation_classify_apart
+PASS the_live_read_members_preserve_the_writable_boundary
+PASS the_show_surface_currently_mixes_writability
+PASS no_property_is_both_settable_and_observation_only
+PASS memory_current_is_the_specimen_that_forbids_reusing_the_show_surface
+PASS the_dissolution_retires_the_mixed_coproduct_by_name
+PASS the_consumer_roster_records_more_than_one_role

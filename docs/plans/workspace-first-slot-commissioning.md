@@ -8,11 +8,15 @@ accounted controller; no memory ceiling increase is proposed.
 
 ## Current prerequisite standing
 
-- Credential custody #12580 has five green checks and is in the normal merge
-  queue. Do not bypass the queue or install a different unqualified revision.
-- Allocation full serve starts within 12 GiB/no swap. Integrated floor still
-  needs the stale roster repair and generated checks; local generator exceeded
-  the 6 GiB validation cap.
+- Credential custody #12580 is merged. Run 36605269073 established the pinned
+  state-writer key on srv1 with ownership, mode, content equality and staging
+  readback. Remote srv2 delivery is being retried in run 36613639455, executing
+  the same qualified b43704581 revision through #12646's runner-placement change.
+  Its job now requests generic fleet labels; success/readback remains pending.
+- Allocation full serve at ba0ca2fef starts within 12 GiB/no swap. Generated
+  qualification at 304b89694 passed, but the integrated floor found stale fixtures
+  and forbidden test imports. The source repair has 66 focused passes under
+  6 GiB/no swap; the complete floor and updated page suite remain unqualified.
 - Read-only srv1 observation finds the slot service failed since September 24,
   an inactive cell slice without a finite memory bound, and a separate active
   24 GiB/no-swap controller slice. Neither failure nor absent stores proves
@@ -71,12 +75,12 @@ running expiry. Custody, installation, and source tests alone are not VM accepta
 
 ## Concurrent CI reservation lane
 
-Queued PR #12256 (`b1919d468e5449b7357a1e35a8a36e5af48d4712`)
+Merged PR #12256 (integrated at main 6571276ce43de56e414bcccfa9623129c7c4e2b4)
 adds a CI reservation broker for the same srv1-13 slot. Its broker consumes
 `fleet_cell_sanction`; this integration already changes that shared sanction to
 customer-executable capacity for workspace-designated slots, so the compile-floor
 requirements refuse it before reservation. A second purpose gate is unnecessary.
 However, an older installed revision can still have the old designation. Observe
 withdrawal/quiescence of that entry point before initial commissioning, and check
-the shared refusal after integrating the queued source. The operator does not
+the shared refusal against the integrated source; the production broker control now passes. The operator does not
 know whether another CI live run is planned. No reservation was performed here.

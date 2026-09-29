@@ -1,0 +1,51 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+✓ typecheck v2.std.compilers.target_model done in 25 seconds
+✓ typecheck v2.compiler.target_serialize done in 2 seconds
+✓ typecheck gunbc.roadmap_belt_actuate done in 3 seconds
+✓ typecheck gunbc.roadmap_component done in 3 seconds
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=17 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=4455 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=1598 scale=tree
+[pre-entry] phase=closure_name_census_build ms=1753 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=29 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=44 scale=closure
+[pre-entry] phase=closure_load ms=1995 scale=closure
+[pre-entry] phase=closure_parse ms=8629 scale=closure
+[pre-entry] phase=closure_resolve ms=274 scale=closure
+[pre-entry] phase=closure_normalize ms=959 scale=closure
+[pre-entry] phase=closure_typecheck ms=75885 scale=closure
+[pre-entry] phase=closure_parent_envs ms=7 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=144 scale=closure
+[pre-entry] phase=closure_ownership ms=1131 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=114172 scale=closure
+[pre-entry] population pool_modules=607 closure_files=607
+[pre-entry] process_cpu user_ms=111712 sys_ms=2042 max_rss_kib=4036584
+PASS admitted_running_attempt_projects_ordered_evidence
+PASS provider_completion_cannot_fabricate_verification
+PASS nonzero_exit_without_terminal_event_is_failed
+PASS zero_exit_without_terminal_event_is_refused
+PASS completed_event_and_nonzero_exit_refuse_contradiction
+PASS completed_event_while_process_runs_is_not_complete
+PASS completed_event_with_absent_process_refuses
+PASS completed_event_with_unobserved_process_refuses
+PASS truncated_receipt_with_admitted_prefix_is_not_admitted
+PASS refused_receipt_quoting_admitted_fragments_is_not_admitted
+PASS receipt_decode_separates_refusal_from_undecodable
+PASS forged_admission_receipt_cannot_complete_environment
+PASS persisted_staging_failure_precedes_empty_event_stream
+PASS legacy_attempt_refuses_unobserved_early_stages
+PASS readable_but_invalid_admission_receipt_refuses_progress
+PASS workflow_json_exposes_segment_and_provider_facts
+PASS failed_or_refused_stage_is_visible_without_decoding_border_style
+PASS publication_at_the_expected_head_completes_where_the_old_constant_could_not
+PASS a_receipt_for_the_previous_head_cannot_complete_the_current_one
+PASS the_completed_sentence_names_the_head_that_was_judged
+PASS an_unreadable_receipt_refuses_rather_than_reading_as_not_yet_published
+PASS publication_at_another_head_fails_rather_than_reading_as_progress
+PASS an_absent_publication_receipt_is_pending_not_a_judgment
+PASS an_undecodable_publication_receipt_refuses_rather_than_pending
+PASS an_attempt_with_no_readable_head_refuses_rather_than_pending
+PASS the_publication_readings_are_distinct_states
+PASS the_review_segment_waits_for_verification_then_carries_the_review_report

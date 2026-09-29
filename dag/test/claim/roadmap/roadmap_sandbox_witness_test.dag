@@ -1,5 +1,7 @@
 module test.claim.roadmap_sandbox_witness
 
+import gunbc.roadmap_presentation { BandProject }
+
 import std.types { Int, String, Bool, List }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import gunbc.roadmap_sandbox {
@@ -157,12 +159,13 @@ fn fixture_band_entry_signature(e: WorkBandEntry) -> String {
       "|", join(map(family.rows, r => r.headline), ","),
     ], "")
     BandRow { row } => join(["row|", row.headline], "")
+    BandProject { project: _ } => "unexpected-project"
   }
 }
 
 test fn witness_family_fixture_typed_structure_exact() -> Bool {
   let entries = band_entries(
-    rows: fixture_family_rows(),
+    rows: fixture_family_rows(), all_rows: fixture_family_rows(), edges: [],
     families: [fixture_family_decl()],
     members: fixture_family_members(),
   )
