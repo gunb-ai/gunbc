@@ -1,0 +1,42 @@
+[workspace-root] discovered /home/briansrls/scratch-wt/allocation-vertical-resume
+[pre-entry] phase=workspace_discovery ms=3 scale=closure
+[pre-entry] phase=source_root_walk_and_read ms=3 scale=tree
+[pre-entry] phase=graph_facts_import_edges ms=426 scale=tree
+[pre-entry] phase=graph_facts_module_declarations ms=0 scale=tree
+[pre-entry] phase=pool_census_parse ms=172 scale=tree
+[pre-entry] phase=closure_name_census_build ms=82 scale=tree
+[pre-entry] phase=reference_pool_names_from_census ms=2 scale=tree
+[pre-entry] phase=selection_tier_closure_files ms=15 scale=closure
+[pre-entry] phase=closure_load ms=118 scale=closure
+[pre-entry] phase=closure_parse ms=735 scale=closure
+[pre-entry] phase=closure_resolve ms=26 scale=closure
+[pre-entry] phase=closure_normalize ms=96 scale=closure
+[pre-entry] phase=closure_typecheck ms=2509 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=14 scale=closure
+[pre-entry] phase=closure_ownership ms=88 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=5571 scale=closure
+[pre-entry] population pool_modules=77 closure_files=77
+[pre-entry] process_cpu user_ms=5360 sys_ms=197 max_rss_kib=375600
+PASS rfc_8118_anchor_cites_current_standard_not_3778
+PASS iso_32000_2_is_further_citation
+PASS rfc_pdf_open_page_admits_positive_one
+PASS rfc_pdf_open_zoom_is_upstream_constructed_not_refused
+PASS gunbc_safe_profile_refuses_zoom
+PASS gunbc_safe_profile_admits_page_only_sequence
+PASS pdf_safe_parameters_include_page_red_wrong_page
+PASS project_navigable_uri_appends_ordered_fragment
+PASS project_navigable_uri_safe_refuses_when_base_carries_fragment
+PASS project_navigable_uri_safe_refuses_mixed_admitted_and_refused_parameters
+PASS pdf_profile_parameter_wire_encodes_ampersand_in_nameddest
+PASS pdf_profile_parameter_wire_encodes_hash_in_structelem
+PASS pdf_profile_parameter_wire_encodes_equals_in_nameddest
+PASS pdf_profile_parameter_wire_encodes_percent_in_nameddest
+PASS pdf_profile_parameter_wire_encodes_space_in_nameddest
+PASS uri_percent_encode_component_round_trip_unreserved
+PASS uri_hex_nibble_construction_refuses_out_of_range_digit
+PASS pdf_open_fragment_selector_conforms_to_rfc_8118
+PASS uri_percent_encode_component_refuses_code_point_beyond_unicode_max
+PASS project_navigable_uri_refuses_unencodable_nameddest_value
+PASS pdf_open_parameter_sequence_wire_joins_multi_parameter_sequence_without_concat_fold
+PASS citation_cit1_witness_split_names_homonym_accommodation

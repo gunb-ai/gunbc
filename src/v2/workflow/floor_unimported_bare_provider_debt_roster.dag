@@ -296,7 +296,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_5280.dag", name: "skip", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_7468.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_7468.dag", name: "skip", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_8118.dag", name: "Optional", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_8118.dag", name: "Optional", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_8118.dag", name: "any", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_8118.dag", name: "r", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/standards/rfc_8118.dag", name: "t", standing: Retired { cause: NotAReference } },
