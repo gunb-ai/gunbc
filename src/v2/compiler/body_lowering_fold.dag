@@ -1137,9 +1137,6 @@ fn body_lower_operand_from_shell_read(shell: Node) -> OperandRefRead {
   }
 }
 
-fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
-  body_lower_operand_ref_read_optional(read: body_lower_operand_from_shell_read(shell: shell))
-}
 
 // A SEQUENCE WITH A NON-EMPTY RIGHT IS NEVER NARROWED TO ITS LEFT ELEMENT. When pair.right is the
 // empty conj the sequence is one element and its left IS the operand; otherwise the sequence is an
@@ -1190,16 +1187,7 @@ fn body_lower_operand_read_outcome(read: OperandRefRead, diagnostics: Diagnostic
   }
 }
 
-fn body_lower_operand_ref_read_optional(read: OperandRefRead) -> Optional<Node> {
-  match read {
-    OperandRefLowered { lowered: lowered } => optional_present(value: lowered)
-    _ => optional_absent()
-  }
-}
 
-fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
-  body_lower_operand_ref_read_optional(read: body_lower_operand_ref_read(node: node))
-}
 
 // An int literal is an atom with a magnitude child, and it is not a binding: the operand reader
 // reads it whole before the branded-atom arm rebuilds an atom with no children -- which is what
@@ -1872,14 +1860,19 @@ fn body_lower_param_binding_atom_optional(node: Node) -> Optional<Node> {
             optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: node))
           }
         Absent =>
-          match body_lower_operand_ref_optional(node: node) {
-            Present { value: ref_node } =>
+          // A BINDER IS NEVER AN OPERATOR EXPRESSION: an operand the reader refuses is not a binder, so
+          // the answer is "not a binder" and the enclosing construct refuses at its own locus. The
+          // refusal is not carried because this position returns no Outcome; the binder readers'
+          // callers are the named remaining gap of lowering_accessor_collapses_a_sequence_operand.
+          match body_lower_operand_ref_read(node: node) {
+            OperandRefLowered { lowered: ref_node } =>
               match node_atom_identity_optional(node: ref_node) {
                 Present { value: sym } =>
                   optional_present(value: node_lowered_from(kind: TypeNode { connective: Atom { identity: sym } }, children: [], source: ref_node))
                 Absent => optional_absent()
               }
-            Absent => optional_absent()
+            OperandRefAbsent => optional_absent()
+            OperandRefRefused { diagnostics: _ } => optional_absent()
           }
       }
   }
@@ -3087,10 +3080,23 @@ fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
   }
 }
 
+// Reify runs over branch targets the fold has ALREADY lowered, where the operand reader answers a
+// lowered node whole and cannot refuse (a refusal comes only from reading an operator tail). Its
+// Absent fall-through to a second reader is the other named remaining gap of
+// lowering_accessor_collapses_a_sequence_operand.
 fn body_lower_reify_operand_node(node: Node) -> Optional<Node> {
-  match body_lower_operand_ref_optional(node: node) {
-    Present { value: op } => Present { value: op }
-    Absent => body_lower_operand_from_shell_optional(shell: node)
+  match body_lower_operand_ref_read(node: node) {
+    OperandRefLowered { lowered: op } => Present { value: op }
+    OperandRefRefused { diagnostics: _ } => body_lower_reify_operand_from_shell(node: node)
+    OperandRefAbsent => body_lower_reify_operand_from_shell(node: node)
+  }
+}
+
+fn body_lower_reify_operand_from_shell(node: Node) -> Optional<Node> {
+  match body_lower_operand_from_shell_read(shell: node) {
+    OperandRefLowered { lowered: op } => Present { value: op }
+    OperandRefRefused { diagnostics: _ } => Absent
+    OperandRefAbsent => Absent
   }
 }
 
@@ -5936,9 +5942,6 @@ fn body_lower_arm_operand_resolved_uncast_read(arm: Node) -> OperandRefRead {
   }
 }
 
-fn body_lower_arm_operand_resolved_optional(arm: Node) -> Optional<Node> {
-  body_lower_operand_ref_read_optional(read: body_lower_arm_operand_resolved_read(arm: arm))
-}
 
 fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_expr) {
