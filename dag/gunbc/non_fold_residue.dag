@@ -161,6 +161,9 @@ data nfr_reason_concurrent_divergence_repair_policy: String = "repair-policy dis
 
 data nfr_dissolve_concurrent_divergence_repair_policy: DissolutionCondition = unbound_dissolution(description: "GeneratedArtifact carries a declared concurrent-append property per artifact (the ledger-shaped projections that several lanes extend between merges), concurrent_divergence_repair folds over that property instead of over the variant list, the shared arm becomes a named case rather than a wildcard, and this row deletes.")
 
+// The census these rows answer covers only matches whose scrutinee is a closed-coproduct
+// PARAMETER; its population bound is stated on this roster's registration in
+// gunbc.roster_registry, so an empty delta is not a claim about every closed-coproduct wildcard.
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
   FrontierRow {

@@ -34730,8 +34730,12 @@ mod nfr_tests {
             .iter()
             .map(|s| s.as_str())
             .collect();
+        // POPULATION BOUND (rung honesty, DESIGN §4b(1)): the census scans matches whose scrutinee
+        // is a closed-coproduct PARAMETER; a match on a local binding or a field is not scanned, so
+        // this receipt's green covers that population only (bound stated on the roster's
+        // registration in gunbc.roster_registry).
         eprintln!(
-            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            "nfr_roster_receipt (scope: parameter-scrutinee matches only): unrostered={} stale={} live={}",
             non_fold_residue_unrostered_count(),
             non_fold_residue_stale_roster_count(),
             live.len()
