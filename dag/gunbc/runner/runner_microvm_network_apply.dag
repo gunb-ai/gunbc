@@ -652,7 +652,29 @@ fn run_privileged_microvm_network_apply(
   match dir {
     PathsRootOnly =>
       run_staged_microvm_network_apply(subject: subject, context: context, privilege: privilege, prerequisites: prerequisites, dir: dir)
-    _ =>
+    PathsNotRootOnly { paths: _, detail: _ } =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        prerequisites: prerequisites,
+        staging_dir: dir,
+        staged: [],
+        staged_root_only: PathsNotApplicable,
+        operations: [],
+        readback: RulesetNotListed { reason: "the staging root or one of its ancestors is not root-only, so no bytes were staged" },
+      }
+    PathsUnobservable { reason: _ } =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        prerequisites: prerequisites,
+        staging_dir: dir,
+        staged: [],
+        staged_root_only: PathsNotApplicable,
+        operations: [],
+        readback: RulesetNotListed { reason: "the staging root or one of its ancestors is not root-only, so no bytes were staged" },
+      }
+    PathsNotApplicable =>
       MicrovmNetworkApplyRun {
         subject: subject,
         privilege: privilege,
@@ -705,7 +727,29 @@ fn run_staged_microvm_network_apply(
         },
       }
     }
-    _ =>
+    PathsNotRootOnly { paths: _, detail: _ } =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        prerequisites: prerequisites,
+        staging_dir: dir,
+        staged: staged,
+        staged_root_only: staged_meta,
+        operations: [],
+        readback: RulesetNotListed { reason: "the staged bytes were not established as root-only, so nothing was installed from them" },
+      }
+    PathsUnobservable { reason: _ } =>
+      MicrovmNetworkApplyRun {
+        subject: subject,
+        privilege: privilege,
+        prerequisites: prerequisites,
+        staging_dir: dir,
+        staged: staged,
+        staged_root_only: staged_meta,
+        operations: [],
+        readback: RulesetNotListed { reason: "the staged bytes were not established as root-only, so nothing was installed from them" },
+      }
+    PathsNotApplicable =>
       MicrovmNetworkApplyRun {
         subject: subject,
         privilege: privilege,

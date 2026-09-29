@@ -41,7 +41,7 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
               b: [runner_host_label(host: host)],
             ),
           }
-        _ =>
+        HostedRunner { label: _ } =>
           RegistrationLabelsRefused {
             host: host,
             cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
