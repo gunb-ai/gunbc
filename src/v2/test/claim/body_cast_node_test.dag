@@ -1,5 +1,6 @@
 module v2.test.claim.body_cast_node
 
+import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
 import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.coercion { NoTargetCandidate }
@@ -30,6 +31,7 @@ import v2.std.diagnostic {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Arrow,
   Atom,
   ComputationNode,
   Edge,
@@ -383,7 +385,7 @@ test fn bcn_eval_realizes_the_operand_value() -> Bool {
 }
 
 // (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
-// PositionalPlusOneNamedEdges): the target first or last is one node.
+// canonicalize_positional_then_named): the target first or last is one node.
 test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
   let op = Edge { label: Positional, target: bcn_coerce_wire() }
   let operand = Edge { label: Positional, target: bcn_int(lexeme: "7") }
@@ -501,14 +503,44 @@ test fn bcn_a_loop_passes_the_resolver_gate() -> Bool {
   }
 }
 
-// (18) ... and a Transform carrying a named edge that is not the cast marker still refuses.
+// (18) ... and a Transform that MIXES the cast marker with any other Named edge refuses: a cast and an
+// application with named actuals are different forms, and this node is neither. Named actuals alone
+// are an application's (MQ-1); the gate admits those, and a label that names no parameter of the
+// callee refuses at binding instead (bcn_an_unknown_named_label_refuses_at_binding).
 test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
   !type_binder_labels_conform(root: node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge { label: Positional, target: bcn_coerce_wire() },
       Edge { label: Positional, target: bcn_int(lexeme: "7") },
+      cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int)),
       Edge { label: Named { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
     ]
   ))
+}
+
+// (18b) THE OTHER HALF OF THE SPLIT WALL: a named label that names no parameter of the callee has no
+// slot, and the one binding authority refuses it -- so no Accepted program holds a foreign label on an
+// application either. The callee declares `x`; the actual is labelled `bcn_not_a_marker`.
+test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool {
+  let signature = declared_signature(
+    params: [Edge { label: Named { name: ^x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }],
+    source: dag_type_atom_node(identity: ^dag_binding_type_int)
+  )
+  let callee = node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      signature.order
+    ]
+  )
+  match application_binding_plan(
+    arrow: callee,
+    actuals: [Edge { label: Named { name: ^bcn_not_a_marker }, target: bcn_int(lexeme: "7") }]
+  ) {
+    ApplicationBindingRefused { reason: r, at: _ } => r == ^application_argument_label_unknown
+    ApplicationBound { slots: _ } => false
+  }
 }
