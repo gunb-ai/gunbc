@@ -280,10 +280,10 @@ test fn an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child
 // journals that refusal; the boot reads it from the one resolved location, and no doubled
 // <dir>/<dir> journal exists.
 test fn a_relative_observer_directory_is_resolved_once() -> Bool {
+  let made = shell.Mktemp.DirWithTemplate(template: "target/gunbc_kvmrel.XXXXXX")
+  let dir = trim(s: made.path as String)
   match runner_browser_toolchain_here_wet() {
     BrowserToolchainReady { location: loc, standing: _ } => {
-      let made = shell.Mktemp.DirWithTemplate(template: "target/gunbc_kvmrel.XXXXXX")
-      let dir = trim(s: made.path as String)
       let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel")
       let refused = match start {
         KvmObserverStarted { dir: d, subject: _, standing: st, checked_at: _ } => starts_with(s: d as String, prefix: "/") && match st { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
@@ -293,7 +293,10 @@ test fn a_relative_observer_directory_is_resolved_once() -> Bool {
       let _gone = shell.Remove.RecursiveForce(path: dir)
       refused && !doubled
     }
-    _ => false
+    _ => {
+      let _gone = shell.Remove.RecursiveForce(path: dir)
+      false
+    }
   }
 }
 
